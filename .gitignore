@@ -1,0 +1,45 @@
+# ─── Environment & Secrets ────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─── Frontend ─────────────────────────────────────────────────────
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/coverage/
+
+# ─── Backend ──────────────────────────────────────────────────────
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/**/*.pyc
+backend/.venv/
+backend/venv/
+backend/*.egg-info/
+
+# ─── Bot ──────────────────────────────────────────────────────────
+bot/__pycache__/
+bot/**/__pycache__/
+bot/.venv/
+bot/venv/
+
+# ─── Database ─────────────────────────────────────────────────────
+*.sqlite3
+*.db
+
+# ─── Logs ─────────────────────────────────────────────────────────
+*.log
+logs/
+
+# ─── OS ───────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── IDE ──────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo

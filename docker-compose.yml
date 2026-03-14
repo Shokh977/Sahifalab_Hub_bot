@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: sahifalab_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sahifalab_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sahifalab_password}
+      POSTGRES_DB: ${POSTGRES_DB:-sahifalab_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - sahifalab_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sahifalab_user -d sahifalab_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sahifalab_backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-sahifalab_user}:${POSTGRES_PASSWORD:-sahifalab_password}@postgres:5432/${POSTGRES_DB:-sahifalab_db}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-production-32chars}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+      DEBUG: ${DEBUG:-True}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    networks:
+      - sahifalab_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sahifalab_frontend
+    command: npm run dev
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    networks:
+      - sahifalab_network
+
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    container_name: sahifalab_bot
+    command: python main.py
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      API_BASE_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./bot:/app
+    networks:
+      - sahifalab_network
+
+volumes:
+  postgres_data:
+
+networks:
+  sahifalab_network:
+    driver: bridge
