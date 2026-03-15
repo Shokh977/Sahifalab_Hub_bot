@@ -6,12 +6,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 async def main():
-    """Main entry point for bot"""
     logger.info("Starting SAHIFALAB Telegram Bot...")
-    
     app = bot_handler.setup()
-    logger.info("Bot handlers setup complete")
-    
+    logger.info("Bot is running! Press Ctrl+C to stop.")
     await bot_handler.start_polling()
 
 if __name__ == "__main__":
