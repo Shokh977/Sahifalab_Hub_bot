@@ -1,5 +1,8 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+
+const ADMIN_TELEGRAM_IDS = [807466591]
 
 interface MenuItem {
   id: string
@@ -67,6 +70,8 @@ const MENU_ITEMS: MenuItem[] = [
 
 export const MenuGrid: React.FC = () => {
   const navigate = useNavigate()
+  const { user } = useTelegramWebApp()
+  const isAdmin = user?.id ? ADMIN_TELEGRAM_IDS.includes(user.id) : false
 
   const handleMenuClick = (path: string) => {
     navigate(path)
@@ -109,6 +114,17 @@ export const MenuGrid: React.FC = () => {
           </div>
         </div>
       </button>
+
+      {/* Admin panel — only visible to admins */}
+      {isAdmin && (
+        <button
+          onClick={() => handleMenuClick('/admin')}
+          className="col-span-2 mt-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-sahifa-600 dark:hover:text-sahifa-400 transition-colors text-xs"
+        >
+          <span>🔐</span>
+          <span>Admin Panel</span>
+        </button>
+      )}
     </div>
   )
 }
