@@ -8,12 +8,21 @@ interface TelegramUser {
   language_code?: string
 }
 
+interface BackButton {
+  isVisible: boolean
+  show: () => void
+  hide: () => void
+  onClick: (callback: () => void) => void
+  offClick: (callback: () => void) => void
+}
+
 interface TelegramWebApp {
   initData: string
   user?: TelegramUser
   ready: () => void
   expand: () => void
   close: () => void
+  BackButton: BackButton
   onEvent: (event: string, callback: () => void) => void
   offEvent: (event: string, callback: () => void) => void
 }
@@ -43,6 +52,29 @@ export const useTelegramWebApp = () => {
   }, [])
 
   return { webApp, user }
+}
+
+/**
+ * Wires the Telegram BackButton to React Router.
+ * Shows the back button on any page except home ("/"),
+ * and navigates back when pressed instead of closing the app.
+ */
+export const useTelegramBackButton = (isHome: boolean, onBack: () => void) => {
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp
+    if (!tg?.BackButton) return
+
+    if (isHome) {
+      tg.BackButton.hide()
+    } else {
+      tg.BackButton.show()
+      tg.BackButton.onClick(onBack)
+    }
+
+    return () => {
+      tg.BackButton.offClick(onBack)
+    }
+  }, [isHome, onBack])
 }
 
 export const useTelegramInitData = () => {

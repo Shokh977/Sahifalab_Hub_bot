@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import React, { useCallback } from 'react'
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
 import StudyWithMe from './pages/StudyPage'
@@ -8,7 +8,7 @@ import KitoblarPage from './pages/KitoblarPage'
 import ResourcesPage from './pages/ResourcesPage'
 import AboutPage from './pages/AboutPage'
 import AdminPage from './pages/AdminPage'
-import { useTelegramWebApp } from './hooks/useTelegramWebApp'
+import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp'
 
 const HomePage: React.FC = () => {
   const { user } = useTelegramWebApp()
@@ -35,10 +35,21 @@ const HomePage: React.FC = () => {
   )
 }
 
+// Handles Telegram BackButton for the whole app
+const TelegramBackButtonHandler: React.FC = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const isHome = location.pathname === '/'
+  const handleBack = useCallback(() => navigate(-1), [navigate])
+  useTelegramBackButton(isHome, handleBack)
+  return null
+}
+
 const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <Router>
+        <TelegramBackButtonHandler />
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/study" element={<StudyWithMe />} />
