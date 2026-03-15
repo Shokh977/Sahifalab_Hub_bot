@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.db.session import init_db
@@ -10,32 +9,26 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Init DB tables immediately (works with Vercel serverless + lifespan="off")
+try:
+    init_db()
+    logger.info("Database tables ready ✅")
+except Exception as e:
+    logger.warning(f"DB init skipped (no DB yet): {e}")
+
 app = FastAPI(
     title="SAHIFALAB Telegram Mini App API",
     description="RESTful API for SAHIFALAB Telegram Mini App",
     version="1.0.0",
 )
 
-@app.on_event("startup")
-async def startup_event():
-    """Auto-create all DB tables on startup"""
-    logger.info("Creating database tables...")
-    init_db()
-    logger.info("Database tables ready ✅")
-
-# CORS middleware
+# CORS — allow Vercel frontend + localhost dev
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-)
-
-# Trusted host middleware — allow all on Railway
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=settings.ALLOWED_HOSTS,
 )
 
 # Include API routes
