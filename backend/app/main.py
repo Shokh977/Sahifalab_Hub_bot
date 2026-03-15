@@ -2,19 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
-from app.db.session import init_db
 import app.models  # noqa: F401 — registers all models with SQLAlchemy Base
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Init DB tables immediately (works with Vercel serverless + lifespan="off")
-try:
-    init_db()
-    logger.info("Database tables ready ✅")
-except Exception as e:
-    logger.warning(f"DB init skipped (no DB yet): {e}")
+# DB tables are created via Supabase SQL editor — no init_db() call needed here.
 
 app = FastAPI(
     title="SAHIFALAB Telegram Mini App API",
