@@ -1,14 +1,27 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 from app.core.config import settings
 
-# Create engine
+def _build_db_url(url: str) -> str:
+    """Ensure the correct SQLAlchemy dialect prefix.
+    Vercel serverless uses pg8000 (pure Python); psycopg2 is not reliable there.
+    """
+    if url.startswith("postgresql://") or url.startswith("postgres://"):
+        return url.replace("postgres://", "postgresql+pg8000://", 1).replace(
+            "postgresql://", "postgresql+pg8000://", 1
+        )
+    return url  # already has dialect (e.g. postgresql+pg8000://)
+
+_db_url = _build_db_url(settings.DATABASE_URL)
+
+# Use NullPool for serverless (no persistent connection pool between invocations)
+_is_sqlite = "sqlite" in _db_url
 engine = create_engine(
-    settings.DATABASE_URL,
+    _db_url,
     echo=settings.DATABASE_ECHO,
-    connect_args={},
-    poolclass=StaticPool if "sqlite" in settings.DATABASE_URL else None,
+    poolclass=StaticPool if _is_sqlite else NullPool,
+    connect_args={"check_same_thread": False} if _is_sqlite else {},
 )
 
 # Create session factory
