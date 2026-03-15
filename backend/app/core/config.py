@@ -26,15 +26,16 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS
+    # CORS — override via CORS_ORIGINS env var (comma-separated)
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:5173",
         "http://localhost:8000",
+        "https://sahifalab-hub-bot.vercel.app",
     ]
     
-    # Security
-    ALLOWED_HOSTS: List[str] = ["localhost", "127.0.0.1"]
+    # Security — '*' allows Railway's internal hostnames
+    ALLOWED_HOSTS: List[str] = ["*"]
     
     class Config:
         env_file = ".env"

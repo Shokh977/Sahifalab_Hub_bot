@@ -3,6 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
+from app.db.session import init_db
+import app.models  # noqa: F401 — registers all models with SQLAlchemy Base
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -14,6 +16,13 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.on_event("startup")
+async def startup_event():
+    """Auto-create all DB tables on startup"""
+    logger.info("Creating database tables...")
+    init_db()
+    logger.info("Database tables ready ✅")
+
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -23,7 +32,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Trusted host middleware
+# Trusted host middleware — allow all on Railway
 app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=settings.ALLOWED_HOSTS,
