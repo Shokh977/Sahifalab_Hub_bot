@@ -4,6 +4,7 @@ sqlalchemy==2.0.23
 pg8000==1.30.3
 pydantic==2.5.0
 pydantic-settings==2.1.0
+email-validator==2.1.0
 python-jose[cryptography]==3.3.0
 python-dotenv==1.0.0
 httpx==0.24.1
