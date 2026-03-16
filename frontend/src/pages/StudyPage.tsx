@@ -4,45 +4,41 @@ import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
 import apiService from '../services/apiService'
 
 /* ──────────────────────────────────────────────────────────────────────────────
-   SOUND CONFIGURATION
-   ──────────────────────────────────────────────────────────────────────────────
-   Replace the `fileId` values below with the Telegram file_ids you get after
-   sending audio files to your bot.
-
-   How to get file_ids:
-   1. Send an audio file (.mp3/.ogg) to @sahifalab_bot in Telegram.
-   2. Use the bot's /getfileid command, or check the webhook/log for the
-      `file_id` field in the incoming message.
-   3. Paste the file_id string below.
+   Sound data is loaded dynamically from the database.
+   Admins manage sounds via the Admin Panel → Tovushlar tab.
    ────────────────────────────────────────────────────────────────────────────── */
 
-interface SoundConfig {
-  id: SoundType
+interface SoundFromDB {
+  id: number
+  name: string
   emoji: string
-  label: string
-  fileId: string  // Telegram file_id — fill these in!
+  file_id: string
+  display_order: number
+  is_active: boolean
 }
-
-const AMBIENT_SOUNDS: SoundConfig[] = [
-  { id: 'rain',      emoji: '🌧️', label: "Yomg'ir",    fileId: '' },
-  { id: 'ocean',     emoji: '🌊', label: 'Okean',       fileId: '' },
-  { id: 'forest',    emoji: '🌲', label: "O'rmon",      fileId: '' },
-  { id: 'coffee',    emoji: '☕', label: 'Kafe',         fileId: '' },
-  { id: 'fireplace', emoji: '🔥', label: 'Kamin',       fileId: '' },
-  { id: 'silence',   emoji: '🔇', label: 'Jimjitlik',   fileId: '' },
-]
 
 const FOCUS_PRESETS = [15, 25, 45, 60]
 
 export const StudyWithMe: React.FC = () => {
   const sound = useAmbientSound()
 
+  // Sounds fetched from API
+  const [sounds, setSounds] = useState<SoundFromDB[]>([])
+  const [soundsLoading, setSoundsLoading] = useState(true)
+
+  // Fetch ambient sounds on mount
+  useEffect(() => {
+    apiService.getAmbientSounds()
+      .then(res => setSounds(res.data))
+      .catch(() => {})
+      .finally(() => setSoundsLoading(false))
+  }, [])
+
   // Cache of resolved audio URLs: { fileId → url }
   const urlCacheRef = useRef<Record<string, string>>({})
-  const [resolvingSound, setResolvingSound] = useState<SoundType | null>(null)
+  const [resolvingId, setResolvingId] = useState<number | null>(null)
 
   const handleTimerComplete = useCallback(() => {
-    // Vibrate if available
     if (navigator.vibrate) navigator.vibrate([200, 100, 200])
   }, [])
 
@@ -58,7 +54,7 @@ export const StudyWithMe: React.FC = () => {
   }, [timer])
 
   // Auto-transition when timer reaches 0
-  React.useEffect(() => {
+  useEffect(() => {
     if (timer.remaining === 0 && !timer.isRunning) {
       const t = setTimeout(handleComplete, 1500)
       return () => clearTimeout(t)
@@ -72,37 +68,31 @@ export const StudyWithMe: React.FC = () => {
   /**
    * Resolve file_id → URL (cached), then play.
    */
-  const handleSoundSelect = useCallback(async (cfg: SoundConfig) => {
-    // Toggle off
-    if (cfg.id === sound.activeSound && sound.isPlaying) {
+  const handleSoundSelect = useCallback(async (s: SoundFromDB) => {
+    // Toggle off if same sound playing
+    if (sound.activeSound === String(s.id) && sound.isPlaying) {
       sound.stop()
-      return
-    }
-    // Silence = just stop
-    if (cfg.id === 'silence') {
-      sound.stop()
-      return
-    }
-    // No file_id configured yet
-    if (!cfg.fileId) {
-      alert(`"${cfg.label}" tovushi hali yuklanmagan. Admin file_id ni sozlashi kerak.`)
       return
     }
 
-    setResolvingSound(cfg.id)
+    setResolvingId(s.id)
     try {
-      let url = urlCacheRef.current[cfg.fileId]
+      let url = urlCacheRef.current[s.file_id]
       if (!url) {
-        url = await apiService.getAudioLink(cfg.fileId)
-        urlCacheRef.current[cfg.fileId] = url
+        url = await apiService.getAudioLink(s.file_id)
+        urlCacheRef.current[s.file_id] = url
       }
-      sound.play(cfg.id, url)
+      sound.play(String(s.id) as SoundType, url)
     } catch (err) {
       console.error('Failed to resolve audio link:', err)
       alert("Audio yuklashda xatolik yuz berdi")
     } finally {
-      setResolvingSound(null)
+      setResolvingId(null)
     }
+  }, [sound])
+
+  const handleSilence = useCallback(() => {
+    sound.stop()
   }, [sound])
 
   return (
@@ -224,34 +214,53 @@ export const StudyWithMe: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-3 gap-2">
-          {AMBIENT_SOUNDS.map((s) => (
+        {soundsLoading ? (
+          <div className="grid grid-cols-3 gap-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="p-3 rounded-xl bg-gray-100 dark:bg-gray-700 h-16 animate-pulse" />
+            ))}
+          </div>
+        ) : sounds.length === 0 ? (
+          <p className="text-sm text-center text-gray-400 dark:text-gray-500 py-4">
+            Hali tovushlar yuklanmagan. Admin paneldan qo'shing.
+          </p>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {/* Silence button — always first */}
             <button
-              key={s.id}
-              onClick={() => handleSoundSelect(s)}
-              disabled={resolvingSound === s.id || sound.isLoading}
-              className={`p-3 rounded-xl font-medium transition-all active:scale-95 relative ${
-                sound.activeSound === s.id && sound.isPlaying
+              onClick={handleSilence}
+              className={`p-3 rounded-xl font-medium transition-all active:scale-95 ${
+                !sound.isPlaying
                   ? 'bg-blue-500 text-white ring-2 ring-blue-400 shadow-md'
-                  : !s.fileId && s.id !== 'silence'
-                    ? 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-60'
-                    : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
+                  : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
             >
-              {resolvingSound === s.id ? (
-                <div className="text-2xl animate-spin">⏳</div>
-              ) : (
-                <div className="text-2xl">{s.emoji}</div>
-              )}
-              <div className="text-xs mt-1">{s.label}</div>
-              {!s.fileId && s.id !== 'silence' && (
-                <div className="absolute top-1 right-1 text-[8px] bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 px-1 rounded">
-                  soon
-                </div>
-              )}
+              <div className="text-2xl">🔇</div>
+              <div className="text-xs mt-1">Jimjitlik</div>
             </button>
-          ))}
-        </div>
+
+            {/* Sounds from database */}
+            {sounds.map((s) => (
+              <button
+                key={s.id}
+                onClick={() => handleSoundSelect(s)}
+                disabled={resolvingId === s.id || sound.isLoading}
+                className={`p-3 rounded-xl font-medium transition-all active:scale-95 relative ${
+                  sound.activeSound === String(s.id) && sound.isPlaying
+                    ? 'bg-blue-500 text-white ring-2 ring-blue-400 shadow-md'
+                    : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
+                }`}
+              >
+                {resolvingId === s.id ? (
+                  <div className="text-2xl animate-spin">⏳</div>
+                ) : (
+                  <div className="text-2xl">{s.emoji}</div>
+                )}
+                <div className="text-xs mt-1">{s.name}</div>
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Volume Control */}
         {sound.isPlaying && (

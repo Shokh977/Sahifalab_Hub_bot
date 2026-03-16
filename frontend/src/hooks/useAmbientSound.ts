@@ -1,6 +1,6 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 
-export type SoundType = 'rain' | 'ocean' | 'forest' | 'coffee' | 'fireplace' | 'silence'
+export type SoundType = string  // dynamic — can be DB sound id or any identifier
 
 /**
  * Ambient sound player that streams real audio files via HTML5 Audio.

@@ -61,3 +61,17 @@ class QuizAuditLog(Base):
     changes = Column(JSON, nullable=True)
     admin_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class AmbientSound(Base):
+    __tablename__ = "ambient_sound"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    emoji = Column(String(20), nullable=False, default="🎵")
+    file_id = Column(String(500), nullable=False)   # Telegram file_id
+    display_order = Column(Integer, default=0)
+    is_active = Column(Boolean, default=True)
+    created_by = Column(Integer, nullable=True)      # admin telegram_id
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

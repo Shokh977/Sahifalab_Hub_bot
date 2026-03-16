@@ -209,6 +209,29 @@ class ApiService {
     const resp = await this.axiosInstance.get(`/api/audio/get-audio-link/${fileId}`)
     return resp.data.url
   }
-}
+  /** List all active ambient sounds from the database */
+  async getAmbientSounds() {
+    return this.axiosInstance.get('/api/audio/ambient-sounds')
+  }
+
+  /** Upload a new ambient sound (admin). Sends MP3 → Telegram → saves file_id. */
+  async uploadAmbientSound(telegramId: number, name: string, emoji: string, file: File) {
+    const formData = new FormData()
+    formData.append('name', name)
+    formData.append('emoji', emoji)
+    formData.append('file', file)
+    return this.axiosInstance.post(
+      `/api/audio/admin/ambient-sounds?telegram_id=${telegramId}`,
+      formData,
+      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
+    )
+  }
+
+  /** Delete an ambient sound (admin) */
+  async deleteAmbientSound(soundId: number, telegramId: number) {
+    return this.axiosInstance.delete(
+      `/api/audio/admin/ambient-sounds/${soundId}?telegram_id=${telegramId}`,
+    )
+  }}
 
 export default new ApiService()

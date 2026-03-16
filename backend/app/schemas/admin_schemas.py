@@ -161,3 +161,18 @@ class AdminStats(BaseModel):
 class AdminPanelAuthRequest(BaseModel):
     telegram_id: int
     init_data: str  # Telegram Web App init data
+
+
+# ─── Ambient Sound Schemas ─────────────────────────────────────────────────────
+
+class AmbientSoundResponse(BaseModel):
+    id: int
+    name: str
+    emoji: str
+    file_id: str
+    display_order: int
+    is_active: bool
+    created_at: datetime
+
+    class Config:
+        from_attributes = True

@@ -43,7 +43,7 @@ interface AdminStats {
   recent_uploads: string[]
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds'
 
 // ─── Quiz form types ──────────────────────────────────────────────────────────
 interface QuizQuestionForm {
@@ -129,6 +129,15 @@ const AdminPage: React.FC = () => {
     is_paid: false, file_url: '', thumbnail_url: '', category: 'programming',
   })
 
+  // Ambient Sounds
+  interface AmbientSoundItem { id: number; name: string; emoji: string; file_id: string; display_order: number; is_active: boolean; created_at: string }
+  const [ambientSounds, setAmbientSounds] = useState<AmbientSoundItem[]>([])
+  const [soundName, setSoundName] = useState('')
+  const [soundEmoji, setSoundEmoji] = useState('🎵')
+  const [soundFile, setSoundFile] = useState<File | null>(null)
+  const [soundUploading, setSoundUploading] = useState(false)
+  const [soundMsg, setSoundMsg] = useState('')
+
   // ── Auto-login from Telegram WebApp ────────────────────────────────────
   useEffect(() => {
     if (tgUser?.id && ADMIN_TELEGRAM_IDS.includes(tgUser.id) && !adminId) {
@@ -198,12 +207,20 @@ const AdminPage: React.FC = () => {
     } catch { /* ignore */ }
   }, [adminId])
 
+  const loadSounds = useCallback(async () => {
+    try {
+      const res = await apiService.getAmbientSounds()
+      setAmbientSounds(res.data)
+    } catch { /* ignore */ }
+  }, [])
+
   useEffect(() => {
     if (!adminId) return
     loadStats()
     if (activeTab === 'hero') loadHero()
     if (activeTab === 'books') loadBooks()
-  }, [adminId, activeTab, loadStats, loadHero, loadBooks])
+    if (activeTab === 'sounds') loadSounds()
+  }, [adminId, activeTab, loadStats, loadHero, loadBooks, loadSounds])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -336,8 +353,39 @@ const AdminPage: React.FC = () => {
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Login Screen
+  // ── Sound handlers ──────────────────────────────────────────────────────
+  const handleUploadSound = async () => {
+    if (!adminId) return
+    if (!soundName.trim()) { setSoundMsg('❌ Tovush nomini kiriting'); return }
+    if (!soundFile) { setSoundMsg('❌ MP3 faylni tanlang'); return }
+    setSoundUploading(true)
+    setSoundMsg('')
+    try {
+      await apiService.uploadAmbientSound(adminId, soundName.trim(), soundEmoji, soundFile)
+      setSoundMsg('✅ Tovush muvaffaqiyatli yuklandi!')
+      setSoundName('')
+      setSoundEmoji('🎵')
+      setSoundFile(null)
+      // Reset file input
+      const fileInput = document.getElementById('sound-file-input') as HTMLInputElement
+      if (fileInput) fileInput.value = ''
+      loadSounds()
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
+      setSoundMsg(`❌ ${detail}`)
+    } finally {
+      setSoundUploading(false)
+    }
+  }
+
+  const handleDeleteSound = async (soundId: number) => {
+    if (!adminId) return
+    if (!window.confirm('Tovushni o\'chirmoqchimisiz?')) return
+    try {
+      await apiService.deleteAmbientSound(soundId, adminId)
+      loadSounds()
+    } catch { /* ignore */ }
+  }
   // ─────────────────────────────────────────────────────────────────────────
   if (!adminId) {
     return (
@@ -410,6 +458,7 @@ const AdminPage: React.FC = () => {
             { id: 'hero', label: '🖼 Hero' },
             { id: 'quiz', label: '📝 Quiz' },
             { id: 'books', label: '📚 Kitoblar' },
+            { id: 'sounds', label: '🎵 Tovushlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -916,6 +965,102 @@ const AdminPage: React.FC = () => {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ── Sounds Tab ─────────────────────────────────────────────────── */}
+        {activeTab === 'sounds' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">🎵 Ambient Tovushlar</h2>
+
+            {/* Upload form */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-200 dark:border-gray-700 space-y-3">
+              <h3 className="font-semibold text-gray-800 dark:text-white text-sm">Yangi tovush yuklash</h3>
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nomi *</label>
+                <input
+                  type="text"
+                  value={soundName}
+                  onChange={(e) => setSoundName(e.target.value)}
+                  placeholder="Masalan: Yomg'ir"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Emoji / Icon</label>
+                <input
+                  type="text"
+                  value={soundEmoji}
+                  onChange={(e) => setSoundEmoji(e.target.value)}
+                  placeholder="🌧️"
+                  className="w-24 px-3 py-2 text-lg border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500 text-center"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">MP3 fayl *</label>
+                <input
+                  id="sound-file-input"
+                  type="file"
+                  accept="audio/mpeg,audio/ogg,audio/wav,audio/*"
+                  onChange={(e) => setSoundFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm text-gray-500 dark:text-gray-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-sahifa-50 dark:file:bg-sahifa-900/20 file:text-sahifa-600 dark:file:text-sahifa-400 hover:file:bg-sahifa-100"
+                />
+                {soundFile && (
+                  <p className="text-xs text-gray-400 mt-1">
+                    📎 {soundFile.name} ({(soundFile.size / 1024 / 1024).toFixed(1)} MB)
+                  </p>
+                )}
+              </div>
+
+              {soundMsg && (
+                <div className="text-sm p-3 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{soundMsg}</div>
+              )}
+
+              <button
+                onClick={handleUploadSound}
+                disabled={soundUploading}
+                className="w-full bg-sahifa-600 hover:bg-sahifa-700 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-50"
+              >
+                {soundUploading ? '⏳ Telegram ga yuklanmoqda…' : '📤 Yuklash'}
+              </button>
+            </div>
+
+            {/* Sounds list */}
+            <h3 className="font-semibold text-gray-800 dark:text-white text-sm">Mavjud tovushlar ({ambientSounds.length})</h3>
+            {ambientSounds.length === 0 ? (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center text-gray-500 dark:text-gray-400 text-sm border border-gray-100 dark:border-gray-700">
+                Hali hech qanday tovush yuklanmagan
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {ambientSounds.map((s) => (
+                  <div key={s.id} className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3">
+                    <div className="text-2xl shrink-0">{s.emoji}</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm text-gray-900 dark:text-white truncate">{s.name}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">ID: {s.file_id.slice(0, 20)}…</p>
+                    </div>
+                    <button
+                      onClick={() => handleDeleteSound(s.id)}
+                      className="text-xs bg-red-50 dark:bg-red-900/20 text-red-500 px-3 py-1.5 rounded-lg shrink-0"
+                    >
+                      🗑 O'chirish
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Info */}
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
+              <p className="text-xs text-blue-800 dark:text-blue-300">
+                ℹ️ MP3 fayl Telegram Cloud ga yuklanadi. <strong>file_id</strong> avtomatik saqlanadi.
+                Study sahifasi bu ro'yxatdan dinamik o'qiydi.
+              </p>
+            </div>
           </div>
         )}
 
