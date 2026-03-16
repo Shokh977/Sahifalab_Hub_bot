@@ -89,6 +89,10 @@ const AdminPage: React.FC = () => {
   const [authError, setAuthError] = useState('')
   const [activeTab, setActiveTab] = useState<Tab>('stats')
 
+  // Debug
+  const [dbStatus, setDbStatus] = useState<string | null>(null)
+  const [dbChecking, setDbChecking] = useState(false)
+
   // Stats
   const [stats, setStats] = useState<AdminStats | null>(null)
 
@@ -120,6 +124,21 @@ const AdminPage: React.FC = () => {
       setAdminId(tgUser.id)
     }
   }, [tgUser, adminId])
+
+  const checkDb = async () => {
+    if (!adminId) return
+    setDbChecking(true)
+    setDbStatus(null)
+    try {
+      const res = await apiService.debugDb(adminId)
+      setDbStatus(JSON.stringify(res.data, null, 2))
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || String(err)
+      setDbStatus(`❌ HTTP ${err?.response?.status ?? '?'}: ${detail}`)
+    } finally {
+      setDbChecking(false)
+    }
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   const handleLogin = async () => {
@@ -189,8 +208,9 @@ const AdminPage: React.FC = () => {
       setHeroMsg('✅ Saqlandi!')
       setEditingHero(null)
       loadHero()
-    } catch {
-      setHeroMsg('❌ Xatolik yuz berdi')
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
+      setHeroMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
     } finally {
       setHeroSaving(false)
     }
@@ -236,8 +256,9 @@ const AdminPage: React.FC = () => {
       setBookMsg('✅ Kitob yangilandi!')
       setEditingBook(null)
       loadBooks()
-    } catch {
-      setBookMsg('❌ Xatolik yuz berdi')
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
+      setBookMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
     } finally {
       setBookSaving(false)
     }
@@ -262,8 +283,9 @@ const AdminPage: React.FC = () => {
       setShowNewBook(false)
       setNewBook({ title: '', author: '', description: '', price: 0, is_paid: false, file_url: '', thumbnail_url: '', category: 'programming' })
       loadBooks()
-    } catch {
-      setBookMsg('❌ Xatolik yuz berdi')
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
+      setBookMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
     } finally {
       setBookSaving(false)
     }
@@ -366,6 +388,28 @@ const AdminPage: React.FC = () => {
         {activeTab === 'stats' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Dashboard</h2>
+
+            {/* ── DB Debug Panel ── */}
+            <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-2xl p-4 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-yellow-800 dark:text-yellow-300">🛠 Database ulanishini tekshirish</span>
+                <button
+                  onClick={checkDb}
+                  disabled={dbChecking}
+                  className="text-xs bg-yellow-600 hover:bg-yellow-700 text-white px-3 py-1.5 rounded-lg disabled:opacity-50"
+                >
+                  {dbChecking ? 'Tekshirilmoqda...' : 'Test qilish'}
+                </button>
+              </div>
+              {dbStatus && (
+                <pre className="text-xs text-yellow-900 dark:text-yellow-200 whitespace-pre-wrap break-all bg-yellow-100 dark:bg-yellow-900/40 rounded-lg p-2">
+                  {dbStatus}
+                </pre>
+              )}
+              <p className="text-xs text-yellow-700 dark:text-yellow-400">
+                API: {import.meta.env.VITE_API_URL || 'http://localhost:8000'} · Admin ID: {adminId}
+              </p>
+            </div>
             {stats ? (
               <>
                 <div className="grid grid-cols-2 gap-3">

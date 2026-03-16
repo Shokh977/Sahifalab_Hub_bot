@@ -332,6 +332,33 @@ async def get_payment_config(
     
     return config
 
+# Debug endpoint — tests DB connectivity and returns diagnostics
+@router.get("/debug")
+async def debug_db(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Returns DB connection status and table counts. Auth: admin only."""
+    import traceback
+    result: dict = {
+        "telegram_id": telegram_id,
+        "admin_ids_in_config": settings.ADMIN_TELEGRAM_IDS,
+        "is_known_admin": telegram_id in settings.ADMIN_TELEGRAM_IDS,
+        "db_connected": False,
+        "tables": {},
+        "error": None,
+    }
+    try:
+        result["tables"]["admin_user"] = db.query(AdminUser).count()
+        result["tables"]["quiz"] = db.query(Quiz).count()
+        result["tables"]["book"] = db.query(Book).count()
+        result["tables"]["hero_content"] = db.query(HeroContent).count()
+        result["db_connected"] = True
+    except Exception as e:
+        result["error"] = traceback.format_exc()
+    return result
+
+
 # Admin Dashboard
 @router.get("/dashboard/stats", response_model=AdminStats)
 async def get_admin_stats(

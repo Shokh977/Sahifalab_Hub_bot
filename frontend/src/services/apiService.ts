@@ -139,6 +139,10 @@ class ApiService {
     return this.axiosInstance.get('/api/admin/dashboard/stats', this.adminParams(telegramId))
   }
 
+  async debugDb(telegramId: number) {
+    return this.axiosInstance.get('/api/admin/debug', this.adminParams(telegramId))
+  }
+
   // Admin – Hero
   async getAdminHeroList(telegramId: number) {
     return this.axiosInstance.get('/api/admin/hero', this.adminParams(telegramId))
