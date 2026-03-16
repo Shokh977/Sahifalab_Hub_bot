@@ -1,190 +1,228 @@
-import React, { useState, useEffect } from 'react'
+import React, { useCallback } from 'react'
+import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
+import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
 
-interface PomodoroSession {
-  focusTime: number
-  breakTime: number
-  sessionsCompleted: number
-}
-
-const AMBIENT_SOUNDS = [
-  { id: 'rain', name: '🌧️ Rain', emoji: '🌧️' },
-  { id: 'forest', name: '🌲 Forest', emoji: '🌲' },
-  { id: 'coffee', name: '☕ Coffee Shop', emoji: '☕' },
-  { id: 'ocean', name: '🌊 Ocean', emoji: '🌊' },
-  { id: 'fireplace', name: '🔥 Fireplace', emoji: '🔥' },
-  { id: 'silence', name: '🔇 Silence', emoji: '🔇' },
+const AMBIENT_SOUNDS: { id: SoundType; emoji: string; label: string }[] = [
+  { id: 'rain', emoji: '🌧️', label: 'Yomg\'ir' },
+  { id: 'ocean', emoji: '🌊', label: 'Okean' },
+  { id: 'forest', emoji: '🌲', label: "O'rmon" },
+  { id: 'coffee', emoji: '☕', label: 'Kafe' },
+  { id: 'fireplace', emoji: '🔥', label: 'Kamin' },
+  { id: 'silence', emoji: '🔇', label: 'Jimjitlik' },
 ]
 
+const FOCUS_PRESETS = [15, 25, 45, 60]
+
 export const StudyWithMe: React.FC = () => {
-  const [time, setTime] = useState<number>(25 * 60) // 25 minutes
-  const [isRunning, setIsRunning] = useState(false)
-  const [isBreak, setIsBreak] = useState(false)
-  const [sessionsCompleted, setSessionsCompleted] = useState(0)
-  const [selectedSound, setSelectedSound] = useState('silence')
+  const sound = useAmbientSound()
 
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null
+  const handleTimerComplete = useCallback(() => {
+    // Vibrate if available
+    if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+  }, [])
 
-    if (isRunning && time > 0) {
-      interval = setInterval(() => {
-        setTime((prev) => prev - 1)
-      }, 1000)
-    } else if (time === 0 && isRunning) {
-      // Session ended
-      if (!isBreak) {
-        setSessionsCompleted((prev) => prev + 1)
-        setIsBreak(true)
-        setTime(5 * 60) // 5 minute break
-      } else {
-        setIsBreak(false)
-        setTime(25 * 60) // Back to focus
-      }
+  const timer = useBackgroundTimer({ onComplete: handleTimerComplete })
+
+  const handleComplete = useCallback(() => {
+    if (!timer.isBreak) {
+      timer.completeSession()
+      timer.startBreak()
+    } else {
+      timer.startFocus()
     }
+  }, [timer])
 
-    return () => {
-      if (interval !== null) {
-        clearInterval(interval)
-      }
+  // Auto-transition when timer reaches 0
+  React.useEffect(() => {
+    if (timer.remaining === 0 && !timer.isRunning) {
+      // small delay so user sees 00:00
+      const t = setTimeout(handleComplete, 1500)
+      return () => clearTimeout(t)
     }
-  }, [isRunning, time, isBreak])
+  }, [timer.remaining, timer.isRunning, handleComplete])
 
-  const toggleTimer = () => {
-    setIsRunning(!isRunning)
-  }
+  const progressPercent = timer.isBreak
+    ? ((5 * 60 - timer.remaining) / (5 * 60)) * 100
+    : ((25 * 60 - timer.remaining) / (25 * 60)) * 100
 
-  const resetTimer = () => {
-    setIsRunning(false)
-    setIsBreak(false)
-    setTime(25 * 60)
-  }
-
-  const skipSession = () => {
-    if (!isBreak) {
-      setSessionsCompleted((prev) => prev + 1)
+  const handleSoundSelect = (id: SoundType) => {
+    if (id === sound.activeSound && sound.isPlaying) {
+      sound.stop()
+    } else {
+      sound.play(id)
     }
-    setIsBreak(!isBreak)
-    setTime(isBreak ? 25 * 60 : 5 * 60)
   }
-
-  const formatTime = (seconds: number) => {
-    const minutes = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-  }
-
-  const progressPercent = isBreak
-    ? ((5 * 60 - time) / (5 * 60)) * 100
-    : ((25 * 60 - time) / (25 * 60)) * 100
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-md mx-auto px-4 py-4 space-y-5 pb-20">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+      <div className="text-center space-y-1">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
           🎯 Study With Me
         </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          {isBreak ? 'Time to take a break!' : 'Focus time - Stay concentrated!'}
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {timer.isBreak ? "Dam olish vaqti — biroz nafas ol ☕" : "Diqqatni jamla — sen uddalaysan! 💪"}
         </p>
       </div>
 
-      {/* Timer Display */}
-      <div className="card bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 space-y-4">
+      {/* Timer Card */}
+      <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-2xl p-5 shadow-sm border border-blue-100 dark:border-blue-800/40 space-y-4">
         {/* Progress Ring */}
         <div className="flex justify-center">
           <div className="relative w-48 h-48">
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 200 200">
-              {/* Background circle */}
               <circle
-                cx="100"
-                cy="100"
-                r="90"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="4"
+                cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="4"
                 className="text-gray-200 dark:text-gray-700"
               />
-              {/* Progress circle */}
               <circle
-                cx="100"
-                cy="100"
-                r="90"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="4"
+                cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="5"
                 strokeDasharray={`${(Math.PI * 180 * progressPercent) / 100} ${Math.PI * 180}`}
-                className={isBreak ? 'text-green-500' : 'text-blue-500'}
+                className={timer.isBreak ? 'text-green-500' : 'text-blue-500'}
                 strokeLinecap="round"
-                style={{ transition: 'stroke-dasharray 1s linear' }}
+                style={{ transition: 'stroke-dasharray 0.5s linear' }}
               />
             </svg>
-            {/* Time Display */}
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="text-5xl font-bold text-gray-900 dark:text-white">
-                {formatTime(time)}
+              <div className="text-5xl font-bold text-gray-900 dark:text-white font-mono tracking-tight">
+                {timer.formatted}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                {isBreak ? 'Break' : 'Focus'}
+              <div className={`text-xs font-semibold mt-2 px-3 py-0.5 rounded-full ${
+                timer.isBreak
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+              }`}>
+                {timer.isBreak ? '☕ Dam olish' : '🎯 Fokus'}
               </div>
             </div>
           </div>
         </div>
 
-        {/* Sessions Counter */}
-        <div className="text-center">
-          <p className="text-lg font-semibold text-gray-900 dark:text-white">
-            Sessions Completed: <span className="text-blue-600 dark:text-blue-400">{sessionsCompleted}</span>
-          </p>
+        {/* Session counter */}
+        <div className="flex justify-center gap-1.5">
+          {[...Array(Math.max(4, timer.sessionsCompleted + 1))].map((_, i) => (
+            <div
+              key={i}
+              className={`w-3 h-3 rounded-full transition-colors ${
+                i < timer.sessionsCompleted
+                  ? 'bg-blue-500 dark:bg-blue-400'
+                  : 'bg-gray-200 dark:bg-gray-700'
+              }`}
+            />
+          ))}
+          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 self-center">
+            {timer.sessionsCompleted} sessiya
+          </span>
         </div>
       </div>
 
+      {/* Focus Presets */}
+      {!timer.isRunning && !timer.isBreak && (
+        <div className="flex gap-2 justify-center">
+          {FOCUS_PRESETS.map((min) => (
+            <button
+              key={min}
+              onClick={() => timer.setRemaining(min * 60)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                timer.remaining === min * 60
+                  ? 'bg-blue-500 text-white shadow-md'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              {min} min
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Controls */}
-      <div className="flex gap-3 justify-center">
+      <div className="flex gap-3">
         <button
-          onClick={toggleTimer}
-          className={`flex-1 btn-primary ${isRunning ? 'bg-orange-500 hover:bg-orange-600' : 'bg-blue-500 hover:bg-blue-600'}`}
+          onClick={timer.toggle}
+          className={`flex-1 py-3 rounded-xl font-semibold text-white shadow-md transition-all active:scale-95 ${
+            timer.isRunning
+              ? 'bg-orange-500 hover:bg-orange-600'
+              : 'bg-blue-500 hover:bg-blue-600'
+          }`}
         >
-          {isRunning ? '⏸️ Pause' : '▶️ Start'}
+          {timer.isRunning ? '⏸ Pauza' : '▶️ Boshlash'}
         </button>
         <button
-          onClick={resetTimer}
-          className="flex-1 btn-secondary"
+          onClick={() => timer.reset()}
+          className="px-4 py-3 rounded-xl font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
         >
-          🔄 Reset
+          🔄
         </button>
         <button
-          onClick={skipSession}
-          className="flex-1 btn-secondary"
+          onClick={timer.skip}
+          className="px-4 py-3 rounded-xl font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
         >
-          ⏭️ Skip
+          ⏭
         </button>
       </div>
 
       {/* Ambient Sounds */}
-      <div className="card space-y-3">
-        <h3 className="font-semibold text-gray-900 dark:text-white">🎵 Ambient Sounds</h3>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+        <div className="flex items-center justify-between">
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">🎵 Ambient tovushlar</h3>
+          {sound.isPlaying && (
+            <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full animate-pulse">
+              ♪ Ijro etilmoqda
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-3 gap-2">
-          {AMBIENT_SOUNDS.map((sound) => (
+          {AMBIENT_SOUNDS.map((s) => (
             <button
-              key={sound.id}
-              onClick={() => setSelectedSound(sound.id)}
-              className={`p-3 rounded-lg font-medium transition-all ${
-                selectedSound === sound.id
-                  ? 'bg-blue-500 text-white ring-2 ring-blue-600'
-                  : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-200 dark:hover:bg-gray-600'
+              key={s.id}
+              onClick={() => handleSoundSelect(s.id)}
+              className={`p-3 rounded-xl font-medium transition-all active:scale-95 ${
+                sound.activeSound === s.id && sound.isPlaying
+                  ? 'bg-blue-500 text-white ring-2 ring-blue-400 shadow-md'
+                  : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
             >
-              <div className="text-lg">{sound.emoji}</div>
-              <div className="text-xs mt-1">{sound.name.split(' ')[1]}</div>
+              <div className="text-2xl">{s.emoji}</div>
+              <div className="text-xs mt-1">{s.label}</div>
             </button>
           ))}
         </div>
+
+        {/* Volume Control */}
+        {sound.isPlaying && (
+          <div className="flex items-center gap-3 pt-1">
+            <span className="text-sm">🔈</span>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={sound.volume}
+              onChange={(e) => sound.changeVolume(parseFloat(e.target.value))}
+              className="flex-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
+            />
+            <span className="text-sm">🔊</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 w-8 text-right">
+              {Math.round(sound.volume * 100)}%
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Background playback info */}
+      <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3">
+        <p className="text-xs text-emerald-800 dark:text-emerald-300">
+          🔋 <strong>Fon rejimi:</strong> Taymer va tovushlar telefon qulflanganda ham ishlaydi.
+          Ilovadan chiqmang — fonga o'tkazing.
+        </p>
       </div>
 
       {/* Tips */}
-      <div className="card bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-800">
-        <p className="text-sm text-yellow-900 dark:text-yellow-200">
-          💡 <strong>Tip:</strong> The Pomodoro technique uses 25-minute focus sessions with 5-minute breaks for optimal productivity!
+      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
+        <p className="text-xs text-yellow-900 dark:text-yellow-200">
+          💡 <strong>Maslahat:</strong> Pomodoro usuli — 25 daqiqa fokus + 5 daqiqa dam olish.
+          Har 4 sessiyadan so'ng uzunroq dam oling!
         </p>
       </div>
     </div>
