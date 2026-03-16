@@ -45,26 +45,36 @@ interface AdminStats {
 
 type Tab = 'stats' | 'hero' | 'quiz' | 'books'
 
-// ─── QUIZ JSON template ───────────────────────────────────────────────────────
-const QUIZ_TEMPLATE = JSON.stringify(
-  {
-    title: 'Python Asoslari',
-    book_title: 'Automate the Boring Stuff',
-    description: "Python dasturlash asoslarini tekshirish",
-    difficulty: 'easy',
-    category: 'programming',
-    questions: [
-      {
-        question: 'Python da o\'zgaruvchi e\'lon qilish usuli qaysi?',
-        options: ['var x = 5', 'x = 5', 'int x = 5', 'let x = 5'],
-        correct_answer: 1,
-        explanation: 'Python da o\'zgaruvchi e\'lon qilish uchun shunchaki `x = 5` yoziladi.',
-      },
-    ],
-  },
-  null,
-  2,
-)
+// ─── Quiz form types ──────────────────────────────────────────────────────────
+interface QuizQuestionForm {
+  question: string
+  options: [string, string, string, string]
+  correct_answer: number
+  explanation: string
+}
+
+interface QuizForm {
+  title: string
+  book_title: string
+  description: string
+  difficulty: 'easy' | 'medium' | 'hard'
+  category: string
+}
+
+const EMPTY_QUESTION: QuizQuestionForm = {
+  question: '',
+  options: ['', '', '', ''],
+  correct_answer: 0,
+  explanation: '',
+}
+
+const EMPTY_QUIZ: QuizForm = {
+  title: '',
+  book_title: '',
+  description: '',
+  difficulty: 'easy',
+  category: 'programming',
+}
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -103,7 +113,8 @@ const AdminPage: React.FC = () => {
   const [heroMsg, setHeroMsg] = useState('')
 
   // Quiz
-  const [quizJson, setQuizJson] = useState(QUIZ_TEMPLATE)
+  const [quizForm, setQuizForm] = useState<QuizForm>({ ...EMPTY_QUIZ })
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestionForm[]>([{ ...EMPTY_QUESTION, options: ['', '', '', ''] }])
   const [quizUploading, setQuizUploading] = useState(false)
   const [quizMsg, setQuizMsg] = useState('')
 
@@ -228,22 +239,56 @@ const AdminPage: React.FC = () => {
   // ── Quiz handlers ─────────────────────────────────────────────────────────
   const handleUploadQuiz = async () => {
     if (!adminId) return
+    // Validate
+    if (!quizForm.title.trim()) { setQuizMsg('❌ Quiz nomini kiriting'); return }
+    if (!quizForm.book_title.trim()) { setQuizMsg('❌ Kitob nomini kiriting'); return }
+    const validQs = quizQuestions.filter(q => q.question.trim() && q.options.some(o => o.trim()))
+    if (validQs.length === 0) { setQuizMsg('❌ Kamida bitta savol kiriting'); return }
+
     setQuizUploading(true)
     setQuizMsg('')
     try {
-      const parsed = JSON.parse(quizJson)
-      await apiService.uploadQuiz(adminId, parsed)
-      setQuizMsg('✅ Quiz muvaffaqiyatli yuklandi!')
-      setQuizJson(QUIZ_TEMPLATE)
-    } catch (err: any) {
-      if (err instanceof SyntaxError) {
-        setQuizMsg('❌ JSON formatida xatolik bor')
-      } else {
-        setQuizMsg(`❌ ${err?.response?.data?.detail || 'Server xatosi'}`)
+      const payload = {
+        ...quizForm,
+        questions: validQs.map(q => ({
+          question: q.question,
+          options: q.options,
+          correct_answer: q.correct_answer,
+          explanation: q.explanation,
+        })),
       }
+      await apiService.uploadQuiz(adminId, payload)
+      setQuizMsg('✅ Quiz muvaffaqiyatli yuklandi!')
+      setQuizForm({ ...EMPTY_QUIZ })
+      setQuizQuestions([{ ...EMPTY_QUESTION, options: ['', '', '', ''] }])
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
+      setQuizMsg(`❌ ${detail}`)
     } finally {
       setQuizUploading(false)
     }
+  }
+
+  const updateQuestion = (idx: number, field: keyof QuizQuestionForm, value: any) => {
+    setQuizQuestions(prev => prev.map((q, i) => i === idx ? { ...q, [field]: value } : q))
+  }
+
+  const updateOption = (qIdx: number, oIdx: number, value: string) => {
+    setQuizQuestions(prev => prev.map((q, i) => {
+      if (i !== qIdx) return q
+      const newOptions = [...q.options] as [string, string, string, string]
+      newOptions[oIdx] = value
+      return { ...q, options: newOptions }
+    }))
+  }
+
+  const addQuestion = () => {
+    setQuizQuestions(prev => [...prev, { ...EMPTY_QUESTION, options: ['', '', '', ''] }])
+  }
+
+  const removeQuestion = (idx: number) => {
+    if (quizQuestions.length <= 1) return
+    setQuizQuestions(prev => prev.filter((_, i) => i !== idx))
   }
 
   // ── Book handlers ─────────────────────────────────────────────────────────
@@ -554,32 +599,167 @@ const AdminPage: React.FC = () => {
         {/* ── Quiz Tab ───────────────────────────────────────────────────── */}
         {activeTab === 'quiz' && (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Quiz Yuklash</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Quiz Yaratish</h2>
+
+            {/* Quiz info card */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                JSON formatida quiz ma'lumotlarini kiriting. Namuna:
-              </p>
-              <div className="bg-gray-50 dark:bg-gray-900 rounded-xl p-3 text-xs text-gray-500 dark:text-gray-400 font-mono overflow-auto max-h-32">
-                <pre>{`{\n  "title": "Quiz nomi",\n  "book_title": "Kitob nomi",\n  "difficulty": "easy|medium|hard",\n  "category": "programming",\n  "questions": [\n    {\n      "question": "Savol?",\n      "options": ["A","B","C","D"],\n      "correct_answer": 1,\n      "explanation": "Izoh"\n    }\n  ]\n}`}</pre>
+              <h3 className="font-semibold text-gray-800 dark:text-white text-sm">📋 Quiz ma'lumotlari</h3>
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Quiz nomi *</label>
+                <input
+                  type="text"
+                  value={quizForm.title}
+                  onChange={(e) => setQuizForm({ ...quizForm, title: e.target.value })}
+                  placeholder="Masalan: Python Asoslari"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                />
               </div>
-              <textarea
-                rows={16}
-                value={quizJson}
-                onChange={(e) => setQuizJson(e.target.value)}
-                className="w-full px-3 py-3 text-xs font-mono border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500 resize-none"
-                spellCheck={false}
-              />
-              {quizMsg && (
-                <div className="text-sm p-3 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{quizMsg}</div>
-              )}
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Kitob nomi *</label>
+                <input
+                  type="text"
+                  value={quizForm.book_title}
+                  onChange={(e) => setQuizForm({ ...quizForm, book_title: e.target.value })}
+                  placeholder="Masalan: Automate the Boring Stuff"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tavsif</label>
+                <input
+                  type="text"
+                  value={quizForm.description}
+                  onChange={(e) => setQuizForm({ ...quizForm, description: e.target.value })}
+                  placeholder="Quiz haqida qisqacha"
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Qiyinlik</label>
+                  <select
+                    value={quizForm.difficulty}
+                    onChange={(e) => setQuizForm({ ...quizForm, difficulty: e.target.value as QuizForm['difficulty'] })}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                  >
+                    <option value="easy">🟢 Oson</option>
+                    <option value="medium">🟡 O'rta</option>
+                    <option value="hard">🔴 Qiyin</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Kategoriya</label>
+                  <select
+                    value={quizForm.category}
+                    onChange={(e) => setQuizForm({ ...quizForm, category: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                  >
+                    <option value="programming">💻 Dasturlash</option>
+                    <option value="science">🔬 Fan</option>
+                    <option value="math">📐 Matematika</option>
+                    <option value="language">🌍 Til</option>
+                    <option value="religion">📖 Din</option>
+                    <option value="other">📂 Boshqa</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* Questions */}
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-gray-800 dark:text-white text-sm">❓ Savollar ({quizQuestions.length})</h3>
               <button
-                onClick={handleUploadQuiz}
-                disabled={quizUploading}
-                className="w-full bg-sahifa-600 hover:bg-sahifa-700 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-50"
+                onClick={addQuestion}
+                className="text-xs bg-sahifa-600 text-white px-3 py-1.5 rounded-lg font-medium"
               >
-                {quizUploading ? '⏳ Yuklanmoqda…' : '📤 Quiz Yuklash'}
+                + Savol qo'shish
               </button>
             </div>
+
+            {quizQuestions.map((q, qIdx) => (
+              <div key={qIdx} className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-sahifa-600 dark:text-sahifa-400">Savol {qIdx + 1}</span>
+                  {quizQuestions.length > 1 && (
+                    <button
+                      onClick={() => removeQuestion(qIdx)}
+                      className="text-xs text-red-500 hover:text-red-700 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                    >
+                      🗑 O'chirish
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Savol matni *</label>
+                  <input
+                    type="text"
+                    value={q.question}
+                    onChange={(e) => updateQuestion(qIdx, 'question', e.target.value)}
+                    placeholder="Savolni yozing..."
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-xs text-gray-500 dark:text-gray-400">Javob variantlari (to'g'ri javobni tanlang)</label>
+                  {q.options.map((opt, oIdx) => (
+                    <div key={oIdx} className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateQuestion(qIdx, 'correct_answer', oIdx)}
+                        className={`shrink-0 w-7 h-7 rounded-full border-2 flex items-center justify-center text-xs font-bold transition-colors ${
+                          q.correct_answer === oIdx
+                            ? 'bg-green-500 border-green-500 text-white'
+                            : 'border-gray-300 dark:border-gray-600 text-gray-400 hover:border-green-400'
+                        }`}
+                      >
+                        {String.fromCharCode(65 + oIdx)}
+                      </button>
+                      <input
+                        type="text"
+                        value={opt}
+                        onChange={(e) => updateOption(qIdx, oIdx, e.target.value)}
+                        placeholder={`Variant ${String.fromCharCode(65 + oIdx)}`}
+                        className={`flex-1 px-3 py-2 text-sm border rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500 ${
+                          q.correct_answer === oIdx
+                            ? 'border-green-400 dark:border-green-600'
+                            : 'border-gray-200 dark:border-gray-600'
+                        }`}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Izoh (ixtiyoriy)</label>
+                  <input
+                    type="text"
+                    value={q.explanation}
+                    onChange={(e) => updateQuestion(qIdx, 'explanation', e.target.value)}
+                    placeholder="Nima uchun bu javob to'g'ri?"
+                    className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                  />
+                </div>
+              </div>
+            ))}
+
+            {quizMsg && (
+              <div className="text-sm p-3 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{quizMsg}</div>
+            )}
+
+            {/* Upload button */}
+            <button
+              onClick={handleUploadQuiz}
+              disabled={quizUploading}
+              className="w-full bg-sahifa-600 hover:bg-sahifa-700 text-white font-semibold py-3 rounded-xl transition-colors disabled:opacity-50"
+            >
+              {quizUploading ? '⏳ Yuklanmoqda…' : `📤 Quiz Yuklash (${quizQuestions.filter(q => q.question.trim()).length} savol)`}
+            </button>
           </div>
         )}
 
