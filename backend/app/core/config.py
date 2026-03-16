@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
 from typing import List
 from functools import lru_cache
 
@@ -22,6 +23,21 @@ class Settings(BaseSettings):
     TELEGRAM_BOT_USERNAME: str = "sahifalab_bot"
     # Comma-separated Telegram IDs of admins, e.g. "123456789,987654321"
     ADMIN_TELEGRAM_IDS: List[int] = []
+
+    @field_validator('ADMIN_TELEGRAM_IDS', mode='before')
+    @classmethod
+    def parse_admin_ids(cls, v):
+        if isinstance(v, list):
+            return v
+        if isinstance(v, int):
+            return [v]
+        if isinstance(v, str):
+            v = v.strip()
+            if v.startswith('['):
+                import json
+                return json.loads(v)
+            return [int(x.strip()) for x in v.split(',') if x.strip()]
+        return v
     
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production"
