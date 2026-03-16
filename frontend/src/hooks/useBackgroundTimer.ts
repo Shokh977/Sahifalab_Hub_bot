@@ -1,43 +1,111 @@
+/**
+ * useBackgroundTimer — background-resilient Pomodoro timer.
+ *
+ * Survives ALL of:
+ *  • Phone screen lock / app backgrounded  → RAF restarts on visibilitychange
+ *  • Navigating to another page            → state persisted in sessionStorage,
+ *                                            restored on re-mount
+ *
+ * Uses absolute Date.now() timestamps so the countdown stays accurate
+ * even when the browser throttles or pauses timers in the background.
+ */
 import { useRef, useState, useCallback, useEffect } from 'react'
 
+// ── sessionStorage persistence ────────────────────────────────────────────────
+const STORAGE_KEY = 'sahifalab_pomodoro'
+
+interface Snapshot {
+  endTime:   number | null  // absolute ms when timer hits 0 (null when paused)
+  remaining: number         // seconds, authoritative when paused
+  isRunning: boolean
+  isBreak:   boolean
+  sessions:  number
+}
+
+const saveSnap = (s: Snapshot) => {
+  try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)) } catch {}
+}
+const loadSnap = (): Snapshot | null => {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as Snapshot) : null
+  } catch { return null }
+}
+
+// ── Hook ──────────────────────────────────────────────────────────────────────
 interface UseBackgroundTimerOptions {
-  /** Called when timer reaches 0 */
   onComplete?: () => void
-  /** Called every ~1 s with remaining seconds */
   onTick?: (remaining: number) => void
 }
 
-/**
- * A background-resilient Pomodoro timer.
- *
- * Uses `Date.now()` timestamps instead of `setInterval` counting.
- * When the phone is locked or the app is backgrounded, setInterval is throttled
- * or paused by the OS — but the target timestamp stays correct.
- * On the next tick (or when the user returns), the timer "catches up" instantly.
- *
- * Also requests a Wake Lock (where supported) to keep the screen alive during focus.
- */
 export const useBackgroundTimer = (opts?: UseBackgroundTimerOptions) => {
-  const [remaining, setRemaining] = useState(25 * 60) // seconds
-  const [isRunning, setIsRunning] = useState(false)
-  const [isBreak, setIsBreak] = useState(false)
-  const [sessionsCompleted, setSessionsCompleted] = useState(0)
+  // Load snapshot once (lazy useState initializer — runs only on mount)
+  const [snap] = useState<Snapshot | null>(loadSnap)
 
-  const endTimeRef = useRef<number | null>(null) // Date.now() when timer will hit 0
-  const rafRef = useRef<number | null>(null)
+  // ── Derive initial values from snapshot ───────────────────────────────
+  const initRemaining = () => {
+    if (!snap) return 25 * 60
+    if (snap.isRunning && snap.endTime) {
+      return Math.max(0, Math.round((snap.endTime - Date.now()) / 1000))
+    }
+    return snap.remaining
+  }
+  const initRunning = () =>
+    !!(snap?.isRunning && snap.endTime && snap.endTime > Date.now())
+
+  // ── State + shadow refs (so callbacks never have stale values) ────────
+  const [remaining,         _setRemaining] = useState(initRemaining)
+  const [isRunning,         _setIsRunning] = useState(initRunning)
+  const [isBreak,           _setIsBreak]   = useState(snap?.isBreak   ?? false)
+  const [sessionsCompleted, _setSessions]  = useState(snap?.sessions  ?? 0)
+
+  const remainingRef = useRef(remaining)
+  const isRunningRef = useRef(isRunning)
+  const isBreakRef   = useRef(isBreak)
+  const sessionsRef  = useRef(sessionsCompleted)
+
+  const setRemaining = useCallback((v: number) => {
+    remainingRef.current = v; _setRemaining(v)
+  }, [])
+  const setIsRunning = useCallback((v: boolean) => {
+    isRunningRef.current = v; _setIsRunning(v)
+  }, [])
+  const setIsBreak = useCallback((v: boolean) => {
+    isBreakRef.current = v; _setIsBreak(v)
+  }, [])
+  const setSessions = useCallback((fn: (p: number) => number) => {
+    const next = fn(sessionsRef.current)
+    sessionsRef.current = next; _setSessions(next)
+  }, [])
+
+  // ── Refs ──────────────────────────────────────────────────────────────
+  const endTimeRef  = useRef<number | null>(
+    snap?.isRunning && snap.endTime && snap.endTime > Date.now() ? snap.endTime : null,
+  )
+  const rafRef      = useRef<number | null>(null)
   const wakeLockRef = useRef<any>(null)
   const onCompleteRef = useRef(opts?.onComplete)
-  const onTickRef = useRef(opts?.onTick)
+  const onTickRef     = useRef(opts?.onTick)
   onCompleteRef.current = opts?.onComplete
-  onTickRef.current = opts?.onTick
+  onTickRef.current     = opts?.onTick
+
+  // ── Persist ───────────────────────────────────────────────────────────
+  const doSave = useCallback(() => {
+    saveSnap({
+      endTime:   endTimeRef.current,
+      remaining: remainingRef.current,
+      isRunning: isRunningRef.current,
+      isBreak:   isBreakRef.current,
+      sessions:  sessionsRef.current,
+    })
+  }, [])
 
   // ── Wake Lock ──────────────────────────────────────────────────────────
   const requestWakeLock = useCallback(async () => {
     try {
-      if ('wakeLock' in navigator) {
+      if ('wakeLock' in navigator)
         wakeLockRef.current = await (navigator as any).wakeLock.request('screen')
-      }
-    } catch { /* not supported or denied */ }
+    } catch {}
   }, [])
 
   const releaseWakeLock = useCallback(() => {
@@ -47,115 +115,148 @@ export const useBackgroundTimer = (opts?: UseBackgroundTimerOptions) => {
     }
   }, [])
 
-  // Re-acquire Wake Lock when returning from background
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible' && isRunning) {
-        requestWakeLock()
-      }
+  // ── RAF loop ───────────────────────────────────────────────────────────
+  const stopRaf = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current = null
     }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
-  }, [isRunning, requestWakeLock])
+  }, [])
 
-  // ── Tick Loop ──────────────────────────────────────────────────────────
   const tick = useCallback(() => {
     if (!endTimeRef.current) return
-
-    const now = Date.now()
-    const left = Math.max(0, Math.round((endTimeRef.current - now) / 1000))
+    const left = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
     setRemaining(left)
     onTickRef.current?.(left)
 
     if (left <= 0) {
-      // Timer done
       endTimeRef.current = null
       setIsRunning(false)
       releaseWakeLock()
+      doSave()
       onCompleteRef.current?.()
       return
     }
 
+    // ~200 ms polling: low CPU, still visually smooth
     rafRef.current = requestAnimationFrame(() => {
-      // Use setTimeout 200ms to avoid burning CPU but stay responsive
       setTimeout(() => {
-        rafRef.current = requestAnimationFrame(() => tick())
+        if (endTimeRef.current)
+          rafRef.current = requestAnimationFrame(() => tick())
       }, 200)
     })
-  }, [releaseWakeLock])
+  }, [setRemaining, setIsRunning, releaseWakeLock, doSave])
 
-  // ── Start / Pause / Reset ──────────────────────────────────────────────
-  const start = useCallback(() => {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
-    ctx.resume().then(() => ctx.close()).catch(() => {})
-
-    endTimeRef.current = Date.now() + remaining * 1000
-    setIsRunning(true)
-    requestWakeLock()
+  const startRaf = useCallback(() => {
+    stopRaf()
     rafRef.current = requestAnimationFrame(() => tick())
-  }, [remaining, tick, requestWakeLock])
+  }, [stopRaf, tick])
 
-  const pause = useCallback(() => {
-    // Save remaining time
-    if (endTimeRef.current) {
-      const left = Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000))
-      setRemaining(left)
+  // ── Fix 1: restart RAF when user returns from lock/background ─────────
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible' && endTimeRef.current) {
+        requestWakeLock()
+        startRaf()  // ← RAF was paused; restart it so the display catches up
+      }
     }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [requestWakeLock, startRaf])
+
+  // ── Fix 2: resume automatically when component remounts (page nav) ────
+  useEffect(() => {
+    if (endTimeRef.current) {
+      requestWakeLock()
+      startRaf()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])   // intentionally runs only once on mount
+
+  // ── Fix 3: save state on unmount so page navigation preserves it ──────
+  useEffect(() => {
+    return () => {
+      doSave()
+      stopRaf()
+      releaseWakeLock()
+    }
+  }, [doSave, stopRaf, releaseWakeLock])
+
+  // ── Public actions ─────────────────────────────────────────────────────
+  const pause = useCallback(() => {
+    if (endTimeRef.current)
+      setRemaining(Math.max(0, Math.round((endTimeRef.current - Date.now()) / 1000)))
     endTimeRef.current = null
     setIsRunning(false)
+    stopRaf()
     releaseWakeLock()
-    if (rafRef.current) cancelAnimationFrame(rafRef.current)
-  }, [releaseWakeLock])
+    doSave()
+  }, [setRemaining, setIsRunning, stopRaf, releaseWakeLock, doSave])
+
+  const start = useCallback(() => {
+    // Unlock AudioContext on iOS (needs a user-gesture call)
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      ctx.resume().then(() => ctx.close()).catch(() => {})
+    } catch {}
+
+    endTimeRef.current = Date.now() + remainingRef.current * 1000
+    setIsRunning(true)
+    requestWakeLock()
+    doSave()
+    startRaf()
+  }, [setIsRunning, requestWakeLock, doSave, startRaf])
 
   const toggle = useCallback(() => {
-    if (isRunning) pause()
+    if (isRunningRef.current) pause()
     else start()
-  }, [isRunning, pause, start])
+  }, [pause, start])
 
   const reset = useCallback((seconds?: number) => {
     pause()
-    setRemaining(seconds ?? (isBreak ? 5 * 60 : 25 * 60))
-  }, [pause, isBreak])
+    const secs = seconds ?? (isBreakRef.current ? 5 * 60 : 25 * 60)
+    setRemaining(secs)
+    doSave()
+  }, [pause, setRemaining, doSave])
 
   const startFocus = useCallback((minutes = 25) => {
+    stopRaf()
     setIsBreak(false)
-    setRemaining(minutes * 60)
-    endTimeRef.current = Date.now() + minutes * 60 * 1000
+    const secs = minutes * 60
+    setRemaining(secs)
+    endTimeRef.current = Date.now() + secs * 1000
     setIsRunning(true)
     requestWakeLock()
-    rafRef.current = requestAnimationFrame(() => tick())
-  }, [tick, requestWakeLock])
+    doSave()
+    startRaf()
+  }, [stopRaf, setIsBreak, setRemaining, setIsRunning, requestWakeLock, doSave, startRaf])
 
   const startBreak = useCallback((minutes = 5) => {
+    stopRaf()
     setIsBreak(true)
-    setRemaining(minutes * 60)
-    endTimeRef.current = Date.now() + minutes * 60 * 1000
+    const secs = minutes * 60
+    setRemaining(secs)
+    endTimeRef.current = Date.now() + secs * 1000
     setIsRunning(true)
     requestWakeLock()
-    rafRef.current = requestAnimationFrame(() => tick())
-  }, [tick, requestWakeLock])
+    doSave()
+    startRaf()
+  }, [stopRaf, setIsBreak, setRemaining, setIsRunning, requestWakeLock, doSave, startRaf])
 
   const completeSession = useCallback(() => {
-    setSessionsCompleted((prev) => prev + 1)
-  }, [])
+    setSessions(p => p + 1)
+    doSave()
+  }, [setSessions, doSave])
 
   const skip = useCallback(() => {
     pause()
-    if (!isBreak) {
+    if (!isBreakRef.current) {
       completeSession()
       startBreak()
     } else {
       startFocus()
     }
-  }, [pause, isBreak, completeSession, startBreak, startFocus])
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      releaseWakeLock()
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-    }
-  }, [releaseWakeLock])
+  }, [pause, completeSession, startBreak, startFocus])
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60)
@@ -175,6 +276,6 @@ export const useBackgroundTimer = (opts?: UseBackgroundTimerOptions) => {
     startFocus,
     startBreak,
     completeSession,
-    setRemaining,
+    setRemaining: (v: number) => { setRemaining(v); doSave() },
   }
 }
