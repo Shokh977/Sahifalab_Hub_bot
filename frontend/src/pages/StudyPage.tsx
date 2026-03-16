@@ -19,6 +19,55 @@ interface SoundFromDB {
 
 const FOCUS_PRESETS = [15, 25, 45, 60]
 
+/**
+ * Plays a two-tone bell ("ting ting") using Web Audio API — no file needed.
+ * Also triggers haptic vibration on supported devices.
+ */
+function playAlarm() {
+  // ── Vibration ────────────────────────────────────────────────────────────
+  try {
+    if (navigator.vibrate)
+      navigator.vibrate([300, 150, 300, 150, 500])
+  } catch {}
+
+  // ── Bell synthesis ───────────────────────────────────────────────────────
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+
+    const ting = (startAt: number, freq: number) => {
+      // Primary tone
+      const osc  = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.connect(gain)
+      gain.connect(ctx.destination)
+      osc.type = 'sine'
+      osc.frequency.value = freq
+      gain.gain.setValueAtTime(0.7, startAt)
+      gain.gain.exponentialRampToValueAtTime(0.001, startAt + 1.8)
+      osc.start(startAt)
+      osc.stop(startAt + 1.8)
+
+      // Harmonic overtone (gives it a bell-like shimmer)
+      const osc2  = ctx.createOscillator()
+      const gain2 = ctx.createGain()
+      osc2.connect(gain2)
+      gain2.connect(ctx.destination)
+      osc2.type = 'sine'
+      osc2.frequency.value = freq * 2.756   // bell partial
+      gain2.gain.setValueAtTime(0.25, startAt)
+      gain2.gain.exponentialRampToValueAtTime(0.001, startAt + 1.0)
+      osc2.start(startAt)
+      osc2.stop(startAt + 1.0)
+    }
+
+    const t = ctx.currentTime
+    ting(t,        1047)  // first ting  — C6
+    ting(t + 0.6,  1319)  // second ting — E6
+
+    setTimeout(() => ctx.close().catch(() => {}), 3500)
+  } catch {}
+}
+
 export const StudyWithMe: React.FC = () => {
   const sound = useAmbientSound()
 
@@ -39,7 +88,7 @@ export const StudyWithMe: React.FC = () => {
   const [resolvingId, setResolvingId] = useState<number | null>(null)
 
   const handleTimerComplete = useCallback(() => {
-    if (navigator.vibrate) navigator.vibrate([200, 100, 200])
+    playAlarm()
   }, [])
 
   const timer = useBackgroundTimer({ onComplete: handleTimerComplete })
