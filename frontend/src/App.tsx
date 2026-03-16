@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
 import StudyWithMe from './pages/StudyPage'
@@ -9,6 +9,8 @@ import ResourcesPage from './pages/ResourcesPage'
 import AboutPage from './pages/AboutPage'
 import AdminPage from './pages/AdminPage'
 import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp'
+
+const ADMIN_TELEGRAM_IDS = [807466591]
 
 const HomePage: React.FC = () => {
   const { user } = useTelegramWebApp()
@@ -45,6 +47,20 @@ const TelegramBackButtonHandler: React.FC = () => {
   return null
 }
 
+// Route guard: only allows admin Telegram users through
+const AdminRoute: React.FC = () => {
+  const { user } = useTelegramWebApp()
+  const isAdmin = user?.id ? ADMIN_TELEGRAM_IDS.includes(user.id) : false
+
+  // If Telegram WebApp not loaded yet (user is null), still show AdminPage
+  // because it has its own login gate. But if user IS detected and NOT admin, redirect.
+  if (user && !isAdmin) {
+    return <Navigate to="/" replace />
+  }
+
+  return <AdminPage />
+}
+
 const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
@@ -57,7 +73,7 @@ const App: React.FC = () => {
           <Route path="/kitoblar" element={<KitoblarPage />} />
           <Route path="/resources" element={<ResourcesPage />} />
           <Route path="/about" element={<AboutPage />} />
-          <Route path="/admin" element={<AdminPage />} />
+          <Route path="/admin" element={<AdminRoute />} />
         </Routes>
       </Router>
     </div>
