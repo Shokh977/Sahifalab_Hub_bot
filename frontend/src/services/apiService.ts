@@ -201,6 +201,14 @@ class ApiService {
       params: { book_id: bookId, phone },
     })
   }
+
+  // ─── Audio endpoints ──────────────────────────────────────────────────────
+
+  /** Convert Telegram file_id → temporary direct download URL */
+  async getAudioLink(fileId: string): Promise<string> {
+    const resp = await this.axiosInstance.get(`/api/audio/get-audio-link/${fileId}`)
+    return resp.data.url
+  }
 }
 
 export default new ApiService()

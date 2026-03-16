@@ -1,20 +1,45 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
+import apiService from '../services/apiService'
 
-const AMBIENT_SOUNDS: { id: SoundType; emoji: string; label: string }[] = [
-  { id: 'rain', emoji: '🌧️', label: 'Yomg\'ir' },
-  { id: 'ocean', emoji: '🌊', label: 'Okean' },
-  { id: 'forest', emoji: '🌲', label: "O'rmon" },
-  { id: 'coffee', emoji: '☕', label: 'Kafe' },
-  { id: 'fireplace', emoji: '🔥', label: 'Kamin' },
-  { id: 'silence', emoji: '🔇', label: 'Jimjitlik' },
+/* ──────────────────────────────────────────────────────────────────────────────
+   SOUND CONFIGURATION
+   ──────────────────────────────────────────────────────────────────────────────
+   Replace the `fileId` values below with the Telegram file_ids you get after
+   sending audio files to your bot.
+
+   How to get file_ids:
+   1. Send an audio file (.mp3/.ogg) to @sahifalab_bot in Telegram.
+   2. Use the bot's /getfileid command, or check the webhook/log for the
+      `file_id` field in the incoming message.
+   3. Paste the file_id string below.
+   ────────────────────────────────────────────────────────────────────────────── */
+
+interface SoundConfig {
+  id: SoundType
+  emoji: string
+  label: string
+  fileId: string  // Telegram file_id — fill these in!
+}
+
+const AMBIENT_SOUNDS: SoundConfig[] = [
+  { id: 'rain',      emoji: '🌧️', label: "Yomg'ir",    fileId: '' },
+  { id: 'ocean',     emoji: '🌊', label: 'Okean',       fileId: '' },
+  { id: 'forest',    emoji: '🌲', label: "O'rmon",      fileId: '' },
+  { id: 'coffee',    emoji: '☕', label: 'Kafe',         fileId: '' },
+  { id: 'fireplace', emoji: '🔥', label: 'Kamin',       fileId: '' },
+  { id: 'silence',   emoji: '🔇', label: 'Jimjitlik',   fileId: '' },
 ]
 
 const FOCUS_PRESETS = [15, 25, 45, 60]
 
 export const StudyWithMe: React.FC = () => {
   const sound = useAmbientSound()
+
+  // Cache of resolved audio URLs: { fileId → url }
+  const urlCacheRef = useRef<Record<string, string>>({})
+  const [resolvingSound, setResolvingSound] = useState<SoundType | null>(null)
 
   const handleTimerComplete = useCallback(() => {
     // Vibrate if available
@@ -35,7 +60,6 @@ export const StudyWithMe: React.FC = () => {
   // Auto-transition when timer reaches 0
   React.useEffect(() => {
     if (timer.remaining === 0 && !timer.isRunning) {
-      // small delay so user sees 00:00
       const t = setTimeout(handleComplete, 1500)
       return () => clearTimeout(t)
     }
@@ -45,13 +69,41 @@ export const StudyWithMe: React.FC = () => {
     ? ((5 * 60 - timer.remaining) / (5 * 60)) * 100
     : ((25 * 60 - timer.remaining) / (25 * 60)) * 100
 
-  const handleSoundSelect = (id: SoundType) => {
-    if (id === sound.activeSound && sound.isPlaying) {
+  /**
+   * Resolve file_id → URL (cached), then play.
+   */
+  const handleSoundSelect = useCallback(async (cfg: SoundConfig) => {
+    // Toggle off
+    if (cfg.id === sound.activeSound && sound.isPlaying) {
       sound.stop()
-    } else {
-      sound.play(id)
+      return
     }
-  }
+    // Silence = just stop
+    if (cfg.id === 'silence') {
+      sound.stop()
+      return
+    }
+    // No file_id configured yet
+    if (!cfg.fileId) {
+      alert(`"${cfg.label}" tovushi hali yuklanmagan. Admin file_id ni sozlashi kerak.`)
+      return
+    }
+
+    setResolvingSound(cfg.id)
+    try {
+      let url = urlCacheRef.current[cfg.fileId]
+      if (!url) {
+        url = await apiService.getAudioLink(cfg.fileId)
+        urlCacheRef.current[cfg.fileId] = url
+      }
+      sound.play(cfg.id, url)
+    } catch (err) {
+      console.error('Failed to resolve audio link:', err)
+      alert("Audio yuklashda xatolik yuz berdi")
+    } finally {
+      setResolvingSound(null)
+    }
+  }, [sound])
 
   return (
     <div className="max-w-md mx-auto px-4 py-4 space-y-5 pb-20">
@@ -176,15 +228,27 @@ export const StudyWithMe: React.FC = () => {
           {AMBIENT_SOUNDS.map((s) => (
             <button
               key={s.id}
-              onClick={() => handleSoundSelect(s.id)}
-              className={`p-3 rounded-xl font-medium transition-all active:scale-95 ${
+              onClick={() => handleSoundSelect(s)}
+              disabled={resolvingSound === s.id || sound.isLoading}
+              className={`p-3 rounded-xl font-medium transition-all active:scale-95 relative ${
                 sound.activeSound === s.id && sound.isPlaying
                   ? 'bg-blue-500 text-white ring-2 ring-blue-400 shadow-md'
-                  : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
+                  : !s.fileId && s.id !== 'silence'
+                    ? 'bg-gray-50 dark:bg-gray-700 text-gray-400 dark:text-gray-500 opacity-60'
+                    : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
             >
-              <div className="text-2xl">{s.emoji}</div>
+              {resolvingSound === s.id ? (
+                <div className="text-2xl animate-spin">⏳</div>
+              ) : (
+                <div className="text-2xl">{s.emoji}</div>
+              )}
               <div className="text-xs mt-1">{s.label}</div>
+              {!s.fileId && s.id !== 'silence' && (
+                <div className="absolute top-1 right-1 text-[8px] bg-yellow-200 dark:bg-yellow-800 text-yellow-800 dark:text-yellow-200 px-1 rounded">
+                  soon
+                </div>
+              )}
             </button>
           ))}
         </div>
