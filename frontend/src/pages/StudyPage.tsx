@@ -326,10 +326,20 @@ export const StudyWithMe: React.FC = () => {
 
         {/* Error feedback (visible even in Telegram WebView without DevTools) */}
         {sound.error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
-            <p className="text-xs text-red-800 dark:text-red-300">
-              ❌ <strong>Xato:</strong> {sound.error}
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 space-y-1">
+            <p className="text-xs font-semibold text-red-800 dark:text-red-300">
+              ❌ {sound.error}
             </p>
+            {sound.error.includes('SRC_NOT_SUPPORTED') && (
+              <p className="text-xs text-red-700 dark:text-red-400">
+                Google Drive havolasi ochiq emasdir — «Havola orqali har kim» qilib ulashing.
+              </p>
+            )}
+            {sound.error.includes('NETWORK') && (
+              <p className="text-xs text-red-700 dark:text-red-400">
+                Tarmoq xatosi — internet aloqasini tekshiring.
+              </p>
+            )}
           </div>
         )}
 

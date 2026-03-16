@@ -12,9 +12,8 @@ Admin:
 import re
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.responses import StreamingResponse
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
-import httpx
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -78,13 +77,18 @@ async def list_ambient_sounds(db: Session = Depends(get_db)):
 @router.get("/proxy/{sound_id}")
 async def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
     """
-    Stream audio from the stored URL to the browser.
-    Using StreamingResponse means bytes are forwarded chunk-by-chunk —
-    the browser can start playing immediately without waiting for the full
-    download, and we never buffer the whole file in memory.
+    Redirect the browser directly to the stored audio URL.
 
-    Google Drive fix: adds &confirm=t to bypass the virus-scan warning page
-    that Google shows for larger files.
+    Why redirect instead of streaming?
+    • Streaming on Vercel hobby plan hits the 10-second function timeout for
+      files larger than ~10 MB, leaving the audio element with a truncated
+      or empty body → MEDIA_ERR_SRC_NOT_SUPPORTED.
+    • When Google Drive returns an HTML page (sharing issue), the old
+      streaming code returned nothing after sending Content-Type: audio/mpeg
+      — an empty audio body also triggers MEDIA_ERR_SRC_NOT_SUPPORTED.
+    • HTML <audio> elements do NOT enforce CORS (no crossOrigin attribute
+      is set), so the browser can follow the redirect to drive.google.com
+      and stream the bytes directly without any CORS error.
     """
     sound = db.query(AmbientSound).filter(
         AmbientSound.id == sound_id,
@@ -98,46 +102,8 @@ async def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
     if "drive.google.com/uc" in url and "confirm=" not in url:
         url += "&confirm=t"
 
-    logger.info("Streaming sound %s from: %s", sound_id, url)
-
-    async def _stream():
-        try:
-            async with httpx.AsyncClient(
-                follow_redirects=True,
-                timeout=httpx.Timeout(60.0, connect=10.0),
-                headers={"User-Agent": "Mozilla/5.0 (compatible; SAHIFALAB/1.0)"},
-            ) as client:
-                async with client.stream("GET", url) as resp:
-                    resp.raise_for_status()
-                    # Bail out early if Google Drive returned an HTML page
-                    ct = resp.headers.get("content-type", "")
-                    if "text/html" in ct:
-                        logger.error(
-                            "Google Drive returned HTML for sound %s. "
-                            "Make sure the file is shared as 'Anyone with the link'.",
-                            sound_id,
-                        )
-                        return
-                    async for chunk in resp.aiter_bytes(chunk_size=65_536):
-                        yield chunk
-        except Exception as e:
-            logger.error("Stream error for sound %s: %s", sound_id, e)
-
-    # Detect MIME type from URL extension (Drive uc URLs have no extension, default to mpeg)
-    ext = url.split("?")[0].rsplit(".", 1)[-1].lower()
-    mime_map = {"mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav",
-                "m4a": "audio/mp4", "aac": "audio/aac", "flac": "audio/flac"}
-    final_mime = mime_map.get(ext, "audio/mpeg")
-
-    return StreamingResponse(
-        _stream(),
-        media_type=final_mime,
-        headers={
-            "Cache-Control": "public, max-age=86400",
-            "Access-Control-Allow-Origin": "*",
-            "Accept-Ranges": "bytes",
-        },
-    )
+    logger.info("Redirecting sound %s → %s", sound_id, url)
+    return RedirectResponse(url=url, status_code=302)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
