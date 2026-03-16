@@ -198,7 +198,38 @@ class ApiService {
     return this.axiosInstance.delete(`/api/admin/books/${bookId}`, this.adminParams(telegramId))
   }
 
-  // ─── Payment endpoints ──────────────────────────────────────────────────────
+  // ─── Quiz endpoints ─────────────────────────────────────────────────────────
+
+  async getQuizzes(category?: string, difficulty?: string) {
+    return this.axiosInstance.get('/api/quizzes', { params: { category, difficulty } })
+  }
+
+  /** Returns quiz + questions (correct_answer NOT included — use verifyQuiz for scoring) */
+  async getQuiz(quizId: number) {
+    return this.axiosInstance.get(`/api/quizzes/${quizId}`)
+  }
+
+  /** Legacy: kept for backward-compat */
+  async getQuizQuestions(quizId: number) {
+    return this.axiosInstance.get(`/api/quizzes/${quizId}`)
+  }
+
+  /**
+   * Submit raw selected-option indices for server-side scoring.
+   * Returns { score, total, percentage, passed, certificate_eligible, result_token }.
+   */
+  async verifyQuiz(
+    quizId: number,
+    telegramId: number,
+    telegramName: string,
+    answers: number[],
+  ) {
+    return this.axiosInstance.post(`/api/quizzes/${quizId}/verify`, {
+      telegram_id: telegramId,
+      telegram_name: telegramName,
+      answers,
+    })
+  }
 
   async initiateStarsPayment(bookId: number, userId: number) {
     return this.axiosInstance.post('/api/payments/telegram-stars/pay', null, {

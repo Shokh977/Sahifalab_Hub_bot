@@ -1,319 +1,483 @@
-import React, { useState, useEffect } from 'react'
-import apiService from '@services/apiService'
+﻿/**
+ * QuizPage â€” SAHIFALAB Hub
+ * Stepped one-question-at-a-time UI with immediate feedback, server-side scoring
+ * and a downloadable certificate for scores â‰¥ 80%.
+ */
 
-interface Quiz {
+import React, { useState, useEffect, useCallback, useRef } from 'react'
+import apiService from '@services/apiService'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+
+// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+interface QuizSummary {
   id: number
   title: string
-  bookTitle: string
-  questions: number
+  book_title: string
+  total_questions: number
   difficulty: 'easy' | 'medium' | 'hard'
   category: string
 }
 
-interface QuizQuestion {
+interface Question {
   id: number
   question: string
   options: string[]
-  correctAnswer: number
-  explanation: string
+  explanation: string | null
 }
 
-export const QuizPage: React.FC = () => {
-  const [quizzes, setQuizzes] = useState<Quiz[]>([])
-  const [selectedQuiz, setSelectedQuiz] = useState<Quiz | null>(null)
-  const [questions, setQuestions] = useState<QuizQuestion[]>([])
-  const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [score, setScore] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState<(number | null)[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showResults, setShowResults] = useState(false)
+interface QuizDetail extends QuizSummary {
+  description: string | null
+  questions: Question[]
+}
 
-  useEffect(() => {
-    const fetchQuizzes = async () => {
-      try {
-        const response = await apiService.getQuizzes()
-        setQuizzes(response.data)
-      } catch (error) {
-        console.error('Failed to fetch quizzes:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
+interface VerifyResult {
+  quiz_id: number
+  score: number
+  total: number
+  percentage: number
+  passed: boolean
+  certificate_eligible: boolean
+  result_token: string
+}
 
-    fetchQuizzes()
-  }, [])
+// â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const OPTION_LABELS = ['A', 'B', 'C', 'D']
 
-  const startQuiz = async (quiz: Quiz) => {
-    try {
-      const response = await apiService.getQuizQuestions(quiz.id)
-      setQuestions(response.data)
-      setSelectedQuiz(quiz)
-      setCurrentQuestion(0)
-      setScore(0)
-      setSelectedAnswers(new Array(response.data.length).fill(null))
-      setShowResults(false)
-    } catch (error) {
-      console.error('Failed to fetch quiz questions:', error)
-    }
-  }
+const CORRECT_MSGS = [
+  "To'g'ri! ðŸŽ‰", "Zo'r! ðŸŒŸ", "Barakalla! ðŸ’ª",
+  "Mukammal! âœ¨", "Ajoyib! ðŸ”¥",
+]
+const WRONG_MSGS = [
+  "Xato, ammo o'rgandik! ðŸ’¡", "Keyingi safar! ðŸ“š",
+  "Harakat davom etsin! ðŸš€", "Bilim orqali yutamiz! ðŸŽ¯",
+]
 
-  const handleAnswerSelect = (optionIndex: number) => {
-    const newAnswers = [...selectedAnswers]
-    newAnswers[currentQuestion] = optionIndex
-    setSelectedAnswers(newAnswers)
+const rand = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
 
-    // Check if correct
-    if (optionIndex === questions[currentQuestion].correctAnswer) {
-      setScore((prev) => prev + 1)
-    }
-  }
+const DIFF_STYLE: Record<string, string> = {
+  easy:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
+  hard:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+}
 
-  const goToNext = () => {
-    if (currentQuestion < questions.length - 1) {
-      setCurrentQuestion((prev) => prev + 1)
-    } else {
-      setShowResults(true)
-    }
-  }
+const DIFF_LABEL: Record<string, string> = { easy: 'Oson', medium: "O'rtacha", hard: 'Qiyin' }
 
-  const goToPrevious = () => {
-    if (currentQuestion > 0) {
-      setCurrentQuestion((prev) => prev - 1)
-    }
-  }
+function formatDate(d: Date) {
+  const months = [
+    'yanvar','fevral','mart','aprel','may','iyun',
+    'iyul','avgust','sentabr','oktabr','noyabr','dekabr',
+  ]
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`
+}
 
-  const resetQuiz = () => {
-    setSelectedQuiz(null)
-    setQuestions([])
-    setCurrentQuestion(0)
-    setScore(0)
-    setSelectedAnswers([])
-    setShowResults(false)
-  }
+// â”€â”€â”€ Quiz list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-  const getScorePercentage = () => {
-    return Math.round((score / questions.length) * 100)
-  }
+const QuizList: React.FC<{
+  quizzes: QuizSummary[]
+  loading: boolean
+  onStart: (q: QuizSummary) => void
+}> = ({ quizzes, loading, onStart }) => (
+  <div className="space-y-4">
+    <div className="text-center space-y-1 mb-2">
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ðŸ“ Viktorina</h1>
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Bilimingizni sinab ko'ring va sertifikat qozonin!
+      </p>
+    </div>
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'easy':
-        return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
-      case 'medium':
-        return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300'
-      case 'hard':
-        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300'
-      default:
-        return 'bg-gray-100 text-gray-800'
-    }
-  }
-
-  // Quiz List View
-  if (!selectedQuiz) {
-    return (
-      <div className="space-y-4">
-        <div className="text-center space-y-2 mb-6">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            📝 Quiz
-          </h1>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Test your knowledge with book-based quizzes
-          </p>
-        </div>
-
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="card animate-pulse">
-                <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded"></div>
+    {loading ? (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        ))}
+      </div>
+    ) : quizzes.length === 0 ? (
+      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
+        <p className="text-4xl mb-3">ðŸ“š</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">Hali viktorina qo'shilmagan</p>
+      </div>
+    ) : (
+      <div className="space-y-3">
+        {quizzes.map(quiz => (
+          <button
+            key={quiz.id}
+            onClick={() => onStart(quiz)}
+            className="w-full bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md hover:border-blue-200 dark:hover:border-blue-700 transition-all active:scale-[0.98]"
+          >
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-xl shrink-0">
+                ðŸ“
               </div>
-            ))}
-          </div>
-        ) : quizzes.length === 0 ? (
-          <div className="card text-center py-8">
-            <p className="text-gray-600 dark:text-gray-400">No quizzes available</p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {quizzes.map((quiz) => (
-              <button
-                key={quiz.id}
-                onClick={() => startQuiz(quiz)}
-                className="card w-full text-left hover:shadow-lg transition-shadow"
-              >
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex-1">
-                    <h3 className="font-bold text-gray-900 dark:text-white">
-                      {quiz.title}
-                    </h3>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                      📕 {quiz.bookTitle}
-                    </p>
-                    <div className="flex gap-2 mt-2">
-                      <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-300 px-2 py-1 rounded">
-                        {quiz.questions} questions
-                      </span>
-                      <span className={`text-xs px-2 py-1 rounded ${getDifficultyColor(quiz.difficulty)}`}>
-                        {quiz.difficulty}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-2xl">→</div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{quiz.title}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">ðŸ“• {quiz.book_title}</p>
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                    {quiz.total_questions} savol
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${DIFF_STYLE[quiz.difficulty] ?? DIFF_STYLE.medium}`}>
+                    {DIFF_LABEL[quiz.difficulty] ?? quiz.difficulty}
+                  </span>
                 </div>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    )
-  }
-
-  // Quiz Results View
-  if (showResults) {
-    const percentage = getScorePercentage()
-    const getPerfomanceMessage = () => {
-      if (percentage >= 80) return '🌟 Excellent!'
-      if (percentage >= 60) return '👍 Good job!'
-      if (percentage >= 40) return '📚 Keep studying!'
-      return '💪 Try again!'
-    }
-
-    return (
-      <div className="space-y-6">
-        <button
-          onClick={resetQuiz}
-          className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
-        >
-          ← Back to Quizzes
-        </button>
-
-        <div className="card bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 text-center space-y-4">
-          <div className="text-5xl">{percentage >= 80 ? '🏆' : percentage >= 60 ? '🎯' : '📚'}</div>
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900 dark:text-white">
-              {getPerfomanceMessage()}
-            </h2>
-            <p className="text-4xl font-bold text-blue-600 dark:text-blue-400 mt-2">
-              {percentage}%
-            </p>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              You got {score} out of {questions.length} questions correct
-            </p>
-          </div>
-        </div>
-
-        <div className="card space-y-3">
-          <h3 className="font-bold text-gray-900 dark:text-white">Review</h3>
-          {questions.map((q, index) => (
-            <div
-              key={q.id}
-              className={`p-3 rounded-lg border-l-4 ${
-                selectedAnswers[index] === q.correctAnswer
-                  ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
-                  : 'border-red-500 bg-red-50 dark:bg-red-900/20'
-              }`}
-            >
-              <p className="text-sm font-medium text-gray-900 dark:text-white">
-                {index + 1}. {q.question}
-              </p>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                {selectedAnswers[index] === q.correctAnswer ? '✓ Correct' : '✗ Incorrect'}
-              </p>
+              </div>
+              <span className="text-gray-400 text-lg self-center">â€º</span>
             </div>
-          ))}
-        </div>
-
-        <button
-          onClick={resetQuiz}
-          className="btn-primary w-full"
-        >
-          Try Another Quiz
-        </button>
+          </button>
+        ))}
       </div>
-    )
-  }
+    )}
 
-  // Quiz Question View
-  const question = questions[currentQuestion]
+    {/* Certificate teaser */}
+    <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3">
+      <p className="text-xs text-amber-800 dark:text-amber-300">
+        ðŸ† <strong>80% va undan yuqori</strong> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
+        Instagram Stories uchun tayyorlangan PNG formatida yuklab oling.
+      </p>
+    </div>
+  </div>
+)
+
+// â”€â”€â”€ Quiz question step â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+type Phase = 'answering' | 'revealing'
+
+const QuizStep: React.FC<{
+  quiz: QuizDetail
+  onFinish: (answers: number[]) => void
+  onExit: () => void
+}> = ({ quiz, onFinish, onExit }) => {
+  const [idx, setIdx] = useState(0)
+  const [answers, setAnswers] = useState<number[]>([])
+  const [selected, setSelected] = useState<number | null>(null)
+  const [phase, setPhase] = useState<Phase>('answering')
+  const [feedback, setFeedback] = useState('')
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const q = quiz.questions[idx]
+  const progress = ((idx) / quiz.questions.length) * 100
+
+  const handleSelect = useCallback((optIdx: number) => {
+    if (phase !== 'answering') return
+    setSelected(optIdx)
+    setPhase('revealing')
+
+    // We don't know the correct answer (stripped by backend), so show neutral feedback
+    const positiveMessages = ['Yaxshi! ðŸ’ª', 'Davom eting! ðŸš€', 'Zo\'r! âœ¨', 'Olg\'a! ðŸ”¥']
+    setFeedback(rand(positiveMessages))
+
+    timerRef.current = setTimeout(() => {
+      const newAnswers = [...answers, optIdx]
+      if (idx + 1 < quiz.questions.length) {
+        setAnswers(newAnswers)
+        setIdx(i => i + 1)
+        setSelected(null)
+        setPhase('answering')
+        setFeedback('')
+      } else {
+        onFinish(newAnswers)
+      }
+    }, 1000)
+  }, [phase, answers, idx, quiz.questions.length, onFinish])
+
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current) }, [])
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
+    <div className="space-y-4">
+      {/* Top bar */}
+      <div className="flex items-center gap-3">
         <button
-          onClick={resetQuiz}
-          className="text-sm text-blue-600 dark:text-blue-400 hover:underline mb-3"
+          onClick={onExit}
+          className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1"
         >
-          ← Exit Quiz
+          âœ•
         </button>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-white">
-          {selectedQuiz.title}
-        </h2>
-        <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-          Question {currentQuestion + 1} of {questions.length}
+        <div className="flex-1">
+          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+            <span className="font-medium">{quiz.title}</span>
+            <span>{idx + 1} / {quiz.questions.length}</span>
+          </div>
+          <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-blue-500 to-blue-400 rounded-full transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Question card */}
+      <div
+        className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/30 dark:to-indigo-900/30 rounded-2xl p-5 shadow-sm border border-blue-100 dark:border-blue-800/40"
+        key={idx}
+        style={{ animation: 'fadeSlideIn 0.25s ease-out' }}
+      >
+        <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 mb-2 uppercase tracking-wide">
+          Savol {idx + 1}
+        </p>
+        <p className="text-base font-semibold text-gray-900 dark:text-white leading-relaxed">
+          {q.question}
         </p>
       </div>
 
-      {/* Progress Bar */}
-      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-        <div
-          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-          style={{ width: `${((currentQuestion + 1) / questions.length) * 100}%` }}
-        ></div>
-      </div>
+      {/* Options */}
+      <div className="space-y-2.5">
+        {q.options.map((opt, i) => {
+          let style = 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-400 active:scale-[0.98]'
+          if (phase === 'revealing' && selected === i) {
+            style = 'border-blue-400 bg-blue-50 dark:bg-blue-900/30 scale-[0.98]'
+          }
 
-      {/* Question */}
-      <div className="card bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-          {question.question}
-        </h3>
-
-        {/* Options */}
-        <div className="space-y-2">
-          {question.options.map((option, index) => (
+          return (
             <button
-              key={index}
-              onClick={() => handleAnswerSelect(index)}
-              className={`w-full p-3 rounded-lg text-left transition-all border-2 ${
-                selectedAnswers[currentQuestion] === index
-                  ? 'border-blue-600 bg-blue-100 dark:bg-blue-900/40'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-400'
-              }`}
+              key={i}
+              onClick={() => handleSelect(i)}
+              disabled={phase === 'revealing'}
+              className={`w-full p-3.5 rounded-xl text-left border-2 transition-all flex items-center gap-3 ${style}`}
             >
-              <div className="flex items-center gap-3">
-                <div
-                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center text-sm font-bold ${
-                    selectedAnswers[currentQuestion] === index
-                      ? 'border-blue-600 bg-blue-600 text-white'
-                      : 'border-gray-400 dark:border-gray-600'
-                  }`}
-                >
-                  {selectedAnswers[currentQuestion] === index && '✓'}
-                </div>
-                <span className="text-gray-900 dark:text-white">{option}</span>
-              </div>
+              <span className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 transition-colors ${
+                phase === 'revealing' && selected === i
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+              }`}>
+                {OPTION_LABELS[i]}
+              </span>
+              <span className="text-sm text-gray-800 dark:text-white leading-snug">{opt}</span>
             </button>
-          ))}
-        </div>
+          )
+        })}
       </div>
 
-      {/* Navigation */}
-      <div className="flex gap-3">
-        <button
-          onClick={goToPrevious}
-          disabled={currentQuestion === 0}
-          className="flex-1 btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          ← Previous
-        </button>
-        <button
-          onClick={goToNext}
-          disabled={selectedAnswers[currentQuestion] === null}
-          className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {currentQuestion === questions.length - 1 ? 'Finish' : 'Next'} →
-        </button>
+      {/* Feedback message */}
+      {phase === 'revealing' && (
+        <div className="text-center py-1" style={{ animation: 'fadeIn 0.2s ease-out' }}>
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{feedback}</p>
+          {q.explanation && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 px-4">{q.explanation}</p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// â”€â”€â”€ Results view â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+const QuizResults: React.FC<{
+  result: VerifyResult
+  quiz: QuizDetail
+  userName: string
+  onRetry: () => void
+  onExit: () => void
+}> = ({ result, quiz, userName, onRetry, onExit }) => {
+  const [showCert, setShowCert] = useState(false)
+  const { percentage, score, total, certificate_eligible } = result
+
+  const getMessage = () => {
+    if (percentage >= 100) return { emoji: 'ðŸ†', text: 'Mukammal! 100% to\'g\'ri!', color: 'text-amber-600' }
+    if (percentage >= 80)  return { emoji: 'ðŸŒŸ', text: 'Zo\'r natija! Sertifikat qozondingiz!', color: 'text-blue-600' }
+    if (percentage >= 60)  return { emoji: 'ðŸ‘', text: 'Yaxshi! Yana ozgina harakat!', color: 'text-green-600' }
+    if (percentage >= 40)  return { emoji: 'ðŸ“š', text: 'Yana o\'qib kelingiz!', color: 'text-orange-500' }
+    return { emoji: 'ðŸ’ª', text: 'Harakat qiling â€” uddalaysiz!', color: 'text-gray-600' }
+  }
+
+  const msg = getMessage()
+  const circumference = 2 * Math.PI * 54
+
+  const certData: CertificateData = {
+    userName,
+    quizTitle: quiz.title,
+    score,
+    total,
+    percentage,
+    date: formatDate(new Date()),
+  }
+
+  return (
+    <>
+      <div className="space-y-4">
+        {/* Header */}
+        <div className="text-center space-y-1">
+          <p className="text-4xl">{msg.emoji}</p>
+          <h2 className={`text-lg font-bold ${msg.color}`}>{msg.text}</h2>
+        </div>
+
+        {/* Score ring */}
+        <div className="flex justify-center">
+          <div className="relative w-36 h-36">
+            <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="54" fill="none" stroke="currentColor" strokeWidth="8"
+                className="text-gray-100 dark:text-gray-700" />
+              <circle
+                cx="60" cy="60" r="54" fill="none"
+                stroke={percentage >= 80 ? '#F59E0B' : percentage >= 60 ? '#3B82F6' : '#9CA3AF'}
+                strokeWidth="8" strokeLinecap="round"
+                strokeDasharray={circumference}
+                strokeDashoffset={circumference - (circumference * percentage) / 100}
+                style={{ transition: 'stroke-dashoffset 1.2s ease-out' }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex flex-col items-center justify-center">
+              <span className="text-3xl font-bold text-gray-900 dark:text-white">{percentage}%</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{score}/{total}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Certificate banner */}
+        {certificate_eligible && (
+          <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-2xl p-4 text-center space-y-3">
+            <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
+              ðŸŽ“ Tabriklaymiz! Sertifikat qozondingiz
+            </p>
+            <button
+              onClick={() => setShowCert(true)}
+              className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 shadow-md transition-all active:scale-95"
+            >
+              ðŸ† Sertifikatni ko'rish
+            </button>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={onRetry}
+            className="py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          >
+            ðŸ”„ Qayta urinish
+          </button>
+          <button
+            onClick={onExit}
+            className="py-3 rounded-xl font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
+            â† Ro'yxatga
+          </button>
+        </div>
+
+        {/* Score breakdown note */}
+        {!certificate_eligible && (
+          <p className="text-xs text-center text-gray-500 dark:text-gray-400">
+            Sertifikat uchun kamida <strong>80%</strong> kerak. Yana {Math.ceil((80 * total / 100) - score)} ta to'g'ri javob!
+          </p>
+        )}
       </div>
+
+      {/* Certificate modal */}
+      {showCert && (
+        <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />
+      )}
+    </>
+  )
+}
+
+// â”€â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+type View = 'list' | 'loading' | 'quiz' | 'verifying' | 'results'
+
+export const QuizPage: React.FC = () => {
+  const { user } = useTelegramWebApp()
+  const [view, setView] = useState<View>('list')
+  const [quizzes, setQuizzes] = useState<QuizSummary[]>([])
+  const [listLoading, setListLoading] = useState(true)
+  const [activeQuiz, setActiveQuiz] = useState<QuizDetail | null>(null)
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const userName = user?.first_name || 'Foydalanuvchi'
+
+  // Fetch quiz list
+  useEffect(() => {
+    apiService.getQuizzes()
+      .then(r => setQuizzes(r.data))
+      .catch(() => {})
+      .finally(() => setListLoading(false))
+  }, [])
+
+  const handleStart = useCallback(async (summary: QuizSummary) => {
+    setView('loading')
+    setError(null)
+    try {
+      const r = await apiService.getQuiz(summary.id)
+      setActiveQuiz(r.data)
+      setVerifyResult(null)
+      setView('quiz')
+    } catch {
+      setError("Viktorina yuklanmadi. Qayta urinib ko'ring.")
+      setView('list')
+    }
+  }, [])
+
+  const handleFinish = useCallback(async (answers: number[]) => {
+    if (!activeQuiz) return
+    setView('verifying')
+    try {
+      const r = await apiService.verifyQuiz(
+        activeQuiz.id,
+        user?.id ?? 0,
+        userName,
+        answers,
+      )
+      setVerifyResult(r.data)
+      setView('results')
+    } catch {
+      setError("Natijani tekshirib bo'lmadi. Qayta urinib ko'ring.")
+      setView('quiz')
+    }
+  }, [activeQuiz, user, userName])
+
+  const handleExit = useCallback(() => {
+    setActiveQuiz(null)
+    setVerifyResult(null)
+    setView('list')
+  }, [])
+
+  const handleRetry = useCallback(() => {
+    if (activeQuiz) {
+      setVerifyResult(null)
+      setView('quiz')
+    }
+  }, [activeQuiz])
+
+  // Loading states
+  if (view === 'loading' || view === 'verifying') {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
+        <div className="text-5xl animate-spin">â³</div>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          {view === 'loading' ? 'Viktorina yuklanmoqdaâ€¦' : 'Natijalar hisoblanmoqdaâ€¦'}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-4 pb-24">
+      {/* Error banner */}
+      {error && (
+        <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+          <p className="text-xs text-red-700 dark:text-red-300">âŒ {error}</p>
+        </div>
+      )}
+
+      {view === 'list' && (
+        <QuizList quizzes={quizzes} loading={listLoading} onStart={handleStart} />
+      )}
+
+      {view === 'quiz' && activeQuiz && (
+        <QuizStep quiz={activeQuiz} onFinish={handleFinish} onExit={handleExit} />
+      )}
+
+      {view === 'results' && verifyResult && activeQuiz && (
+        <QuizResults
+          result={verifyResult}
+          quiz={activeQuiz}
+          userName={userName}
+          onRetry={handleRetry}
+          onExit={handleExit}
+        />
+      )}
     </div>
   )
 }

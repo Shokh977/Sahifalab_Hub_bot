@@ -190,6 +190,47 @@ class QuizResponse(BaseModel):
 class QuizDetailResponse(QuizResponse):
     questions: List[QuizQuestionResponse]
 
+# ── Public schemas (correct_answer omitted to prevent cheating) ──────────────
+
+class QuizQuestionPublic(BaseModel):
+    """Question data sent to the browser — correct_answer deliberately excluded."""
+    id: int
+    question: str
+    options: List[str]
+    explanation: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class QuizDetailPublic(BaseModel):
+    id: int
+    title: str
+    book_title: str
+    description: Optional[str] = None
+    difficulty: str
+    category: str
+    total_questions: int
+    questions: List[QuizQuestionPublic]
+
+    class Config:
+        from_attributes = True
+
+# ── Server-side verification ──────────────────────────────────────────────────
+
+class QuizVerifyRequest(BaseModel):
+    telegram_id: int
+    telegram_name: str = "Foydalanuvchi"
+    answers: List[int]  # list of selected option indices, ordered by question.order
+
+class QuizVerifyResponse(BaseModel):
+    quiz_id: int
+    score: int
+    total: int
+    percentage: float
+    passed: bool               # >= 60%
+    certificate_eligible: bool # >= 80%
+    result_token: str          # HMAC-signed — prevents forged certificates
+
 # Book Schemas
 class BookCreate(BaseModel):
     title: str
