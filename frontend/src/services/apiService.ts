@@ -230,51 +230,80 @@ class ApiService {
     return this.axiosInstance.get('/api/audio/ambient-sounds')
   }
 
-  /** Get Telegram token + chat_id so the browser can upload directly to Telegram */
-  async getAmbientSoundUploadConfig(telegramId: number) {
-    return this.axiosInstance.get(`/api/audio/admin/upload-config?telegram_id=${telegramId}`)
-  }
-
   /**
-   * Two-step upload:
-   *  1. Browser uploads MP3 directly to Telegram (no Vercel body limit)
-   *  2. Sends only the resulting file_id to our backend to save in DB
+   * Two-step MP3 upload — NO backend call for auth config.
+   *  Step 1 – Upload file directly to Telegram Bot API from the browser
+   *            (uses VITE_TELEGRAM_BOT_TOKEN + VITE_STORAGE_CHAT_ID env vars)
+   *  Step 2 – Send the resulting file_id to our backend to persist in DB
+   *
+   * Prerequisites:
+   *  • VITE_TELEGRAM_BOT_TOKEN  must be set in Vercel frontend env vars
+   *  • VITE_STORAGE_CHAT_ID     should be a chat/group/channel where the bot
+   *    is a member. Falls back to the admin's own telegram_id, which requires
+   *    the admin to have previously opened/started the bot.
    */
   async uploadAmbientSound(telegramId: number, name: string, emoji: string, file: File) {
-    console.log('[Sound Upload] Step 1 – fetching upload config', { telegramId, name, emoji, fileName: file.name, fileSize: file.size })
+    const token = import.meta.env.VITE_TELEGRAM_BOT_TOKEN as string | undefined
+    if (!token) {
+      throw new Error('VITE_TELEGRAM_BOT_TOKEN env var is not set in Vercel')
+    }
 
-    // Step 1 – get Telegram token + chat_id
-    const cfgRes = await this.getAmbientSoundUploadConfig(telegramId)
-    const { token, chat_id } = cfgRes.data
-    console.log('[Sound Upload] Config received – chat_id:', chat_id, '| token prefix:', token?.slice(0, 8) + '...')
+    // Prefer an explicit storage chat; fall back to admin's own DM with the bot
+    const chatId: string = (import.meta.env.VITE_STORAGE_CHAT_ID as string) || String(telegramId)
 
-    // Step 2 – upload directly to Telegram Bot API from browser
+    console.log('[Sound Upload] Step 1 – preparing Telegram upload', {
+      name, emoji,
+      fileName: file.name, fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      chatId,
+      tokenPrefix: token.slice(0, 8) + '…',
+    })
+
+    // ── Step 1: upload MP3 directly to Telegram (bypasses Vercel body limit) ──
     const formData = new FormData()
-    formData.append('chat_id', String(chat_id))
+    formData.append('chat_id', chatId)
     formData.append('title', name)
     formData.append('audio', file)
 
-    console.log('[Sound Upload] Step 2 – sending directly to Telegram sendAudio...')
-    const tgRes = await fetch(
-      `https://api.telegram.org/bot${token}/sendAudio`,
-      { method: 'POST', body: formData },
-    )
-    const tgData = await tgRes.json()
-    console.log('[Sound Upload] Telegram sendAudio response:', tgData)
+    let tgData: any
+    try {
+      console.log('[Sound Upload] Sending to api.telegram.org/sendAudio …')
+      const tgRes = await fetch(
+        `https://api.telegram.org/bot${token}/sendAudio`,
+        { method: 'POST', body: formData },
+      )
+      tgData = await tgRes.json()
+      console.log('[Sound Upload] Telegram response:', tgData)
+    } catch (fetchErr: any) {
+      // Network / CORS failure hitting the Telegram endpoint
+      console.error('[Sound Upload] ❌ fetch to Telegram failed:', fetchErr)
+      throw new Error(
+        `Telegram ga ulanib bo'lmadi: ${fetchErr.message}. ` +
+        'Bot bilan /start bosganmisiz? VITE_STORAGE_CHAT_ID ni tekshiring.',
+      )
+    }
 
     if (!tgData.ok) {
-      console.error('[Sound Upload] ❌ Telegram rejected:', tgData)
-      throw new Error(tgData.description || 'Telegram sendAudio failed')
+      console.error('[Sound Upload] ❌ Telegram rejected the request:', tgData)
+      // 403 means the bot can't message the target chat
+      if (tgData.error_code === 403) {
+        throw new Error(
+          'Bot bu chatga yoza olmaydi (403). ' +
+          'Telegram\'da botga /start yuboring yoki VITE_STORAGE_CHAT_ID ni sozlang.',
+        )
+      }
+      throw new Error(tgData.description || `Telegram sendAudio xatosi (${tgData.error_code})`)
     }
+
     const audioObj = tgData.result?.audio || tgData.result?.document
     if (!audioObj?.file_id) {
-      console.error('[Sound Upload] ❌ No audio/document object in result:', tgData.result)
-      throw new Error('No file_id in Telegram response')
+      console.error('[Sound Upload] ❌ No audio/document in result:', tgData.result)
+      throw new Error('Telegram javobida file_id yo\'q')
     }
     const file_id: string = audioObj.file_id
-    console.log('[Sound Upload] Step 3 – saving to DB, file_id:', file_id)
+    console.log('[Sound Upload] ✅ Got file_id:', file_id)
 
-    // Step 3 – save to our database
+    // ── Step 2: persist in our database ───────────────────────────────────────
+    console.log('[Sound Upload] Step 2 – saving to DB …')
     return this.axiosInstance.post(
       `/api/audio/admin/ambient-sounds?telegram_id=${telegramId}`,
       { name, emoji, file_id },
