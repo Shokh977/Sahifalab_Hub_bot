@@ -169,7 +169,7 @@ class AmbientSoundResponse(BaseModel):
     id: int
     name: str
     emoji: str
-    file_id: str
+    url: str
     display_order: int
     is_active: bool
     created_at: datetime

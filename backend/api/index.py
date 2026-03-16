@@ -13,4 +13,11 @@ try:
 except Exception as e:
     logger.error(f"⚠️  DB init error (non-fatal): {e}")
 
+# Run data migrations (idempotent — safe to run on every cold start)
+try:
+    from migrations.002_ambient_sound_url import run as _migrate_002
+    _migrate_002()
+except Exception as e:
+    logger.error(f"⚠️  Migration 002 error (non-fatal): {e}")
+
 from app.main import app  # noqa: F401 — re-exported for Vercel

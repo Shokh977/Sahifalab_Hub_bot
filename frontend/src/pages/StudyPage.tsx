@@ -12,9 +12,26 @@ interface SoundFromDB {
   id: number
   name: string
   emoji: string
-  file_id: string
+  url: string
   display_order: number
   is_active: boolean
+}
+
+/**
+ * Convert any Google Drive share/view URL to a direct streamable URL.
+ * Non-Drive URLs are returned unchanged.
+ */
+function convertToDirectUrl(url: string): string {
+  const patterns = [
+    /drive\.google\.com\/file\/d\/([-\w]+)/,
+    /drive\.google\.com\/open\?id=([-\w]+)/,
+    /drive\.google\.com\/uc\?.*id=([-\w]+)/,
+  ]
+  for (const re of patterns) {
+    const m = url.match(re)
+    if (m) return `https://drive.google.com/uc?export=download&id=${m[1]}`
+  }
+  return url
 }
 
 const FOCUS_PRESETS = [15, 25, 45, 60]
@@ -83,7 +100,7 @@ export const StudyWithMe: React.FC = () => {
       .finally(() => setSoundsLoading(false))
   }, [])
 
-  // Cache of resolved audio URLs: { fileId → url }
+  // Cache of converted URLs: { raw url → direct url }
   const urlCacheRef = useRef<Record<string, string>>({})
   const [resolvingId, setResolvingId] = useState<number | null>(null)
 
@@ -124,22 +141,21 @@ export const StudyWithMe: React.FC = () => {
       return
     }
 
-    console.log('[StudyPage] handleSoundSelect:', s.name, '| file_id:', s.file_id)
+    console.log('[StudyPage] handleSoundSelect:', s.name, '| url:', s.url)
     setResolvingId(s.id)
     try {
-      let url = urlCacheRef.current[s.file_id]
-      if (!url) {
-        console.log('[StudyPage] Resolving audio link for file_id:', s.file_id)
-        url = await apiService.getAudioLink(s.file_id)
-        console.log('[StudyPage] Resolved URL:', url)
-        urlCacheRef.current[s.file_id] = url
+      let directUrl = urlCacheRef.current[s.url]
+      if (!directUrl) {
+        directUrl = convertToDirectUrl(s.url)
+        urlCacheRef.current[s.url] = directUrl
+        console.log('[StudyPage] Converted URL:', directUrl)
       } else {
         console.log('[StudyPage] Using cached URL for:', s.name)
       }
-      sound.play(String(s.id) as SoundType, url)
+      sound.play(String(s.id) as SoundType, directUrl)
     } catch (err) {
-      console.error('[StudyPage] Failed to resolve audio link:', err)
-      alert("Audio yuklashda xatolik yuz berdi")
+      console.error('[StudyPage] Failed to play sound:', err)
+      alert('Audio yuklashda xatolik yuz berdi')
     } finally {
       setResolvingId(null)
     }

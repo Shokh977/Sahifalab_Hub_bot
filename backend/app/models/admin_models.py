@@ -69,7 +69,7 @@ class AmbientSound(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String(100), nullable=False)
     emoji = Column(String(20), nullable=False, default="🎵")
-    file_id = Column(String(500), nullable=False)   # Telegram file_id
+    url = Column(String(1000), nullable=False)       # direct or Google Drive share URL
     display_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_by = Column(Integer, nullable=True)      # admin telegram_id

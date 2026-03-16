@@ -218,95 +218,22 @@ class ApiService {
     })
   }
 
-  // ─── Audio endpoints ──────────────────────────────────────────────────────
+  // ─── Audio / Ambient Sound endpoints ─────────────────────────────────────
 
-  /** Convert Telegram file_id → temporary direct download URL */
-  async getAudioLink(fileId: string): Promise<string> {
-    const resp = await this.axiosInstance.get(`/api/audio/get-audio-link/${fileId}`)
-    return resp.data.url
-  }
   /** List all active ambient sounds from the database */
   async getAmbientSounds() {
     return this.axiosInstance.get('/api/audio/ambient-sounds')
   }
 
   /**
-   * Two-step MP3 upload — NO backend call for auth config.
-   *  Step 1 – Upload file directly to Telegram Bot API from the browser
-   *            (uses VITE_TELEGRAM_BOT_TOKEN + VITE_STORAGE_CHAT_ID env vars)
-   *  Step 2 – Send the resulting file_id to our backend to persist in DB
-   *
-   * Prerequisites:
-   *  • VITE_TELEGRAM_BOT_TOKEN  must be set in Vercel frontend env vars
-   *  • VITE_STORAGE_CHAT_ID     should be a chat/group/channel where the bot
-   *    is a member. Falls back to the admin's own telegram_id, which requires
-   *    the admin to have previously opened/started the bot.
+   * Save a new ambient sound by URL (Google Drive share link or any direct URL).
+   * The backend handles Google Drive → direct stream URL conversion.
    */
-  async uploadAmbientSound(telegramId: number, name: string, emoji: string, file: File) {
-    const token = import.meta.env.VITE_TELEGRAM_BOT_TOKEN as string | undefined
-    if (!token) {
-      throw new Error('VITE_TELEGRAM_BOT_TOKEN env var is not set in Vercel')
-    }
-
-    // Prefer an explicit storage chat; fall back to admin's own DM with the bot
-    const chatId: string = (import.meta.env.VITE_STORAGE_CHAT_ID as string) || String(telegramId)
-
-    console.log('[Sound Upload] Step 1 – preparing Telegram upload', {
-      name, emoji,
-      fileName: file.name, fileSize: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
-      chatId,
-      tokenPrefix: token.slice(0, 8) + '…',
-    })
-
-    // ── Step 1: upload MP3 directly to Telegram (bypasses Vercel body limit) ──
-    const formData = new FormData()
-    formData.append('chat_id', chatId)
-    formData.append('title', name)
-    formData.append('audio', file)
-
-    let tgData: any
-    try {
-      console.log('[Sound Upload] Sending to api.telegram.org/sendAudio …')
-      const tgRes = await fetch(
-        `https://api.telegram.org/bot${token}/sendAudio`,
-        { method: 'POST', body: formData },
-      )
-      tgData = await tgRes.json()
-      console.log('[Sound Upload] Telegram response:', tgData)
-    } catch (fetchErr: any) {
-      // Network / CORS failure hitting the Telegram endpoint
-      console.error('[Sound Upload] ❌ fetch to Telegram failed:', fetchErr)
-      throw new Error(
-        `Telegram ga ulanib bo'lmadi: ${fetchErr.message}. ` +
-        'Bot bilan /start bosganmisiz? VITE_STORAGE_CHAT_ID ni tekshiring.',
-      )
-    }
-
-    if (!tgData.ok) {
-      console.error('[Sound Upload] ❌ Telegram rejected the request:', tgData)
-      // 403 means the bot can't message the target chat
-      if (tgData.error_code === 403) {
-        throw new Error(
-          'Bot bu chatga yoza olmaydi (403). ' +
-          'Telegram\'da botga /start yuboring yoki VITE_STORAGE_CHAT_ID ni sozlang.',
-        )
-      }
-      throw new Error(tgData.description || `Telegram sendAudio xatosi (${tgData.error_code})`)
-    }
-
-    const audioObj = tgData.result?.audio || tgData.result?.document
-    if (!audioObj?.file_id) {
-      console.error('[Sound Upload] ❌ No audio/document in result:', tgData.result)
-      throw new Error('Telegram javobida file_id yo\'q')
-    }
-    const file_id: string = audioObj.file_id
-    console.log('[Sound Upload] ✅ Got file_id:', file_id)
-
-    // ── Step 2: persist in our database ───────────────────────────────────────
-    console.log('[Sound Upload] Step 2 – saving to DB …')
+  async saveAmbientSound(telegramId: number, name: string, emoji: string, url: string) {
+    console.log('[Sound] Saving:', { name, emoji, url })
     return this.axiosInstance.post(
       `/api/audio/admin/ambient-sounds?telegram_id=${telegramId}`,
-      { name, emoji, file_id },
+      { name, emoji, url },
     )
   }
 
