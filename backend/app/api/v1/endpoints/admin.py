@@ -2,6 +2,7 @@ import json
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db.session import get_db
+from app.core.config import settings
 from app.models.models import Quiz, QuizQuestion, Book
 from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog
 from app.schemas.admin_schemas import (
@@ -16,11 +17,27 @@ router = APIRouter()
 
 # Helper function to verify admin
 async def verify_admin(telegram_id: int, db: Session = Depends(get_db)):
+    # 1. Check the hardcoded env-var list first (works even with an empty DB)
+    if telegram_id in settings.ADMIN_TELEGRAM_IDS:
+        # Return or upsert a real AdminUser row so FK references work
+        admin = db.query(AdminUser).filter(AdminUser.telegram_id == telegram_id).first()
+        if not admin:
+            admin = AdminUser(
+                telegram_id=telegram_id,
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            db.commit()
+            db.refresh(admin)
+        return admin
+
+    # 2. Fallback: check the admin_user table (for extra admins added via DB)
     admin = db.query(AdminUser).filter(
         AdminUser.telegram_id == telegram_id,
         AdminUser.is_active == True
     ).first()
-    
+
     if not admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

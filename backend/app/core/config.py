@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
     TELEGRAM_BOT_USERNAME: str = "sahifalab_bot"
+    # Comma-separated Telegram IDs of admins, e.g. "123456789,987654321"
+    ADMIN_TELEGRAM_IDS: List[int] = []
     
     # JWT
     SECRET_KEY: str = "your-secret-key-change-in-production"
