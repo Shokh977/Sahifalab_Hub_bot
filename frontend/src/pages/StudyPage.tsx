@@ -100,8 +100,6 @@ export const StudyWithMe: React.FC = () => {
       .finally(() => setSoundsLoading(false))
   }, [])
 
-  // Cache of converted URLs: { raw url → direct url }
-  const urlCacheRef = useRef<Record<string, string>>({})
   const [resolvingId, setResolvingId] = useState<number | null>(null)
 
   const handleTimerComplete = useCallback(() => {
@@ -134,31 +132,22 @@ export const StudyWithMe: React.FC = () => {
   /**
    * Resolve file_id → URL (cached), then play.
    */
-  const handleSoundSelect = useCallback(async (s: SoundFromDB) => {
+  const handleSoundSelect = useCallback((s: SoundFromDB) => {
     // Toggle off if same sound playing
     if (sound.activeSound === String(s.id) && sound.isPlaying) {
       sound.stop()
       return
     }
 
-    console.log('[StudyPage] handleSoundSelect:', s.name, '| url:', s.url)
+    // Always proxy through our backend:
+    //  • Solves Google Drive CORS / redirect / Content-Type issues in Telegram WebView
+    //  • Works for any URL stored in the DB
+    const proxyUrl = `${import.meta.env.VITE_API_URL || ''}/api/audio/proxy/${s.id}`
+    console.log('[StudyPage] Playing via proxy:', s.name, proxyUrl)
     setResolvingId(s.id)
-    try {
-      let directUrl = urlCacheRef.current[s.url]
-      if (!directUrl) {
-        directUrl = convertToDirectUrl(s.url)
-        urlCacheRef.current[s.url] = directUrl
-        console.log('[StudyPage] Converted URL:', directUrl)
-      } else {
-        console.log('[StudyPage] Using cached URL for:', s.name)
-      }
-      sound.play(String(s.id) as SoundType, directUrl)
-    } catch (err) {
-      console.error('[StudyPage] Failed to play sound:', err)
-      alert('Audio yuklashda xatolik yuz berdi')
-    } finally {
-      setResolvingId(null)
-    }
+    sound.play(String(s.id) as SoundType, proxyUrl)
+    // resolving spinner cleared once audio starts (or on error in useAmbientSound)
+    setTimeout(() => setResolvingId(null), 800)
   }, [sound])
 
   const handleSilence = useCallback(() => {

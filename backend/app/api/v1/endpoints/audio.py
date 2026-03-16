@@ -12,7 +12,9 @@ Admin:
 import re
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi.responses import Response as HTTPResponse
 from sqlalchemy.orm import Session
+import httpx
 
 from app.core.config import settings
 from app.db.session import get_db
@@ -70,6 +72,60 @@ async def list_ambient_sounds(db: Session = Depends(get_db)):
         .filter(AmbientSound.is_active == True)
         .order_by(AmbientSound.display_order, AmbientSound.id)
         .all()
+    )
+
+
+@router.get("/proxy/{sound_id}")
+async def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
+    """
+    Fetch audio from the stored URL and return it directly to the browser.
+    Solves Google Drive CORS, redirect, and Content-Type issues in Telegram WebView.
+    Response is cached by the browser for 24 h.
+    """
+    sound = db.query(AmbientSound).filter(
+        AmbientSound.id == sound_id,
+        AmbientSound.is_active == True,
+    ).first()
+    if not sound:
+        raise HTTPException(404, "Sound not found")
+
+    try:
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=30,
+            headers={"User-Agent": "Mozilla/5.0"},  # some CDNs block non-browser UAs
+        ) as client:
+            resp = await client.get(sound.url)
+        resp.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        logger.error("Proxy HTTP error for sound %s: %s", sound_id, e)
+        raise HTTPException(502, f"Audio manba xatosi: {e.response.status_code}")
+    except Exception as e:
+        logger.error("Proxy fetch error for sound %s: %s", sound_id, e)
+        raise HTTPException(502, f"Audio yuklab bo'lmadi: {e}")
+
+    # Google Drive sometimes returns an HTML confirmation page for large files
+    content_type = resp.headers.get("content-type", "").split(";")[0].strip()
+    if "text/html" in content_type:
+        logger.error("Google Drive returned HTML for sound %s — check sharing settings", sound_id)
+        raise HTTPException(
+            502,
+            "Google Drive HTML sahifa qaytardi. "
+            "Faylni 'Havola orqali ulashish' rejimida ochiq qiling.",
+        )
+
+    # Force a proper audio MIME type so every browser/WebView accepts it
+    ext = sound.url.split("?")[0].rsplit(".", 1)[-1].lower()
+    mime_map = {"mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav", "m4a": "audio/mp4", "aac": "audio/aac"}
+    final_mime = mime_map.get(ext, "audio/mpeg")
+
+    return HTTPResponse(
+        content=resp.content,
+        media_type=final_mime,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+        },
     )
 
 
