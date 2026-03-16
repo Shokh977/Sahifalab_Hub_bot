@@ -12,7 +12,7 @@ Admin:
 import re
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Query
-from fastapi.responses import Response as HTTPResponse
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import httpx
 
@@ -78,9 +78,13 @@ async def list_ambient_sounds(db: Session = Depends(get_db)):
 @router.get("/proxy/{sound_id}")
 async def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
     """
-    Fetch audio from the stored URL and return it directly to the browser.
-    Solves Google Drive CORS, redirect, and Content-Type issues in Telegram WebView.
-    Response is cached by the browser for 24 h.
+    Stream audio from the stored URL to the browser.
+    Using StreamingResponse means bytes are forwarded chunk-by-chunk —
+    the browser can start playing immediately without waiting for the full
+    download, and we never buffer the whole file in memory.
+
+    Google Drive fix: adds &confirm=t to bypass the virus-scan warning page
+    that Google shows for larger files.
     """
     sound = db.query(AmbientSound).filter(
         AmbientSound.id == sound_id,
@@ -89,42 +93,49 @@ async def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
     if not sound:
         raise HTTPException(404, "Sound not found")
 
-    try:
-        async with httpx.AsyncClient(
-            follow_redirects=True,
-            timeout=30,
-            headers={"User-Agent": "Mozilla/5.0"},  # some CDNs block non-browser UAs
-        ) as client:
-            resp = await client.get(sound.url)
-        resp.raise_for_status()
-    except httpx.HTTPStatusError as e:
-        logger.error("Proxy HTTP error for sound %s: %s", sound_id, e)
-        raise HTTPException(502, f"Audio manba xatosi: {e.response.status_code}")
-    except Exception as e:
-        logger.error("Proxy fetch error for sound %s: %s", sound_id, e)
-        raise HTTPException(502, f"Audio yuklab bo'lmadi: {e}")
+    url = sound.url
+    # Bypass Google Drive large-file confirmation page
+    if "drive.google.com/uc" in url and "confirm=" not in url:
+        url += "&confirm=t"
 
-    # Google Drive sometimes returns an HTML confirmation page for large files
-    content_type = resp.headers.get("content-type", "").split(";")[0].strip()
-    if "text/html" in content_type:
-        logger.error("Google Drive returned HTML for sound %s — check sharing settings", sound_id)
-        raise HTTPException(
-            502,
-            "Google Drive HTML sahifa qaytardi. "
-            "Faylni 'Havola orqali ulashish' rejimida ochiq qiling.",
-        )
+    logger.info("Streaming sound %s from: %s", sound_id, url)
 
-    # Force a proper audio MIME type so every browser/WebView accepts it
-    ext = sound.url.split("?")[0].rsplit(".", 1)[-1].lower()
-    mime_map = {"mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav", "m4a": "audio/mp4", "aac": "audio/aac"}
+    async def _stream():
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=httpx.Timeout(60.0, connect=10.0),
+                headers={"User-Agent": "Mozilla/5.0 (compatible; SAHIFALAB/1.0)"},
+            ) as client:
+                async with client.stream("GET", url) as resp:
+                    resp.raise_for_status()
+                    # Bail out early if Google Drive returned an HTML page
+                    ct = resp.headers.get("content-type", "")
+                    if "text/html" in ct:
+                        logger.error(
+                            "Google Drive returned HTML for sound %s. "
+                            "Make sure the file is shared as 'Anyone with the link'.",
+                            sound_id,
+                        )
+                        return
+                    async for chunk in resp.aiter_bytes(chunk_size=65_536):
+                        yield chunk
+        except Exception as e:
+            logger.error("Stream error for sound %s: %s", sound_id, e)
+
+    # Detect MIME type from URL extension (Drive uc URLs have no extension, default to mpeg)
+    ext = url.split("?")[0].rsplit(".", 1)[-1].lower()
+    mime_map = {"mp3": "audio/mpeg", "ogg": "audio/ogg", "wav": "audio/wav",
+                "m4a": "audio/mp4", "aac": "audio/aac", "flac": "audio/flac"}
     final_mime = mime_map.get(ext, "audio/mpeg")
 
-    return HTTPResponse(
-        content=resp.content,
+    return StreamingResponse(
+        _stream(),
         media_type=final_mime,
         headers={
             "Cache-Control": "public, max-age=86400",
             "Access-Control-Allow-Origin": "*",
+            "Accept-Ranges": "bytes",
         },
     )
 

@@ -1,97 +1,113 @@
 import { useRef, useCallback, useState, useEffect } from 'react'
 
-export type SoundType = string  // dynamic — can be DB sound id or any identifier
+export type SoundType = string
 
-/**
- * Ambient sound player that streams real audio files via HTML5 Audio.
- *
- * How it works:
- *  1. Caller provides a URL (resolved from Telegram file_id via backend).
- *  2. An <audio> element plays + loops the file.
- *  3. Volume is adjustable in real time.
- *  4. Audio keeps playing in the background / with phone locked (the browser
- *     keeps the media session alive as long as we don't suspend the element).
- */
 export const useAmbientSound = () => {
-  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const audioRef   = useRef<HTMLAudioElement | null>(null)
   const [activeSound, setActiveSound] = useState<SoundType>('silence')
-  const [volume, setVolume] = useState(0.5)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [volume,      setVolume]      = useState(0.5)
+  const [isPlaying,   setIsPlaying]   = useState(false)
+  const [isLoading,   setIsLoading]   = useState(false)
+  const [error,       setError]       = useState<string | null>(null)
 
-  // Create a singleton Audio element
   const getAudio = useCallback(() => {
     if (!audioRef.current) {
       const el = new Audio()
-      el.loop = true
-      el.preload = 'auto'
-      el.volume = 0.5
+      el.loop    = true
+      el.preload = 'none'   // don't preload until explicitly played
+      el.volume  = 0.5
       audioRef.current = el
-
-      // Media Session API — keeps audio alive on lock screen
       if ('mediaSession' in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
-          title: 'Ambient Sound',
-          artist: 'SAHIFALAB Study',
-          album: 'Focus Music',
+          title: 'Ambient Sound', artist: 'SAHIFALAB Study', album: 'Focus Music',
         })
       }
     }
     return audioRef.current
   }, [])
 
-  /**
-   * Play a sound from a direct URL.
-   * @param soundType  – which category (for UI state)
-   * @param url        – direct audio URL (from Telegram or any CDN)
-   */
-  const play = useCallback(
-    async (soundType: SoundType, url?: string) => {
-      if (soundType === 'silence') {
-        stop()
-        return
-      }
-      if (!url) return
-
-      const audio = getAudio()
-      setIsLoading(true)
-
-      try {
-        // If it's a different source, switch
-        if (audio.src !== url) {
-          audio.src = url
-          audio.load()
-        }
-        await audio.play()
-        setActiveSound(soundType)
-        setIsPlaying(true)
-      } catch (err) {
-        console.warn('Audio play failed:', err)
-      } finally {
-        setIsLoading(false)
-      }
-    },
-    [getAudio],
-  )
-
   const stop = useCallback(() => {
     const audio = audioRef.current
-    if (audio) {
-      audio.pause()
-      audio.currentTime = 0
-    }
+    if (audio) { audio.pause(); audio.currentTime = 0 }
     setActiveSound('silence')
     setIsPlaying(false)
+    setIsLoading(false)
+    setError(null)
   }, [])
+
+  const play = useCallback((soundType: SoundType, url?: string) => {
+    if (soundType === 'silence') { stop(); return }
+    if (!url) { console.error('[Sound] play() called with no URL'); return }
+
+    const audio = getAudio()
+    console.log('[Sound] play() →', soundType, url)
+
+    setIsLoading(true)
+    setIsPlaying(false)
+    setError(null)
+    setActiveSound(soundType)
+
+    // ── Wire up event listeners before touching src ─────────────────────────────────
+    const onPlaying = () => {
+      console.log('[Sound] ▶ playing started')
+      setIsLoading(false)
+      setIsPlaying(true)
+      setError(null)
+    }
+    const onCanPlay = () => {
+      console.log('[Sound] canplay — triggering play()')
+      audio.play().catch(err => {
+        console.error('[Sound] play() rejected after canplay:', err.name, err.message)
+        setIsLoading(false)
+        setIsPlaying(false)
+        setError(err.message)
+      })
+    }
+    const onError = () => {
+      const codes: Record<number, string> = {
+        1: 'MEDIA_ERR_ABORTED', 2: 'MEDIA_ERR_NETWORK',
+        3: 'MEDIA_ERR_DECODE',  4: 'MEDIA_ERR_SRC_NOT_SUPPORTED',
+      }
+      const code = audio.error?.code ?? 0
+      const msg  = codes[code] ?? `Unknown error (${code})`
+      console.error('[Sound] ❌ audio element error:', msg, audio.error)
+      setIsLoading(false)
+      setIsPlaying(false)
+      setActiveSound('silence')
+      setError(msg)
+    }
+    const onStalled  = () => console.warn('[Sound] ⏸ stalled  — waiting for data...')
+    const onWaiting  = () => console.warn('[Sound] ⏳ waiting  — buffering...')
+    const onSuspend  = () => console.warn('[Sound] 🛌 suspend  — browser paused download')
+
+    audio.addEventListener('canplay',  onCanPlay,  { once: true })
+    audio.addEventListener('playing',  onPlaying,  { once: true })
+    audio.addEventListener('error',    onError,    { once: true })
+    audio.addEventListener('stalled',  onStalled)
+    audio.addEventListener('waiting',  onWaiting)
+    audio.addEventListener('suspend',  onSuspend)
+
+    // ── Load new source ────────────────────────────────────────────────────────────
+    if (audio.src !== url) {
+      audio.src = url
+    }
+    audio.load()  // always call load() to reset the element
+
+    // Cleanup stalled/waiting/suspend listeners once we know the outcome
+    const cleanupExtra = () => {
+      audio.removeEventListener('stalled', onStalled)
+      audio.removeEventListener('waiting', onWaiting)
+      audio.removeEventListener('suspend', onSuspend)
+    }
+    audio.addEventListener('playing', cleanupExtra, { once: true })
+    audio.addEventListener('error',   cleanupExtra, { once: true })
+  }, [getAudio, stop])
 
   const changeVolume = useCallback((v: number) => {
     setVolume(v)
-    if (audioRef.current) {
-      audioRef.current.volume = v
-    }
+    if (audioRef.current) audioRef.current.volume = v
   }, [])
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (audioRef.current) {
@@ -102,5 +118,5 @@ export const useAmbientSound = () => {
     }
   }, [])
 
-  return { activeSound, volume, isPlaying, isLoading, play, stop, changeVolume }
+  return { activeSound, volume, isPlaying, isLoading, error, play, stop, changeVolume }
 }

@@ -146,9 +146,12 @@ export const StudyWithMe: React.FC = () => {
     console.log('[StudyPage] Playing via proxy:', s.name, proxyUrl)
     setResolvingId(s.id)
     sound.play(String(s.id) as SoundType, proxyUrl)
-    // resolving spinner cleared once audio starts (or on error in useAmbientSound)
-    setTimeout(() => setResolvingId(null), 800)
   }, [sound])
+
+  // Clear the per-button spinner once the hook reports loading finished
+  useEffect(() => {
+    if (!sound.isLoading) setResolvingId(null)
+  }, [sound.isLoading])
 
   const handleSilence = useCallback(() => {
     sound.stop()
@@ -318,6 +321,15 @@ export const StudyWithMe: React.FC = () => {
                 <div className="text-xs mt-1">{s.name}</div>
               </button>
             ))}
+          </div>
+        )}
+
+        {/* Error feedback (visible even in Telegram WebView without DevTools) */}
+        {sound.error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
+            <p className="text-xs text-red-800 dark:text-red-300">
+              ❌ <strong>Xato:</strong> {sound.error}
+            </p>
           </div>
         )}
 
