@@ -359,19 +359,18 @@ const AdminPage: React.FC = () => {
     if (!soundName.trim()) { setSoundMsg('❌ Tovush nomini kiriting'); return }
     if (!soundFile) { setSoundMsg('❌ MP3 faylni tanlang'); return }
     setSoundUploading(true)
-    setSoundMsg('')
+    setSoundMsg('📤 Telegram ga yuklanmoqda…')
     try {
       await apiService.uploadAmbientSound(adminId, soundName.trim(), soundEmoji, soundFile)
       setSoundMsg('✅ Tovush muvaffaqiyatli yuklandi!')
       setSoundName('')
       setSoundEmoji('🎵')
       setSoundFile(null)
-      // Reset file input
       const fileInput = document.getElementById('sound-file-input') as HTMLInputElement
       if (fileInput) fileInput.value = ''
       loadSounds()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
+      const detail = err?.message || err?.response?.data?.detail || 'Server xatosi'
       setSoundMsg(`❌ ${detail}`)
     } finally {
       setSoundUploading(false)

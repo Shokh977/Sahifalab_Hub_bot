@@ -12,7 +12,7 @@ Admin:
 
 import time
 import logging
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 import httpx
 
@@ -99,63 +99,51 @@ async def get_audio_link(file_id: str):
 # ADMIN ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
-@router.post("/admin/ambient-sounds", response_model=AmbientSoundResponse, status_code=201)
-async def upload_ambient_sound(
-    name: str = Form(...),
-    emoji: str = Form("🎵"),
+@router.get("/admin/upload-config")
+async def get_upload_config(
     telegram_id: int = Query(...),
-    file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
     """
-    Upload an MP3 file → send it to Telegram via sendAudio → save the
-    returned file_id into the database.
-
-    Multipart form fields:
-      - name: display name (e.g. "Rain")
-      - emoji: icon (e.g. "🌧️")
-      - telegram_id: admin's Telegram ID (query param)
-      - file: the MP3/OGG audio file
+    Return the Telegram bot token + storage chat_id so the **browser** can
+    upload the audio file directly to the Telegram Bot API — completely
+    bypassing Vercel's 4.5 MB serverless body-size limit.
+    Admin-only.
     """
-    admin = await _verify_admin(telegram_id, db)
+    await _verify_admin(telegram_id, db)
     token = settings.TELEGRAM_BOT_TOKEN
     if not token:
         raise HTTPException(500, "TELEGRAM_BOT_TOKEN is not configured")
-
-    # Determine which chat to send the audio to
     chat_id = settings.STORAGE_CHAT_ID or telegram_id
+    return {"token": token, "chat_id": chat_id}
 
-    # ── Send audio to Telegram ────────────────────────────────────────────
-    file_bytes = await file.read()
-    tg_url = f"https://api.telegram.org/bot{token}/sendAudio"
 
-    async with httpx.AsyncClient(timeout=60) as client:
-        resp = await client.post(
-            tg_url,
-            data={"chat_id": chat_id, "title": name},
-            files={"audio": (file.filename or "sound.mp3", file_bytes, file.content_type or "audio/mpeg")},
-        )
+from pydantic import BaseModel as _BM
 
-    if resp.status_code != 200:
-        logger.error("Telegram sendAudio HTTP %s: %s", resp.status_code, resp.text)
-        raise HTTPException(502, f"Telegram sendAudio failed: {resp.text[:200]}")
+class SaveSoundPayload(_BM):
+    name: str
+    emoji: str = "🎵"
+    file_id: str
 
-    tg_data = resp.json()
-    if not tg_data.get("ok"):
-        raise HTTPException(400, tg_data.get("description", "Telegram API error"))
 
-    # Extract file_id from the response
-    audio_obj = tg_data["result"].get("audio") or tg_data["result"].get("document")
-    if not audio_obj:
-        raise HTTPException(500, "Telegram response missing audio/document object")
-    file_id = audio_obj["file_id"]
+@router.post("/admin/ambient-sounds", response_model=AmbientSoundResponse, status_code=201)
+async def save_ambient_sound(
+    body: SaveSoundPayload,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """
+    Save a sound whose MP3 was already uploaded directly from the browser
+    to Telegram.  Only the resulting file_id is sent here.
 
-    # ── Save to database ──────────────────────────────────────────────────
+    JSON body: { name, emoji, file_id }
+    """
+    admin = await _verify_admin(telegram_id, db)
     max_order = db.query(AmbientSound).count()
     sound = AmbientSound(
-        name=name,
-        emoji=emoji,
-        file_id=file_id,
+        name=body.name,
+        emoji=body.emoji,
+        file_id=body.file_id,
         display_order=max_order,
         is_active=True,
         created_by=admin.telegram_id,

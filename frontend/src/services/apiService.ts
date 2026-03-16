@@ -214,16 +214,43 @@ class ApiService {
     return this.axiosInstance.get('/api/audio/ambient-sounds')
   }
 
-  /** Upload a new ambient sound (admin). Sends MP3 → Telegram → saves file_id. */
+  /** Get Telegram token + chat_id so the browser can upload directly to Telegram */
+  async getAmbientSoundUploadConfig(telegramId: number) {
+    return this.axiosInstance.get(`/api/audio/admin/upload-config?telegram_id=${telegramId}`)
+  }
+
+  /**
+   * Two-step upload:
+   *  1. Browser uploads MP3 directly to Telegram (no Vercel body limit)
+   *  2. Sends only the resulting file_id to our backend to save in DB
+   */
   async uploadAmbientSound(telegramId: number, name: string, emoji: string, file: File) {
+    // Step 1 – get Telegram token + chat_id
+    const cfgRes = await this.getAmbientSoundUploadConfig(telegramId)
+    const { token, chat_id } = cfgRes.data
+
+    // Step 2 – upload directly to Telegram Bot API from browser
     const formData = new FormData()
-    formData.append('name', name)
-    formData.append('emoji', emoji)
-    formData.append('file', file)
+    formData.append('chat_id', String(chat_id))
+    formData.append('title', name)
+    formData.append('audio', file)
+
+    const tgRes = await fetch(
+      `https://api.telegram.org/bot${token}/sendAudio`,
+      { method: 'POST', body: formData },
+    )
+    const tgData = await tgRes.json()
+    if (!tgData.ok) {
+      throw new Error(tgData.description || 'Telegram sendAudio failed')
+    }
+    const audioObj = tgData.result?.audio || tgData.result?.document
+    if (!audioObj?.file_id) throw new Error('No file_id in Telegram response')
+    const file_id: string = audioObj.file_id
+
+    // Step 3 – save to our database
     return this.axiosInstance.post(
       `/api/audio/admin/ambient-sounds?telegram_id=${telegramId}`,
-      formData,
-      { headers: { 'Content-Type': 'multipart/form-data' }, timeout: 60000 },
+      { name, emoji, file_id },
     )
   }
 
