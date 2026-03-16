@@ -159,7 +159,7 @@ export const StudyWithMe: React.FC = () => {
       {/* Header */}
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          🎯 Study With Me
+          🎯 Study With Sahifalab
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {timer.isBreak ? "Dam olish vaqti — biroz nafas ol ☕" : "Diqqatni jamla — sen uddalaysan! 💪"}
