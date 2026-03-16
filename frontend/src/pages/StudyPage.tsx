@@ -75,16 +75,21 @@ export const StudyWithMe: React.FC = () => {
       return
     }
 
+    console.log('[StudyPage] handleSoundSelect:', s.name, '| file_id:', s.file_id)
     setResolvingId(s.id)
     try {
       let url = urlCacheRef.current[s.file_id]
       if (!url) {
+        console.log('[StudyPage] Resolving audio link for file_id:', s.file_id)
         url = await apiService.getAudioLink(s.file_id)
+        console.log('[StudyPage] Resolved URL:', url)
         urlCacheRef.current[s.file_id] = url
+      } else {
+        console.log('[StudyPage] Using cached URL for:', s.name)
       }
       sound.play(String(s.id) as SoundType, url)
     } catch (err) {
-      console.error('Failed to resolve audio link:', err)
+      console.error('[StudyPage] Failed to resolve audio link:', err)
       alert("Audio yuklashda xatolik yuz berdi")
     } finally {
       setResolvingId(null)

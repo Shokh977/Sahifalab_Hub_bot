@@ -210,8 +210,11 @@ const AdminPage: React.FC = () => {
   const loadSounds = useCallback(async () => {
     try {
       const res = await apiService.getAmbientSounds()
+      console.log('[AdminPage] loadSounds:', res.data)
       setAmbientSounds(res.data)
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('[AdminPage] loadSounds error:', err)
+    }
   }, [])
 
   useEffect(() => {
@@ -358,6 +361,7 @@ const AdminPage: React.FC = () => {
     if (!adminId) return
     if (!soundName.trim()) { setSoundMsg('❌ Tovush nomini kiriting'); return }
     if (!soundFile) { setSoundMsg('❌ MP3 faylni tanlang'); return }
+    console.log('[AdminPage] handleUploadSound start', { adminId, soundName, soundEmoji, fileName: soundFile.name, fileSize: soundFile.size })
     setSoundUploading(true)
     setSoundMsg('📤 Telegram ga yuklanmoqda…')
     try {
@@ -370,6 +374,9 @@ const AdminPage: React.FC = () => {
       if (fileInput) fileInput.value = ''
       loadSounds()
     } catch (err: any) {
+      console.error('[AdminPage] handleUploadSound error:', err)
+      console.error('[AdminPage] Response data:', err?.response?.data)
+      console.error('[AdminPage] Status:', err?.response?.status)
       const detail = err?.message || err?.response?.data?.detail || 'Server xatosi'
       setSoundMsg(`❌ ${detail}`)
     } finally {
@@ -383,7 +390,9 @@ const AdminPage: React.FC = () => {
     try {
       await apiService.deleteAmbientSound(soundId, adminId)
       loadSounds()
-    } catch { /* ignore */ }
+    } catch (err) {
+      console.error('[AdminPage] handleDeleteSound error:', err)
+    }
   }
   // ─────────────────────────────────────────────────────────────────────────
   if (!adminId) {

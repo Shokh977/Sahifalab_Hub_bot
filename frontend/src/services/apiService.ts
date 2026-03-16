@@ -19,8 +19,24 @@ class ApiService {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
+      console.debug(`[API] → ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.params || '')
       return config
     })
+
+    // Log every response
+    this.axiosInstance.interceptors.response.use(
+      (response) => {
+        console.debug(`[API] ← ${response.status} ${response.config.url}`, response.data)
+        return response
+      },
+      (error) => {
+        const status = error?.response?.status ?? 'NO_RESPONSE'
+        const url = error?.config?.url ?? ''
+        const detail = error?.response?.data?.detail ?? error?.response?.data ?? error?.message ?? 'Unknown error'
+        console.error(`[API] ❌ ${status} ${url}`, detail, error?.response?.data)
+        return Promise.reject(error)
+      },
+    )
   }
 
   // User endpoints
@@ -225,9 +241,12 @@ class ApiService {
    *  2. Sends only the resulting file_id to our backend to save in DB
    */
   async uploadAmbientSound(telegramId: number, name: string, emoji: string, file: File) {
+    console.log('[Sound Upload] Step 1 – fetching upload config', { telegramId, name, emoji, fileName: file.name, fileSize: file.size })
+
     // Step 1 – get Telegram token + chat_id
     const cfgRes = await this.getAmbientSoundUploadConfig(telegramId)
     const { token, chat_id } = cfgRes.data
+    console.log('[Sound Upload] Config received – chat_id:', chat_id, '| token prefix:', token?.slice(0, 8) + '...')
 
     // Step 2 – upload directly to Telegram Bot API from browser
     const formData = new FormData()
@@ -235,17 +254,25 @@ class ApiService {
     formData.append('title', name)
     formData.append('audio', file)
 
+    console.log('[Sound Upload] Step 2 – sending directly to Telegram sendAudio...')
     const tgRes = await fetch(
       `https://api.telegram.org/bot${token}/sendAudio`,
       { method: 'POST', body: formData },
     )
     const tgData = await tgRes.json()
+    console.log('[Sound Upload] Telegram sendAudio response:', tgData)
+
     if (!tgData.ok) {
+      console.error('[Sound Upload] ❌ Telegram rejected:', tgData)
       throw new Error(tgData.description || 'Telegram sendAudio failed')
     }
     const audioObj = tgData.result?.audio || tgData.result?.document
-    if (!audioObj?.file_id) throw new Error('No file_id in Telegram response')
+    if (!audioObj?.file_id) {
+      console.error('[Sound Upload] ❌ No audio/document object in result:', tgData.result)
+      throw new Error('No file_id in Telegram response')
+    }
     const file_id: string = audioObj.file_id
+    console.log('[Sound Upload] Step 3 – saving to DB, file_id:', file_id)
 
     // Step 3 – save to our database
     return this.axiosInstance.post(
