@@ -18,7 +18,10 @@ interface BackButton {
 
 interface TelegramWebApp {
   initData: string
-  user?: TelegramUser
+  initDataUnsafe: {
+    user?: TelegramUser
+    [key: string]: unknown
+  }
   ready: () => void
   expand: () => void
   close: () => void
@@ -45,8 +48,8 @@ export const useTelegramWebApp = () => {
       tg.ready()
       tg.expand()
       setWebApp(tg)
-      if (tg.user) {
-        setUser(tg.user)
+      if (tg.initDataUnsafe?.user) {
+        setUser(tg.initDataUnsafe.user)
       }
     }
   }, [])

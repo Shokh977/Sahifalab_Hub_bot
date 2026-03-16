@@ -5,6 +5,9 @@
  */
 import React, { useState, useEffect, useCallback } from 'react'
 import apiService from '@services/apiService'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+
+const ADMIN_TELEGRAM_IDS = [807466591]
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -80,6 +83,7 @@ const StatCard: React.FC<{ emoji: string; label: string; value: number | string 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const AdminPage: React.FC = () => {
+  const { user: tgUser } = useTelegramWebApp()
   const [telegramId, setTelegramId] = useState('')
   const [adminId, setAdminId] = useState<number | null>(null)
   const [authError, setAuthError] = useState('')
@@ -109,6 +113,13 @@ const AdminPage: React.FC = () => {
     title: '', author: '', description: '', price: 0,
     is_paid: false, file_url: '', thumbnail_url: '', category: 'programming',
   })
+
+  // ── Auto-login from Telegram WebApp ────────────────────────────────────
+  useEffect(() => {
+    if (tgUser?.id && ADMIN_TELEGRAM_IDS.includes(tgUser.id) && !adminId) {
+      setAdminId(tgUser.id)
+    }
+  }, [tgUser, adminId])
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   const handleLogin = async () => {
@@ -271,12 +282,17 @@ const AdminPage: React.FC = () => {
             <p className="text-sm text-gray-500 dark:text-gray-400">SAHIFALAB boshqaruv markazi</p>
           </div>
           <div className="space-y-3">
+            {tgUser?.id && (
+              <p className="text-sm text-center text-gray-500 dark:text-gray-400">
+                Telegram ID: <span className="font-mono font-bold text-sahifa-600 dark:text-sahifa-400">{tgUser.id}</span>
+              </p>
+            )}
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Telegram ID
             </label>
             <input
               type="number"
-              value={telegramId}
+              value={telegramId || (tgUser?.id?.toString() ?? '')}
               onChange={(e) => setTelegramId(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               placeholder="123456789"
