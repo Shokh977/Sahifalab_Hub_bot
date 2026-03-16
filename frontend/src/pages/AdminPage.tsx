@@ -134,7 +134,8 @@ const AdminPage: React.FC = () => {
   const [ambientSounds, setAmbientSounds] = useState<AmbientSoundItem[]>([])
   const [soundName, setSoundName] = useState('')
   const [soundEmoji, setSoundEmoji] = useState('🎵')
-  const [soundUrl, setSoundUrl] = useState('')
+  const [soundFile, setSoundFile] = useState<File | null>(null)
+  const [uploadPercent, setUploadPercent] = useState(0)
   const [soundUploading, setSoundUploading] = useState(false)
   const [soundMsg, setSoundMsg] = useState('')
 
@@ -360,23 +361,59 @@ const AdminPage: React.FC = () => {
   const handleUploadSound = async () => {
     if (!adminId) return
     if (!soundName.trim()) { setSoundMsg('❌ Tovush nomini kiriting'); return }
-    if (!soundUrl.trim()) { setSoundMsg('❌ Audio URL ni kiriting'); return }
-    console.log('[AdminPage] handleSaveSound start', { adminId, soundName, soundEmoji, soundUrl })
+    if (!soundFile) { setSoundMsg('❌ Audio faylni tanlang'); return }
+
+    const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  as string | undefined
+    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+    if (!supabaseUrl || !supabaseAnon) {
+      setSoundMsg('❌ Vercel-da VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY env varlarini sozlang')
+      return
+    }
+
     setSoundUploading(true)
-    setSoundMsg('💾 Saqlanmoqda…')
+    setSoundMsg('⬆️ Yuklanmoqda…')
+    setUploadPercent(0)
     try {
-      await apiService.saveAmbientSound(adminId, soundName.trim(), soundEmoji, soundUrl.trim())
+      // 1. Upload file directly from browser → Supabase Storage (bypasses Vercel)
+      const ext      = soundFile.name.split('.').pop()?.toLowerCase() || 'mp3'
+      const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const endpoint = `${supabaseUrl}/storage/v1/object/ambient-sounds/${filename}`
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', endpoint)
+        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnon}`)
+        xhr.setRequestHeader('Content-Type', soundFile.type || 'audio/mpeg')
+        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) {
+            resolve()
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.message || `Upload xatosi: ${xhr.status}`)) }
+            catch { reject(new Error(`Upload xatosi: ${xhr.status}`)) }
+          }
+        }
+        xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
+        xhr.send(soundFile)
+      })
+
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/ambient-sounds/${filename}`
+
+      // 2. Save Supabase CDN URL to DB
+      setSoundMsg('💾 Saqlanmoqda…')
+      await apiService.saveAmbientSound(adminId, soundName.trim(), soundEmoji, publicUrl)
       setSoundMsg('✅ Tovush muvaffaqiyatli saqlandi!')
       setSoundName('')
       setSoundEmoji('🎵')
-      setSoundUrl('')
+      setSoundFile(null)
+      setUploadPercent(0)
       loadSounds()
     } catch (err: any) {
-      console.error('[AdminPage] handleSaveSound error:', err)
-      console.error('[AdminPage] Response data:', err?.response?.data)
-      console.error('[AdminPage] Status:', err?.response?.status)
-      const detail = err?.message || err?.response?.data?.detail || 'Server xatosi'
-      setSoundMsg(`❌ ${detail}`)
+      console.error('[AdminPage] handleUploadSound error:', err)
+      setSoundMsg(`❌ ${err?.message || 'Xato yuz berdi'}`)
     } finally {
       setSoundUploading(false)
     }
@@ -1007,16 +1044,42 @@ const AdminPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Audio URL * <span className="text-blue-500">(Google Drive yoki to'g'ridan-to'g'ri havola)</span></label>
-                <input
-                  type="url"
-                  value={soundUrl}
-                  onChange={(e) => setSoundUrl(e.target.value)}
-                  placeholder="https://drive.google.com/file/d/…/view"
-                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
-                />
-                <p className="text-xs text-gray-400 mt-1">💡 Google Drive → Fayl → Ulashish → "Havola orqali" → URLni nusxalang</p>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Audio fayl * <span className="text-blue-500">(MP3, OGG, WAV — to'g'ridan Supabase-ga yuklanadi)</span>
+                </label>
+                <label className="flex items-center gap-3 w-full px-3 py-2 text-sm border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                  <span className="text-xl shrink-0">🎵</span>
+                  <span className="flex-1 text-gray-600 dark:text-gray-300 truncate">
+                    {soundFile ? soundFile.name : 'Faylni bosing yoki suring…'}
+                  </span>
+                  {soundFile && (
+                    <span className="text-xs text-gray-400 shrink-0">
+                      {(soundFile.size / 1024 / 1024).toFixed(1)} MB
+                    </span>
+                  )}
+                  <input
+                    type="file"
+                    accept="audio/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0]
+                      if (f) { setSoundFile(f); setSoundMsg('') }
+                    }}
+                  />
+                </label>
               </div>
+
+              {soundUploading && uploadPercent > 0 && (
+                <div className="space-y-1">
+                  <div className="h-2 bg-gray-200 dark:bg-gray-600 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-blue-500 rounded-full transition-all duration-300"
+                      style={{ width: `${uploadPercent}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-right">{uploadPercent}%</p>
+                </div>
+              )}
 
               {soundMsg && (
                 <div className="text-sm p-3 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300">{soundMsg}</div>
@@ -1057,12 +1120,13 @@ const AdminPage: React.FC = () => {
               </div>
             )}
 
-            {/* Info */}
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
-              <p className="text-xs text-blue-800 dark:text-blue-300">
-                ℹ️ <strong>Google Drive</strong>: fayl → Ulashish → "Havola orqali ulashish" yoqilgan bo'lishi kerak.
-                Drive havolasi avtomatik to'g'ridan-to'g'ri stream URLga aylantiriladi.
-              </p>
+            {/* Setup instructions */}
+            <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 space-y-1">
+              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">⚙️ Bir martalik sozlash:</p>
+              <ol className="text-xs text-emerald-700 dark:text-emerald-400 space-y-0.5 list-decimal list-inside">
+                <li>Supabase → Storage → <strong>ambient-sounds</strong> bucket yarating (<strong>Public ✓</strong>)</li>
+                <li>Vercel env vars-ga qo'shing: <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">VITE_SUPABASE_URL</code> va <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">VITE_SUPABASE_ANON_KEY</code></li>
+              </ol>
             </div>
           </div>
         )}

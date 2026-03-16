@@ -139,13 +139,14 @@ export const StudyWithMe: React.FC = () => {
       return
     }
 
-    // Always proxy through our backend:
-    //  • Solves Google Drive CORS / redirect / Content-Type issues in Telegram WebView
-    //  • Works for any URL stored in the DB
-    const proxyUrl = `${import.meta.env.VITE_API_URL || ''}/api/audio/proxy/${s.id}`
-    console.log('[StudyPage] Playing via proxy:', s.name, proxyUrl)
+    // Supabase Storage URLs have proper CORS + MIME headers — play directly.
+    // Legacy Google Drive URLs still go through the backend proxy (302 redirect).
+    const audioUrl = s.url?.includes('supabase.co/storage')
+      ? s.url
+      : `${import.meta.env.VITE_API_URL || ''}/api/audio/proxy/${s.id}`
+    console.log('[StudyPage] Playing:', s.name, audioUrl)
     setResolvingId(s.id)
-    sound.play(String(s.id) as SoundType, proxyUrl)
+    sound.play(String(s.id) as SoundType, audioUrl)
   }, [sound])
 
   // Clear the per-button spinner once the hook reports loading finished
