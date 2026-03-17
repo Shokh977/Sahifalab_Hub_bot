@@ -1,5 +1,6 @@
 import React, { useCallback } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
 import StudyWithMe from './pages/StudyPage'
@@ -21,23 +22,66 @@ const HomePage: React.FC = () => {
   const { user } = useTelegramWebApp()
 
   return (
-    <main className="max-w-md mx-auto py-4 px-4 pb-20">
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-sahifa-700 dark:text-sahifa-300">
-          SAHIFALAB
+    <main className="max-w-md mx-auto pt-6 px-5 pb-28 paper-texture">
+      {/* ── Header ─────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: -12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: 'easeOut' }}
+        className="mb-8"
+      >
+        <h1 className="text-3xl font-extrabold tracking-tight">
+          <span className="bg-gradient-to-r from-sahifa-400 via-sahifa-500 to-sahifa-600 bg-clip-text text-transparent">
+            SAHIFALAB
+          </span>
         </h1>
-        <p className="text-base text-gray-700 dark:text-gray-300 mt-1 font-medium">
-          {user?.first_name
-            ? `Assalomu alaykum, ${user.first_name}! 👋`
-            : 'Assalomu alaykum! 👋'}
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-          Men Sam — o'qishni osonlashtiramiz 📚
-        </p>
-      </div>
 
-      <HeroSection />
-      <MenuGrid />
+        {/* Sam speech bubble */}
+        <div className="speech-bubble mt-4 px-4 py-3">
+          <p className="text-sm text-gray-200 leading-relaxed">
+            {user?.first_name
+              ? `Assalomu alaykum, ${user.first_name}! 👋`
+              : 'Assalomu alaykum! 👋'}
+          </p>
+          <p className="text-xs text-sahifa-400/80 mt-1 italic">
+            — Sam, sizning mentoringiz 📚
+          </p>
+        </div>
+      </motion.div>
+
+      {/* ── Hero ───────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.1 }}
+      >
+        <HeroSection />
+      </motion.div>
+
+      {/* ── Menu Grid ──────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <MenuGrid />
+      </motion.div>
+
+      {/* ── Footer ─────────────────────────────────────────────── */}
+      <motion.footer
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.4 }}
+        className="mt-12 text-center space-y-1.5"
+      >
+        <div className="w-12 h-px bg-gradient-to-r from-transparent via-sahifa-500/30 to-transparent mx-auto" />
+        <p className="text-[11px] text-slate-500 tracking-wide font-medium">
+          @Sahifalab_hub_bot
+        </p>
+        <p className="text-[10px] text-slate-600">
+          Powered by SAHIFALAB · 2024
+        </p>
+      </motion.footer>
     </main>
   )
 }
@@ -68,7 +112,7 @@ const AdminRoute: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-900">
+    <div className="min-h-screen bg-slate-950">
       <Router>
         <ProgressProvider>
           <TelegramBackButtonHandler />

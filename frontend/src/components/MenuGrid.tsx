@@ -1,5 +1,6 @@
 import React from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
@@ -11,20 +12,20 @@ interface MenuItem {
   titleUz: string
   description: string
   path: string
-  color: string
-  bgGradient: string
+  iconBg: string      /* subtle icon background */
+  accentGlow: string  /* hover glow color */
 }
 
 const MENU_ITEMS: MenuItem[] = [
   {
     id: 'study',
     icon: '🎯',
-    title: 'Study With Sahifalab',
+    title: "Study With Sahifalab",
     titleUz: "O'qish",
     description: 'Focus timer + ambient sounds',
     path: '/study',
-    color: 'from-blue-500 to-blue-600',
-    bgGradient: 'bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20',
+    iconBg: 'bg-blue-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(59,130,246,0.2)]',
   },
   {
     id: 'quiz',
@@ -33,8 +34,8 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Test',
     description: 'Kitoblar asosida testlar',
     path: '/quiz',
-    color: 'from-purple-500 to-purple-600',
-    bgGradient: 'bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20',
+    iconBg: 'bg-purple-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(168,85,247,0.2)]',
   },
   {
     id: 'kitoblar',
@@ -43,8 +44,8 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Kitoblar',
     description: 'Free & Paid PDFs',
     path: '/kitoblar',
-    color: 'from-amber-500 to-amber-600',
-    bgGradient: 'bg-gradient-to-br from-amber-50 to-amber-100 dark:from-amber-900/20 dark:to-amber-800/20',
+    iconBg: 'bg-sahifa-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(242,103,34,0.25)]',
   },
   {
     id: 'foydaliLinklar',
@@ -53,8 +54,8 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Resurslar',
     description: 'Resurslar & Videolar',
     path: '/resources',
-    color: 'from-emerald-500 to-emerald-600',
-    bgGradient: 'bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20',
+    iconBg: 'bg-emerald-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(16,185,129,0.2)]',
   },
   {
     id: 'about',
@@ -63,8 +64,8 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Haqimizda',
     description: "Bizning hikoyamiz va missiyamiz",
     path: '/about',
-    color: 'from-pink-500 to-pink-600',
-    bgGradient: 'bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-900/20 dark:to-pink-800/20',
+    iconBg: 'bg-pink-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(236,72,153,0.2)]',
   },
   {
     id: 'cabinet',
@@ -73,98 +74,140 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Kabinet',
     description: 'XP, Daraja va Yutuqlar',
     path: '/cabinet',
-    color: 'from-indigo-500 to-violet-600',
-    bgGradient: 'bg-gradient-to-br from-indigo-50 to-violet-100 dark:from-indigo-900/20 dark:to-violet-800/20',
+    iconBg: 'bg-indigo-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(99,102,241,0.2)]',
   },
   {
     id: 'leaderboard',
     icon: '🏆',
     title: 'Liderlar Jadvali',
     titleUz: 'Reyting',
-    description: 'Top 10 o\'quvchilar',
+    description: "Top 10 o'quvchilar",
     path: '/leaderboard',
-    color: 'from-amber-500 to-orange-600',
-    bgGradient: 'bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-900/20 dark:to-orange-800/20',
+    iconBg: 'bg-amber-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(245,158,11,0.2)]',
   },
 ]
 
+// Stagger children animation
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.06 },
+  },
+}
+
+const cardVariant = {
+  hidden: { opacity: 0, y: 20, scale: 0.95 },
+  show: {
+    opacity: 1,
+    y: 0,
+    scale: 1,
+    transition: { type: 'spring' as const, stiffness: 350, damping: 25 },
+  },
+}
+
+// ── Card component ──────────────────────────────────────────────────────────
+interface CardProps {
+  item: MenuItem
+  onClick: () => void
+  fullWidth?: boolean
+}
+
+const MenuCard: React.FC<CardProps> = ({ item, onClick, fullWidth }) => (
+  <motion.button
+    variants={cardVariant}
+    whileTap={{ scale: 0.95 }}
+    onClick={onClick}
+    className={`
+      relative overflow-hidden
+      bg-slate-800/60 backdrop-blur-sm
+      border border-slate-700/50
+      rounded-3xl p-5
+      transition-all duration-300
+      card-glow
+      ${item.accentGlow}
+      ${fullWidth ? 'col-span-2' : ''}
+    `}
+  >
+    {/* Subtle gradient overlay */}
+    <div className="absolute inset-0 bg-gradient-to-br from-sahifa-500/[0.03] to-transparent pointer-events-none" />
+
+    <div className={`relative ${fullWidth ? 'flex items-center gap-4' : 'text-center space-y-3'}`}>
+      {/* Icon with background */}
+      <div className={`
+        ${fullWidth ? '' : 'mx-auto'}
+        w-14 h-14 rounded-2xl ${item.iconBg}
+        flex items-center justify-center
+        shadow-sm
+      `}>
+        <span className="text-3xl">{item.icon}</span>
+      </div>
+
+      <div className={fullWidth ? 'text-left' : ''}>
+        <h3 className="font-bold text-sm text-white/90 leading-tight">
+          {item.title}
+        </h3>
+        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+          {item.description}
+        </p>
+      </div>
+    </div>
+  </motion.button>
+)
+
+// ── Main Grid ───────────────────────────────────────────────────────────────
 export const MenuGrid: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useTelegramWebApp()
   const isAdmin = user?.id ? ADMIN_TELEGRAM_IDS.includes(user.id) : false
 
-  const handleMenuClick = (path: string) => {
-    navigate(path)
-  }
-
   return (
-    <div className="grid grid-cols-2 gap-4 md:gap-6">
+    <motion.div
+      variants={container}
+      initial="hidden"
+      animate="show"
+      className="grid grid-cols-2 gap-4"
+    >
+      {/* Top 4: 2×2 grid */}
       {MENU_ITEMS.slice(0, 4).map((item) => (
-        <button
+        <MenuCard
           key={item.id}
-          onClick={() => handleMenuClick(item.path)}
-          className={`${item.bgGradient} p-4 md:p-6 rounded-lg border-2 border-transparent hover:border-sahifa-500 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg`}
-        >
-          <div className="text-center space-y-2">
-            <div className="text-4xl md:text-5xl">{item.icon}</div>
-            <h3 className="font-bold text-sm md:text-base text-gray-900 dark:text-white">
-              {item.title}
-            </h3>
-            <p className="text-xs text-gray-600 dark:text-gray-300">
-              {item.description}
-            </p>
-          </div>
-        </button>
+          item={item}
+          onClick={() => navigate(item.path)}
+        />
       ))}
 
-      {/* Full-width About Section */}
-      <button
-        onClick={() => handleMenuClick(MENU_ITEMS[4].path)}
-        className={`${MENU_ITEMS[4].bgGradient} p-4 md:p-6 rounded-lg border-2 border-transparent hover:border-sahifa-500 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg col-span-2`}
-      >
-        <div className="flex items-center gap-4">
-          <div className="text-4xl md:text-5xl">{MENU_ITEMS[4].icon}</div>
-          <div className="text-left">
-            <h3 className="font-bold text-sm md:text-base text-gray-900 dark:text-white">
-              {MENU_ITEMS[4].title}
-            </h3>
-            <p className="text-xs text-gray-600 dark:text-gray-300">
-              {MENU_ITEMS[4].description}
-            </p>
-          </div>
-        </div>
-      </button>
+      {/* About — full-width */}
+      <MenuCard
+        item={MENU_ITEMS[4]}
+        onClick={() => navigate(MENU_ITEMS[4].path)}
+        fullWidth
+      />
 
       {/* Cabinet + Leaderboard side by side */}
       {MENU_ITEMS.slice(5, 7).map((item) => (
-        <button
+        <MenuCard
           key={item.id}
-          onClick={() => handleMenuClick(item.path)}
-          className={`${item.bgGradient} p-4 rounded-lg border-2 border-transparent hover:border-sahifa-500 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg`}
-        >
-          <div className="text-center space-y-2">
-            <div className="text-4xl">{item.icon}</div>
-            <h3 className="font-bold text-sm text-gray-900 dark:text-white">
-              {item.titleUz}
-            </h3>
-            <p className="text-xs text-gray-600 dark:text-gray-300">
-              {item.description}
-            </p>
-          </div>
-        </button>
+          item={item}
+          onClick={() => navigate(item.path)}
+        />
       ))}
 
       {/* Admin panel — only visible to admins */}
       {isAdmin && (
-        <button
-          onClick={() => handleMenuClick('/admin')}
-          className="col-span-2 mt-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:text-sahifa-600 dark:hover:text-sahifa-400 transition-colors text-xs"
+        <motion.button
+          variants={cardVariant}
+          whileTap={{ scale: 0.96 }}
+          onClick={() => navigate('/admin')}
+          className="col-span-2 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-slate-800/40 border border-slate-700/30 text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
         >
           <span>🔐</span>
           <span>Admin Panel</span>
-        </button>
+        </motion.button>
       )}
-    </div>
+    </motion.div>
   )
 }
 
