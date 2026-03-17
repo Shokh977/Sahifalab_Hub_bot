@@ -195,7 +195,7 @@ async def get_quizzes(
     
     return query.offset(skip).limit(limit).all()
 
-@router.get("/{quiz_id}", response_model=QuizDetailResponse)
+@router.get("/{quiz_id}", response_model=QuizDetailPublic)
 async def get_quiz(quiz_id: int, db: Session = Depends(get_db)):
     """Get quiz with questions"""
     quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
