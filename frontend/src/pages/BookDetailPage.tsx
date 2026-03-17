@@ -295,7 +295,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
 
-  // Poll order status after user goes to external checkout / deep link
+  // Poll order status after user goes to bot deep link
   useEffect(() => {
     if (!pendingOrderId || !polling) return
     const interval = setInterval(async () => {
@@ -313,70 +313,25 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
     return () => clearInterval(interval)
   }, [pendingOrderId, polling, onPurchased])
 
-  const openLink = (url: string) => {
-    if (window.Telegram?.WebApp?.openLink) {
-      window.Telegram.WebApp.openLink(url)
-    } else {
-      window.location.href = url
-    }
-  }
-
-  // ── Telegram Stars ──────────────────────────────────────────────────────
-  const handleStars = async () => {
+  // ── Universal pay handler — same flow for all 3 providers ───────────────
+  const handlePay = async (provider: 'telegram_stars' | 'click' | 'payme') => {
     if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
-    setLoading('stars')
+    setLoading(provider)
     setMsg('')
     try {
-      const res = await apiService.createStarsOrder(book.id, telegramId)
+      const res = await apiService.createPaymentOrder(book.id, telegramId, provider)
       if (res.data.already_purchased) { onPurchased(); return }
       const orderId = res.data.order_id as string
       setPendingOrderId(orderId)
       setPolling(true)
       setMsg('⏳ Botga o\'ting va to\'lovni yakunlang…')
-      // Deep link → bot sends invoice
-      openLink(`https://t.me/sahifalab_hub_bot?start=pay_${orderId}`)
-    } catch (err: any) {
-      setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
-    } finally {
-      setLoading('')
-    }
-  }
-
-  // ── Click ──────────────────────────────────────────────────────────────
-  const handleClick = async () => {
-    if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
-    setLoading('click')
-    setMsg('')
-    try {
-      const res = await apiService.createClickOrder(book.id, telegramId)
-      if (res.data.already_purchased) { onPurchased(); return }
-      const orderId = res.data.order_id as string
-      const checkoutUrl = res.data.checkout_url as string
-      setPendingOrderId(orderId)
-      setPolling(true)
-      setMsg('⏳ Click orqali to\'lang va qaytib keling…')
-      openLink(checkoutUrl)
-    } catch (err: any) {
-      setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
-    } finally {
-      setLoading('')
-    }
-  }
-
-  // ── Payme ──────────────────────────────────────────────────────────────
-  const handlePayme = async () => {
-    if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
-    setLoading('payme')
-    setMsg('')
-    try {
-      const res = await apiService.createPaymeOrder(book.id, telegramId)
-      if (res.data.already_purchased) { onPurchased(); return }
-      const orderId = res.data.order_id as string
-      const checkoutUrl = res.data.checkout_url as string
-      setPendingOrderId(orderId)
-      setPolling(true)
-      setMsg('⏳ Payme orqali to\'lang va qaytib keling…')
-      openLink(checkoutUrl)
+      // Deep link → bot sends native Telegram invoice for any provider
+      const deepLink = `https://t.me/sahifalab_hub_bot?start=pay_${orderId}`
+      if (window.Telegram?.WebApp?.openLink) {
+        window.Telegram.WebApp.openLink(deepLink)
+      } else {
+        window.location.href = deepLink
+      }
     } catch (err: any) {
       setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
     } finally {
@@ -425,8 +380,8 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
 
       {/* ⭐ Telegram Stars */}
       <button
-        onClick={handleStars}
-        disabled={loading === 'stars'}
+        onClick={() => handlePay('telegram_stars')}
+        disabled={loading === 'telegram_stars'}
         className="flex items-center gap-3 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.97] text-white px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-md transition-all disabled:opacity-60"
       >
         <span className="text-xl">⭐</span>
@@ -436,7 +391,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
 
       {/* 💳 Click */}
       <button
-        onClick={handleClick}
+        onClick={() => handlePay('click')}
         disabled={loading === 'click'}
         className="flex items-center gap-3 w-full bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-[0.97] border border-gray-200 dark:border-gray-600 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
       >
@@ -447,7 +402,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
 
       {/* 💙 Payme */}
       <button
-        onClick={handlePayme}
+        onClick={() => handlePay('payme')}
         disabled={loading === 'payme'}
         className="flex items-center gap-3 w-full bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-[0.97] border border-gray-200 dark:border-gray-600 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
       >

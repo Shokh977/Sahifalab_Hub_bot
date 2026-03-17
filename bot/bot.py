@@ -1,6 +1,6 @@
 """
 SAHIFALAB Telegram Bot — Sam (16 yo mentor)
-Features: /start, /app, /help, deep-link payments (Telegram Stars)
+Features: /start, /app, /help, deep-link payments (Stars / Click / Payme via BotFather tokens)
 """
 import logging
 import os
@@ -34,6 +34,10 @@ MINI_APP_URL = os.getenv("MINI_APP_URL", "https://sahifalab-hub-bot.vercel.app")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://sahifalab-hub-bot-backend.up.railway.app")
 
+# BotFather provider tokens (get from @BotFather → Payments → Connect provider)
+CLICK_PROVIDER_TOKEN = os.getenv("CLICK_PROVIDER_TOKEN", "")
+PAYME_PROVIDER_TOKEN = os.getenv("PAYME_PROVIDER_TOKEN", "")
+
 
 class TelegramBotHandler:
     """SAHIFALAB Telegram Bot — Sam (16 yosh mentor)"""
@@ -49,7 +53,7 @@ class TelegramBotHandler:
         # Deep link: /start pay_{order_id}
         if args and args[0].startswith("pay_"):
             order_id = args[0][4:]  # strip "pay_" prefix
-            await self._send_stars_invoice(update, context, order_id)
+            await self._send_invoice(update, context, order_id)
             return
 
         keyboard = [[
@@ -68,14 +72,17 @@ class TelegramBotHandler:
             reply_markup=reply_markup,
         )
 
-    # ── Send Telegram Stars invoice ────────────────────────────────────────
-    async def _send_stars_invoice(
+    # ── Send native Telegram invoice (Stars / Click / Payme) ─────────────
+    async def _send_invoice(
         self,
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
         order_id: str,
     ) -> None:
-        """Fetch order from backend API and send a Telegram Stars invoice."""
+        """
+        Fetch order from backend API and send a native Telegram invoice.
+        Works for all 3 providers — just different provider_token + currency.
+        """
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 res = await client.get(f"{API_BASE_URL}/api/payments/order/{order_id}")
@@ -88,8 +95,25 @@ class TelegramBotHandler:
                 await update.message.reply_text("✅ Bu buyurtma allaqachon to'langan!")
                 return
 
-            stars_amount = int(order.get("amount", 1))
+            provider = order.get("provider", "telegram_stars")
+            amount = int(order.get("amount", 1))
             book_id = order.get("book_id", 0)
+
+            # Resolve provider_token and currency
+            if provider == "click":
+                provider_token = CLICK_PROVIDER_TOKEN
+                currency = "UZS"
+                # Telegram expects amount in smallest unit (tiyins for UZS)
+                invoice_amount = amount * 100
+            elif provider == "payme":
+                provider_token = PAYME_PROVIDER_TOKEN
+                currency = "UZS"
+                invoice_amount = amount * 100
+            else:
+                # Telegram Stars
+                provider_token = ""
+                currency = "XTR"
+                invoice_amount = amount  # Stars are whole units
 
             # Fetch book title
             title = f"Kitob #{book_id}"
@@ -101,17 +125,26 @@ class TelegramBotHandler:
             except Exception:
                 pass
 
-            # Send invoice with provider_token="" for Telegram Stars (XTR)
+            provider_labels = {
+                "telegram_stars": "⭐ Stars",
+                "click": "🟢 Click",
+                "payme": "💙 Payme",
+            }
+            provider_label = provider_labels.get(provider, provider)
+
             await context.bot.send_invoice(
                 chat_id=update.effective_chat.id,
                 title=f"📕 {title}",
-                description=f"SAHIFALAB kitob sotib olish\nBuyurtma: {order_id}",
-                payload=order_id,                     # we get this back in successful_payment
-                provider_token="",                    # empty string = Telegram Stars
-                currency="XTR",                       # Telegram Stars currency
-                prices=[LabeledPrice(label=title, amount=stars_amount)],
+                description=f"SAHIFALAB kitob sotib olish ({provider_label})\nBuyurtma: {order_id}",
+                payload=order_id,
+                provider_token=provider_token,
+                currency=currency,
+                prices=[LabeledPrice(label=title, amount=invoice_amount)],
             )
-            logger.info(f"[Stars] Invoice sent: order={order_id} stars={stars_amount}")
+            logger.info(
+                f"[Payment] Invoice sent: order={order_id} provider={provider} "
+                f"amount={invoice_amount} {currency}"
+            )
 
         except Exception as e:
             logger.error(f"[Stars] Invoice error: {e}")
@@ -122,7 +155,7 @@ class TelegramBotHandler:
     # ── Pre-checkout query — must answer within 10 seconds ─────────────────
     async def pre_checkout(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         query = update.pre_checkout_query
-        logger.info(f"[Stars] pre_checkout: payload={query.invoice_payload}")
+        logger.info(f"[Payment] pre_checkout: payload={query.invoice_payload}")
         # Always approve — real validation already happened when creating the order
         await query.answer(ok=True)
 
@@ -131,21 +164,21 @@ class TelegramBotHandler:
         payment = update.message.successful_payment
         order_id = payment.invoice_payload
         charge_id = payment.telegram_payment_charge_id
-        logger.info(f"[Stars] Payment OK: order={order_id} charge={charge_id}")
+        logger.info(f"[Payment] Payment OK: order={order_id} charge={charge_id}")
 
         # Tell backend to mark order as completed
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 res = await client.post(
-                    f"{API_BASE_URL}/api/payments/telegram-stars/complete",
+                    f"{API_BASE_URL}/api/payments/complete-order",
                     params={
                         "order_id": order_id,
                         "telegram_payment_charge_id": charge_id,
                     },
                 )
-                logger.info(f"[Stars] Backend complete response: {res.status_code} {res.text}")
+                logger.info(f"[Payment] Backend complete response: {res.status_code} {res.text}")
         except Exception as e:
-            logger.error(f"[Stars] Backend complete error: {e}")
+            logger.error(f"[Payment] Backend complete error: {e}")
 
         await update.message.reply_text(
             "🎉 To'lov muvaffaqiyatli amalga oshirildi!\n\n"

@@ -238,27 +238,12 @@ class ApiService {
     })
   }
 
-  /** Create Telegram Stars order → returns order_id for deep link */
-  async createStarsOrder(bookId: number, telegramId: number) {
-    return this.axiosInstance.post('/api/payments/telegram-stars/create-order', {
+  /** Create payment order for any provider (telegram_stars | click | payme) */
+  async createPaymentOrder(bookId: number, telegramId: number, provider: string) {
+    return this.axiosInstance.post('/api/payments/create-order', {
       book_id: bookId,
       telegram_id: telegramId,
-    })
-  }
-
-  /** Create Click order → returns checkout_url */
-  async createClickOrder(bookId: number, telegramId: number) {
-    return this.axiosInstance.post('/api/payments/click/create-order', {
-      book_id: bookId,
-      telegram_id: telegramId,
-    })
-  }
-
-  /** Create Payme order → returns checkout_url */
-  async createPaymeOrder(bookId: number, telegramId: number) {
-    return this.axiosInstance.post('/api/payments/payme/create-order', {
-      book_id: bookId,
-      telegram_id: telegramId,
+      provider,
     })
   }
 
