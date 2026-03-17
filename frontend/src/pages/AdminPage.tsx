@@ -29,6 +29,8 @@ interface AdminBook {
   author: string
   price: number
   is_paid: boolean
+  file_url: string
+  thumbnail_url: string
   downloads: number
   rating: number
   created_at: string
@@ -128,6 +130,11 @@ const AdminPage: React.FC = () => {
     title: '', author: '', description: '', price: 0,
     is_paid: false, file_url: '', thumbnail_url: '', category: 'programming',
   })
+  // PDF upload (Supabase Storage)
+  const [bookPdfFile, setBookPdfFile] = useState<File | null>(null)
+  const [bookPdfUploading, setBookPdfUploading] = useState(false)
+  const [bookPdfPercent, setBookPdfPercent] = useState(0)
+  const [bookPdfMsg, setBookPdfMsg] = useState('')
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -354,6 +361,56 @@ const AdminPage: React.FC = () => {
       setBookMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
     } finally {
       setBookSaving(false)
+    }
+  }
+
+  // ── Book PDF upload (Supabase Storage) ────────────────────────────────────
+  const handleUploadBookPdf = async (target: 'new' | 'edit') => {
+    if (!bookPdfFile) { setBookPdfMsg('❌ PDF faylni tanlang'); return }
+    const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  as string | undefined
+    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+    if (!supabaseUrl || !supabaseAnon) {
+      setBookPdfMsg('❌ Supabase env varlarini sozlang')
+      return
+    }
+    setBookPdfUploading(true)
+    setBookPdfMsg('⬆️ Yuklanmoqda…')
+    setBookPdfPercent(0)
+    try {
+      const ext      = bookPdfFile.name.split('.').pop()?.toLowerCase() || 'pdf'
+      const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const endpoint = `${supabaseUrl}/storage/v1/object/books/${filename}`
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', endpoint)
+        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnon}`)
+        xhr.setRequestHeader('Content-Type', bookPdfFile.type || 'application/pdf')
+        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setBookPdfPercent(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status === 200 || xhr.status === 201) resolve()
+          else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.message || `Xato: ${xhr.status}`)) }
+            catch { reject(new Error(`Xato: ${xhr.status}`)) }
+          }
+        }
+        xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
+        xhr.send(bookPdfFile)
+      })
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/books/${filename}`
+      if (target === 'new') {
+        setNewBook(prev => ({ ...prev, file_url: publicUrl }))
+      } else if (editingBook) {
+        setEditingBook(prev => prev ? { ...prev, file_url: publicUrl } : prev)
+      }
+      setBookPdfMsg(`✅ Yuklandi!`)
+      setBookPdfFile(null)
+    } catch (err: any) {
+      setBookPdfMsg(`❌ ${err?.message || 'Xato'}`)
+    } finally {
+      setBookPdfUploading(false)
     }
   }
 
@@ -881,7 +938,6 @@ const AdminPage: React.FC = () => {
                   { field: 'author', label: 'Muallif', type: 'text' },
                   { field: 'description', label: 'Tavsif', type: 'textarea' },
                   { field: 'price', label: 'Narx (UZS)', type: 'number' },
-                  { field: 'file_url', label: 'PDF URL', type: 'text' },
                   { field: 'thumbnail_url', label: 'Muqova URL', type: 'text' },
                   { field: 'category', label: 'Kategoriya', type: 'text' },
                 ] as { field: keyof typeof newBook; label: string; type: string }[]).map(({ field, label, type }) => (
@@ -904,6 +960,47 @@ const AdminPage: React.FC = () => {
                     )}
                   </div>
                 ))}
+
+                {/* PDF file upload → Supabase Storage */}
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    PDF fayl <span className="text-blue-500">(Supabase-ga yuklanadi)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                      <span>📄</span>
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF tanlang…'}</span>
+                      <input type="file" accept=".pdf,application/pdf" className="hidden"
+                        onChange={e => { setBookPdfFile(e.target.files?.[0] || null); setBookPdfMsg('') }} />
+                    </label>
+                    <button
+                      onClick={() => handleUploadBookPdf('new')}
+                      disabled={!bookPdfFile || bookPdfUploading}
+                      className="shrink-0 px-3 py-2 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-50"
+                    >
+                      {bookPdfUploading ? `${bookPdfPercent}%` : '⬆ Yuklash'}
+                    </button>
+                  </div>
+                  {newBook.file_url ? (
+                    <p className="text-xs text-green-600 dark:text-green-400 mt-1 truncate">✅ {newBook.file_url}</p>
+                  ) : (
+                    <div className="mt-1">
+                      <input
+                        type="text"
+                        placeholder="Yoki PDF URL ni qo'lda kiriting"
+                        value={newBook.file_url}
+                        onChange={e => setNewBook({ ...newBook, file_url: e.target.value })}
+                        className="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sahifa-500"
+                      />
+                    </div>
+                  )}
+                  {bookPdfMsg && <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>}
+                  {bookPdfUploading && (
+                    <div className="mt-1.5 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${bookPdfPercent}%` }} />
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     id="new_is_paid"
@@ -940,17 +1037,53 @@ const AdminPage: React.FC = () => {
                   { field: 'title', label: 'Sarlavha', type: 'text' },
                   { field: 'author', label: 'Muallif', type: 'text' },
                   { field: 'price', label: 'Narx (UZS)', type: 'number' },
+                  { field: 'thumbnail_url', label: 'Muqova URL', type: 'text' },
                 ] as { field: keyof AdminBook; label: string; type: string }[]).map(({ field, label, type }) => (
                   <div key={field}>
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</label>
                     <input
                       type={type}
-                      value={(editingBook as any)[field]}
+                      value={(editingBook as any)[field] ?? ''}
                       onChange={(e) => setEditingBook({ ...editingBook, [field]: type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value } as AdminBook)}
                       className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
                     />
                   </div>
                 ))}
+
+                {/* PDF upload for edit */}
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    PDF fayl <span className="text-blue-500">(yangi fayl yuklash)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                      <span>📄</span>
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF tanlang…'}</span>
+                      <input type="file" accept=".pdf,application/pdf" className="hidden"
+                        onChange={e => { setBookPdfFile(e.target.files?.[0] || null); setBookPdfMsg('') }} />
+                    </label>
+                    <button
+                      onClick={() => handleUploadBookPdf('edit')}
+                      disabled={!bookPdfFile || bookPdfUploading}
+                      className="shrink-0 px-3 py-2 bg-blue-600 text-white text-xs rounded-lg disabled:opacity-50"
+                    >
+                      {bookPdfUploading ? `${bookPdfPercent}%` : '⬆ Yuklash'}
+                    </button>
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Yoki PDF URL ni qo'lda kiriting"
+                    value={editingBook.file_url ?? ''}
+                    onChange={e => setEditingBook({ ...editingBook, file_url: e.target.value })}
+                    className="w-full mt-1 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sahifa-500"
+                  />
+                  {bookPdfMsg && <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>}
+                  {bookPdfUploading && (
+                    <div className="mt-1.5 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${bookPdfPercent}%` }} />
+                    </div>
+                  )}
+                </div>
                 <div className="flex items-center gap-2">
                   <input
                     id="edit_is_paid"

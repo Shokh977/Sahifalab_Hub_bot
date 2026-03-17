@@ -5,6 +5,7 @@ import MenuGrid from './components/MenuGrid'
 import StudyWithMe from './pages/StudyPage'
 import QuizPage from './pages/QuizPage'
 import KitoblarPage from './pages/KitoblarPage'
+import BookDetailPage from './pages/BookDetailPage'
 import ResourcesPage from './pages/ResourcesPage'
 import AboutPage from './pages/AboutPage'
 import AdminPage from './pages/AdminPage'
@@ -77,6 +78,7 @@ const App: React.FC = () => {
             <Route path="/study" element={<StudyWithMe />} />
             <Route path="/quiz" element={<QuizPage />} />
             <Route path="/kitoblar" element={<KitoblarPage />} />
+            <Route path="/kitoblar/:id" element={<BookDetailPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/admin" element={<AdminRoute />} />

@@ -249,11 +249,12 @@ class BookResponse(BaseModel):
     description: str
     price: float
     is_paid: bool
+    file_url: Optional[str] = None
     category: str
     downloads: int
     rating: float
-    thumbnail_url: Optional[str]
-    
+    thumbnail_url: Optional[str] = None
+
     class Config:
         from_attributes = True
 

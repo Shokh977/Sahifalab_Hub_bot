@@ -130,9 +130,7 @@ class ApiService {
   }
 
   async downloadBook(bookId: number) {
-    return this.axiosInstance.get(`/api/books/${bookId}/download`, {
-      responseType: 'blob',
-    })
+    return this.axiosInstance.get(`/api/books/${bookId}/download`)
   }
 
   // Resources endpoints
