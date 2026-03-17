@@ -10,7 +10,7 @@
  *   • Link to Leaderboard
  */
 
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -19,6 +19,7 @@ import {
   levelBounds,
   formatFocusTime,
 } from '../context/progressStore'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
 interface BadgeDef {
@@ -201,11 +202,15 @@ const XpRing: React.FC<{ progress: number; level: number }> = ({ progress, level
 // ── Page ──────────────────────────────────────────────────────────────────────
 const CabinetPage: React.FC = () => {
   const navigate = useNavigate()
+  const { user: tgUser } = useTelegramWebApp()
   const {
     telegramId, firstName, username,
     totalXP, focusSeconds, level, quizzesCompleted,
     isLoading,
   } = useProgressStore()
+
+  const [photoError, setPhotoError] = useState(false)
+  const photoUrl = (!photoError && tgUser?.photo_url) ? tgUser.photo_url : null
 
   const progress      = levelProgress(totalXP)
   const { start, end} = levelBounds(level)
@@ -243,13 +248,30 @@ const CabinetPage: React.FC = () => {
         className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 rounded-3xl p-5 shadow-sm border border-gray-100 dark:border-gray-700"
       >
         <div className="flex items-center gap-4">
-          {/* Avatar */}
-          <div
-            className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarColor(telegramId)} flex items-center justify-center shadow-md flex-shrink-0`}
-          >
-            <span className="text-2xl font-black text-white">
-              {displayName.charAt(0).toUpperCase()}
-            </span>
+          {/* Avatar — Telegram photo if available, letter fallback */}
+          <div className="flex-shrink-0 relative">
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt={displayName}
+                onError={() => setPhotoError(true)}
+                className="w-16 h-16 rounded-2xl object-cover shadow-md ring-2 ring-white dark:ring-gray-700"
+              />
+            ) : (
+              <div
+                className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarColor(telegramId)} flex items-center justify-center shadow-md`}
+              >
+                <span className="text-2xl font-black text-white">
+                  {displayName.charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+            {/* Level badge chip overlaid on bottom-right of avatar */}
+            <div
+              className={`absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[9px] font-black shadow-md border border-white dark:border-gray-800`}
+            >
+              {level}
+            </div>
           </div>
 
           {/* Name + handle */}

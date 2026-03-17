@@ -10,7 +10,7 @@
  * Tapping anywhere on the bar navigates to /cabinet.
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -20,6 +20,7 @@ import {
   levelProgress,
   formatFocusTime,
 } from '../context/progressStore'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
 // ── Level colour tiers ────────────────────────────────────────────────────────
 function levelGradient(level: number): string {
@@ -47,8 +48,12 @@ function levelLabel(level: number): string {
 // ── Component ─────────────────────────────────────────────────────────────────
 const GlobalProgressBar: React.FC = () => {
   const navigate = useNavigate()
+  const { user: tgUser } = useTelegramWebApp()
   const { totalXP, level, focusSeconds, isInitialized, isSyncing } =
     useProgressStore()
+
+  const [photoError, setPhotoError] = useState(false)
+  const photoUrl = (!photoError && tgUser?.photo_url) ? tgUser.photo_url : null
 
   // Don't render until profile is loaded (avoids flash of level 1)
   if (!isInitialized) return null
@@ -70,16 +75,35 @@ const GlobalProgressBar: React.FC = () => {
     >
       <div className="max-w-md mx-auto flex items-center gap-3">
 
-        {/* ── Level badge ──────────────────────────────────────────────── */}
-        <div
-          className={`flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br ${grad} flex flex-col items-center justify-center shadow-md`}
-        >
-          <span className="text-white text-[10px] font-bold leading-none">
-            {levelLabel(level)}
-          </span>
-          <span className="text-white text-[10px] font-bold leading-none mt-0.5">
-            {level}
-          </span>
+        {/* ── Avatar / Level badge ─────────────────────────────────────── */}
+        <div className="flex-shrink-0 relative">
+          {photoUrl ? (
+            <img
+              src={photoUrl}
+              alt="avatar"
+              onError={() => setPhotoError(true)}
+              className="w-10 h-10 rounded-full object-cover shadow-md ring-2 ring-white dark:ring-gray-800"
+            />
+          ) : (
+            <div
+              className={`w-10 h-10 rounded-full bg-gradient-to-br ${grad} flex flex-col items-center justify-center shadow-md`}
+            >
+              <span className="text-white text-[10px] font-bold leading-none">
+                {levelLabel(level)}
+              </span>
+              <span className="text-white text-[10px] font-bold leading-none mt-0.5">
+                {level}
+              </span>
+            </div>
+          )}
+          {/* Level number chip — shown on top of photo */}
+          {photoUrl && (
+            <div
+              className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center shadow text-white text-[9px] font-black border border-white dark:border-gray-900`}
+            >
+              {level}
+            </div>
+          )}
         </div>
 
         {/* ── XP bar ────────────────────────────────────────────────────── */}
