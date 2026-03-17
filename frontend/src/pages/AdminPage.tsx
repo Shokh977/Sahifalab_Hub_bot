@@ -408,7 +408,12 @@ const AdminPage: React.FC = () => {
       setBookPdfMsg(`✅ Yuklandi!`)
       setBookPdfFile(null)
     } catch (err: any) {
-      setBookPdfMsg(`❌ ${err?.message || 'Xato'}`)
+      const msg: string = err?.message || ''
+      if (msg.toLowerCase().includes('bucket') || msg.toLowerCase().includes('not found')) {
+        setBookPdfMsg('__no_bucket__')
+      } else {
+        setBookPdfMsg(`❌ ${msg || 'Xato'}`)
+      }
     } finally {
       setBookPdfUploading(false)
     }
@@ -994,7 +999,21 @@ const AdminPage: React.FC = () => {
                       />
                     </div>
                   )}
-                  {bookPdfMsg && <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>}
+                  {bookPdfMsg === '__no_bucket__' ? (
+                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
+                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «books» bucket topilmadi</p>
+                      <p className="text-orange-600 dark:text-orange-300">Supabase Storage-da bir marta sozlash kerak:</p>
+                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
+                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
+                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">books</code></li>
+                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
+                        <li>Keyin qayta urinib ko'ring</li>
+                      </ol>
+                      <button onClick={() => setBookPdfMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
+                    </div>
+                  ) : bookPdfMsg ? (
+                    <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>
+                  ) : null}
                   {bookPdfUploading && (
                     <div className="mt-1.5 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
                       <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${bookPdfPercent}%` }} />
@@ -1077,7 +1096,21 @@ const AdminPage: React.FC = () => {
                     onChange={e => setEditingBook({ ...editingBook, file_url: e.target.value })}
                     className="w-full mt-1 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sahifa-500"
                   />
-                  {bookPdfMsg && <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>}
+                  {bookPdfMsg === '__no_bucket__' ? (
+                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
+                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «books» bucket topilmadi</p>
+                      <p className="text-orange-600 dark:text-orange-300">Supabase Storage-da bir marta sozlash kerak:</p>
+                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
+                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
+                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">books</code></li>
+                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
+                        <li>Keyin qayta urinib ko'ring</li>
+                      </ol>
+                      <button onClick={() => setBookPdfMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
+                    </div>
+                  ) : bookPdfMsg ? (
+                    <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>
+                  ) : null}
                   {bookPdfUploading && (
                     <div className="mt-1.5 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
                       <div className="bg-blue-500 h-full rounded-full transition-all" style={{ width: `${bookPdfPercent}%` }} />
