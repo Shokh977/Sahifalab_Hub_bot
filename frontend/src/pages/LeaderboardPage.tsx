@@ -7,7 +7,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
-import { supabase } from '../lib/supabase'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -112,6 +112,11 @@ const LeaderboardPage: React.FC = () => {
   const [lastFetch, setLastFetch] = useState(0)
 
   const fetchLeaderboard = useCallback(async () => {
+    if (!isSupabaseConfigured) {
+      setError('__not_configured__')
+      setLoading(false)
+      return
+    }
     setLoading(true)
     setError(null)
     try {
@@ -151,8 +156,14 @@ const LeaderboardPage: React.FC = () => {
       }
 
       setLastFetch(Date.now())
-    } catch {
-      setError("Ma'lumot yuklab bo'lmadi. Internet aloqasini tekshiring.")
+    } catch (err: any) {
+      const msg = err?.message || err?.error_description || String(err)
+      // Table doesn't exist yet → tell user to run the schema
+      if (msg.includes('relation') && msg.includes('does not exist')) {
+        setError('__no_table__')
+      } else {
+        setError(msg || "Noma'lum xato")
+      }
     } finally {
       setLoading(false)
     }
@@ -195,10 +206,54 @@ const LeaderboardPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Error */}
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-700 dark:text-red-300 text-center">
-          ❌ {error}
+      {/* Error — not configured */}
+      {error === '__not_configured__' && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-4 space-y-3">
+          <p className="text-sm font-bold text-amber-900 dark:text-amber-300">⚙️ Supabase sozlanmagan</p>
+          <p className="text-xs text-amber-800 dark:text-amber-400 leading-relaxed">
+            Liderlar jadvalini ko'rsatish uchun quyidagi sozlamalarni Vercel-ga qo'shing:
+          </p>
+          <div className="bg-white dark:bg-gray-900 rounded-xl p-3 font-mono text-xs space-y-1 text-gray-700 dark:text-gray-300">
+            <p>VITE_SUPABASE_URL = https://xxxx.supabase.co</p>
+            <p>VITE_SUPABASE_ANON_KEY = eyJ...</p>
+          </div>
+          <p className="text-[11px] text-amber-700 dark:text-amber-500">
+            Supabase → Project Settings → API → Project URL &amp; anon key
+          </p>
+        </div>
+      )}
+
+      {/* Error — table missing (SQL schema not run) */}
+      {error === '__no_table__' && (
+        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-2xl p-4 space-y-3">
+          <p className="text-sm font-bold text-orange-900 dark:text-orange-300">🗄️ Jadval yaratilmagan</p>
+          <p className="text-xs text-orange-800 dark:text-orange-400 leading-relaxed">
+            Supabase SQL Editor-da <strong>supabase_schema.sql</strong> faylini ishga tushiring:
+          </p>
+          <div className="bg-white dark:bg-gray-900 rounded-xl p-3 font-mono text-xs text-gray-700 dark:text-gray-300">
+            Supabase → SQL Editor → New Query →<br />
+            supabase_schema.sql kontentini joylashtiring → Run
+          </div>
+          <button
+            onClick={fetchLeaderboard}
+            className="text-xs text-orange-600 dark:text-orange-400 font-semibold underline"
+          >
+            Qayta urinib ko'rish
+          </button>
+        </div>
+      )}
+
+      {/* Error — generic */}
+      {error && error !== '__not_configured__' && error !== '__no_table__' && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 space-y-2">
+          <p className="text-sm font-bold text-red-800 dark:text-red-300">❌ Xato yuz berdi</p>
+          <p className="text-xs text-red-700 dark:text-red-400 font-mono break-all">{error}</p>
+          <button
+            onClick={fetchLeaderboard}
+            className="text-xs text-red-600 dark:text-red-400 font-semibold underline"
+          >
+            Qayta urinib ko'rish
+          </button>
         </div>
       )}
 

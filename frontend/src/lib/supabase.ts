@@ -3,7 +3,13 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  as string
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-if (!SUPABASE_URL || !SUPABASE_ANON) {
+/** True only when both env vars are present and not placeholder values */
+export const isSupabaseConfigured =
+  !!(SUPABASE_URL && SUPABASE_ANON &&
+     !SUPABASE_URL.includes('placeholder') &&
+     SUPABASE_ANON !== 'placeholder')
+
+if (!isSupabaseConfigured) {
   console.warn(
     '[Supabase] VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY is missing. ' +
     'Progress will not be persisted. Add both vars to your .env / Vercel env settings.',
