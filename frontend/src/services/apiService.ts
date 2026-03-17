@@ -229,22 +229,42 @@ class ApiService {
     })
   }
 
-  async initiateStarsPayment(bookId: number, userId: number) {
-    return this.axiosInstance.post('/api/payments/telegram-stars/pay', null, {
-      params: { book_id: bookId, user_id: userId },
+  // ─── Payment endpoints ────────────────────────────────────────────────────
+
+  /** Check if user already purchased a paid book */
+  async checkPurchase(bookId: number, telegramId: number) {
+    return this.axiosInstance.get('/api/payments/check-purchase', {
+      params: { book_id: bookId, telegram_id: telegramId },
     })
   }
 
-  async initiateClickPayment(bookId: number, merchantUserId: string) {
-    return this.axiosInstance.post('/api/payments/click/prepare', null, {
-      params: { book_id: bookId, merchant_user_id: merchantUserId },
+  /** Create Telegram Stars order → returns order_id for deep link */
+  async createStarsOrder(bookId: number, telegramId: number) {
+    return this.axiosInstance.post('/api/payments/telegram-stars/create-order', {
+      book_id: bookId,
+      telegram_id: telegramId,
     })
   }
 
-  async initiatePaymePayment(bookId: number, phone: string) {
-    return this.axiosInstance.post('/api/payments/payme/subscribe', null, {
-      params: { book_id: bookId, phone },
+  /** Create Click order → returns checkout_url */
+  async createClickOrder(bookId: number, telegramId: number) {
+    return this.axiosInstance.post('/api/payments/click/create-order', {
+      book_id: bookId,
+      telegram_id: telegramId,
     })
+  }
+
+  /** Create Payme order → returns checkout_url */
+  async createPaymeOrder(bookId: number, telegramId: number) {
+    return this.axiosInstance.post('/api/payments/payme/create-order', {
+      book_id: bookId,
+      telegram_id: telegramId,
+    })
+  }
+
+  /** Check order status */
+  async getOrderStatus(orderId: string) {
+    return this.axiosInstance.get(`/api/payments/order/${orderId}`)
   }
 
   // ─── Audio / Ambient Sound endpoints ─────────────────────────────────────

@@ -1,10 +1,15 @@
 /**
  * BookDetailPage — /kitoblar/:id
- * Shows full book info, free download button or paid purchase flow.
+ * Shows full book info.
+ * Free books → direct download.
+ * Paid books → Telegram Stars / Click / Payme payment flow with purchase check.
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import apiService from '@services/apiService'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+
+// ── Types ──────────────────────────────────────────────────────────────────
 
 interface Book {
   id: number
@@ -19,6 +24,8 @@ interface Book {
   downloads: number
   rating: number
 }
+
+// ── Visual helpers ──────────────────────────────────────────────────────────
 
 const COVER_GRADIENTS: Record<string, string> = {
   programming: 'from-indigo-500 to-purple-600',
@@ -43,15 +50,26 @@ const CATEGORY_LABELS: Record<string, string> = {
   design:      '🎨 Dizayn',
 }
 
+// ── Main Component ─────────────────────────────────────────────────────────
+
 const BookDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { user } = useTelegramWebApp()
+
   const [book, setBook] = useState<Book | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Download (free books)
   const [downloading, setDownloading] = useState(false)
   const [dlMsg, setDlMsg] = useState('')
 
+  // Purchase state (paid books)
+  const [purchased, setPurchased] = useState(false)
+  const [purchaseChecking, setPurchaseChecking] = useState(false)
+
+  // Load book
   useEffect(() => {
     if (!id) return
     apiService.getBook(Number(id))
@@ -60,18 +78,24 @@ const BookDetailPage: React.FC = () => {
       .finally(() => setLoading(false))
   }, [id])
 
-  const handleDownload = async () => {
+  // Check purchase status for paid books
+  useEffect(() => {
+    if (!book?.is_paid || !user?.id) return
+    setPurchaseChecking(true)
+    apiService.checkPurchase(book.id, user.id)
+      .then(r => setPurchased(r.data?.purchased === true))
+      .catch(() => {})
+      .finally(() => setPurchaseChecking(false))
+  }, [book, user])
+
+  const handleDownload = useCallback(async () => {
     if (!book) return
     setDownloading(true)
     setDlMsg('')
     try {
       const res = await apiService.downloadBook(book.id)
       const url: string = res.data?.download_url
-      if (!url) {
-        setDlMsg('❌ Fayl manzili topilmadi')
-        return
-      }
-      // Telegram Mini App blocks window.open — use Telegram's own openLink
+      if (!url) { setDlMsg('❌ Fayl manzili topilmadi'); return }
       if (window.Telegram?.WebApp?.openLink) {
         window.Telegram.WebApp.openLink(url)
       } else {
@@ -83,9 +107,9 @@ const BookDetailPage: React.FC = () => {
     } finally {
       setDownloading(false)
     }
-  }
+  }, [book])
 
-  // ── Loading ───────────────────────────────────────────────────────────────
+  // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="max-w-md mx-auto py-4 px-4 animate-pulse space-y-4">
@@ -96,7 +120,6 @@ const BookDetailPage: React.FC = () => {
             <div className="h-5 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
             <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2" />
             <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full" />
-            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-4/5" />
             <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded-xl mt-4" />
           </div>
         </div>
@@ -121,7 +144,6 @@ const BookDetailPage: React.FC = () => {
 
   const categoryLabel = CATEGORY_LABELS[book.category?.toLowerCase()] ?? book.category
 
-  // ── Main content ──────────────────────────────────────────────────────────
   return (
     <div className="max-w-md mx-auto py-4 px-4 pb-24">
       {/* Back */}
@@ -133,7 +155,7 @@ const BookDetailPage: React.FC = () => {
       </button>
 
       <div className="bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-md">
-        {/* Cover — tall portrait */}
+        {/* Cover */}
         <div className="relative">
           {book.thumbnail_url ? (
             <img
@@ -159,8 +181,7 @@ const BookDetailPage: React.FC = () => {
               <span className="text-8xl">📕</span>
             </div>
           )}
-
-          {/* Free / Price chip */}
+          {/* Price chip */}
           <div className={`absolute top-3 right-3 text-sm font-bold px-3 py-1 rounded-full shadow-lg ${
             book.is_paid ? 'bg-blue-600 text-white' : 'bg-green-500 text-white'
           }`}>
@@ -170,7 +191,6 @@ const BookDetailPage: React.FC = () => {
 
         {/* Info */}
         <div className="p-5 space-y-4">
-          {/* Title + Author */}
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white leading-snug">
               {book.title}
@@ -178,7 +198,7 @@ const BookDetailPage: React.FC = () => {
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{book.author}</p>
           </div>
 
-          {/* Meta row */}
+          {/* Meta */}
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-xs bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-700 dark:text-sahifa-300 px-2.5 py-1 rounded-full font-medium">
               {categoryLabel}
@@ -194,7 +214,7 @@ const BookDetailPage: React.FC = () => {
             </p>
           )}
 
-          {/* Feedback message */}
+          {/* Download message */}
           {dlMsg && (
             <div className={`text-sm px-4 py-2.5 rounded-xl font-medium ${
               dlMsg.startsWith('✅')
@@ -205,34 +225,44 @@ const BookDetailPage: React.FC = () => {
             </div>
           )}
 
-          {/* CTA */}
+          {/* ── CTA ──────────────────────────────────────────────────────── */}
           {book.is_paid ? (
-            <PaidSection book={book} />
+            purchaseChecking ? (
+              <div className="h-12 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse" />
+            ) : purchased ? (
+              /* Already purchased → show download */
+              <div className="space-y-2">
+                <div className="text-center text-xs text-green-600 dark:text-green-400 font-medium bg-green-50 dark:bg-green-900/20 rounded-xl py-2">
+                  ✅ Siz bu kitobni sotib olgansiz
+                </div>
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading || !book.file_url}
+                  className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
+                >
+                  {downloading ? <Spinner /> : <>📥 Yuklab olish</>}
+                </button>
+              </div>
+            ) : (
+              /* Not purchased → payment options */
+              <PaymentSection book={book} telegramId={user?.id ?? 0} onPurchased={() => setPurchased(true)} />
+            )
           ) : (
-            <button
-              onClick={handleDownload}
-              disabled={downloading || !book.file_url}
-              className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
-            >
-              {downloading ? (
-                <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  Yuklanmoqda…
-                </>
-              ) : (
-                <>📥 Yuklab olish</>
+            /* Free book → download */
+            <div>
+              <button
+                onClick={handleDownload}
+                disabled={downloading || !book.file_url}
+                className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
+              >
+                {downloading ? <Spinner /> : <>📥 Yuklab olish</>}
+              </button>
+              {!book.file_url && (
+                <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-2">
+                  Fayl hali qo'shilmagan
+                </p>
               )}
-            </button>
-          )}
-
-          {/* No file fallback */}
-          {!book.is_paid && !book.file_url && (
-            <p className="text-xs text-center text-gray-400 dark:text-gray-500 -mt-2">
-              Fayl hali qo'shilmagan
-            </p>
+            </div>
           )}
         </div>
       </div>
@@ -240,43 +270,199 @@ const BookDetailPage: React.FC = () => {
   )
 }
 
-// ── Paid book purchase section ─────────────────────────────────────────────
-const PaidSection: React.FC<{ book: Book }> = ({ book }) => {
-  const [showOptions, setShowOptions] = useState(false)
+// ── Spinner ─────────────────────────────────────────────────────────────────
+const Spinner: React.FC = () => (
+  <>
+    <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+    </svg>
+    Yuklanmoqda…
+  </>
+)
+
+// ── Payment Section ─────────────────────────────────────────────────────────
+interface PaymentSectionProps {
+  book: Book
+  telegramId: number
+  onPurchased: () => void
+}
+
+const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPurchased }) => {
+  const [open, setOpen] = useState(false)
+  const [loading, setLoading] = useState('')       // which provider is loading
+  const [msg, setMsg] = useState('')
+  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
+  const [polling, setPolling] = useState(false)
+
+  // Poll order status after user goes to external checkout / deep link
+  useEffect(() => {
+    if (!pendingOrderId || !polling) return
+    const interval = setInterval(async () => {
+      try {
+        const res = await apiService.getOrderStatus(pendingOrderId)
+        if (res.data?.status === 'completed') {
+          clearInterval(interval)
+          setPolling(false)
+          setPendingOrderId(null)
+          setMsg('✅ To\'lov muvaffaqiyatli amalga oshirildi!')
+          onPurchased()
+        }
+      } catch { /* continue polling */ }
+    }, 3000)
+    return () => clearInterval(interval)
+  }, [pendingOrderId, polling, onPurchased])
+
+  const openLink = (url: string) => {
+    if (window.Telegram?.WebApp?.openLink) {
+      window.Telegram.WebApp.openLink(url)
+    } else {
+      window.location.href = url
+    }
+  }
+
+  // ── Telegram Stars ──────────────────────────────────────────────────────
+  const handleStars = async () => {
+    if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
+    setLoading('stars')
+    setMsg('')
+    try {
+      const res = await apiService.createStarsOrder(book.id, telegramId)
+      if (res.data.already_purchased) { onPurchased(); return }
+      const orderId = res.data.order_id as string
+      setPendingOrderId(orderId)
+      setPolling(true)
+      setMsg('⏳ Botga o\'ting va to\'lovni yakunlang…')
+      // Deep link → bot sends invoice
+      openLink(`https://t.me/sahifalab_bot?start=pay_${orderId}`)
+    } catch (err: any) {
+      setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
+    } finally {
+      setLoading('')
+    }
+  }
+
+  // ── Click ──────────────────────────────────────────────────────────────
+  const handleClick = async () => {
+    if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
+    setLoading('click')
+    setMsg('')
+    try {
+      const res = await apiService.createClickOrder(book.id, telegramId)
+      if (res.data.already_purchased) { onPurchased(); return }
+      const orderId = res.data.order_id as string
+      const checkoutUrl = res.data.checkout_url as string
+      setPendingOrderId(orderId)
+      setPolling(true)
+      setMsg('⏳ Click orqali to\'lang va qaytib keling…')
+      openLink(checkoutUrl)
+    } catch (err: any) {
+      setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
+    } finally {
+      setLoading('')
+    }
+  }
+
+  // ── Payme ──────────────────────────────────────────────────────────────
+  const handlePayme = async () => {
+    if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
+    setLoading('payme')
+    setMsg('')
+    try {
+      const res = await apiService.createPaymeOrder(book.id, telegramId)
+      if (res.data.already_purchased) { onPurchased(); return }
+      const orderId = res.data.order_id as string
+      const checkoutUrl = res.data.checkout_url as string
+      setPendingOrderId(orderId)
+      setPolling(true)
+      setMsg('⏳ Payme orqali to\'lang va qaytib keling…')
+      openLink(checkoutUrl)
+    } catch (err: any) {
+      setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
+    } finally {
+      setLoading('')
+    }
+  }
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all"
+      >
+        💳 Sotib olish — {book.price.toLocaleString()} UZS
+      </button>
+    )
+  }
 
   return (
-    <div className="space-y-3">
-      {!showOptions ? (
-        <button
-          onClick={() => setShowOptions(true)}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all"
-        >
-          💳 Sotib olish — {book.price.toLocaleString()} UZS
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 text-center">
-            To'lov usulini tanlang:
-          </p>
-          {/* Click.uz */}
-          <a
-            href={`https://t.me/sahifalab_bot?start=buy_${book.id}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-3 w-full bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30 border border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-400 px-4 py-3 rounded-xl text-sm font-medium transition-colors"
-          >
-            <span className="text-xl">🤖</span>
-            <span>Telegram orqali to'lash</span>
-            <span className="ml-auto text-xs opacity-60">→</span>
-          </a>
-          <button
-            onClick={() => setShowOptions(false)}
-            className="w-full text-xs text-gray-400 dark:text-gray-500 py-2"
-          >
-            Bekor qilish
-          </button>
+    <div className="space-y-2.5">
+      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 text-center">
+        To'lov usulini tanlang
+      </p>
+
+      {/* Feedback */}
+      {msg && (
+        <div className={`text-xs px-3 py-2.5 rounded-xl font-medium text-center ${
+          msg.startsWith('✅') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+          : msg.startsWith('⏳') ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+          : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+        }`}>
+          {msg}
         </div>
       )}
+
+      {/* Polling indicator */}
+      {polling && (
+        <div className="flex items-center justify-center gap-2 text-xs text-amber-600 dark:text-amber-400">
+          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+          </svg>
+          To'lov kutilmoqda…
+        </div>
+      )}
+
+      {/* ⭐ Telegram Stars */}
+      <button
+        onClick={handleStars}
+        disabled={loading === 'stars'}
+        className="flex items-center gap-3 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.97] text-white px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-md transition-all disabled:opacity-60"
+      >
+        <span className="text-xl">⭐</span>
+        <span className="flex-1 text-left">Telegram Stars</span>
+        <span className="text-xs opacity-80">{Math.max(1, Math.round(book.price / 250))} ⭐</span>
+      </button>
+
+      {/* 💳 Click */}
+      <button
+        onClick={handleClick}
+        disabled={loading === 'click'}
+        className="flex items-center gap-3 w-full bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-[0.97] border border-gray-200 dark:border-gray-600 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
+      >
+        <span className="text-xl">🟢</span>
+        <span className="flex-1 text-left text-gray-800 dark:text-white">Click</span>
+        <span className="text-xs text-gray-400">{book.price.toLocaleString()} UZS</span>
+      </button>
+
+      {/* 💙 Payme */}
+      <button
+        onClick={handlePayme}
+        disabled={loading === 'payme'}
+        className="flex items-center gap-3 w-full bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-[0.97] border border-gray-200 dark:border-gray-600 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
+      >
+        <span className="text-xl">💙</span>
+        <span className="flex-1 text-left text-gray-800 dark:text-white">Payme</span>
+        <span className="text-xs text-gray-400">{book.price.toLocaleString()} UZS</span>
+      </button>
+
+      {/* Cancel */}
+      <button
+        onClick={() => { setOpen(false); setMsg(''); setPolling(false) }}
+        className="w-full text-xs text-gray-400 dark:text-gray-500 py-1.5"
+      >
+        Bekor qilish
+      </button>
     </div>
   )
 }

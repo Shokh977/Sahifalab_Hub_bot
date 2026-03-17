@@ -26,6 +26,15 @@ class Settings(BaseSettings):
     # Comma-separated Telegram IDs of admins, e.g. "123456789,987654321"
     ADMIN_TELEGRAM_IDS: List[int] = []
 
+    # Payment — Click.uz
+    CLICK_MERCHANT_ID: str = ""
+    CLICK_SERVICE_ID: str = ""
+    CLICK_SECRET_KEY: str = ""
+
+    # Payment — Payme.uz
+    PAYME_MERCHANT_ID: str = ""
+    PAYME_SECRET_KEY: str = ""
+
     @field_validator('ADMIN_TELEGRAM_IDS', mode='before')
     @classmethod
     def parse_admin_ids(cls, v):

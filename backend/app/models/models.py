@@ -182,6 +182,24 @@ class Book(Base):
     is_available = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class BookPurchase(Base):
+    """Tracks paid book purchases across all payment providers."""
+    __tablename__ = "book_purchase"
+
+    id = Column(Integer, primary_key=True, index=True)
+    book_id = Column(Integer, ForeignKey("book.id"), index=True)
+    telegram_id = Column(Integer, index=True)                   # buyer
+    provider = Column(String(30), index=True)                   # telegram_stars | click | payme
+    provider_transaction_id = Column(String(255), nullable=True) # external tx id
+    order_id = Column(String(100), unique=True, index=True)     # our internal ref
+    amount = Column(Float)
+    currency = Column(String(10), default="UZS")                # UZS | XTR
+    status = Column(String(20), default="pending", index=True)  # pending | completed | cancelled | refunded
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime, nullable=True)
+
+
 class Resource(Base):
     __tablename__ = "resource"
     
