@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navig
 import { motion } from 'framer-motion'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
+import ThemeToggle from './components/ThemeToggle'
 import StudyWithMe from './pages/StudyPage'
 import QuizPage from './pages/QuizPage'
 import KitoblarPage from './pages/KitoblarPage'
@@ -30,20 +31,23 @@ const HomePage: React.FC = () => {
         transition={{ duration: 0.5, ease: 'easeOut' }}
         className="mb-8"
       >
-        <h1 className="text-3xl font-extrabold tracking-tight">
-          <span className="bg-gradient-to-r from-sahifa-400 via-sahifa-500 to-sahifa-600 bg-clip-text text-transparent">
-            SAHIFALAB
-          </span>
-        </h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-extrabold tracking-tight">
+            <span className="bg-gradient-to-r from-sahifa-400 via-sahifa-500 to-sahifa-600 bg-clip-text text-transparent">
+              SAHIFALAB
+            </span>
+          </h1>
+          <ThemeToggle />
+        </div>
 
         {/* Sam speech bubble */}
         <div className="speech-bubble mt-4 px-4 py-3">
-          <p className="text-sm text-gray-200 leading-relaxed">
+          <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
             {user?.first_name
               ? `Assalomu alaykum, ${user.first_name}! 👋`
               : 'Assalomu alaykum! 👋'}
           </p>
-          <p className="text-xs text-sahifa-400/80 mt-1 italic">
+          <p className="text-xs text-sahifa-600/80 dark:text-sahifa-400/80 mt-1 italic">
             — Sam, sizning mentoringiz 📚
           </p>
         </div>
@@ -75,10 +79,10 @@ const HomePage: React.FC = () => {
         className="mt-12 text-center space-y-1.5"
       >
         <div className="w-12 h-px bg-gradient-to-r from-transparent via-sahifa-500/30 to-transparent mx-auto" />
-        <p className="text-[11px] text-slate-500 tracking-wide font-medium">
+        <p className="text-[11px] text-slate-400 dark:text-slate-500 tracking-wide font-medium">
           @Sahifalab_hub_bot
         </p>
-        <p className="text-[10px] text-slate-600">
+        <p className="text-[10px] text-slate-500 dark:text-slate-600">
           Powered by SAHIFALAB · 2024
         </p>
       </motion.footer>
@@ -112,7 +116,7 @@ const AdminRoute: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <div className="min-h-screen bg-slate-950">
+    <div className="min-h-screen bg-[#FAFAFA] dark:bg-slate-950 transition-colors duration-300">
       <Router>
         <ProgressProvider>
           <TelegramBackButtonHandler />

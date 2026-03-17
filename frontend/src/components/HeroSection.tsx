@@ -64,15 +64,15 @@ export const HeroSection: React.FC = () => {
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
       className="relative rounded-3xl mb-8 overflow-hidden"
     >
-      {/* Gradient background */}
-      <div className="absolute inset-0 bg-gradient-to-br from-sahifa-600/90 via-sahifa-700/80 to-red-900/70" />
+      {/* Gradient background — light: subtle warm, dark: deep orange-red */}
+      <div className="absolute inset-0 bg-gradient-to-br from-sahifa-100/80 via-sahifa-50 to-orange-50 dark:from-sahifa-600/90 dark:via-sahifa-700/80 dark:to-red-900/70" />
 
       {/* Glassmorphism overlay */}
-      <div className="absolute inset-0 backdrop-blur-sm bg-white/[0.03]" />
+      <div className="absolute inset-0 backdrop-blur-sm bg-white/30 dark:bg-white/[0.03]" />
 
       {/* Decorative elements */}
-      <div className="absolute -top-6 -right-6 w-24 h-24 bg-sahifa-400/20 rounded-full blur-2xl" />
-      <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-orange-300/15 rounded-full blur-xl" />
+      <div className="absolute -top-6 -right-6 w-24 h-24 bg-sahifa-300/20 dark:bg-sahifa-400/20 rounded-full blur-2xl" />
+      <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-orange-200/25 dark:bg-orange-300/15 rounded-full blur-xl" />
 
       {/* Content */}
       <div className="relative p-6 space-y-4">
@@ -81,22 +81,22 @@ export const HeroSection: React.FC = () => {
           <span className="text-2xl animate-float">
             {isAnnouncement ? '📢' : '✦'}
           </span>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-sahifa-200/80 font-semibold">
+          <p className="text-[11px] uppercase tracking-[0.2em] text-sahifa-700/80 dark:text-sahifa-200/80 font-semibold">
             {isAnnouncement ? 'E\'lon' : 'Kun iqtibosi'}
           </p>
         </div>
 
         {/* Quote */}
-        <blockquote className="text-lg font-semibold leading-relaxed text-white/95 tracking-wide">
-          <span className="text-sahifa-300/60 text-2xl leading-none mr-1">"</span>
+        <blockquote className="text-lg font-semibold leading-relaxed text-gray-900/90 dark:text-white/95 tracking-wide">
+          <span className="text-sahifa-400/60 dark:text-sahifa-300/60 text-2xl leading-none mr-1">"</span>
           {hero.text}
-          <span className="text-sahifa-300/60 text-2xl leading-none ml-1">"</span>
+          <span className="text-sahifa-400/60 dark:text-sahifa-300/60 text-2xl leading-none ml-1">"</span>
         </blockquote>
 
         {/* Author */}
         <div className="flex items-center gap-2 pt-1">
           <div className="w-6 h-px bg-gradient-to-r from-sahifa-400/50 to-transparent" />
-          <p className="text-sm font-medium text-sahifa-200/70 italic">
+          <p className="text-sm font-medium text-sahifa-700/70 dark:text-sahifa-200/70 italic">
             {hero.author}
           </p>
         </div>

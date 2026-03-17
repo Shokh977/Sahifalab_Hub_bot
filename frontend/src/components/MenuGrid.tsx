@@ -122,8 +122,8 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick, fullWidth }) => (
     onClick={onClick}
     className={`
       relative overflow-hidden
-      bg-slate-800/60 backdrop-blur-sm
-      border border-slate-700/50
+      bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm
+      border border-gray-200/60 dark:border-slate-700/50
       rounded-3xl p-5
       transition-all duration-300
       card-glow
@@ -146,10 +146,10 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick, fullWidth }) => (
       </div>
 
       <div className={fullWidth ? 'text-left' : ''}>
-        <h3 className="font-bold text-sm text-white/90 leading-tight">
+        <h3 className="font-bold text-sm text-gray-900 dark:text-white/90 leading-tight">
           {item.title}
         </h3>
-        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+        <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5 leading-snug">
           {item.description}
         </p>
       </div>
@@ -201,7 +201,7 @@ export const MenuGrid: React.FC = () => {
           variants={cardVariant}
           whileTap={{ scale: 0.96 }}
           onClick={() => navigate('/admin')}
-          className="col-span-2 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-slate-800/40 border border-slate-700/30 text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
+          className="col-span-2 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-gray-100/60 dark:bg-slate-800/40 border border-gray-200/50 dark:border-slate-700/30 text-gray-400 dark:text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
         >
           <span>🔐</span>
           <span>Admin Panel</span>

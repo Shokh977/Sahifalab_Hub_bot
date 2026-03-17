@@ -23,6 +23,7 @@ interface TelegramWebApp {
     user?: TelegramUser
     [key: string]: unknown
   }
+  colorScheme: 'light' | 'dark'
   ready: () => void
   expand: () => void
   close: () => void

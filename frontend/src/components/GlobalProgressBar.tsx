@@ -69,7 +69,7 @@ const GlobalProgressBar: React.FC = () => {
       role="button"
       tabIndex={0}
       aria-label={`Daraja ${level} — kabinetni ochish`}
-      className="sticky top-0 z-50 bg-slate-950/90 backdrop-blur-xl border-b border-sahifa-500/10 px-4 py-2.5 cursor-pointer select-none active:opacity-80 transition-opacity"
+      className="sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-sahifa-500/10 px-4 py-2.5 cursor-pointer select-none active:opacity-80 transition-all duration-300"
       onClick={() => navigate('/cabinet')}
       onKeyDown={(e) => e.key === 'Enter' && navigate('/cabinet')}
     >
@@ -82,7 +82,7 @@ const GlobalProgressBar: React.FC = () => {
               src={photoUrl}
               alt="avatar"
               onError={() => setPhotoError(true)}
-              className="w-10 h-10 rounded-full object-cover shadow-glow-sm ring-2 ring-sahifa-500/30"
+              className="w-10 h-10 rounded-full object-cover shadow-glow-sm ring-2 ring-sahifa-500/20 dark:ring-sahifa-500/30"
             />
           ) : (
             <div
@@ -99,7 +99,7 @@ const GlobalProgressBar: React.FC = () => {
           {/* Gold star level chip */}
           {photoUrl && (
             <div
-              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-sahifa-500 flex items-center justify-center shadow-glow-sm text-white text-[9px] font-black border border-slate-950"
+              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-sahifa-500 flex items-center justify-center shadow-glow-sm text-white text-[9px] font-black border border-white dark:border-slate-950"
             >
               {level}
             </div>
@@ -109,16 +109,16 @@ const GlobalProgressBar: React.FC = () => {
         {/* ── XP bar ────────────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-sahifa-300/90 truncate">
+            <span className="text-xs font-semibold text-sahifa-600 dark:text-sahifa-300/90 truncate">
               ⭐ Daraja&nbsp;{level}
             </span>
-            <span className="text-[10px] text-slate-500 tabular-nums ml-2 flex-shrink-0">
+            <span className="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums ml-2 flex-shrink-0">
               {xpInLevel.toLocaleString()}&nbsp;/&nbsp;{xpForLevel.toLocaleString()}&nbsp;XP
             </span>
           </div>
 
           {/* Neon progress track */}
-          <div className="h-2 bg-slate-800 rounded-full overflow-hidden relative">
+          <div className="h-2 bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden relative">
             <motion.div
               className="h-full rounded-full neon-bar"
               initial={false}
@@ -129,9 +129,9 @@ const GlobalProgressBar: React.FC = () => {
         </div>
 
         {/* ── Focus clock ───────────────────────────────────────────────── */}
-        <div className="flex-shrink-0 flex items-center gap-1 text-xs text-slate-400">
+        <div className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400">
           <span className="text-sm">⏱</span>
-          <span className="font-mono font-semibold tabular-nums text-sahifa-400/80">
+          <span className="font-mono font-semibold tabular-nums text-sahifa-500/80 dark:text-sahifa-400/80">
             {formatFocusTime(focusSeconds)}
           </span>
         </div>
