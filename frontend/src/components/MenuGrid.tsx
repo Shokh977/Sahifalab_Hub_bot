@@ -66,6 +66,26 @@ const MENU_ITEMS: MenuItem[] = [
     color: 'from-pink-500 to-pink-600',
     bgGradient: 'bg-gradient-to-br from-pink-50 to-pink-100 dark:from-pink-900/20 dark:to-pink-800/20',
   },
+  {
+    id: 'cabinet',
+    icon: '🏅',
+    title: 'Mening Kabinetim',
+    titleUz: 'Kabinet',
+    description: 'XP, Daraja va Yutuqlar',
+    path: '/cabinet',
+    color: 'from-indigo-500 to-violet-600',
+    bgGradient: 'bg-gradient-to-br from-indigo-50 to-violet-100 dark:from-indigo-900/20 dark:to-violet-800/20',
+  },
+  {
+    id: 'leaderboard',
+    icon: '🏆',
+    title: 'Liderlar Jadvali',
+    titleUz: 'Reyting',
+    description: 'Top 10 o\'quvchilar',
+    path: '/leaderboard',
+    color: 'from-amber-500 to-orange-600',
+    bgGradient: 'bg-gradient-to-br from-amber-50 to-orange-100 dark:from-amber-900/20 dark:to-orange-800/20',
+  },
 ]
 
 export const MenuGrid: React.FC = () => {
@@ -114,6 +134,25 @@ export const MenuGrid: React.FC = () => {
           </div>
         </div>
       </button>
+
+      {/* Cabinet + Leaderboard side by side */}
+      {MENU_ITEMS.slice(5, 7).map((item) => (
+        <button
+          key={item.id}
+          onClick={() => handleMenuClick(item.path)}
+          className={`${item.bgGradient} p-4 rounded-lg border-2 border-transparent hover:border-sahifa-500 transition-all duration-300 transform hover:scale-105 active:scale-95 shadow-md hover:shadow-lg`}
+        >
+          <div className="text-center space-y-2">
+            <div className="text-4xl">{item.icon}</div>
+            <h3 className="font-bold text-sm text-gray-900 dark:text-white">
+              {item.titleUz}
+            </h3>
+            <p className="text-xs text-gray-600 dark:text-gray-300">
+              {item.description}
+            </p>
+          </div>
+        </button>
+      ))}
 
       {/* Admin panel — only visible to admins */}
       {isAdmin && (

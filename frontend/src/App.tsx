@@ -8,6 +8,10 @@ import KitoblarPage from './pages/KitoblarPage'
 import ResourcesPage from './pages/ResourcesPage'
 import AboutPage from './pages/AboutPage'
 import AdminPage from './pages/AdminPage'
+import CabinetPage from './pages/CabinetPage'
+import LeaderboardPage from './pages/LeaderboardPage'
+import GlobalProgressBar from './components/GlobalProgressBar'
+import ProgressProvider from './components/ProgressProvider'
 import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
@@ -65,16 +69,21 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900">
       <Router>
-        <TelegramBackButtonHandler />
-        <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route path="/study" element={<StudyWithMe />} />
-          <Route path="/quiz" element={<QuizPage />} />
-          <Route path="/kitoblar" element={<KitoblarPage />} />
-          <Route path="/resources" element={<ResourcesPage />} />
-          <Route path="/about" element={<AboutPage />} />
-          <Route path="/admin" element={<AdminRoute />} />
-        </Routes>
+        <ProgressProvider>
+          <TelegramBackButtonHandler />
+          <GlobalProgressBar />
+          <Routes>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/study" element={<StudyWithMe />} />
+            <Route path="/quiz" element={<QuizPage />} />
+            <Route path="/kitoblar" element={<KitoblarPage />} />
+            <Route path="/resources" element={<ResourcesPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/admin" element={<AdminRoute />} />
+            <Route path="/cabinet" element={<CabinetPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+          </Routes>
+        </ProgressProvider>
       </Router>
     </div>
   )

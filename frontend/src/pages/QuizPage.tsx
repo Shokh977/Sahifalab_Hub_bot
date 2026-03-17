@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import apiService from '@services/apiService'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+import { useProgressStore } from '../context/progressStore'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -378,6 +379,7 @@ type View = 'list' | 'loading' | 'quiz' | 'verifying' | 'results'
 
 export const QuizPage: React.FC = () => {
   const { user } = useTelegramWebApp()
+  const { addQuizXP } = useProgressStore()
   const [view, setView] = useState<View>('list')
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([])
   const [listLoading, setListLoading] = useState(true)
@@ -421,11 +423,13 @@ export const QuizPage: React.FC = () => {
       )
       setVerifyResult(r.data)
       setView('results')
+      // Award XP: +20 per correct answer + 100 bonus for 100%
+      addQuizXP(r.data.score, r.data.total)
     } catch {
       setError("Natijani tekshirib bo'lmadi. Qayta urinib ko'ring.")
       setView('quiz')
     }
-  }, [activeQuiz, user, userName])
+  }, [activeQuiz, user, userName, addQuizXP])
 
   const handleExit = useCallback(() => {
     setActiveQuiz(null)

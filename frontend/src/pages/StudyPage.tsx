@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
 import apiService from '../services/apiService'
+import { useProgressStore } from '../context/progressStore'
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Sound data is loaded dynamically from the database.
@@ -107,6 +108,36 @@ export const StudyWithMe: React.FC = () => {
   }, [])
 
   const timer = useBackgroundTimer({ onComplete: handleTimerComplete })
+
+  // ── Focus XP tracking ────────────────────────────────────────────────────
+  const { addFocusSeconds, syncToSupabase } = useProgressStore()
+  const focusStartRef      = useRef<number | null>(null)
+  const prevIsRunningRef   = useRef(timer.isRunning)
+  const prevIsBreakRef     = useRef(timer.isBreak)
+
+  useEffect(() => {
+    const wasRunning = prevIsRunningRef.current
+    const wasBreak   = prevIsBreakRef.current
+    prevIsRunningRef.current = timer.isRunning
+    prevIsBreakRef.current   = timer.isBreak
+
+    // Focus timer started
+    if (!wasRunning && timer.isRunning && !timer.isBreak) {
+      focusStartRef.current = Date.now()
+    }
+
+    // Focus timer stopped/paused (not a break transition)
+    if (wasRunning && !timer.isRunning && !wasBreak) {
+      if (focusStartRef.current) {
+        const elapsed = Math.floor((Date.now() - focusStartRef.current) / 1000)
+        if (elapsed > 0) {
+          addFocusSeconds(elapsed)
+          syncToSupabase()
+        }
+        focusStartRef.current = null
+      }
+    }
+  }, [timer.isRunning, timer.isBreak, addFocusSeconds, syncToSupabase])
 
   const handleComplete = useCallback(() => {
     if (!timer.isBreak) {
