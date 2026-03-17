@@ -158,8 +158,13 @@ const LeaderboardPage: React.FC = () => {
       setLastFetch(Date.now())
     } catch (err: any) {
       const msg = err?.message || err?.error_description || String(err)
-      // Table doesn't exist yet → tell user to run the schema
-      if (msg.includes('relation') && msg.includes('does not exist')) {
+      // Table doesn't exist yet (various Supabase/PostgREST error formats)
+      const isNoTable =
+        msg.includes('schema cache') ||
+        (msg.includes('relation') && msg.includes('does not exist')) ||
+        msg.includes("Could not find the table") ||
+        msg.includes('profiles') && msg.includes('not found')
+      if (isNoTable) {
         setError('__no_table__')
       } else {
         setError(msg || "Noma'lum xato")
@@ -228,17 +233,33 @@ const LeaderboardPage: React.FC = () => {
         <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-2xl p-4 space-y-3">
           <p className="text-sm font-bold text-orange-900 dark:text-orange-300">🗄️ Jadval yaratilmagan</p>
           <p className="text-xs text-orange-800 dark:text-orange-400 leading-relaxed">
-            Supabase SQL Editor-da <strong>supabase_schema.sql</strong> faylini ishga tushiring:
+            <strong>1-qadam:</strong> Supabase saytiga kiring →{' '}
+            <strong>SQL Editor → New Query</strong>
           </p>
-          <div className="bg-white dark:bg-gray-900 rounded-xl p-3 font-mono text-xs text-gray-700 dark:text-gray-300">
-            Supabase → SQL Editor → New Query →<br />
-            supabase_schema.sql kontentini joylashtiring → Run
-          </div>
+          <p className="text-xs text-orange-800 dark:text-orange-400 leading-relaxed">
+            <strong>2-qadam:</strong> Quyidagi SQL ni joylashtiring va <strong>Run</strong> tugmasini bosing:
+          </p>
+          <div className="bg-white dark:bg-gray-900 rounded-xl p-3 font-mono text-[11px] text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre leading-relaxed select-all">{`CREATE TABLE IF NOT EXISTS public.profiles (
+  id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  telegram_id       bigint UNIQUE NOT NULL,
+  first_name        text NOT NULL DEFAULT '',
+  username          text,
+  total_xp          int NOT NULL DEFAULT 0,
+  focus_seconds     int NOT NULL DEFAULT 0,
+  level             int NOT NULL DEFAULT 1,
+  quizzes_completed int NOT NULL DEFAULT 0,
+  created_at        timestamptz DEFAULT now(),
+  updated_at        timestamptz DEFAULT now()
+);
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public read"  ON public.profiles FOR SELECT TO anon USING (true);
+CREATE POLICY "anon insert"  ON public.profiles FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) WITH CHECK (true);`}</div>
           <button
             onClick={fetchLeaderboard}
-            className="text-xs text-orange-600 dark:text-orange-400 font-semibold underline"
+            className="w-full py-2 rounded-xl bg-orange-500 text-white text-xs font-bold active:scale-95 transition-transform"
           >
-            Qayta urinib ko'rish
+            ✅ SQL ishga tushirdim — Qayta urinib ko'rish
           </button>
         </div>
       )}
