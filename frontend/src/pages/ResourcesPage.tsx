@@ -109,31 +109,40 @@ export const ResourcesPage: React.FC = () => {
     }
   }
 
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'youtube':
+        return 'YouTube'
+      case 'course':
+        return 'Course'
+      default:
+        return 'Link'
+    }
+  }
+
   return (
-    <div className="space-y-6">
+    <div className="max-w-2xl mx-auto px-4 py-4 pb-24 space-y-5">
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-          🔗 Foydali Linklar
-        </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
-          External Resources & YouTube Links
+      <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white shadow-md">
+        <h1 className="text-2xl font-bold">🔗 Foydali Linklar</h1>
+        <p className="text-sm text-emerald-50 mt-1">
+          SAHIFALAB rasmiy sahifalari va foydali manbalar
         </p>
       </div>
 
       {/* Categories */}
-      <div className="flex gap-2 flex-wrap overflow-x-auto pb-2">
+      <div className="flex gap-2 flex-wrap">
         {categories.map((cat) => (
           <button
             key={cat}
             onClick={() => setSelectedCategory(cat)}
-            className={`px-4 py-2 rounded-full font-medium whitespace-nowrap transition-all ${
+            className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all ${
               selectedCategory === cat
-                ? 'bg-emerald-600 text-white'
-                : 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300'
+                ? 'bg-emerald-600 text-white shadow'
+                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-emerald-300'
             }`}
           >
-            {cat.replace('-', ' ').toUpperCase()}
+            {cat === 'all' ? 'Hammasi' : cat.replace('-', ' ')}
           </button>
         ))}
       </div>
@@ -142,14 +151,15 @@ export const ResourcesPage: React.FC = () => {
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="card animate-pulse">
-              <div className="h-20 bg-gray-200 dark:bg-gray-700 rounded"></div>
+            <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 animate-pulse">
+              <div className="h-16 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>
             </div>
           ))}
         </div>
       ) : filteredResources.length === 0 ? (
-        <div className="card text-center py-8">
-          <p className="text-gray-600 dark:text-gray-400">No resources found</p>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center border border-gray-100 dark:border-gray-700">
+          <div className="text-4xl mb-2">📭</div>
+          <p className="text-gray-600 dark:text-gray-400">Hozircha linklar topilmadi</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -159,35 +169,35 @@ export const ResourcesPage: React.FC = () => {
               href={resource.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="card hover:shadow-lg transition-all group"
+              className="group block bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 hover:shadow-md hover:border-emerald-200 dark:hover:border-emerald-700 transition-all"
             >
-              <div className="flex gap-4">
+              <div className="flex items-start gap-3">
                 {/* Icon/Thumbnail */}
-                <div className="flex-shrink-0 w-16 h-16 bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 rounded flex items-center justify-center text-2xl">
+                <div className="flex-shrink-0 w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center text-xl">
                   {getTypeIcon(resource.type)}
                 </div>
 
                 {/* Info */}
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-bold text-gray-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-2">
-                    {resource.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-1">
-                    {resource.description}
-                  </p>
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[11px] bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 px-2 py-0.5 rounded-full font-medium">
                       {resource.category.replace('-', ' ')}
                     </span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {resource.type === 'youtube' ? '📺 YouTube' : '🔗 Link'}
+                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                      {getTypeLabel(resource.type)}
                     </span>
                   </div>
+                  <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1">
+                    {resource.title}
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                    {resource.description}
+                  </p>
                 </div>
 
                 {/* Arrow */}
-                <div className="flex items-center text-emerald-600 dark:text-emerald-400 group-hover:translate-x-1 transition-transform">
-                  →
+                <div className="flex items-center text-emerald-600 dark:text-emerald-400 group-hover:translate-x-0.5 transition-transform">
+                  ↗
                 </div>
               </div>
             </a>

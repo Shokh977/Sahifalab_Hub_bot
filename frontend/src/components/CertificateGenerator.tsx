@@ -257,7 +257,7 @@ function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
 
   ctx.fillStyle = MUTED
   ctx.font = '19px Georgia, serif'
-  ctx.fillText('SAHIFALAB asoschisi', 158, sigY + 36)
+  ctx.fillText('SAHIFALAB', 158, sigY + 36)
 
   // Center vertical rule
   ctx.strokeStyle = '#ddd'
@@ -290,7 +290,7 @@ function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
   ctx.font = 'bold 15px Georgia, serif'
   spacedText(ctx, 'SAHIFALAB', sx, sy - 8, 2)
   ctx.font = 'bold 13px Georgia, serif'
-  ctx.fillText('✓ TASDIQLANDI', sx, sy + 14)
+  ctx.fillText('✓ TASDIQLAYDI', sx, sy + 14)
   ctx.fillStyle = MUTED
   ctx.font = '12px Georgia, serif'
   ctx.fillText('2026', sx, sy + 34)
