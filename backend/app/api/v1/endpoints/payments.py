@@ -70,7 +70,7 @@ class StarsOrderRequest(BaseModel):
 async def create_stars_order(body: StarsOrderRequest, db: Session = Depends(get_db)):
     """
     Create a pending order for Telegram Stars.
-    Frontend opens deep link: t.me/sahifalab_bot?start=pay_{order_id}
+    Frontend opens deep link: t.me/sahifalab_hub_bot?start=pay_{order_id}
     Bot sends an invoice → on successful_payment the order is marked completed.
     """
     book = _get_book_or_404(body.book_id, db)
@@ -182,7 +182,7 @@ async def create_click_order(body: ClickOrderRequest, db: Session = Depends(get_
         f"&merchant_id={merchant_id}"
         f"&amount={int(amount)}"
         f"&transaction_param={order_id}"
-        f"&return_url=https://t.me/sahifalab_bot"
+        f"&return_url=https://t.me/sahifalab_hub_bot"
     )
 
     return {

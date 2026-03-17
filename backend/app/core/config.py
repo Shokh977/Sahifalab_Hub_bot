@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     
     # Telegram
     TELEGRAM_BOT_TOKEN: str = ""
-    TELEGRAM_BOT_USERNAME: str = "sahifalab_bot"
+    TELEGRAM_BOT_USERNAME: str = "sahifalab_hub_bot"
     # Chat ID where bot stores audio files (can be admin's own ID)
     STORAGE_CHAT_ID: int = 0
     # Comma-separated Telegram IDs of admins, e.g. "123456789,987654321"

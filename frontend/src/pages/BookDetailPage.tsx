@@ -334,7 +334,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
       setPolling(true)
       setMsg('⏳ Botga o\'ting va to\'lovni yakunlang…')
       // Deep link → bot sends invoice
-      openLink(`https://t.me/sahifalab_bot?start=pay_${orderId}`)
+      openLink(`https://t.me/sahifalab_hub_bot?start=pay_${orderId}`)
     } catch (err: any) {
       setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
     } finally {

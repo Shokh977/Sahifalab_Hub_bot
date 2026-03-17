@@ -67,7 +67,7 @@ services:
     build:
       context: ./bot
       dockerfile: Dockerfile
-    container_name: sahifalab_bot
+    container_name: sahifalab_hub_bot
     command: python main.py
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
