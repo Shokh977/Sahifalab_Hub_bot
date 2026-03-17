@@ -71,7 +71,12 @@ const BookDetailPage: React.FC = () => {
         setDlMsg('❌ Fayl manzili topilmadi')
         return
       }
-      window.open(url, '_blank', 'noopener,noreferrer')
+      // Telegram Mini App blocks window.open — use Telegram's own openLink
+      if (window.Telegram?.WebApp?.openLink) {
+        window.Telegram.WebApp.openLink(url)
+      } else {
+        window.location.href = url
+      }
       setDlMsg('✅ Yuklab olish boshlandi!')
     } catch {
       setDlMsg('❌ Yuklab bo\'lmadi. Keyinroq urinib ko\'ring.')

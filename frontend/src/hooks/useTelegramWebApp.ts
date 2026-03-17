@@ -29,6 +29,7 @@ interface TelegramWebApp {
   BackButton: BackButton
   onEvent: (event: string, callback: () => void) => void
   offEvent: (event: string, callback: () => void) => void
+  openLink: (url: string, options?: { try_instant_view?: boolean }) => void
 }
 
 declare global {
