@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.config import settings
-from app.models.models import Quiz, QuizQuestion, Book
+from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating
 from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog
 from app.schemas.admin_schemas import (
     HeroContentCreate, HeroContentUpdate, HeroContentResponse,
@@ -243,7 +243,7 @@ async def delete_book(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
-    """Delete book (soft delete via is_available flag)"""
+    """Permanently delete book and all associated records"""
     db_book = db.query(Book).filter(Book.id == book_id).first()
     
     if not db_book:
@@ -252,17 +252,13 @@ async def delete_book(
             detail="Book not found"
         )
     
-    db_book.is_available = False
+    # Remove associated records first to avoid FK violations
+    db.query(BookPurchase).filter(BookPurchase.book_id == book_id).delete()
+    db.query(BookRating).filter(BookRating.book_id == book_id).delete()
+    db.query(BookAuditLog).filter(BookAuditLog.book_id == book_id).delete()
     
-    # Log audit
-    audit_log = BookAuditLog(
-        book_id=db_book.id,
-        action="deleted",
-        new_values={"is_available": False},
-        admin_id=admin.id
-    )
-    db.add(audit_log)
-    
+    # Hard delete the book
+    db.delete(db_book)
     db.commit()
 
 @router.get("/books", response_model=list[BookManagementResponse])
@@ -369,8 +365,8 @@ async def get_admin_stats(
     """Get admin dashboard statistics"""
     total_users = db.query(Quiz).count()  # Approximate
     total_quizzes = db.query(Quiz).count()
-    total_books = db.query(Book).count()
-    total_resources = db.query(Book).count()  # Placeholder
+    total_books = db.query(Book).filter(Book.is_available == True).count()
+    total_resources = db.query(Book).filter(Book.is_available == True).count()  # Placeholder
     
     active_payments = db.query(PaymentConfig).filter(
         PaymentConfig.is_enabled == True

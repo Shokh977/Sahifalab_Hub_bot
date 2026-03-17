@@ -242,6 +242,10 @@ class BookCreate(BaseModel):
     category: str
     thumbnail_url: Optional[str] = None
 
+class BookRateRequest(BaseModel):
+    telegram_id: int
+    rating: int  # 1-5
+
 class BookResponse(BaseModel):
     id: int
     title: str

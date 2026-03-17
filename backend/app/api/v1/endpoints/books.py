@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
+from datetime import datetime
 from app.db.session import get_db
-from app.models.models import Book
-from app.schemas.schemas import BookResponse, BookCreate
+from app.models.models import Book, BookRating
+from app.schemas.schemas import BookResponse, BookCreate, BookRateRequest
 
 router = APIRouter()
 
@@ -53,6 +55,59 @@ async def download_book(book_id: int, db: Session = Depends(get_db)):
     
     # Redirect to file URL
     return {"download_url": book.file_url}
+
+@router.get("/{book_id}/my-rating")
+async def get_my_rating(
+    book_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Get current user's rating for a book"""
+    rating = db.query(BookRating).filter(
+        BookRating.book_id == book_id,
+        BookRating.telegram_id == telegram_id,
+    ).first()
+    return {"rating": rating.rating if rating else 0}
+
+@router.post("/{book_id}/rate")
+async def rate_book(
+    book_id: int,
+    body: BookRateRequest,
+    db: Session = Depends(get_db),
+):
+    """Rate a book (1-5 stars). Creates or updates the user's rating."""
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book:
+        raise HTTPException(status_code=404, detail="Book not found")
+    if not 1 <= body.rating <= 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+
+    # Upsert: update existing rating or create new
+    existing = db.query(BookRating).filter(
+        BookRating.book_id == book_id,
+        BookRating.telegram_id == body.telegram_id,
+    ).first()
+
+    if existing:
+        existing.rating = body.rating
+        existing.updated_at = datetime.utcnow()
+    else:
+        db.add(BookRating(
+            book_id=book_id,
+            telegram_id=body.telegram_id,
+            rating=body.rating,
+        ))
+
+    db.flush()
+
+    # Recalculate average rating for this book
+    avg = db.query(func.avg(BookRating.rating)).filter(
+        BookRating.book_id == book_id
+    ).scalar()
+    book.rating = round(float(avg), 1) if avg else 0
+
+    db.commit()
+    return {"rating": body.rating, "average": book.rating}
 
 @router.post("/", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
 async def create_book(book_data: BookCreate, db: Session = Depends(get_db)):

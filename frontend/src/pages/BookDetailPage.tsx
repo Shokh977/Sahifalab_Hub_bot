@@ -69,6 +69,12 @@ const BookDetailPage: React.FC = () => {
   const [purchased, setPurchased] = useState(false)
   const [purchaseChecking, setPurchaseChecking] = useState(false)
 
+  // Rating state
+  const [myRating, setMyRating] = useState(0)
+  const [hoverRating, setHoverRating] = useState(0)
+  const [ratingLoading, setRatingLoading] = useState(false)
+  const [ratingMsg, setRatingMsg] = useState('')
+
   // Load book
   useEffect(() => {
     if (!id) return
@@ -87,6 +93,31 @@ const BookDetailPage: React.FC = () => {
       .catch(() => {})
       .finally(() => setPurchaseChecking(false))
   }, [book, user])
+
+  // Load user's existing rating
+  useEffect(() => {
+    if (!book?.id || !user?.id) return
+    apiService.getMyRating(book.id, user.id)
+      .then(r => setMyRating(r.data?.rating ?? 0))
+      .catch(() => {})
+  }, [book, user])
+
+  const handleRate = async (stars: number) => {
+    if (!book || !user?.id) return
+    setRatingLoading(true)
+    setRatingMsg('')
+    try {
+      const res = await apiService.rateBook(book.id, user.id, stars)
+      setMyRating(stars)
+      setBook(prev => prev ? { ...prev, rating: res.data.average } : prev)
+      setRatingMsg('✅ Baholandi!')
+      setTimeout(() => setRatingMsg(''), 2000)
+    } catch {
+      setRatingMsg('❌ Xato yuz berdi')
+    } finally {
+      setRatingLoading(false)
+    }
+  }
 
   const handleDownload = useCallback(async () => {
     if (!book) return
@@ -207,6 +238,33 @@ const BookDetailPage: React.FC = () => {
             <span className="text-xs text-gray-400">↓ {book.downloads} marta yuklangan</span>
           </div>
 
+          {/* Star Rating */}
+          <div className="space-y-1.5">
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">Baholang:</p>
+            <div className="flex items-center gap-1">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button
+                  key={star}
+                  onClick={() => handleRate(star)}
+                  onMouseEnter={() => setHoverRating(star)}
+                  onMouseLeave={() => setHoverRating(0)}
+                  disabled={ratingLoading}
+                  className="text-2xl transition-transform hover:scale-110 active:scale-95 disabled:opacity-50"
+                >
+                  {star <= (hoverRating || myRating) ? '★' : '☆'}
+                </button>
+              ))}
+              {myRating > 0 && (
+                <span className="text-xs text-gray-400 ml-2">Sizning bahoyingiz: {myRating}/5</span>
+              )}
+            </div>
+            {ratingMsg && (
+              <p className={`text-xs font-medium ${ratingMsg.startsWith('✅') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                {ratingMsg}
+              </p>
+            )}
+          </div>
+
           {/* Description */}
           {book.description && (
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
@@ -295,7 +353,7 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
   const [polling, setPolling] = useState(false)
 
-  // Poll order status after user goes to bot deep link
+  // Safety-net: poll order status
   useEffect(() => {
     if (!pendingOrderId || !polling) return
     const interval = setInterval(async () => {
@@ -313,27 +371,67 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
     return () => clearInterval(interval)
   }, [pendingOrderId, polling, onPurchased])
 
-  // ── Universal pay handler — same flow for all 3 providers ───────────────
+  // ── Pay handler — uses WebApp.openInvoice for native in-app payment ─────
   const handlePay = async (provider: 'telegram_stars' | 'click' | 'payme') => {
     if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
     setLoading(provider)
     setMsg('')
     try {
-      const res = await apiService.createPaymentOrder(book.id, telegramId, provider)
+      // 1. Create order + get invoice link from backend
+      setMsg('⏳ Buyurtma yaratilmoqda...')
+      const res = await apiService.createInvoiceLink(book.id, telegramId, provider)
       if (res.data.already_purchased) { onPurchased(); return }
+
       const orderId = res.data.order_id as string
+      const invoiceUrl = res.data.invoice_url as string
+
+      if (!invoiceUrl) {
+        setMsg('❌ Invoice URL olinmadi. Backend konfiguratsiyasini tekshiring.')
+        return
+      }
+
       setPendingOrderId(orderId)
-      setPolling(true)
-      setMsg('⏳ Botga o\'ting va to\'lovni yakunlang…')
-      // Deep link → bot sends native Telegram invoice for any provider
-      const deepLink = `https://t.me/sahifalab_hub_bot?start=pay_${orderId}`
-      if (window.Telegram?.WebApp?.openLink) {
-        window.Telegram.WebApp.openLink(deepLink)
+
+      // 2. Open native Telegram payment form inside mini app
+      if (window.Telegram?.WebApp?.openInvoice) {
+        setMsg('')
+        window.Telegram.WebApp.openInvoice(invoiceUrl, async (status) => {
+          console.log('[Payment] openInvoice callback:', status)
+          if (status === 'paid') {
+            // Frontend confirms payment directly to backend
+            try {
+              await apiService.confirmPayment(orderId)
+            } catch { /* bot will also confirm as backup */ }
+            setPolling(false)
+            setPendingOrderId(null)
+            setMsg('✅ To\'lov muvaffaqiyatli amalga oshirildi!')
+            onPurchased()
+          } else if (status === 'failed') {
+            setMsg('❌ To\'lov amalga oshmadi')
+            setPolling(false)
+          } else if (status === 'cancelled') {
+            setMsg('')
+            setPolling(false)
+            setPendingOrderId(null)
+          } else {
+            // status === 'pending' → start polling as backup
+            setPolling(true)
+          }
+        })
       } else {
-        window.location.href = deepLink
+        // Fallback: open invoice URL directly (works outside mini apps too)
+        setMsg('⏳ To\'lov sahifasi ochilmoqda...')
+        setPolling(true)
+        if (window.Telegram?.WebApp?.openTelegramLink) {
+          window.Telegram.WebApp.openTelegramLink(invoiceUrl)
+        } else {
+          window.open(invoiceUrl, '_blank')
+        }
       }
     } catch (err: any) {
-      setMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xato'}`)
+      const detail = err?.response?.data?.detail || err?.message || 'Noma\'lum xato'
+      console.error('[Payment] Error:', detail, err)
+      setMsg(`❌ ${detail}`)
     } finally {
       setLoading('')
     }

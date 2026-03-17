@@ -31,6 +31,8 @@ interface TelegramWebApp {
   onEvent: (event: string, callback: () => void) => void
   offEvent: (event: string, callback: () => void) => void
   openLink: (url: string, options?: { try_instant_view?: boolean }) => void
+  openTelegramLink: (url: string) => void
+  openInvoice: (url: string, callback?: (status: string) => void) => void
 }
 
 declare global {

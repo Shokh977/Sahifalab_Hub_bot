@@ -200,6 +200,18 @@ class BookPurchase(Base):
     completed_at = Column(DateTime, nullable=True)
 
 
+class BookRating(Base):
+    """Stores individual user ratings for books (1-5 stars)."""
+    __tablename__ = "book_rating"
+
+    id = Column(Integer, primary_key=True, index=True)
+    book_id = Column(Integer, ForeignKey("book.id"), index=True)
+    telegram_id = Column(Integer, index=True)
+    rating = Column(Integer)  # 1-5
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Resource(Base):
     __tablename__ = "resource"
     

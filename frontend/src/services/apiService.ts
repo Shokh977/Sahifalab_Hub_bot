@@ -133,6 +133,19 @@ class ApiService {
     return this.axiosInstance.get(`/api/books/${bookId}/download`)
   }
 
+  async rateBook(bookId: number, telegramId: number, rating: number) {
+    return this.axiosInstance.post(`/api/books/${bookId}/rate`, {
+      telegram_id: telegramId,
+      rating,
+    })
+  }
+
+  async getMyRating(bookId: number, telegramId: number) {
+    return this.axiosInstance.get(`/api/books/${bookId}/my-rating`, {
+      params: { telegram_id: telegramId },
+    })
+  }
+
   // Resources endpoints
   async getResources() {
     return this.axiosInstance.get('/api/resources')
@@ -247,9 +260,30 @@ class ApiService {
     })
   }
 
+  /** Create invoice link for WebApp.openInvoice() flow */
+  async createInvoiceLink(bookId: number, telegramId: number, provider: string) {
+    return this.axiosInstance.post('/api/payments/create-invoice-link', {
+      book_id: bookId,
+      telegram_id: telegramId,
+      provider,
+    })
+  }
+
   /** Check order status */
   async getOrderStatus(orderId: string) {
     return this.axiosInstance.get(`/api/payments/order/${orderId}`)
+  }
+
+  /** Confirm payment from frontend (after openInvoice returns 'paid') */
+  async confirmPayment(orderId: string) {
+    return this.axiosInstance.post('/api/payments/confirm-payment', {
+      order_id: orderId,
+    })
+  }
+
+  /** Debug payment config */
+  async debugPaymentConfig() {
+    return this.axiosInstance.get('/api/payments/debug-config')
   }
 
   // ─── Audio / Ambient Sound endpoints ─────────────────────────────────────

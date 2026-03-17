@@ -33,6 +33,8 @@ services:
       SECRET_KEY: ${SECRET_KEY:-change-me-in-production-32chars}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       ADMIN_TELEGRAM_IDS: ${ADMIN_TELEGRAM_IDS:-}
+      CLICK_PROVIDER_TOKEN: ${CLICK_PROVIDER_TOKEN:-}
+      PAYME_PROVIDER_TOKEN: ${PAYME_PROVIDER_TOKEN:-}
       DEBUG: ${DEBUG:-True}
     depends_on:
       postgres:
@@ -72,6 +74,8 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       API_BASE_URL: http://backend:8000
+      CLICK_PROVIDER_TOKEN: ${CLICK_PROVIDER_TOKEN:-}
+      PAYME_PROVIDER_TOKEN: ${PAYME_PROVIDER_TOKEN:-}
     depends_on:
       backend:
         condition: service_healthy
