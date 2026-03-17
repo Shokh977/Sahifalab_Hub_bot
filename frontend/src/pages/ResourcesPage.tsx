@@ -11,13 +11,57 @@ interface Resource {
   thumbnail?: string
 }
 
+const DEFAULT_RESOURCES: Resource[] = [
+  {
+    id: 1001,
+    title: 'SAHIFALAB Telegram Channel',
+    description: 'Rasmiy Telegram kanalimiz',
+    url: 'https://t.me/sahifalab1',
+    type: 'link',
+    category: 'social',
+  },
+  {
+    id: 1002,
+    title: 'SAHIFALAB Instagram',
+    description: 'Instagram sahifamiz',
+    url: 'https://www.instagram.com/sahifalab?utm_source=qr&igsh=cGQ1NXNudXZ3NDNj',
+    type: 'link',
+    category: 'social',
+  },
+  {
+    id: 1003,
+    title: 'SAHIFALAB YouTube',
+    description: 'YouTube kanalimiz',
+    url: 'http://www.youtube.com/@SahifaLab',
+    type: 'youtube',
+    category: 'social',
+  },
+  {
+    id: 1004,
+    title: 'SAHIFALAB Email',
+    description: 'Biz bilan email orqali bog\'laning',
+    url: 'mailto:sahifalab@gmail.com',
+    type: 'link',
+    category: 'social',
+  },
+  {
+    id: 1005,
+    title: 'SAHIFALAB TikTok',
+    description: 'TikTok sahifamiz',
+    url: 'https://www.tiktok.com/@sahifalab?_r=1&_t=ZS-94ldMgz986i',
+    type: 'link',
+    category: 'social',
+  },
+]
+
 export const ResourcesPage: React.FC = () => {
-  const [resources, setResources] = useState<Resource[]>([])
+  const [resources, setResources] = useState<Resource[]>(DEFAULT_RESOURCES)
   const [selectedCategory, setSelectedCategory] = useState('all')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   const categories = [
     'all',
+    'social',
     'programming',
     'languages',
     'science',
@@ -29,11 +73,20 @@ export const ResourcesPage: React.FC = () => {
     const fetchResources = async () => {
       try {
         const response = await apiService.getResources()
-        setResources(response.data)
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          const normalized = response.data.map((item: any, index: number) => ({
+            id: item.id ?? 2000 + index,
+            title: item.title,
+            description: item.description,
+            url: item.url,
+            type: (item.resource_type ?? item.type ?? 'link') as Resource['type'],
+            category: item.category ?? 'other',
+            thumbnail: item.thumbnail_url ?? item.thumbnail,
+          }))
+          setResources([...DEFAULT_RESOURCES, ...normalized])
+        }
       } catch (error) {
         console.error('Failed to fetch resources:', error)
-      } finally {
-        setLoading(false)
       }
     }
 
