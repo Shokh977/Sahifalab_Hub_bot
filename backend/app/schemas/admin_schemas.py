@@ -141,10 +141,15 @@ class BookManagementResponse(BaseModel):
     id: int
     title: str
     author: str
+    description: str
     price: float
     is_paid: bool
+    file_url: str
+    thumbnail_url: Optional[str] = None
+    category: str
     downloads: int
     rating: float
+    is_available: bool
     created_at: datetime
     
     class Config:

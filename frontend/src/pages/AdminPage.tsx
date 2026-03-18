@@ -31,7 +31,7 @@ interface AdminBook {
   price: number
   is_paid: boolean
   file_url: string
-  thumbnail_url: string
+  thumbnail_url: string | null
   downloads: number
   rating: number
   created_at: string
@@ -169,6 +169,10 @@ const AdminPage: React.FC = () => {
   const [bookPdfUploading, setBookPdfUploading] = useState(false)
   const [bookPdfPercent, setBookPdfPercent] = useState(0)
   const [bookPdfMsg, setBookPdfMsg] = useState('')
+  const [bookCoverFile, setBookCoverFile] = useState<File | null>(null)
+  const [bookCoverUploading, setBookCoverUploading] = useState(false)
+  const [bookCoverPercent, setBookCoverPercent] = useState(0)
+  const [bookCoverMsg, setBookCoverMsg] = useState('')
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -464,6 +468,9 @@ const AdminPage: React.FC = () => {
       setBookMsg('✅ Yangi kitob qo\'shildi!')
       setShowNewBook(false)
       setNewBook({ title: '', author: '', description: '', price: 0, is_paid: false, file_url: '', thumbnail_url: '', category: 'programming' })
+      setBookCoverFile(null)
+      setBookCoverPercent(0)
+      setBookCoverMsg('')
       loadBooks()
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
@@ -525,6 +532,76 @@ const AdminPage: React.FC = () => {
       }
     } finally {
       setBookPdfUploading(false)
+    }
+  }
+
+  // ── Book cover image upload (Supabase Storage) ──────────────────────────
+  const handleUploadBookCover = async (target: 'new' | 'edit') => {
+    if (!bookCoverFile) { setBookCoverMsg('❌ Rasm faylini tanlang'); return }
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
+    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+    if (!supabaseUrl || !supabaseAnon) {
+      setBookCoverMsg('❌ Supabase env varlarini sozlang')
+      return
+    }
+
+    setBookCoverUploading(true)
+    setBookCoverMsg('⬆️ Muqova yuklanmoqda…')
+    setBookCoverPercent(0)
+
+    try {
+      const ext = bookCoverFile.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+      const endpoint = `${supabaseUrl}/storage/v1/object/book-covers/${filename}`
+
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', endpoint, true)
+        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnon}`)
+        xhr.setRequestHeader('Content-Type', bookCoverFile.type || 'image/jpeg')
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setBookCoverPercent(Math.round((e.loaded / e.total) * 100))
+        }
+
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) return resolve()
+          try {
+            const body = JSON.parse(xhr.responseText || '{}')
+            const msg = String(body.message || body.error || '')
+            if (/Bucket not found/i.test(msg)) {
+              const err = new Error('__no_cover_bucket__')
+              ;(err as any).code = '__no_cover_bucket__'
+              return reject(err)
+            }
+            reject(new Error(msg || `Upload failed: ${xhr.status}`))
+          } catch {
+            reject(new Error(`Upload failed: ${xhr.status}`))
+          }
+        }
+
+        xhr.onerror = () => reject(new Error('Network error'))
+        xhr.send(bookCoverFile)
+      })
+
+      const publicUrl = `${supabaseUrl}/storage/v1/object/public/book-covers/${filename}`
+      if (target === 'new') {
+        setNewBook((prev) => ({ ...prev, thumbnail_url: publicUrl }))
+      } else if (editingBook) {
+        setEditingBook({ ...editingBook, thumbnail_url: publicUrl })
+      }
+
+      setBookCoverMsg('✅ Muqova yuklandi!')
+      setBookCoverFile(null)
+    } catch (err: any) {
+      const code = (err && (err.code || err.message)) || ''
+      if (code === '__no_cover_bucket__') {
+        setBookCoverMsg('__no_cover_bucket__')
+      } else {
+        setBookCoverMsg(`❌ ${err?.message || 'Xato'}`)
+      }
+    } finally {
+      setBookCoverUploading(false)
     }
   }
 
@@ -1214,6 +1291,52 @@ const AdminPage: React.FC = () => {
                   </div>
                 ))}
 
+                {/* Cover image upload → Supabase Storage */}
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Muqova rasmi <span className="text-blue-500">(JPG/PNG/WebP — Supabase-ga yuklanadi)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                      <span>🖼</span>
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookCoverFile ? bookCoverFile.name : 'Rasm tanlang…'}</span>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={e => { setBookCoverFile(e.target.files?.[0] || null); setBookCoverMsg('') }} />
+                    </label>
+                    <button
+                      onClick={() => handleUploadBookCover('new')}
+                      disabled={!bookCoverFile || bookCoverUploading}
+                      className="shrink-0 px-3 py-2 bg-indigo-600 text-white text-xs rounded-lg disabled:opacity-50"
+                    >
+                      {bookCoverUploading ? `${bookCoverPercent}%` : '⬆ Yuklash'}
+                    </button>
+                  </div>
+                  {newBook.thumbnail_url ? (
+                    <div className="mt-2 flex items-center gap-3">
+                      <img src={newBook.thumbnail_url} alt="Muqova preview" className="w-14 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-600" />
+                      <p className="text-xs text-green-600 dark:text-green-400 truncate">✅ {newBook.thumbnail_url}</p>
+                    </div>
+                  ) : null}
+                  {bookCoverMsg === '__no_cover_bucket__' ? (
+                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
+                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «book-covers» bucket topilmadi</p>
+                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
+                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
+                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">book-covers</code></li>
+                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
+                      </ol>
+                      <button onClick={() => setBookCoverMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
+                    </div>
+                  ) : bookCoverMsg ? (
+                    <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookCoverMsg}</p>
+                  ) : null}
+                  {bookCoverUploading && (
+                    <div className="mt-1.5 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${bookCoverPercent}%` }} />
+                    </div>
+                  )}
+                </div>
+
                 {/* PDF file upload → Supabase Storage */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -1287,7 +1410,13 @@ const AdminPage: React.FC = () => {
                     {bookSaving ? 'Saqlanmoqda…' : 'Qo\'shish'}
                   </button>
                   <button
-                    onClick={() => { setShowNewBook(false); setBookMsg('') }}
+                    onClick={() => {
+                      setShowNewBook(false)
+                      setBookMsg('')
+                      setBookCoverFile(null)
+                      setBookCoverPercent(0)
+                      setBookCoverMsg('')
+                    }}
                     className="px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-300"
                   >
                     Bekor
@@ -1316,6 +1445,52 @@ const AdminPage: React.FC = () => {
                     />
                   </div>
                 ))}
+
+                {/* Cover image upload for edit */}
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Muqova rasmi <span className="text-blue-500">(yangi rasm yuklash)</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
+                      <span>🖼</span>
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookCoverFile ? bookCoverFile.name : 'Rasm tanlang…'}</span>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={e => { setBookCoverFile(e.target.files?.[0] || null); setBookCoverMsg('') }} />
+                    </label>
+                    <button
+                      onClick={() => handleUploadBookCover('edit')}
+                      disabled={!bookCoverFile || bookCoverUploading}
+                      className="shrink-0 px-3 py-2 bg-indigo-600 text-white text-xs rounded-lg disabled:opacity-50"
+                    >
+                      {bookCoverUploading ? `${bookCoverPercent}%` : '⬆ Yuklash'}
+                    </button>
+                  </div>
+                  {editingBook.thumbnail_url ? (
+                    <div className="mt-2 flex items-center gap-3">
+                      <img src={editingBook.thumbnail_url} alt="Muqova preview" className="w-14 h-20 object-cover rounded-md border border-gray-200 dark:border-gray-600" />
+                      <p className="text-xs text-green-600 dark:text-green-400 truncate">✅ {editingBook.thumbnail_url}</p>
+                    </div>
+                  ) : null}
+                  {bookCoverMsg === '__no_cover_bucket__' ? (
+                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
+                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «book-covers» bucket topilmadi</p>
+                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
+                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
+                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">book-covers</code></li>
+                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
+                      </ol>
+                      <button onClick={() => setBookCoverMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
+                    </div>
+                  ) : bookCoverMsg ? (
+                    <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookCoverMsg}</p>
+                  ) : null}
+                  {bookCoverUploading && (
+                    <div className="mt-1.5 bg-gray-200 dark:bg-gray-600 rounded-full h-1.5 overflow-hidden">
+                      <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${bookCoverPercent}%` }} />
+                    </div>
+                  )}
+                </div>
 
                 {/* PDF upload for edit */}
                 <div>
@@ -1379,7 +1554,13 @@ const AdminPage: React.FC = () => {
                   <button onClick={handleUpdateBook} disabled={bookSaving} className="flex-1 bg-sahifa-600 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50">
                     {bookSaving ? 'Saqlanmoqda…' : 'Saqlash'}
                   </button>
-                  <button onClick={() => { setEditingBook(null); setBookMsg('') }} className="px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm">
+                  <button onClick={() => {
+                    setEditingBook(null)
+                    setBookMsg('')
+                    setBookCoverFile(null)
+                    setBookCoverPercent(0)
+                    setBookCoverMsg('')
+                  }} className="px-4 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm">
                     Bekor
                   </button>
                 </div>
