@@ -97,6 +97,11 @@ function formatCertificateId(data: CertificateData): string {
   return `SLH-${token}`
 }
 
+function shortCertificateId(id: string, max = 10): string {
+  if (id.length <= max) return id
+  return `${id.slice(0, max)}...`
+}
+
 function drawPremiumPaperTexture(ctx: CanvasRenderingContext2D) {
   ctx.fillStyle = OFF_WHITE
   ctx.fillRect(0, 0, W, H)
@@ -245,7 +250,7 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
   ctx.restore()
 
   const signatureX = 760
-  const signatureY = 935
+  const signatureY = 920
   ctx.textAlign = 'left'
   ctx.fillStyle = ORANGE
   ctx.font = 'italic 58px "Brush Script MT", "Segoe Script", cursive'
@@ -256,11 +261,12 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
   ctx.fillText('Official Digital Signature', signatureX - 82, signatureY + 38)
 
   const certificateId = formatCertificateId(data)
+  const certificateIdShort = shortCertificateId(certificateId, 10)
 
-  const metricsTop = 1040
+  const metricsTop = 1080
   const metricsX = 95
   const metricsW = W - 190
-  const metricsH = 185
+  const metricsH = 160
 
   const panelGradient = ctx.createLinearGradient(0, metricsTop, 0, metricsTop + metricsH)
   panelGradient.addColorStop(0, 'rgba(255,255,255,0.8)')
@@ -288,7 +294,7 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
   const metrics = [
     { label: 'Date', value: data.date },
     { label: 'Score', value: `${Math.round(data.percentage)}%` },
-    { label: 'Certificate ID', value: certificateId },
+    { label: 'Certificate ID', value: certificateIdShort },
   ]
 
   ctx.textAlign = 'center'
@@ -296,18 +302,18 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
     const x = metricsX + colW * idx + colW / 2
     ctx.fillStyle = GOLD
     ctx.font = '700 19px Inter, Montserrat, Arial, sans-serif'
-    ctx.fillText(item.label, x, metricsTop + 52)
+    ctx.fillText(item.label, x, metricsTop + 46)
 
     ctx.fillStyle = CHARCOAL
     ctx.font = idx === 2
-      ? '700 24px Inter, Montserrat, Arial, sans-serif'
-      : '600 30px Inter, Montserrat, Arial, sans-serif'
-    ctx.fillText(item.value, x, metricsTop + 112)
+      ? '700 18px Inter, Montserrat, Arial, sans-serif'
+      : '600 28px Inter, Montserrat, Arial, sans-serif'
+    ctx.fillText(item.value, x, metricsTop + 104)
   })
 
-  const qrBox = 152
+  const qrBox = 130
   const qrX = W - qrBox - 68
-  const qrY = H - qrBox - 68
+  const qrY = 760
   const qrImg = await makeQrImage(TELEGRAM_CHANNEL_URL, 132)
 
   ctx.fillStyle = 'rgba(255,255,255,0.9)'
@@ -318,7 +324,7 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
   ctx.fill()
   ctx.stroke()
 
-  ctx.drawImage(qrImg, qrX + 10, qrY + 10, qrBox - 20, qrBox - 20)
+  ctx.drawImage(qrImg, qrX + 9, qrY + 9, qrBox - 18, qrBox - 18)
 
   ctx.textAlign = 'left'
   ctx.fillStyle = MUTED
