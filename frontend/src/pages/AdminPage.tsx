@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import apiService from '@services/apiService'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
@@ -43,6 +44,16 @@ interface AdminStats {
   total_resources: number
   active_payments: number
   recent_uploads: string[]
+}
+
+interface AdminProfile {
+  telegram_id: number
+  first_name: string | null
+  username: string | null
+  total_xp: number
+  focus_seconds: number
+  level: number
+  quizzes_completed: number
 }
 
 interface AdminQuiz {
@@ -102,6 +113,12 @@ const StatCard: React.FC<{ emoji: string; label: string; value: number | string 
   </div>
 )
 
+const formatFocusTime = (seconds: number): string => {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 const AdminPage: React.FC = () => {
@@ -117,6 +134,9 @@ const AdminPage: React.FC = () => {
 
   // Stats
   const [stats, setStats] = useState<AdminStats | null>(null)
+  const [profiles, setProfiles] = useState<AdminProfile[]>([])
+  const [profilesLoading, setProfilesLoading] = useState(false)
+  const [profilesError, setProfilesError] = useState('')
 
   // Hero
   const [heroList, setHeroList] = useState<HeroContent[]>([])
@@ -213,6 +233,43 @@ const AdminPage: React.FC = () => {
     } catch { /* ignore */ }
   }, [adminId])
 
+  const loadProfiles = useCallback(async () => {
+    if (!adminId) return
+    setProfilesLoading(true)
+    setProfilesError('')
+    try {
+      if (!isSupabaseConfigured) {
+        setProfiles([])
+        setProfilesError('Supabase sozlanmagan (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)')
+        return
+      }
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed')
+        .order('total_xp', { ascending: false })
+        .limit(500)
+
+      if (error) throw error
+
+      setProfiles((data ?? []).map((row: any) => ({
+        telegram_id: Number(row.telegram_id ?? 0),
+        first_name: row.first_name ?? null,
+        username: row.username ?? null,
+        total_xp: Number(row.total_xp ?? 0),
+        focus_seconds: Number(row.focus_seconds ?? 0),
+        level: Number(row.level ?? 1),
+        quizzes_completed: Number(row.quizzes_completed ?? 0),
+      })))
+    } catch (err: any) {
+      const detail = err?.message || 'Foydalanuvchilar ro\'yxatini yuklab bo\'lmadi'
+      setProfiles([])
+      setProfilesError(String(detail))
+    } finally {
+      setProfilesLoading(false)
+    }
+  }, [adminId])
+
   const loadHero = useCallback(async () => {
     if (!adminId) return
     try {
@@ -258,11 +315,12 @@ const AdminPage: React.FC = () => {
   useEffect(() => {
     if (!adminId) return
     loadStats()
+    if (activeTab === 'stats') loadProfiles()
     if (activeTab === 'hero') loadHero()
     if (activeTab === 'quiz') loadAdminQuizzes()
     if (activeTab === 'books') loadBooks()
     if (activeTab === 'sounds') loadSounds()
-  }, [adminId, activeTab, loadStats, loadHero, loadAdminQuizzes, loadBooks, loadSounds])
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -665,7 +723,7 @@ const AdminPage: React.FC = () => {
                 <div className="grid grid-cols-2 gap-3">
                   <StatCard emoji="📝" label="Quizlar" value={stats.total_quizzes} />
                   <StatCard emoji="📚" label="Kitoblar" value={stats.total_books} />
-                  <StatCard emoji="👥" label="Foydalanuvchilar" value={stats.total_users} />
+                  <StatCard emoji="👥" label="Foydalanuvchilar" value={profiles.length > 0 ? profiles.length : stats.total_users} />
                   <StatCard emoji="💳" label="Faol to'lovlar" value={stats.active_payments} />
                 </div>
                 {stats.recent_uploads.length > 0 && (
@@ -680,6 +738,75 @@ const AdminPage: React.FC = () => {
                     </ul>
                   </div>
                 )}
+
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-300">
+                      👥 Foydalanuvchilar va gamifikatsiya natijalari ({profiles.length})
+                    </h3>
+                    <button
+                      onClick={loadProfiles}
+                      disabled={profilesLoading}
+                      className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                    >
+                      {profilesLoading ? 'Yuklanmoqda…' : '↻ Yangilash'}
+                    </button>
+                  </div>
+
+                  {profilesError && (
+                    <div className="text-xs p-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/50">
+                      ❌ {profilesError}
+                    </div>
+                  )}
+
+                  {profilesLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3, 4].map((item) => (
+                        <div key={item} className="h-12 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse" />
+                      ))}
+                    </div>
+                  ) : profiles.length === 0 ? (
+                    <div className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
+                      Foydalanuvchi ma'lumotlari topilmadi.
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="w-full min-w-[720px] text-sm">
+                        <thead>
+                          <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
+                            <th className="py-2 pr-2">#</th>
+                            <th className="py-2 pr-2">Foydalanuvchi</th>
+                            <th className="py-2 pr-2">Telegram ID</th>
+                            <th className="py-2 pr-2">Daraja</th>
+                            <th className="py-2 pr-2">XP</th>
+                            <th className="py-2 pr-2">Quiz</th>
+                            <th className="py-2 pr-2">Focus</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {profiles.map((profile, idx) => (
+                            <tr key={profile.telegram_id || idx} className="border-b border-gray-50 dark:border-gray-800">
+                              <td className="py-2 pr-2 font-semibold text-gray-500 dark:text-gray-400">{idx + 1}</td>
+                              <td className="py-2 pr-2">
+                                <div className="font-medium text-gray-900 dark:text-white">{profile.first_name || 'Noma\'lum'}</div>
+                                <div className="text-xs text-gray-500 dark:text-gray-400">@{profile.username || 'username yo\'q'}</div>
+                              </td>
+                              <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.telegram_id}</td>
+                              <td className="py-2 pr-2">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-700 dark:text-sahifa-300 font-semibold">
+                                  ⭐ {profile.level}
+                                </span>
+                              </td>
+                              <td className="py-2 pr-2 font-semibold text-gray-900 dark:text-white">{profile.total_xp.toLocaleString()}</td>
+                              <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.quizzes_completed}</td>
+                              <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{formatFocusTime(profile.focus_seconds)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
               <div className="grid grid-cols-2 gap-3">
