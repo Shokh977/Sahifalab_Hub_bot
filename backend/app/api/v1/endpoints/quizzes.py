@@ -4,9 +4,10 @@ import hashlib
 import time
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.db.session import get_db
 from app.core.config import settings
-from app.models.models import Quiz, QuizQuestion
+from app.models.models import Quiz, QuizQuestion, UserQuizCompletion
 from app.schemas.schemas import (
     QuizResponse, QuizDetailPublic, QuizCreate, QuizQuestionResponse,
     QuizVerifyRequest, QuizVerifyResponse,
@@ -97,12 +98,15 @@ async def verify_quiz(
     db: Session = Depends(get_db),
 ):
     """
-    Server-side scoring.
+    Server-side scoring with XP deduplication.
 
     The client submits raw selected option indices (one per question, ordered).
     The server compares them against stored correct_answer values and returns
     a score plus an HMAC-signed result_token.  The token can later be used to
     validate a certificate request without trusting the client's claimed score.
+    
+    XP is only awarded on first completion. Retakes are tracked but award 0 XP
+    to prevent farming.
     """
     quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
     if not quiz:
@@ -130,6 +134,31 @@ async def verify_quiz(
     total = len(questions)
     percentage = round(score / total * 100, 1) if total else 0.0
 
+    # Check if user has already completed this quiz
+    existing_completion = db.query(UserQuizCompletion).filter(
+        UserQuizCompletion.telegram_id == body.telegram_id,
+        UserQuizCompletion.quiz_id == quiz_id,
+    ).first()
+
+    is_first_attempt = not existing_completion
+
+    # If this is first completion, record it
+    if is_first_attempt:
+        try:
+            completion = UserQuizCompletion(
+                quiz_id=quiz_id,
+                telegram_id=body.telegram_id,
+                score=score,
+                total=total,
+                percentage=percentage,
+            )
+            db.add(completion)
+            db.commit()
+        except IntegrityError:
+            # Race condition: another request beat us to it
+            db.rollback()
+            is_first_attempt = False
+
     ts = int(time.time())
     token = _sign_result(quiz_id, body.telegram_id, score, total, ts)
 
@@ -141,6 +170,7 @@ async def verify_quiz(
         passed=percentage >= 60,
         certificate_eligible=percentage >= 80,
         result_token=f"{ts}:{token}",
+        is_first_attempt=is_first_attempt,
     )
 
 

@@ -9,6 +9,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
+import { getProfileSkin } from '../utils/profileSkins'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeaderRow {
@@ -35,6 +36,12 @@ function rankLabel(rank: number): React.ReactNode {
 
 // ── Level gradient (consistent with the rest of the app) ─────────────────────
 function levelGrad(level: number): string {
+  if (level >= 50) return 'from-amber-300 to-yellow-600'
+  if (level >= 40) return 'from-rose-500 to-pink-700'
+  if (level >= 30) return 'from-indigo-500 to-violet-700'
+  if (level >= 25) return 'from-fuchsia-400 to-purple-600'
+  if (level >= 20) return 'from-rose-400 to-pink-600'
+  if (level >= 15) return 'from-indigo-400 to-violet-600'
   if (level >= 10) return 'from-orange-400 to-red-500'
   if (level >= 7)  return 'from-yellow-400 to-amber-500'
   if (level >= 5)  return 'from-purple-400 to-purple-600'
@@ -48,30 +55,44 @@ const LeaderRow: React.FC<{
   rank:      number
   isSelf:    boolean
   animDelay: number
-}> = ({ row, rank, isSelf, animDelay }) => (
-  <motion.div
-    initial={{ opacity: 0, x: -16 }}
-    animate={{ opacity: 1, x: 0 }}
-    transition={{ duration: 0.35, delay: animDelay }}
-    className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
-      isSelf
-        ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700/60 shadow-sm'
-        : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700'
-    }`}
-  >
+}> = ({ row, rank, isSelf, animDelay }) => {
+  const skin = getProfileSkin({
+    level: row.level,
+    totalXP: row.total_xp,
+    quizzesCompleted: row.quizzes_completed,
+    focusSeconds: row.focus_seconds,
+  })
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: -16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ duration: 0.35, delay: animDelay }}
+      className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
+        isSelf
+          ? 'bg-blue-50 dark:bg-blue-900/30 border-blue-200 dark:border-blue-700/60 shadow-sm'
+          : 'bg-white dark:bg-gray-800 border-gray-100 dark:border-gray-700'
+      }`}
+    >
     {/* Rank / Medal */}
     <div className="flex-shrink-0 w-7 flex items-center justify-center">
       {rankLabel(rank)}
     </div>
 
-    {/* Avatar */}
-    <div
-      className={`flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br ${levelGrad(row.level)} flex items-center justify-center shadow-sm`}
-    >
-      <span className="text-white text-sm font-black">
-        {(row.first_name || '?').charAt(0).toUpperCase()}
-      </span>
-    </div>
+      {/* Avatar + unlocked skin */}
+      <div className="flex-shrink-0 relative">
+        <div
+          className={`w-9 h-9 rounded-xl bg-gradient-to-br ${levelGrad(row.level)} flex items-center justify-center shadow-sm ${skin.borderClass}`}
+          title={`${skin.emoji} ${skin.name}`}
+        >
+          <span className="text-white text-sm font-black">
+            {(row.first_name || '?').charAt(0).toUpperCase()}
+          </span>
+        </div>
+        <div className="absolute -bottom-0.5 -right-0.5 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-100 dark:border-gray-700">
+          {skin.emoji}
+        </div>
+      </div>
 
     {/* Name + handle */}
     <div className="flex-1 min-w-0">
@@ -83,6 +104,8 @@ const LeaderRow: React.FC<{
         ⏱ {formatFocusTime(row.focus_seconds)}
         &nbsp;·&nbsp;
         📝 {row.quizzes_completed} test
+        &nbsp;·&nbsp;
+        {skin.emoji} {skin.name}
       </p>
     </div>
 
@@ -97,8 +120,9 @@ const LeaderRow: React.FC<{
         {row.total_xp.toLocaleString()} XP
       </p>
     </div>
-  </motion.div>
-)
+    </motion.div>
+  )
+}
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 const LeaderboardPage: React.FC = () => {
@@ -196,6 +220,15 @@ const LeaderboardPage: React.FC = () => {
           Eng ko'p XP to'plagan o'quvchilar
         </p>
       </motion.div>
+
+      {/* Info: anti-farming + skins */}
+      <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3">
+        <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
+          🛡️ <strong>Halol reyting:</strong> bir xil quizni qayta ishlash orqali XP farm qilib bo'lmaydi.
+          <br />
+          🎨 <strong>Skin tizimi:</strong> daraja, XP, quiz soni va fokus vaqti oshgani sari avatar atrofidagi skinlar ochiladi.
+        </p>
+      </div>
 
       {/* Refresh */}
       <div className="flex justify-end items-center gap-2">

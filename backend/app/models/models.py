@@ -1,5 +1,5 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Table, Boolean
+from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -223,3 +223,19 @@ class Resource(Base):
     category = Column(String(100), index=True)
     thumbnail_url = Column(String(500), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class UserQuizCompletion(Base):
+    """Tracks which quizzes each user has completed to prevent XP farming from retakes."""
+    __tablename__ = "user_quiz_completion"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("user.id"), index=True, nullable=True)
+    quiz_id = Column(Integer, ForeignKey("quiz.id"), index=True)
+    telegram_id = Column(Integer, index=True)  # denormalize for speed
+    score = Column(Integer)
+    total = Column(Integer)
+    percentage = Column(Float)
+    completed_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Unique constraint: each user completes each quiz only once (for XP purposes)
+    __table_args__ = (UniqueConstraint("telegram_id", "quiz_id", name="uq_user_quiz_completion"),)

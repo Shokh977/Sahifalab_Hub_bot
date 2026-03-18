@@ -31,6 +31,7 @@ interface BadgeDef {
 }
 
 const BADGES: BadgeDef[] = [
+  // ── Foundation (Easy) ──────────────────────────────────────────────────
   {
     id:       'beginner',
     emoji:    '🌱',
@@ -45,6 +46,15 @@ const BADGES: BadgeDef[] = [
     desc:     'Birinchi test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 1,
   },
+  
+  // ── Early Learning (Medium) ────────────────────────────────────────────
+  {
+    id:       'focused30min',
+    emoji:    '⏱️',
+    name:     'Fokusga Boshladi',
+    desc:     '30 daqiqa fokus vaqti',
+    unlocked: (p) => p.focusSeconds >= 1_800,
+  },
   {
     id:       'focused1h',
     emoji:    '🎯',
@@ -53,11 +63,11 @@ const BADGES: BadgeDef[] = [
     unlocked: (p) => p.focusSeconds >= 3_600,
   },
   {
-    id:       'focused5h',
-    emoji:    '⚡',
-    name:     'Qunt Sohibi',
-    desc:     '5 soat fokus vaqti',
-    unlocked: (p) => p.focusSeconds >= 18_000,
+    id:       'level2',
+    emoji:    '🌟',
+    name:     'Rivojlanuvchi',
+    desc:     '2-darajaga yetish',
+    unlocked: (p) => p.level >= 2,
   },
   {
     id:       'level3',
@@ -67,6 +77,29 @@ const BADGES: BadgeDef[] = [
     unlocked: (p) => p.level >= 3,
   },
   {
+    id:       'quiz5',
+    emoji:    '📝',
+    name:     'Test Saboqi',
+    desc:     '5 ta test yakunlandi',
+    unlocked: (p) => p.quizzesCompleted >= 5,
+  },
+  
+  // ── Advancing Skills (Hard) ────────────────────────────────────────────
+  {
+    id:       'focused3h',
+    emoji:    '💪',
+    name:     'Mustahkam Fokus',
+    desc:     '3 soat jami fokus',
+    unlocked: (p) => p.focusSeconds >= 10_800,
+  },
+  {
+    id:       'focused5h',
+    emoji:    '⚡',
+    name:     'Qunt Sohibi',
+    desc:     '5 soat fokus vaqti',
+    unlocked: (p) => p.focusSeconds >= 18_000,
+  },
+  {
     id:       'level5',
     emoji:    '🏆',
     name:     'Bilim Ustasi',
@@ -74,11 +107,48 @@ const BADGES: BadgeDef[] = [
     unlocked: (p) => p.level >= 5,
   },
   {
-    id:       'quizmaster',
+    id:       'xp1000',
+    emoji:    '✨',
+    name:     "Bilim to'plamchi",
+    desc:     '1000 XP yig\'ish',
+    unlocked: (p) => p.totalXP >= 1_000,
+  },
+  {
+    id:       'quiz10',
     emoji:    '💎',
     name:     'Viktorina Ustasi',
     desc:     '10 ta test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 10,
+  },
+  
+  // ── Expert Level (Very Hard) ───────────────────────────────────────────
+  {
+    id:       'level7',
+    emoji:    '🚀',
+    name:     'Faxri Darajali',
+    desc:     '7-darajaga yetish',
+    unlocked: (p) => p.level >= 7,
+  },
+  {
+    id:       'focused10h',
+    emoji:    '🔥',
+    name:     "Qo'ymas Fokus",
+    desc:     '10 soat jami fokus',
+    unlocked: (p) => p.focusSeconds >= 36_000,
+  },
+  {
+    id:       'xp2500',
+    emoji:    '💫',
+    name:     'Bilim Sayyori',
+    desc:     '2500 XP yig\'ish',
+    unlocked: (p) => p.totalXP >= 2_500,
+  },
+  {
+    id:       'quiz20',
+    emoji:    '🎓',
+    name:     'Katta Viktorinashunoslik',
+    desc:     '20 ta test yakunlandi',
+    unlocked: (p) => p.quizzesCompleted >= 20,
   },
   {
     id:       'level10',
@@ -87,12 +157,79 @@ const BADGES: BadgeDef[] = [
     desc:     '10-darajaga yetish',
     unlocked: (p) => p.level >= 10,
   },
+
+  // ── Master Level (Extreme) ─────────────────────────────────────────────
   {
-    id:       'focused25h',
-    emoji:    '🔥',
-    name:     "Qo'ymas",
-    desc:     '25 soat jami fokus',
-    unlocked: (p) => p.focusSeconds >= 90_000,
+    id:       'focused20h',
+    emoji:    '🌪️',
+    name:     "Fokusning G'alaba",
+    desc:     '20 soat jami fokus',
+    unlocked: (p) => p.focusSeconds >= 72_000,
+  },
+  {
+    id:       'xp5000',
+    emoji:    '🌠',
+    name:     'Hikmat Sayyori',
+    desc:     '5000 XP yig\'ish',
+    unlocked: (p) => p.totalXP >= 5_000,
+  },
+  {
+    id:       'quiz35',
+    emoji:    '🧠',
+    name:     'Ziyafat Ustasi',
+    desc:     '35 ta test yakunlandi',
+    unlocked: (p) => p.quizzesCompleted >= 35,
+  },
+  {
+    id:       'level15',
+    emoji:    '🎖️',
+    name:     'Ilm Faqihi',
+    desc:     '15-darajaga yetish',
+    unlocked: (p) => p.level >= 15,
+  },
+
+  // ── Legendary (Impossible) ─────────────────────────────────────────────
+  {
+    id:       'focused50h',
+    emoji:    '⭐',
+    name:     'Fokus Legandarsi',
+    desc:     '50 soat jami fokus',
+    unlocked: (p) => p.focusSeconds >= 180_000,
+  },
+  {
+    id:       'xp10000',
+    emoji:    '🏅',
+    name:     "Bilimning Qirolasi",
+    desc:     '10000 XP yig\'ish',
+    unlocked: (p) => p.totalXP >= 10_000,
+  },
+  {
+    id:       'quiz50',
+    emoji:    '🔱',
+    name:     'Viktorina Podshohi',
+    desc:     '50 ta test yakunlandi',
+    unlocked: (p) => p.quizzesCompleted >= 50,
+  },
+  {
+    id:       'level20',
+    emoji:    '♔',
+    name:     'Mutloq Ustozi',
+    desc:     '20-darajaga yetish',
+    unlocked: (p) => p.level >= 20,
+  },
+  {
+    id:       'level30',
+    emoji:    '💎',
+    name:     'Yasmavoy Esenlik',
+    desc:     '30-darajaga yetish',
+    unlocked: (p) => p.level >= 30,
+  },
+  {
+    id:       'focused100h',
+    emoji:    '🌟',
+    name:     'Fokus Jumhuri',
+    desc:     '100 soat jami fokus',
+    unlocked: (p) => p.focusSeconds >= 360_000,
   },
 ]
 
@@ -136,6 +273,10 @@ function avatarColor(telegramId: number | null): string {
 
 // ── Level gradient (matches GlobalProgressBar) ───────────────────────────────
 function levelGradient(level: number): string {
+  if (level >= 50) return 'from-amber-300 to-yellow-600'
+  if (level >= 40) return 'from-rose-500 to-pink-700'
+  if (level >= 30) return 'from-indigo-500 to-violet-700'
+  if (level >= 25) return 'from-fuchsia-400 to-purple-600'
   if (level >= 20) return 'from-rose-400 to-pink-600'
   if (level >= 15) return 'from-indigo-400 to-violet-600'
   if (level >= 10) return 'from-orange-400 to-red-500'
@@ -358,6 +499,22 @@ const CabinetPage: React.FC = () => {
             sub="badge qozonildi"
           />
         </div>
+      </motion.div>
+
+      {/* ── Gamification info (UZ) ───────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.18 }}
+        className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3"
+      >
+        <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
+          📌 <strong>Daraja qanday oshadi?</strong> Yangi quizlardan olingan XP va fokus vaqtidan.
+          <br />
+          🛡️ <strong>XP farming o'chirilgan:</strong> bir xil quizni qayta ishlash orqali XP olinmaydi.
+          <br />
+          🎨 <strong>Skinlar:</strong> daraja, XP, quiz soni va fokus vaqti oshgani sari yangi avatar skinlar ochiladi.
+        </p>
       </motion.div>
 
       {/* ── Badges ─────────────────────────────────────────────────────── */}

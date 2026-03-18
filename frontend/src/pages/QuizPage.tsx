@@ -41,6 +41,7 @@ interface VerifyResult {
   passed: boolean
   certificate_eligible: boolean
   result_token: string
+  is_first_attempt: boolean
 }
 
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -135,6 +136,14 @@ const QuizList: React.FC<{
       <p className="text-xs text-amber-800 dark:text-amber-300">
         🏆 <strong>80% va undan yuqori</strong> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
         Instagram Stories uchun tayyorlangan PNG formatida yuklab oling.
+      </p>
+    </div>
+
+    {/* XP + Daraja + Anti-farming info */}
+    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-3">
+      <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+        ℹ️ <strong>XP va Daraja qoidasi:</strong> bir xil viktorinani qayta yechishda XP qayta berilmaydi.
+        Daraja oshishi uchun <strong>yangi viktorinalar</strong> va <strong>fokus vaqti</strong> yig'ish kerak.
       </p>
     </div>
   </div>
@@ -305,6 +314,15 @@ const QuizResults: React.FC<{
           <h2 className={`text-lg font-bold ${msg.color}`}>{msg.text}</h2>
         </div>
 
+        {/* Retake warning — no XP awarded */}
+        {!result.is_first_attempt && (
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
+            <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
+              <span className="font-semibold">ℹ️ Qayta urinish:</span> Bu viktorinani allaqachon tugatgansiz. XP berdirilmadi.
+            </p>
+          </div>
+        )}
+
         {/* Score ring */}
         <div className="flex justify-center">
           <div className="relative w-36 h-36">
@@ -424,8 +442,10 @@ export const QuizPage: React.FC = () => {
       )
       setVerifyResult(r.data)
       setView('results')
-      // Award XP: +20 per correct answer + 100 bonus for 100%
-      addQuizXP(r.data.score, r.data.total)
+      // Award XP only on first attempt to prevent farming
+      if (r.data.is_first_attempt) {
+        addQuizXP(r.data.score, r.data.total)
+      }
     } catch {
       setError("Natijani tekshirib bo'lmadi. Qayta urinib ko'ring.")
       setView('quiz')

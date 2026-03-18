@@ -230,6 +230,7 @@ class QuizVerifyResponse(BaseModel):
     passed: bool               # >= 60%
     certificate_eligible: bool # >= 80%
     result_token: str          # HMAC-signed — prevents forged certificates
+    is_first_attempt: bool     # True if first completion (award XP), False if retake (no XP)
 
 # Book Schemas
 class BookCreate(BaseModel):

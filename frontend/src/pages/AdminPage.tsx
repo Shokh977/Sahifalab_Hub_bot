@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import apiService from '@services/apiService'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { getProfileSkin } from '../utils/profileSkins'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
@@ -865,8 +866,30 @@ const AdminPage: React.FC = () => {
                             <tr key={profile.telegram_id || idx} className="border-b border-gray-50 dark:border-gray-800">
                               <td className="py-2 pr-2 font-semibold text-gray-500 dark:text-gray-400">{idx + 1}</td>
                               <td className="py-2 pr-2">
-                                <div className="font-medium text-gray-900 dark:text-white">{profile.first_name || 'Noma\'lum'}</div>
-                                <div className="text-xs text-gray-500 dark:text-gray-400">@{profile.username || 'username yo\'q'}</div>
+                                {(() => {
+                                  const skin = getProfileSkin({
+                                    level: profile.level,
+                                    totalXP: profile.total_xp,
+                                    quizzesCompleted: profile.quizzes_completed,
+                                    focusSeconds: profile.focus_seconds,
+                                  })
+                                  return (
+                                    <div className="flex items-center gap-2">
+                                      <div className="relative flex-shrink-0">
+                                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-sahifa-500 to-sahifa-700 flex items-center justify-center text-white text-xs font-bold ${skin.borderClass}`}>
+                                          {(profile.first_name || '?').charAt(0).toUpperCase()}
+                                        </div>
+                                        <div className="absolute -bottom-1 -right-1 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-200 dark:border-gray-700">
+                                          {skin.emoji}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <div className="font-medium text-gray-900 dark:text-white">{profile.first_name || 'Noma\'lum'}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400">@{profile.username || 'username yo\'q'} · {skin.name}</div>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
                               </td>
                               <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.telegram_id}</td>
                               <td className="py-2 pr-2">
