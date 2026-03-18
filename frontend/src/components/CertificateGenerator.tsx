@@ -254,7 +254,7 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
   ctx.textAlign = 'left'
   ctx.fillStyle = ORANGE
   ctx.font = 'italic 58px "Brush Script MT", "Segoe Script", cursive'
-  ctx.fillText('SAHIFALAB Team', signatureX - 90, signatureY)
+  ctx.fillText('SAHIFALAB', signatureX - 90, signatureY)
 
   ctx.fillStyle = MUTED
   ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
