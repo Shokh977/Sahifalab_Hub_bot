@@ -126,7 +126,19 @@ async def list_quizzes_admin(
     admin: AdminUser = Depends(verify_admin)
 ):
     """List all quizzes for admin management"""
-    return db.query(Quiz).order_by(Quiz.created_at.desc()).offset(skip).limit(limit).all()
+    quizzes = db.query(Quiz).order_by(Quiz.created_at.desc()).offset(skip).limit(limit).all()
+    return [
+        {
+            "id": quiz.id,
+            "title": quiz.title or f"Quiz #{quiz.id}",
+            "book_title": quiz.book_title or "Noma'lum kitob",
+            "difficulty": quiz.difficulty or "medium",
+            "category": quiz.category or "other",
+            "total_questions": quiz.total_questions or 0,
+            "created_at": quiz.created_at,
+        }
+        for quiz in quizzes
+    ]
 
 
 @router.post("/quizzes/upload", response_model=QuizUploadResponse, status_code=status.HTTP_201_CREATED)

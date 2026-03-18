@@ -128,6 +128,8 @@ const AdminPage: React.FC = () => {
   const [quizForm, setQuizForm] = useState<QuizForm>({ ...EMPTY_QUIZ })
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestionForm[]>([{ ...EMPTY_QUESTION, options: ['', '', '', ''] }])
   const [quizList, setQuizList] = useState<AdminQuiz[]>([])
+  const [quizListLoading, setQuizListLoading] = useState(false)
+  const [quizListError, setQuizListError] = useState('')
   const [quizUploading, setQuizUploading] = useState(false)
   const [quizDeletingId, setQuizDeletingId] = useState<number | null>(null)
   const [quizMsg, setQuizMsg] = useState('')
@@ -229,10 +231,18 @@ const AdminPage: React.FC = () => {
 
   const loadAdminQuizzes = useCallback(async () => {
     if (!adminId) return
+    setQuizListLoading(true)
+    setQuizListError('')
     try {
       const res = await apiService.getAdminQuizzes(adminId)
       setQuizList(res.data)
-    } catch { /* ignore */ }
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Quizlar yuklanmadi'
+      setQuizList([])
+      setQuizListError(String(detail))
+    } finally {
+      setQuizListLoading(false)
+    }
   }, [adminId])
 
   const loadSounds = useCallback(async () => {
@@ -796,6 +806,76 @@ const AdminPage: React.FC = () => {
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-gray-900 dark:text-white">Quiz Yaratish</h2>
 
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h3 className="font-semibold text-gray-800 dark:text-white text-sm">🗂 Mavjud quizlar ({quizList.length})</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    O'chirish tugmasi har bir quiz kartasining o'ng tomonida ko'rinadi.
+                  </p>
+                </div>
+                <button
+                  onClick={loadAdminQuizzes}
+                  disabled={quizListLoading}
+                  className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg shrink-0 disabled:opacity-50"
+                >
+                  {quizListLoading ? '⏳ Yuklanmoqda…' : '↻ Yangilash'}
+                </button>
+              </div>
+
+              {quizListError && (
+                <div className="text-sm p-3 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/50">
+                  ❌ Quizlar yuklanmadi: {quizListError}
+                </div>
+              )}
+
+              {quizListLoading ? (
+                <div className="space-y-2">
+                  {[1, 2, 3].map((item) => (
+                    <div key={item} className="h-20 rounded-xl bg-gray-100 dark:bg-gray-700 animate-pulse" />
+                  ))}
+                </div>
+              ) : quizList.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-5 text-center text-sm text-gray-500 dark:text-gray-400">
+                  Hozircha mavjud quiz topilmadi.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {quizList.map((quiz) => (
+                    <div
+                      key={quiz.id}
+                      className="bg-gray-50 dark:bg-gray-900/40 rounded-xl p-3 border border-gray-100 dark:border-gray-700 flex items-center gap-3"
+                    >
+                      <div className="text-xl shrink-0">📝</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">{quiz.title}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">📘 {quiz.book_title}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          <span className="text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                            {quiz.total_questions} savol
+                          </span>
+                          <span className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                            {quiz.difficulty}
+                          </span>
+                          <span className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                            {quiz.category}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteQuiz(quiz.id, quiz.title)}
+                        disabled={quizDeletingId === quiz.id}
+                        className="text-xs bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg shrink-0 disabled:opacity-50"
+                        title="Quizni o'chirish"
+                      >
+                        {quizDeletingId === quiz.id ? '⏳ O\'chirilmoqda…' : '🗑 O\'chirish'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Quiz info card */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
               <h3 className="font-semibold text-gray-800 dark:text-white text-sm">📋 Quiz ma'lumotlari</h3>
@@ -955,50 +1035,6 @@ const AdminPage: React.FC = () => {
             >
               {quizUploading ? '⏳ Yuklanmoqda…' : `📤 Quiz Yuklash (${quizQuestions.filter(q => q.question.trim()).length} savol)`}
             </button>
-
-            {/* Existing quizzes management */}
-            <div className="pt-2 space-y-2">
-              <h3 className="font-semibold text-gray-800 dark:text-white text-sm">🗂 Mavjud quizlar ({quizList.length})</h3>
-
-              {quizList.length === 0 ? (
-                <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-700">
-                  Hozircha quiz yo'q
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {quizList.map((quiz) => (
-                    <div
-                      key={quiz.id}
-                      className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3"
-                    >
-                      <div className="text-xl shrink-0">📝</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">{quiz.title}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">📘 {quiz.book_title}</p>
-                        <div className="flex flex-wrap gap-1.5 mt-1">
-                          <span className="text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded">
-                            {quiz.total_questions} savol
-                          </span>
-                          <span className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
-                            {quiz.difficulty}
-                          </span>
-                          <span className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
-                            {quiz.category}
-                          </span>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => handleDeleteQuiz(quiz.id, quiz.title)}
-                        disabled={quizDeletingId === quiz.id}
-                        className="text-xs bg-red-50 dark:bg-red-900/20 text-red-500 px-2.5 py-1.5 rounded-lg shrink-0 disabled:opacity-50"
-                      >
-                        {quizDeletingId === quiz.id ? '⏳' : '🗑 O\'chir'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
           </div>
         )}
 
