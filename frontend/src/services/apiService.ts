@@ -188,8 +188,16 @@ class ApiService {
   }
 
   // Admin – Quizzes
+  async getAdminQuizzes(telegramId: number) {
+    return this.axiosInstance.get('/api/admin/quizzes', this.adminParams(telegramId))
+  }
+
   async uploadQuiz(telegramId: number, quizJson: any) {
     return this.axiosInstance.post('/api/admin/quizzes/upload', quizJson, this.adminParams(telegramId))
+  }
+
+  async deleteAdminQuiz(quizId: number, telegramId: number) {
+    return this.axiosInstance.delete(`/api/admin/quizzes/${quizId}`, this.adminParams(telegramId))
   }
 
   // Admin – Books

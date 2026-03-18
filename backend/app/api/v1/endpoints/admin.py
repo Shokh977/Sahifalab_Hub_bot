@@ -7,7 +7,7 @@ from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating
 from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog
 from app.schemas.admin_schemas import (
     HeroContentCreate, HeroContentUpdate, HeroContentResponse,
-    QuizUpload, QuizUploadResponse,
+    QuizUpload, QuizUploadResponse, QuizManagementResponse,
     BookManagementCreate, BookManagementUpdate, BookManagementResponse,
     PaymentConfigCreate, PaymentConfigUpdate, PaymentConfigResponse,
     AdminStats, AuditLogResponse
@@ -117,6 +117,18 @@ async def delete_hero_content(
     db.commit()
 
 # Quiz Upload Management
+@router.get("/quizzes", response_model=list[QuizManagementResponse])
+async def list_quizzes_admin(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin)
+):
+    """List all quizzes for admin management"""
+    return db.query(Quiz).order_by(Quiz.created_at.desc()).offset(skip).limit(limit).all()
+
+
 @router.post("/quizzes/upload", response_model=QuizUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_quiz(
     quiz_data: QuizUpload,
@@ -167,6 +179,30 @@ async def upload_quiz(
         "total_questions": db_quiz.total_questions,
         "status": "created"
     }
+
+
+@router.delete("/quizzes/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_quiz(
+    quiz_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin)
+):
+    """Delete quiz and related records"""
+    db_quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
+
+    if not db_quiz:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Quiz not found"
+        )
+
+    # Remove related rows explicitly to avoid FK issues in all environments
+    db.query(QuizQuestion).filter(QuizQuestion.quiz_id == quiz_id).delete()
+    db.query(QuizAuditLog).filter(QuizAuditLog.quiz_id == quiz_id).delete()
+
+    db.delete(db_quiz)
+    db.commit()
 
 # Book Management
 @router.post("/books", response_model=BookManagementResponse, status_code=status.HTTP_201_CREATED)

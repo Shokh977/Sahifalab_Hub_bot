@@ -45,6 +45,16 @@ interface AdminStats {
   recent_uploads: string[]
 }
 
+interface AdminQuiz {
+  id: number
+  title: string
+  book_title: string
+  difficulty: 'easy' | 'medium' | 'hard' | string
+  category: string
+  total_questions: number
+  created_at: string
+}
+
 type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds'
 
 // ─── Quiz form types ──────────────────────────────────────────────────────────
@@ -117,7 +127,9 @@ const AdminPage: React.FC = () => {
   // Quiz
   const [quizForm, setQuizForm] = useState<QuizForm>({ ...EMPTY_QUIZ })
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestionForm[]>([{ ...EMPTY_QUESTION, options: ['', '', '', ''] }])
+  const [quizList, setQuizList] = useState<AdminQuiz[]>([])
   const [quizUploading, setQuizUploading] = useState(false)
+  const [quizDeletingId, setQuizDeletingId] = useState<number | null>(null)
   const [quizMsg, setQuizMsg] = useState('')
 
   // Books
@@ -215,6 +227,14 @@ const AdminPage: React.FC = () => {
     } catch { /* ignore */ }
   }, [adminId])
 
+  const loadAdminQuizzes = useCallback(async () => {
+    if (!adminId) return
+    try {
+      const res = await apiService.getAdminQuizzes(adminId)
+      setQuizList(res.data)
+    } catch { /* ignore */ }
+  }, [adminId])
+
   const loadSounds = useCallback(async () => {
     try {
       const res = await apiService.getAmbientSounds()
@@ -229,9 +249,10 @@ const AdminPage: React.FC = () => {
     if (!adminId) return
     loadStats()
     if (activeTab === 'hero') loadHero()
+    if (activeTab === 'quiz') loadAdminQuizzes()
     if (activeTab === 'books') loadBooks()
     if (activeTab === 'sounds') loadSounds()
-  }, [adminId, activeTab, loadStats, loadHero, loadBooks, loadSounds])
+  }, [adminId, activeTab, loadStats, loadHero, loadAdminQuizzes, loadBooks, loadSounds])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -289,11 +310,31 @@ const AdminPage: React.FC = () => {
       setQuizMsg('✅ Quiz muvaffaqiyatli yuklandi!')
       setQuizForm({ ...EMPTY_QUIZ })
       setQuizQuestions([{ ...EMPTY_QUESTION, options: ['', '', '', ''] }])
+      loadAdminQuizzes()
+      loadStats()
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
       setQuizMsg(`❌ ${detail}`)
     } finally {
       setQuizUploading(false)
+    }
+  }
+
+  const handleDeleteQuiz = async (quizId: number, title: string) => {
+    if (!adminId) return
+    if (!window.confirm(`Quizni o'chirmoqchimisiz?\n\n${title}`)) return
+    setQuizDeletingId(quizId)
+    setQuizMsg('')
+    try {
+      await apiService.deleteAdminQuiz(quizId, adminId)
+      setQuizMsg('✅ Quiz o\'chirildi')
+      loadAdminQuizzes()
+      loadStats()
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
+      setQuizMsg(`❌ ${detail}`)
+    } finally {
+      setQuizDeletingId(null)
     }
   }
 
@@ -914,6 +955,50 @@ const AdminPage: React.FC = () => {
             >
               {quizUploading ? '⏳ Yuklanmoqda…' : `📤 Quiz Yuklash (${quizQuestions.filter(q => q.question.trim()).length} savol)`}
             </button>
+
+            {/* Existing quizzes management */}
+            <div className="pt-2 space-y-2">
+              <h3 className="font-semibold text-gray-800 dark:text-white text-sm">🗂 Mavjud quizlar ({quizList.length})</h3>
+
+              {quizList.length === 0 ? (
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-5 text-center text-sm text-gray-500 dark:text-gray-400 border border-gray-100 dark:border-gray-700">
+                  Hozircha quiz yo'q
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {quizList.map((quiz) => (
+                    <div
+                      key={quiz.id}
+                      className="bg-white dark:bg-gray-800 rounded-xl p-3 shadow-sm border border-gray-100 dark:border-gray-700 flex items-center gap-3"
+                    >
+                      <div className="text-xl shrink-0">📝</div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm text-gray-900 dark:text-white truncate">{quiz.title}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">📘 {quiz.book_title}</p>
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          <span className="text-[11px] bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                            {quiz.total_questions} savol
+                          </span>
+                          <span className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                            {quiz.difficulty}
+                          </span>
+                          <span className="text-[11px] bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-1.5 py-0.5 rounded">
+                            {quiz.category}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => handleDeleteQuiz(quiz.id, quiz.title)}
+                        disabled={quizDeletingId === quiz.id}
+                        className="text-xs bg-red-50 dark:bg-red-900/20 text-red-500 px-2.5 py-1.5 rounded-lg shrink-0 disabled:opacity-50"
+                      >
+                        {quizDeletingId === quiz.id ? '⏳' : '🗑 O\'chir'}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 

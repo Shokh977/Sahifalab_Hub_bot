@@ -102,6 +102,19 @@ class QuizUploadResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class QuizManagementResponse(BaseModel):
+    id: int
+    title: str
+    book_title: str
+    difficulty: str
+    category: str
+    total_questions: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
 # Book Management Schemas
 class BookManagementCreate(BaseModel):
     title: str
