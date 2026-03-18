@@ -1,5 +1,5 @@
 ﻿/**
- * QuizPage â€” SAHIFALAB Hub
+ * QuizPage — SAHIFALAB Hub
  * Stepped one-question-at-a-time UI with immediate feedback, server-side scoring
  * and a downloadable certificate for scores â‰¥ 80%.
  */
@@ -47,12 +47,12 @@ interface VerifyResult {
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
 
 const CORRECT_MSGS = [
-  "To'g'ri! ðŸŽ‰", "Zo'r! ðŸŒŸ", "Barakalla! ðŸ’ª",
-  "Mukammal! âœ¨", "Ajoyib! ðŸ”¥",
+  "To'g'ri! 🎉", "Zo'r! 🌟", "Barakalla! 💪",
+  "Mukammal! ✨", "Ajoyib! 🔥",
 ]
 const WRONG_MSGS = [
-  "Xato, ammo o'rgandik! ðŸ’¡", "Keyingi safar! ðŸ“š",
-  "Harakat davom etsin! ðŸš€", "Bilim orqali yutamiz! ðŸŽ¯",
+  "Xato, ammo o'rgandik! 💡", "Keyingi safar! 📚",
+  "Harakat davom etsin! 🚀", "Bilim orqali yutamiz! 🎯",
 ]
 
 const rand = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
@@ -82,9 +82,9 @@ const QuizList: React.FC<{
 }> = ({ quizzes, loading, onStart }) => (
   <div className="space-y-4">
     <div className="text-center space-y-1 mb-2">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ðŸ“ Viktorina</h1>
+      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📝 Viktorina</h1>
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        Bilimingizni sinab ko'ring va sertifikat qozonin!
+        Bilimingizni sinab ko'ring va sertifikat qozoning!
       </p>
     </div>
 
@@ -96,7 +96,7 @@ const QuizList: React.FC<{
       </div>
     ) : quizzes.length === 0 ? (
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
-        <p className="text-4xl mb-3">ðŸ“š</p>
+        <p className="text-4xl mb-3">📚</p>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Hali viktorina qo'shilmagan</p>
       </div>
     ) : (
@@ -109,11 +109,11 @@ const QuizList: React.FC<{
           >
             <div className="flex items-start gap-3">
               <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-xl shrink-0">
-                ðŸ“
+                📝
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{quiz.title}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">ðŸ“• {quiz.book_title}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">📕 {quiz.book_title}</p>
                 <div className="flex flex-wrap gap-1.5 mt-2">
                   <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
                     {quiz.total_questions} savol
@@ -123,7 +123,7 @@ const QuizList: React.FC<{
                   </span>
                 </div>
               </div>
-              <span className="text-gray-400 text-lg self-center">â€º</span>
+              <span className="text-gray-400 text-lg self-center">›</span>
             </div>
           </button>
         ))}
@@ -133,7 +133,7 @@ const QuizList: React.FC<{
     {/* Certificate teaser */}
     <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3">
       <p className="text-xs text-amber-800 dark:text-amber-300">
-        ðŸ† <strong>80% va undan yuqori</strong> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
+        🏆 <strong>80% va undan yuqori</strong> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
         Instagram Stories uchun tayyorlangan PNG formatida yuklab oling.
       </p>
     </div>
@@ -165,7 +165,7 @@ const QuizStep: React.FC<{
     setPhase('revealing')
 
     // We don't know the correct answer (stripped by backend), so show neutral feedback
-    const positiveMessages = ['Yaxshi! ðŸ’ª', 'Davom eting! ðŸš€', 'Zo\'r! âœ¨', 'Olg\'a! ðŸ”¥']
+    const positiveMessages = ['Yaxshi! 💪', 'Davom eting! 🚀', 'Zo\'r! ✨', 'Olg\'a! 🔥']
     setFeedback(rand(positiveMessages))
 
     timerRef.current = setTimeout(() => {
@@ -192,7 +192,7 @@ const QuizStep: React.FC<{
           onClick={onExit}
           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1"
         >
-          âœ•
+          ✕
         </button>
         <div className="flex-1">
           <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -276,11 +276,11 @@ const QuizResults: React.FC<{
   const { percentage, score, total, certificate_eligible } = result
 
   const getMessage = () => {
-    if (percentage >= 100) return { emoji: 'ðŸ†', text: 'Mukammal! 100% to\'g\'ri!', color: 'text-amber-600' }
-    if (percentage >= 80)  return { emoji: 'ðŸŒŸ', text: 'Zo\'r natija! Sertifikat qozondingiz!', color: 'text-blue-600' }
-    if (percentage >= 60)  return { emoji: 'ðŸ‘', text: 'Yaxshi! Yana ozgina harakat!', color: 'text-green-600' }
-    if (percentage >= 40)  return { emoji: 'ðŸ“š', text: 'Yana o\'qib kelingiz!', color: 'text-orange-500' }
-    return { emoji: 'ðŸ’ª', text: 'Harakat qiling â€” uddalaysiz!', color: 'text-gray-600' }
+    if (percentage >= 100) return { emoji: '🏆', text: 'Mukammal! 100% to\'g\'ri!', color: 'text-amber-600' }
+    if (percentage >= 80)  return { emoji: '🌟', text: 'Zo\'r natija! Sertifikat qozondingiz!', color: 'text-blue-600' }
+    if (percentage >= 60)  return { emoji: '👍', text: 'Yaxshi! Yana ozgina harakat!', color: 'text-green-600' }
+    if (percentage >= 40)  return { emoji: '📚', text: 'Yana o\'qib kelingiz!', color: 'text-orange-500' }
+    return { emoji: '💪', text: 'Harakat qiling — uddalaysiz!', color: 'text-gray-600' }
   }
 
   const msg = getMessage()
@@ -331,13 +331,13 @@ const QuizResults: React.FC<{
         {certificate_eligible && (
           <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-2xl p-4 text-center space-y-3">
             <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
-              ðŸŽ“ Tabriklaymiz! Sertifikat qozondingiz
+              🎓 Tabriklaymiz! Sertifikat qozondingiz
             </p>
             <button
               onClick={() => setShowCert(true)}
               className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 shadow-md transition-all active:scale-95"
             >
-              ðŸ† Sertifikatni ko'rish
+              🏆 Sertifikatni ko'rish
             </button>
           </div>
         )}
@@ -348,13 +348,13 @@ const QuizResults: React.FC<{
             onClick={onRetry}
             className="py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
           >
-            ðŸ”„ Qayta urinish
+            🔄 Qayta urinish
           </button>
           <button
             onClick={onExit}
             className="py-3 rounded-xl font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
-            â† Ro'yxatga
+            ← Ro'yxatga
           </button>
         </div>
 
@@ -448,10 +448,13 @@ export const QuizPage: React.FC = () => {
   // Loading states
   if (view === 'loading' || view === 'verifying') {
     return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4">
-        <div className="text-5xl animate-spin">â³</div>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
-          {view === 'loading' ? 'Viktorina yuklanmoqdaâ€¦' : 'Natijalar hisoblanmoqdaâ€¦'}
+      <div className="flex flex-col items-center justify-center min-h-[60vh] gap-5">
+        <div className="relative w-14 h-14">
+          <div className="absolute inset-0 rounded-full border-4 border-gray-200 dark:border-gray-700" />
+          <div className="absolute inset-0 rounded-full border-4 border-transparent border-t-blue-500 animate-spin" />
+        </div>
+        <p className="text-gray-500 dark:text-gray-400 text-sm font-medium">
+          {view === 'loading' ? 'Viktorina yuklanmoqda…' : 'Natijalar hisoblanmoqda…'}
         </p>
       </div>
     )
@@ -462,7 +465,7 @@ export const QuizPage: React.FC = () => {
       {/* Error banner */}
       {error && (
         <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
-          <p className="text-xs text-red-700 dark:text-red-300">âŒ {error}</p>
+          <p className="text-xs text-red-700 dark:text-red-300">❌ {error}</p>
         </div>
       )}
 
