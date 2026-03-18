@@ -48,7 +48,7 @@ const HomePage: React.FC = () => {
               : 'Assalomu alaykum! 👋'}
           </p>
           <p className="text-xs text-sahifa-600/80 dark:text-sahifa-400/80 mt-1 italic">
-            — Sam, sizning mentoringiz 📚
+           Sahifalab sizning mentoringiz 📚
           </p>
         </div>
       </motion.div>
@@ -83,7 +83,7 @@ const HomePage: React.FC = () => {
           @Sahifalab_hub_bot
         </p>
         <p className="text-[10px] text-slate-500 dark:text-slate-600">
-          Powered by SAHIFALAB · 2024
+          Powered by SAHIFALAB · 2026
         </p>
       </motion.footer>
     </main>

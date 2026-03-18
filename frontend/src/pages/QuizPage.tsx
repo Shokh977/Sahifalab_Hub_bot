@@ -293,6 +293,7 @@ const QuizResults: React.FC<{
     total,
     percentage,
     date: formatDate(new Date()),
+    certificateId: result.result_token,
   }
 
   return (

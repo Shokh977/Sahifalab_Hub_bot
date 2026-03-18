@@ -15,6 +15,16 @@ const FALLBACK_QUOTES: Quote[] = [
   { id: 1, text: "The only way to do great work is to love what you do.", author: "Steve Jobs", type: 'quote' },
   { id: 2, text: "O'qish — eng yaxshi sarmoya.", author: "SAHIFALAB", type: 'quote' },
   { id: 3, text: "Innovation distinguishes between a leader and a follower.", author: "Steve Jobs", type: 'quote' },
+  { id: 4, text: "Success is the product of daily habits—not once-in-a-lifetime transformations.", author: "James Clear", type: 'quote' },
+  { id: 5, text: "Bilim va odob — insonning eng katta boyligidir.", author: "Alisher Navoiy", type: 'quote' },
+  { id: 6, text: "Deep work is the superpower of the 21st century.", author: "Cal Newport", type: 'quote' },
+  { id: 7, text: "Vaqt — bu sarflash uchun emas, investitsiya qilish uchun berilgan ne'mat.", author: "SAHIFALAB", type: 'quote' },
+  { id: 8, text: "An investment in knowledge pays the best interest.", author: "Benjamin Franklin", type: 'quote' },
+  { id: 9, text: "Ilm o'rganishda charchoq yo'q, faqat lazzat bor.", author: "Imom Buxoriy", type: 'quote' },
+  { id: 10, text: "Quality over quantity: One hour of deep focus is better than eight hours of distraction.", author: "SAHIFALAB", type: 'quote' },
+  { id: 11, text: "The secret of change is to focus all of your energy, not on fighting the old, but on building the new.", author: "Socrates", type: 'quote' },
+  { id: 12, text: "Haqiqiy bilim — bu amaliyotda qo'llanilgan bilimdir.", author: "SAHIFALAB", type: 'quote' },
+  { id: 13, text: "Learn to be lonely, learn to be focused, learn to be great.", author: "Naval Ravikant", type: 'quote' }
 ]
 
 export const HeroSection: React.FC = () => {

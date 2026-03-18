@@ -8,6 +8,7 @@
  */
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import QRCode from 'qrcode'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface CertificateData {
@@ -17,6 +18,7 @@ export interface CertificateData {
   total: number
   percentage: number
   date: string
+  certificateId?: string
 }
 
 interface Props {
@@ -30,31 +32,12 @@ const H = 1350
 const cx = W / 2
 
 // ─── Color palette ────────────────────────────────────────────────────────────
-const GOLD   = '#C9A84C'
-const DARK   = '#1a1a1a'
-const BODY   = '#333333'
-const MUTED  = '#888888'
-const LIGHT  = '#aaaaaa'
-const BG     = '#FFFEF7'
-
-// ─── Utility: draw centered text with manual letter spacing ───────────────────
-function spacedText(
-  ctx: CanvasRenderingContext2D,
-  text: string,
-  x: number,
-  y: number,
-  spacing: number,
-) {
-  if (spacing === 0) { ctx.fillText(text, x, y); return }
-  const chars = text.split('')
-  const widths = chars.map(c => ctx.measureText(c).width)
-  const totalW = widths.reduce((a, b) => a + b, 0) + spacing * (chars.length - 1)
-  let px = x - totalW / 2
-  chars.forEach((c, i) => {
-    ctx.fillText(c, px + widths[i] / 2, y)
-    px += widths[i] + spacing
-  })
-}
+const ORANGE = '#F26722'
+const OFF_WHITE = '#FAFAFA'
+const CHARCOAL = '#1F2937'
+const GOLD = '#D4AF37'
+const MUTED = '#6B7280'
+const TELEGRAM_CHANNEL_URL = 'https://t.me/sahifalab1'
 
 // ─── Utility: wrap text to multiple lines ─────────────────────────────────────
 function wrapText(
@@ -78,243 +61,274 @@ function wrapText(
   return lines
 }
 
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = src
+  })
+}
+
+async function makeQrImage(url: string, size = 140): Promise<HTMLImageElement> {
+  const dataUrl = await QRCode.toDataURL(url, {
+    width: size,
+    margin: 1,
+    color: {
+      dark: CHARCOAL,
+      light: '#0000',
+    },
+  })
+  return loadImage(dataUrl)
+}
+
+function formatCertificateId(data: CertificateData): string {
+  if (data.certificateId?.trim()) {
+    return data.certificateId.trim().replace(/[^A-Za-z0-9-]/g, '').toUpperCase()
+  }
+
+  const seed = `${data.userName}|${data.quizTitle}|${data.date}|${data.score}|${data.total}|${data.percentage}`
+  let hash = 0
+  for (let i = 0; i < seed.length; i += 1) {
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0
+  }
+
+  const token = Math.abs(hash).toString(36).toUpperCase().padStart(8, '0').slice(0, 8)
+  return `SLH-${token}`
+}
+
+function drawPremiumPaperTexture(ctx: CanvasRenderingContext2D) {
+  ctx.fillStyle = OFF_WHITE
+  ctx.fillRect(0, 0, W, H)
+
+  const radial = ctx.createRadialGradient(cx, H * 0.4, 120, cx, H * 0.4, 900)
+  radial.addColorStop(0, 'rgba(212,175,55,0.06)')
+  radial.addColorStop(1, 'rgba(212,175,55,0)')
+  ctx.fillStyle = radial
+  ctx.fillRect(0, 0, W, H)
+
+  for (let i = 0; i < 2200; i += 1) {
+    const x = Math.random() * W
+    const y = Math.random() * H
+    const alpha = 0.02 + Math.random() * 0.03
+    ctx.fillStyle = `rgba(31,41,55,${alpha})`
+    ctx.fillRect(x, y, 1, 1)
+  }
+
+  for (let i = 0; i < 80; i += 1) {
+    const x = Math.random() * W
+    const h = 60 + Math.random() * 180
+    const y = Math.random() * (H - h)
+    ctx.fillStyle = 'rgba(31,41,55,0.015)'
+    ctx.fillRect(x, y, 1, h)
+  }
+}
+
+function drawCircularText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  radius: number,
+  startAngle: number,
+) {
+  ctx.save()
+  ctx.translate(x, y)
+  ctx.rotate(startAngle)
+
+  const letters = text.split('')
+  const sweep = Math.PI * 1.05
+  const step = letters.length > 1 ? sweep / (letters.length - 1) : 0
+
+  letters.forEach((ch, idx) => {
+    ctx.save()
+    ctx.rotate(idx * step)
+    ctx.translate(0, -radius)
+    ctx.rotate(Math.PI / 2)
+    ctx.fillText(ch, 0, 0)
+    ctx.restore()
+  })
+
+  ctx.restore()
+}
+
 // ─── Main draw function ────────────────────────────────────────────────────────
-function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
-  canvas.width  = W
+async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
+  canvas.width = W
   canvas.height = H
 
   const ctx = canvas.getContext('2d')!
   ctx.textAlign = 'center'
-  ctx.textBaseline = 'alphabetic'
+  ctx.textBaseline = 'middle'
 
-  // ── Background ─────────────────────────────────────────────────────────────
-  ctx.fillStyle = BG
-  ctx.fillRect(0, 0, W, H)
+  drawPremiumPaperTexture(ctx)
 
-  // Subtle radial warm glow in center
-  const glow = ctx.createRadialGradient(cx, H * 0.45, 50, cx, H * 0.45, 600)
-  glow.addColorStop(0, 'rgba(201,168,76,0.07)')
-  glow.addColorStop(1, 'rgba(255,254,247,0)')
-  ctx.fillStyle = glow
-  ctx.fillRect(0, 0, W, H)
-
-  // ── Outer border (gold, 5 px) ──────────────────────────────────────────────
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = 5
+  ctx.strokeStyle = ORANGE
+  ctx.lineWidth = 2
   ctx.strokeRect(24, 24, W - 48, H - 48)
 
-  // ── Inner border (gold, 1 px) ──────────────────────────────────────────────
+  ctx.strokeStyle = GOLD
   ctx.lineWidth = 1
-  ctx.strokeRect(46, 46, W - 92, H - 92)
+  ctx.strokeRect(40, 40, W - 80, H - 80)
 
-  // ── Corner diamonds ────────────────────────────────────────────────────────
-  const corners: [number, number][] = [
-    [24, 24], [W - 24, 24], [24, H - 24], [W - 24, H - 24],
-  ]
-  corners.forEach(([dx, dy]) => {
-    ctx.save()
-    ctx.translate(dx, dy)
-    // Erase borders at corner
-    ctx.fillStyle = BG
-    ctx.fillRect(-8, -8, 16, 16)
-    // Diamond
-    ctx.fillStyle = GOLD
-    ctx.beginPath()
-    ctx.moveTo(0, -10)
-    ctx.lineTo(10, 0)
-    ctx.lineTo(0, 10)
-    ctx.lineTo(-10, 0)
-    ctx.closePath()
-    ctx.fill()
-    ctx.restore()
-  })
-
-  // ── "SAHIFALAB" header ─────────────────────────────────────────────────────
-  ctx.fillStyle = DARK
-  ctx.font = 'bold 60px Georgia, serif'
-  spacedText(ctx, 'SAHIFALAB', cx, 148, 11)
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '700 64px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('SAHIFALAB', cx, 130)
 
   ctx.fillStyle = GOLD
-  ctx.font = '19px Georgia, serif'
-  spacedText(ctx, "O'QUV MARKAZI", cx, 188, 7)
+  ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('H U B', cx, 170)
 
-  // Decorative dots flanking header
-  ctx.fillStyle = GOLD
-  const dotY = 115
-  ;[-260, 260].forEach(offset => {
-    ctx.beginPath()
-    ctx.arc(cx + offset, dotY, 4, 0, Math.PI * 2)
-    ctx.fill()
+  ctx.strokeStyle = 'rgba(31,41,55,0.22)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(cx - 210, 212)
+  ctx.lineTo(cx + 210, 212)
+  ctx.stroke()
+
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '700 86px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('QUIZ CERTIFICATE', cx, 300)
+
+  ctx.fillStyle = MUTED
+  ctx.font = '500 30px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('Ushbu sertifikat egasi', cx, 390)
+
+  const safeName = data.userName.trim() || 'Ishtirokchi'
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '700 88px "Playfair Display", Georgia, "Times New Roman", serif'
+  ctx.fillText(safeName, cx, 500)
+
+  const nameWidth = Math.min(ctx.measureText(safeName).width + 30, 780)
+  const underlineGradient = ctx.createLinearGradient(cx - nameWidth / 2, 0, cx + nameWidth / 2, 0)
+  underlineGradient.addColorStop(0, ORANGE)
+  underlineGradient.addColorStop(1, GOLD)
+  ctx.strokeStyle = underlineGradient
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(cx - nameWidth / 2, 556)
+  ctx.lineTo(cx + nameWidth / 2, 556)
+  ctx.stroke()
+
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '500 31px Inter, Montserrat, Arial, sans-serif'
+  const achievement = `Ushbu sertifikat egasi SAHIFALAB Hub platformasidagi ${data.quizTitle} testidan muvaffaqiyatli o'tib, o'z bilimini rasman tasdiqladi.`
+  const achievementLines = wrapText(ctx, achievement, 850)
+  achievementLines.forEach((line, idx) => {
+    ctx.fillText(line, cx, 640 + idx * 46)
   })
 
-  // ── Short gold divider ─────────────────────────────────────────────────────
-  const divider = (y: number, w: number, thick = 1) => {
-    ctx.strokeStyle = GOLD
-    ctx.lineWidth = thick
+  const sealX = 250
+  const sealY = 935
+  const sealR = 95
+
+  ctx.save()
+  ctx.strokeStyle = ORANGE
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(sealX, sealY, sealR, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.strokeStyle = GOLD
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.arc(sealX, sealY, sealR - 12, 0, Math.PI * 2)
+  ctx.stroke()
+
+  ctx.fillStyle = ORANGE
+  ctx.font = '700 13px Inter, Montserrat, Arial, sans-serif'
+  drawCircularText(ctx, 'SAHIFALAB - DEEP WORK CERTIFIED', sealX, sealY, sealR - 7, -Math.PI * 0.85)
+
+  ctx.fillStyle = GOLD
+  ctx.font = '700 32px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('CERTIFIED', sealX, sealY)
+  ctx.restore()
+
+  const signatureX = 760
+  const signatureY = 935
+  ctx.textAlign = 'left'
+  ctx.fillStyle = ORANGE
+  ctx.font = 'italic 58px "Brush Script MT", "Segoe Script", cursive'
+  ctx.fillText('SAHIFALAB Team', signatureX - 90, signatureY)
+
+  ctx.fillStyle = MUTED
+  ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('Official Digital Signature', signatureX - 82, signatureY + 38)
+
+  const certificateId = formatCertificateId(data)
+
+  const metricsTop = 1040
+  const metricsX = 95
+  const metricsW = W - 190
+  const metricsH = 185
+
+  const panelGradient = ctx.createLinearGradient(0, metricsTop, 0, metricsTop + metricsH)
+  panelGradient.addColorStop(0, 'rgba(255,255,255,0.8)')
+  panelGradient.addColorStop(1, 'rgba(255,255,255,0.55)')
+
+  ctx.fillStyle = panelGradient
+  ctx.strokeStyle = 'rgba(31,41,55,0.16)'
+  ctx.lineWidth = 1.2
+  ctx.beginPath()
+  ctx.roundRect(metricsX, metricsTop, metricsW, metricsH, 20)
+  ctx.fill()
+  ctx.stroke()
+
+  const colW = metricsW / 3
+  ctx.strokeStyle = 'rgba(31,41,55,0.15)'
+  ctx.lineWidth = 1
+  for (let i = 1; i < 3; i += 1) {
+    const px = metricsX + i * colW
     ctx.beginPath()
-    ctx.moveTo(cx - w / 2, y)
-    ctx.lineTo(cx + w / 2, y)
+    ctx.moveTo(px, metricsTop + 18)
+    ctx.lineTo(px, metricsTop + metricsH - 18)
     ctx.stroke()
   }
 
-  divider(212, 260, 2)
+  const metrics = [
+    { label: 'Date', value: data.date },
+    { label: 'Score', value: `${Math.round(data.percentage)}%` },
+    { label: 'Certificate ID', value: certificateId },
+  ]
 
-  // ── "SERTIFIKAT" main title ────────────────────────────────────────────────
-  ctx.fillStyle = DARK
-  ctx.font = 'bold 92px Georgia, serif'
-  spacedText(ctx, 'SERTIFIKAT', cx, 315, 5)
+  ctx.textAlign = 'center'
+  metrics.forEach((item, idx) => {
+    const x = metricsX + colW * idx + colW / 2
+    ctx.fillStyle = GOLD
+    ctx.font = '700 19px Inter, Montserrat, Arial, sans-serif'
+    ctx.fillText(item.label, x, metricsTop + 52)
 
-  // Three-line ornament below title
-  divider(345, 700, 3)
-  divider(353, 700, 1)
-  divider(361, 700, 3)
+    ctx.fillStyle = CHARCOAL
+    ctx.font = idx === 2
+      ? '700 24px Inter, Montserrat, Arial, sans-serif'
+      : '600 30px Inter, Montserrat, Arial, sans-serif'
+    ctx.fillText(item.value, x, metricsTop + 112)
+  })
 
-  // ── Body: "Ushbu sertifikat" ───────────────────────────────────────────────
-  ctx.fillStyle = MUTED
-  ctx.font = 'italic 30px Georgia, serif'
-  ctx.fillText('Ushbu sertifikat', cx, 428)
+  const qrBox = 152
+  const qrX = W - qrBox - 68
+  const qrY = H - qrBox - 68
+  const qrImg = await makeQrImage(TELEGRAM_CHANNEL_URL, 132)
 
-  // User name (the hero element of the certificate)
-  ctx.fillStyle = DARK
-  ctx.font = 'bold 74px Georgia, serif'
-  const nameY = 520
-  ctx.fillText(data.userName, cx, nameY)
-
-  // Underline the name with a gold rule
-  const nameW = Math.min(ctx.measureText(data.userName).width, 800)
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = 2
+  ctx.fillStyle = 'rgba(255,255,255,0.9)'
+  ctx.strokeStyle = 'rgba(31,41,55,0.2)'
+  ctx.lineWidth = 1
   ctx.beginPath()
-  ctx.moveTo(cx - nameW / 2, nameY + 12)
-  ctx.lineTo(cx + nameW / 2, nameY + 12)
-  ctx.stroke()
-
-  ctx.fillStyle = MUTED
-  ctx.font = 'italic 28px Georgia, serif'
-  ctx.fillText("ga topshiriladi", cx, 575)
-
-  // ── Quiz title ─────────────────────────────────────────────────────────────
-  divider(610, 380, 1)
-
-  ctx.fillStyle = GOLD
-  ctx.font = 'bold 33px Georgia, serif'
-  const titleLines = wrapText(ctx, `«${data.quizTitle}»`, 750)
-  titleLines.forEach((line, i) => ctx.fillText(line, cx, 660 + i * 42))
-
-  const titleBottom = 660 + titleLines.length * 42
-  ctx.fillStyle = MUTED
-  ctx.font = '24px Georgia, serif'
-  ctx.fillText("bo'yicha bilim sinovidan", cx, titleBottom + 20)
-  ctx.fillText("muvaffaqiyatli o'tganligi uchun", cx, titleBottom + 56)
-
-  // ── Score badge ────────────────────────────────────────────────────────────
-  const bx = cx, by = titleBottom + 180, br = 82
-
-  // Background circle
-  ctx.beginPath()
-  ctx.arc(bx, by, br, 0, Math.PI * 2)
-  ctx.fillStyle = BG
+  ctx.roundRect(qrX, qrY, qrBox, qrBox, 14)
   ctx.fill()
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = 3
   ctx.stroke()
 
-  // Progress arc
-  const arcStart = -Math.PI / 2
-  const arcEnd   = arcStart + (Math.PI * 2 * data.percentage) / 100
-  ctx.beginPath()
-  ctx.arc(bx, by, br - 10, arcStart, arcEnd)
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = 10
-  ctx.lineCap = 'round'
-  ctx.stroke()
-  ctx.lineCap = 'butt'
+  ctx.drawImage(qrImg, qrX + 10, qrY + 10, qrBox - 20, qrBox - 20)
 
-  ctx.fillStyle = GOLD
-  ctx.font = 'bold 46px Georgia, serif'
-  ctx.fillText(`${data.percentage}%`, bx, by + 16)
-
-  ctx.fillStyle = MUTED
-  ctx.font = '18px Georgia, serif'
-  ctx.fillText(`${data.score}/${data.total} to'g'ri`, bx, by + 44)
-
-  // ── Date ───────────────────────────────────────────────────────────────────
-  const dateY = by + br + 80
-  ctx.fillStyle = MUTED
-  ctx.font = 'italic 24px Georgia, serif'
-  ctx.fillText(`Sana: ${data.date}`, cx, dateY)
-
-  divider(dateY + 24, 340, 1)
-
-  // ── Signature area ─────────────────────────────────────────────────────────
-  const sigY = dateY + 100
-
-  // Left: text signature
   ctx.textAlign = 'left'
-  ctx.fillStyle = BODY
-  ctx.font = 'italic bold 54px Georgia, serif'
-  ctx.fillText('Sam', 175, sigY)
-
   ctx.fillStyle = MUTED
-  ctx.font = '19px Georgia, serif'
-  ctx.fillText('SAHIFALAB', 158, sigY + 36)
-
-  // Center vertical rule
-  ctx.strokeStyle = '#ddd'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(cx, dateY + 32)
-  ctx.lineTo(cx, sigY + 60)
-  ctx.stroke()
-
-  // Right: official seal
-  const sx = 830, sy = sigY - 10, sr = 62
-  ctx.beginPath()
-  ctx.arc(sx, sy, sr, 0, Math.PI * 2)
-  ctx.fillStyle = BG
-  ctx.fill()
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = 2
-  ctx.setLineDash([5, 4])
-  ctx.stroke()
-  ctx.setLineDash([])
-
-  ctx.beginPath()
-  ctx.arc(sx, sy, sr - 14, 0, Math.PI * 2)
-  ctx.strokeStyle = GOLD
-  ctx.lineWidth = 1
-  ctx.stroke()
+  ctx.font = '500 14px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('Scan to verify channel', qrX, qrY - 16)
 
   ctx.textAlign = 'center'
   ctx.fillStyle = GOLD
-  ctx.font = 'bold 15px Georgia, serif'
-  spacedText(ctx, 'SAHIFALAB', sx, sy - 8, 2)
-  ctx.font = 'bold 13px Georgia, serif'
-  ctx.fillText('✓ TASDIQLAYDI', sx, sy + 14)
-  ctx.fillStyle = MUTED
-  ctx.font = '12px Georgia, serif'
-  ctx.fillText('2026', sx, sy + 34)
-
-  // ── Motivational quote ─────────────────────────────────────────────────────
-  const quoteY = sigY + 100
-  divider(quoteY, 500, 1)
-
-  ctx.fillStyle = LIGHT
-  ctx.font = 'italic 21px Georgia, serif'
-  const quote = '"Kitob o\'qigan inson hech qachon mag\'lub bo\'lmaydi"'
-  const qLines = wrapText(ctx, quote, 800)
-  qLines.forEach((line, i) => ctx.fillText(line, cx, quoteY + 38 + i * 30))
-
-  ctx.fillStyle = GOLD
-  ctx.font = '19px Georgia, serif'
-  ctx.fillText('— Sam, SAHIFALAB', cx, quoteY + 38 + qLines.length * 30 + 6)
-
-  // ── Bottom divider + domain ────────────────────────────────────────────────
-  divider(H - 90, W - 160, 2)
-
-  ctx.fillStyle = GOLD
-  ctx.font = 'bold 22px Georgia, serif'
-  spacedText(ctx, 'SAHIFALAB.UZ', cx, H - 56, 6)
+  ctx.font = '700 22px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillText('SAHIFALAB HUB', cx, H - 44)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -329,11 +343,10 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
 
   const render = useCallback(() => {
     setRendering(true)
-    // Small tick ensures the browser has painted the modal before we hit the GPU
-    requestAnimationFrame(() => {
+    requestAnimationFrame(async () => {
       const offscreen = document.createElement('canvas')
       offscreenRef.current = offscreen
-      drawCertificate(offscreen, data)
+      await drawCertificate(offscreen, data)
 
       // Scale down into the preview canvas
       const preview = previewRef.current
@@ -342,6 +355,8 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
         preview.width  = W * scale
         preview.height = H * scale
         const ctx = preview.getContext('2d')!
+        ctx.setTransform(1, 0, 0, 1, 0, 0)
+        ctx.clearRect(0, 0, preview.width, preview.height)
         ctx.scale(scale, scale)
         ctx.drawImage(offscreen, 0, 0)
       }
@@ -357,7 +372,7 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
     if (!dataUrl) return
     const a = document.createElement('a')
     a.href = dataUrl
-    a.download = `sahifalab-sertifikat-${data.userName.replace(/\s+/g, '-')}.png`
+    a.download = `sahifalab-certificate-${data.userName.replace(/\s+/g, '-')}.png`
     a.click()
   }
 
@@ -377,7 +392,7 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
         </div>
 
         {/* Preview */}
-        <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-amber-50 aspect-[4/5]">
+        <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-[#fafafa] aspect-[4/5]">
           {rendering && (
             <div className="absolute inset-0 flex items-center justify-center">
               <div className="text-3xl animate-spin">⏳</div>
@@ -386,14 +401,12 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
           <canvas
             ref={previewRef}
             className="w-full h-full object-contain"
-            style={{ opacity: rendering ? 0 : 1, transition: 'opacity 0.3s' }}
+            style={{ opacity: rendering ? 0 : 1, transition: 'opacity 0.35s' }}
           />
         </div>
 
         {/* Info */}
-        <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-          📲 PNG sifatida yuklab oling va Instagram Stories ga joylang!
-        </p>
+        <p className="text-xs text-center text-gray-500 dark:text-gray-400">Premium PNG formatida yuklab oling va ulashing.</p>
 
         {/* Actions */}
         <div className="grid grid-cols-2 gap-3">
@@ -406,7 +419,7 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
           <button
             onClick={handleDownload}
             disabled={rendering || !dataUrl}
-            className="py-3 rounded-xl font-bold text-white bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 disabled:opacity-50 shadow-md transition-all active:scale-95"
+            className="py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 disabled:opacity-50 shadow-md transition-all active:scale-95"
           >
             ⬇️ Yuklab olish
           </button>
