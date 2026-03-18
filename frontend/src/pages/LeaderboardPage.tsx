@@ -11,6 +11,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
+import { isUserOnline } from '../utils/onlineStatus'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeaderRow {
@@ -21,6 +22,7 @@ interface LeaderRow {
   focus_seconds:     number
   level:             number
   quizzes_completed: number
+  updated_at?:       string | null
 }
 
 // ── Medals ───────────────────────────────────────────────────────────────────
@@ -57,6 +59,7 @@ const LeaderRow: React.FC<{
   isSelf:    boolean
   animDelay: number
 }> = ({ row, rank, isSelf, animDelay }) => {
+  const online = isUserOnline(row.updated_at)
   const skin = getProfileSkin({
     level: row.level,
     totalXP: row.total_xp,
@@ -93,6 +96,9 @@ const LeaderRow: React.FC<{
         <div className="absolute -bottom-0.5 -right-0.5 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-100 dark:border-gray-700">
           {skin.emoji}
         </div>
+        {online && (
+          <div className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white dark:border-gray-800 shadow-sm" title="Online" />
+        )}
       </div>
 
     {/* Name + handle */}
@@ -148,7 +154,7 @@ const LeaderboardPage: React.FC = () => {
       // Top 10
       const { data: top, error: topErr } = await supabase
         .from('profiles')
-        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed')
+        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, updated_at')
         .order('total_xp', { ascending: false })
         .limit(10)
 
@@ -162,7 +168,7 @@ const LeaderboardPage: React.FC = () => {
         // Fetch user's own row
         const { data: me } = await supabase
           .from('profiles')
-          .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed')
+          .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, updated_at')
           .eq('telegram_id', telegramId)
           .single()
 

@@ -9,6 +9,7 @@ import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
+import { isUserOnline } from '../utils/onlineStatus'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
@@ -56,6 +57,7 @@ interface AdminProfile {
   focus_seconds: number
   level: number
   quizzes_completed: number
+  updated_at: string | null
 }
 
 interface AdminQuiz {
@@ -252,7 +254,7 @@ const AdminPage: React.FC = () => {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed')
+        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, updated_at')
         .order('total_xp', { ascending: false })
         .limit(500)
 
@@ -266,6 +268,7 @@ const AdminPage: React.FC = () => {
         focus_seconds: Number(row.focus_seconds ?? 0),
         level: Number(row.level ?? 1),
         quizzes_completed: Number(row.quizzes_completed ?? 0),
+        updated_at: row.updated_at ?? null,
       })))
     } catch (err: any) {
       const detail = err?.message || 'Foydalanuvchilar ro\'yxatini yuklab bo\'lmadi'
@@ -868,6 +871,7 @@ const AdminPage: React.FC = () => {
                               <td className="py-2 pr-2 font-semibold text-gray-500 dark:text-gray-400">{idx + 1}</td>
                               <td className="py-2 pr-2">
                                 {(() => {
+                                  const online = isUserOnline(profile.updated_at)
                                   const skin = getProfileSkin({
                                     level: profile.level,
                                     totalXP: profile.total_xp,
@@ -883,6 +887,9 @@ const AdminPage: React.FC = () => {
                                         <div className="absolute -bottom-1 -right-1 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-200 dark:border-gray-700">
                                           {skin.emoji}
                                         </div>
+                                        {online && (
+                                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-gray-800 shadow-sm" title="Online" />
+                                        )}
                                       </div>
                                       <div>
                                         <div className="font-medium text-gray-900 dark:text-white">{profile.first_name || 'Noma\'lum'}</div>
