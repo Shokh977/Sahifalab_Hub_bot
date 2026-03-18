@@ -57,7 +57,7 @@ interface AdminProfile {
   focus_seconds: number
   level: number
   quizzes_completed: number
-  updated_at: string | null
+  app_online_at: string | null
 }
 
 interface AdminQuiz {
@@ -254,22 +254,31 @@ const AdminPage: React.FC = () => {
 
       const { data, error } = await supabase
         .from('profiles')
-        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, updated_at')
+        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
         .order('total_xp', { ascending: false })
         .limit(500)
 
       if (error) throw error
 
-      setProfiles((data ?? []).map((row: any) => ({
-        telegram_id: Number(row.telegram_id ?? 0),
-        first_name: row.first_name ?? null,
-        username: row.username ?? null,
-        total_xp: Number(row.total_xp ?? 0),
-        focus_seconds: Number(row.focus_seconds ?? 0),
-        level: Number(row.level ?? 1),
-        quizzes_completed: Number(row.quizzes_completed ?? 0),
-        updated_at: row.updated_at ?? null,
-      })))
+      setProfiles(
+        (data ?? [])
+          .map((row: any) => ({
+            telegram_id: Number(row.telegram_id ?? 0),
+            first_name: row.first_name ?? null,
+            username: row.username ?? null,
+            total_xp: Number(row.total_xp ?? 0),
+            focus_seconds: Number(row.focus_seconds ?? 0),
+            level: Number(row.level ?? 1),
+            quizzes_completed: Number(row.quizzes_completed ?? 0),
+            app_online_at: row.app_online_at ?? null,
+          }))
+          .sort((a, b) => {
+            const aOnline = isUserOnline(a.app_online_at)
+            const bOnline = isUserOnline(b.app_online_at)
+            if (aOnline !== bOnline) return aOnline ? -1 : 1
+            return b.total_xp - a.total_xp
+          })
+      )
     } catch (err: any) {
       const detail = err?.message || 'Foydalanuvchilar ro\'yxatini yuklab bo\'lmadi'
       setProfiles([])
@@ -871,7 +880,7 @@ const AdminPage: React.FC = () => {
                               <td className="py-2 pr-2 font-semibold text-gray-500 dark:text-gray-400">{idx + 1}</td>
                               <td className="py-2 pr-2">
                                 {(() => {
-                                  const online = isUserOnline(profile.updated_at)
+                                  const online = isUserOnline(profile.app_online_at)
                                   const skin = getProfileSkin({
                                     level: profile.level,
                                     totalXP: profile.total_xp,

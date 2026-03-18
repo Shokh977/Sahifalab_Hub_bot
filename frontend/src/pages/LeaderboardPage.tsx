@@ -22,7 +22,7 @@ interface LeaderRow {
   focus_seconds:     number
   level:             number
   quizzes_completed: number
-  updated_at?:       string | null
+  app_online_at?:    string | null
 }
 
 // ── Medals ───────────────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ const LeaderRow: React.FC<{
   isSelf:    boolean
   animDelay: number
 }> = ({ row, rank, isSelf, animDelay }) => {
-  const online = isUserOnline(row.updated_at)
+  const online = isUserOnline(row.app_online_at)
   const skin = getProfileSkin({
     level: row.level,
     totalXP: row.total_xp,
@@ -154,7 +154,7 @@ const LeaderboardPage: React.FC = () => {
       // Top 10
       const { data: top, error: topErr } = await supabase
         .from('profiles')
-        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, updated_at')
+        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
         .order('total_xp', { ascending: false })
         .limit(10)
 
@@ -168,7 +168,7 @@ const LeaderboardPage: React.FC = () => {
         // Fetch user's own row
         const { data: me } = await supabase
           .from('profiles')
-          .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, updated_at')
+          .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
           .eq('telegram_id', telegramId)
           .single()
 
@@ -288,9 +288,11 @@ const LeaderboardPage: React.FC = () => {
   focus_seconds     int NOT NULL DEFAULT 0,
   level             int NOT NULL DEFAULT 1,
   quizzes_completed int NOT NULL DEFAULT 0,
+  app_online_at     timestamptz,
   created_at        timestamptz DEFAULT now(),
   updated_at        timestamptz DEFAULT now()
 );
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS app_online_at timestamptz;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "public read"  ON public.profiles FOR SELECT TO anon USING (true);
 CREATE POLICY "anon insert"  ON public.profiles FOR INSERT TO anon WITH CHECK (true);

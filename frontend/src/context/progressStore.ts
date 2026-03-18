@@ -71,6 +71,7 @@ interface ProgressState {
   addFocusSeconds:  (seconds: number) => void
   addQuizXP:        (score: number, total: number) => void
   syncToSupabase:   () => Promise<void>
+  pingPresence:     () => Promise<void>
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
@@ -184,6 +185,25 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       // Silent fail — next heartbeat or action will retry
     } finally {
       set({ isSyncing: false })
+    }
+  },
+
+  pingPresence: async () => {
+    const state = get()
+    if (!state.telegramId || !state.isInitialized) return
+
+    try {
+      await supabase.from('profiles').upsert(
+        {
+          telegram_id:  state.telegramId,
+          first_name:   state.firstName,
+          username:     state.username,
+          app_online_at: new Date().toISOString(),
+        },
+        { onConflict: 'telegram_id' },
+      )
+    } catch {
+      // Silent fail — next presence tick will retry
     }
   },
 }))

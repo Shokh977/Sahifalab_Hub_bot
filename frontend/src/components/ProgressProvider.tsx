@@ -6,8 +6,9 @@
  *
  * Responsibilities:
  *   1. Read Telegram user (id + first_name) → call store.init()
- *   2. Heartbeat: sync to Supabase every 5 minutes if there are pending seconds
- *   3. Sync on page unload (beforeunload)
+ *   2. Presence heartbeat while the mini app is visible
+ *   3. Heartbeat: sync to Supabase every 5 minutes if there are pending seconds
+ *   4. Sync on page unload (beforeunload)
  */
 
 import { useEffect } from 'react'
@@ -15,10 +16,11 @@ import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useProgressStore } from '../context/progressStore'
 
 const HEARTBEAT_MS = 5 * 60 * 1000   // 5 minutes
+const PRESENCE_MS = 45 * 1000        // 45 seconds
 
 const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useTelegramWebApp()
-  const { init, syncToSupabase, pendingFocusSeconds } = useProgressStore()
+  const { init, syncToSupabase, pendingFocusSeconds, pingPresence } = useProgressStore()
 
   // ── 1. Initialize store when Telegram user is available ─────────────────
   useEffect(() => {
@@ -27,7 +29,27 @@ const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children })
     }
   }, [user?.id])  // re-run only if the user id changes
 
-  // ── 2. Heartbeat sync every 5 minutes ───────────────────────────────────
+  // ── 2. Presence heartbeat while mini app is visible ─────────────────────
+  useEffect(() => {
+    if (!user?.id) return
+
+    const tick = () => {
+      if (document.visibilityState === 'visible') {
+        pingPresence()
+      }
+    }
+
+    tick()
+    const id = setInterval(tick, PRESENCE_MS)
+    document.addEventListener('visibilitychange', tick)
+
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', tick)
+    }
+  }, [user?.id, pingPresence])
+
+  // ── 3. Heartbeat sync every 5 minutes ───────────────────────────────────
   useEffect(() => {
     const id = setInterval(() => {
       if (pendingFocusSeconds > 0) {
@@ -37,7 +59,7 @@ const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children })
     return () => clearInterval(id)
   }, [pendingFocusSeconds, syncToSupabase])
 
-  // ── 3. Sync on page unload ───────────────────────────────────────────────
+  // ── 4. Sync on page unload ───────────────────────────────────────────────
   useEffect(() => {
     const onUnload = () => syncToSupabase()
     window.addEventListener('beforeunload', onUnload)

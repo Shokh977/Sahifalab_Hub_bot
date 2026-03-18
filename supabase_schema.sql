@@ -13,9 +13,13 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   focus_seconds      int         NOT NULL DEFAULT 0,
   level              int         NOT NULL DEFAULT 1,
   quizzes_completed  int         NOT NULL DEFAULT 0,
+  app_online_at      timestamptz,
   created_at         timestamptz DEFAULT now(),
   updated_at         timestamptz DEFAULT now()
 );
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS app_online_at timestamptz;
 
 COMMENT ON TABLE public.profiles IS
   'One row per Telegram user. Level = floor(sqrt(total_xp / 100)) + 1';
