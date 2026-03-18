@@ -24,6 +24,9 @@ bot/__pycache__/
 bot/**/__pycache__/
 bot/.venv/
 bot/venv/
+bot/subscribers.json
+bot/news_posts.json
+bot/scheduled_news.json
 
 # ─── Database ─────────────────────────────────────────────────────
 *.sqlite3

@@ -46,6 +46,13 @@ DEBUG=True
 - `/start` - Welcome message
 - `/help` - Show available commands
 - `/app` - Open mini app button
+- `/subscribe` - Subscribe to updates
+- `/unsubscribe` - Stop updates
+- `/latest` - Show latest news posts
+- `/news <text>` - Broadcast news to subscribers (admin)
+- `/schedule_news <date time> <text>` - Schedule a news post (admin)
+- `/scheduled` - List scheduled news posts (admin)
+- `/cancel_news <id>` - Cancel a scheduled post (admin)
 - `/orders` - View user orders
 - `/support` - Contact support
 
@@ -53,6 +60,8 @@ DEBUG=True
 - Order status updates
 - Promotional messages
 - Delivery notifications
+- Rich news posts with photo + caption (reply to a photo with `/news` or `/schedule_news`)
+- Scheduled broadcasts using `BOT_TIMEZONE` (default: `Asia/Tashkent`)
 
 ## Bot Structure
 
