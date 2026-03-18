@@ -8,6 +8,7 @@ import apiService from '@services/apiService'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { getProfileSkin } from '../utils/profileSkins'
+import { getLevelTitle } from '../utils/levelTitles'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
@@ -894,7 +895,7 @@ const AdminPage: React.FC = () => {
                               <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.telegram_id}</td>
                               <td className="py-2 pr-2">
                                 <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-700 dark:text-sahifa-300 font-semibold">
-                                  ⭐ {profile.level}
+                                  {getLevelTitle(profile.level)}
                                 </span>
                               </td>
                               <td className="py-2 pr-2 font-semibold text-gray-900 dark:text-white">{profile.total_xp.toLocaleString()}</td>

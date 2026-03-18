@@ -10,6 +10,7 @@ import { motion } from 'framer-motion'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 import { getProfileSkin } from '../utils/profileSkins'
+import { getLevelTitle } from '../utils/levelTitles'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface LeaderRow {
@@ -114,7 +115,7 @@ const LeaderRow: React.FC<{
       <div
         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${levelGrad(row.level)} text-white text-[10px] font-bold mb-0.5`}
       >
-        ⭐ {row.level}
+        {getLevelTitle(row.level)}
       </div>
       <p className="text-xs font-bold text-gray-700 dark:text-gray-300 tabular-nums">
         {row.total_xp.toLocaleString()} XP

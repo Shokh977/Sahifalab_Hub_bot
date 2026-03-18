@@ -21,6 +21,7 @@ import {
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
 
 // ── Level colour tiers (orange-forward) ───────────────────────────────────────
 function levelGradient(level: number): string {
@@ -39,18 +40,7 @@ function levelGradient(level: number): string {
 }
 
 function levelLabel(level: number): string {
-  if (level >= 50) return '💎🏆'
-  if (level >= 40) return '🏅'
-  if (level >= 30) return '👑'
-  if (level >= 25) return '🔱'
-  if (level >= 20) return '♔'
-  if (level >= 15) return '🎖️'
-  if (level >= 10) return '👑'
-  if (level >= 7)  return '🚀'
-  if (level >= 5)  return '🏆'
-  if (level >= 3)  return '📚'
-  if (level >= 2)  return '🌿'
-  return '🌱'
+  return `${getLevelEmoji(level)} ${getLevelTitle(level)}`
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────

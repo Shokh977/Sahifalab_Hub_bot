@@ -20,6 +20,7 @@ import {
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
 
 // ── Badge definitions ─────────────────────────────────────────────────────────
 interface BadgeDef {
@@ -35,14 +36,14 @@ const BADGES: BadgeDef[] = [
   {
     id:       'beginner',
     emoji:    '🌱',
-    name:     'Yangi Boshlovchi',
-    desc:     'Sayohat boshlandi!',
+    name:     'Navkar',
+    desc:     'Ilm xizmatiga endigina bel bog\'lagan',
     unlocked: () => true,
   },
   {
     id:       'reader',
     emoji:    '📚',
-    name:     'Kitobxon',
+    name:     'Chokar',
     desc:     'Birinchi test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 1,
   },
@@ -51,35 +52,35 @@ const BADGES: BadgeDef[] = [
   {
     id:       'focused30min',
     emoji:    '⏱️',
-    name:     'Fokusga Boshladi',
+    name:     'G\'ulom',
     desc:     '30 daqiqa fokus vaqti',
     unlocked: (p) => p.focusSeconds >= 1_800,
   },
   {
     id:       'focused1h',
     emoji:    '🎯',
-    name:     'Diqqatli',
+    name:     'Yasovul',
     desc:     '1 soat fokus vaqti',
     unlocked: (p) => p.focusSeconds >= 3_600,
   },
   {
     id:       'level2',
     emoji:    '🌟',
-    name:     'Rivojlanuvchi',
+    name:     'Munshiy',
     desc:     '2-darajaga yetish',
     unlocked: (p) => p.level >= 2,
   },
   {
     id:       'level3',
     emoji:    '📖',
-    name:     "O'rganuvchi",
+    name:     'Mirzo',
     desc:     "3-darajaga yetish",
     unlocked: (p) => p.level >= 3,
   },
   {
     id:       'quiz5',
     emoji:    '📝',
-    name:     'Test Saboqi',
+    name:     'Mahram',
     desc:     '5 ta test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 5,
   },
@@ -88,35 +89,35 @@ const BADGES: BadgeDef[] = [
   {
     id:       'focused3h',
     emoji:    '💪',
-    name:     'Mustahkam Fokus',
+    name:     'Ko\'kalosh',
     desc:     '3 soat jami fokus',
     unlocked: (p) => p.focusSeconds >= 10_800,
   },
   {
     id:       'focused5h',
     emoji:    '⚡',
-    name:     'Qunt Sohibi',
+    name:     'To\'qsabo',
     desc:     '5 soat fokus vaqti',
     unlocked: (p) => p.focusSeconds >= 18_000,
   },
   {
     id:       'level5',
     emoji:    '🏆',
-    name:     'Bilim Ustasi',
+    name:     'Yuzboshi',
     desc:     '5-darajaga yetish',
     unlocked: (p) => p.level >= 5,
   },
   {
     id:       'xp1000',
     emoji:    '✨',
-    name:     "Bilim to'plamchi",
+    name:     'Mingboshi',
     desc:     '1000 XP yig\'ish',
     unlocked: (p) => p.totalXP >= 1_000,
   },
   {
     id:       'quiz10',
     emoji:    '💎',
-    name:     'Viktorina Ustasi',
+    name:     'Darug\'a',
     desc:     '10 ta test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 10,
   },
@@ -125,35 +126,35 @@ const BADGES: BadgeDef[] = [
   {
     id:       'level7',
     emoji:    '🚀',
-    name:     'Faxri Darajali',
+    name:     'Parvonachi',
     desc:     '7-darajaga yetish',
     unlocked: (p) => p.level >= 7,
   },
   {
     id:       'focused10h',
     emoji:    '🔥',
-    name:     "Qo'ymas Fokus",
+    name:     'Shog\'ovul',
     desc:     '10 soat jami fokus',
     unlocked: (p) => p.focusSeconds >= 36_000,
   },
   {
     id:       'xp2500',
     emoji:    '💫',
-    name:     'Bilim Sayyori',
+    name:     'Otaliq',
     desc:     '2500 XP yig\'ish',
     unlocked: (p) => p.totalXP >= 2_500,
   },
   {
     id:       'quiz20',
     emoji:    '🎓',
-    name:     'Katta Viktorinashunoslik',
+    name:     'Inoq',
     desc:     '20 ta test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 20,
   },
   {
     id:       'level10',
     emoji:    '👑',
-    name:     "Sam'ning Shogirdi",
+    name:     'Bijiy',
     desc:     '10-darajaga yetish',
     unlocked: (p) => p.level >= 10,
   },
@@ -162,28 +163,28 @@ const BADGES: BadgeDef[] = [
   {
     id:       'focused20h',
     emoji:    '🌪️',
-    name:     "Fokusning G'alaba",
+    name:     'Bek',
     desc:     '20 soat jami fokus',
     unlocked: (p) => p.focusSeconds >= 72_000,
   },
   {
     id:       'xp5000',
     emoji:    '🌠',
-    name:     'Hikmat Sayyori',
+    name:     'Biy',
     desc:     '5000 XP yig\'ish',
     unlocked: (p) => p.totalXP >= 5_000,
   },
   {
     id:       'quiz35',
     emoji:    '🧠',
-    name:     'Ziyafat Ustasi',
+    name:     'Beklarbegi',
     desc:     '35 ta test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 35,
   },
   {
     id:       'level15',
     emoji:    '🎖️',
-    name:     'Ilm Faqihi',
+    name:     'Noib',
     desc:     '15-darajaga yetish',
     unlocked: (p) => p.level >= 15,
   },
@@ -192,42 +193,42 @@ const BADGES: BadgeDef[] = [
   {
     id:       'focused50h',
     emoji:    '⭐',
-    name:     'Fokus Legandarsi',
+    name:     'Qo\'shbegi',
     desc:     '50 soat jami fokus',
     unlocked: (p) => p.focusSeconds >= 180_000,
   },
   {
     id:       'xp10000',
     emoji:    '🏅',
-    name:     "Bilimning Qirolasi",
+    name:     'Amir',
     desc:     '10000 XP yig\'ish',
     unlocked: (p) => p.totalXP >= 10_000,
   },
   {
     id:       'quiz50',
     emoji:    '🔱',
-    name:     'Viktorina Podshohi',
+    name:     'Sulton',
     desc:     '50 ta test yakunlandi',
     unlocked: (p) => p.quizzesCompleted >= 50,
   },
   {
     id:       'level20',
     emoji:    '♔',
-    name:     'Mutloq Ustozi',
+    name:     'Xon',
     desc:     '20-darajaga yetish',
     unlocked: (p) => p.level >= 20,
   },
   {
     id:       'level30',
     emoji:    '💎',
-    name:     'Yasmavoy Esenlik',
+    name:     'Xoqon',
     desc:     '30-darajaga yetish',
     unlocked: (p) => p.level >= 30,
   },
   {
     id:       'focused100h',
     emoji:    '🌟',
-    name:     'Fokus Jumhuri',
+    name:     'Sohibqiron',
     desc:     '100 soat jami fokus',
     unlocked: (p) => p.focusSeconds >= 360_000,
   },
@@ -426,8 +427,8 @@ const CabinetPage: React.FC = () => {
             <div
               className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-xs font-semibold shadow-sm`}
             >
-              <span>⭐</span>
-              <span>Daraja {level}</span>
+              <span>{getLevelEmoji(level)}</span>
+              <span>{getLevelTitle(level)}</span>
             </div>
           </div>
         </div>
@@ -437,6 +438,9 @@ const CabinetPage: React.FC = () => {
           <XpRing progress={progress} level={level} />
           <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-1.5">
             {xpInLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP • Jami {totalXP.toLocaleString()} XP
+          </p>
+          <p className="text-center text-xs text-gray-600 dark:text-gray-300 italic mt-2">
+            {getLevelDescription(level)}
           </p>
         </div>
       </motion.div>
