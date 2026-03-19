@@ -3,14 +3,18 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.pool import NullPool, StaticPool
 from app.core.config import settings
 import ssl
-import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 def _build_db_url(url: str) -> str:
     """Ensure the correct SQLAlchemy dialect prefix for pg8000.
-    Also strips ?sslmode=... because pg8000 doesn't accept it in the URL.
+    Also strips URL query params because pg8000 expects SSL via connect_args
+    and some pooler params can crash engine creation on serverless.
     """
-    # Strip sslmode query param — pg8000 uses ssl_context in connect_args instead
-    url = re.sub(r'[?&]sslmode=[^&]*', '', url).rstrip('?').rstrip('&')
+    # Drop URL query string (e.g. sslmode, pgbouncer, connection_limit)
+    # and handle SSL via connect_args below.
+    url = url.split('?', 1)[0].strip()
 
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql+pg8000://", 1)
@@ -32,12 +36,26 @@ def _build_connect_args():
         return {"ssl_context": ctx}
     return {}
 
-engine = create_engine(
-    _db_url,
-    echo=settings.DATABASE_ECHO,
-    poolclass=StaticPool if _is_sqlite else NullPool,
-    connect_args=_build_connect_args(),
-)
+
+def _create_engine_safe(db_url: str):
+    try:
+        return create_engine(
+            db_url,
+            echo=settings.DATABASE_ECHO,
+            poolclass=StaticPool if _is_sqlite else NullPool,
+            connect_args=_build_connect_args(),
+        )
+    except Exception as e:
+        logger.exception("DB engine init failed for DATABASE_URL. Falling back to sqlite. Error: %s", e)
+        fallback_url = "sqlite:///./fallback.db"
+        return create_engine(
+            fallback_url,
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False},
+        )
+
+engine = _create_engine_safe(_db_url)
 
 # Create session factory
 SessionLocal = sessionmaker(
