@@ -309,6 +309,38 @@ class TelegramBotHandler:
             logger.error(f"Inactive profiles fetch error: {e}")
             return []
 
+    async def _fetch_all_profiles(self, limit: int = 1000) -> list[dict[str, Any]]:
+        """
+        Fetch all users from the database to sync telegram_id.
+        Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+        """
+        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+            logger.warning("Supabase env is missing for profile sync")
+            return []
+
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/profiles"
+        params = {
+            "select": "telegram_id,first_name,username",
+            "telegram_id": "not.is.null",
+            "limit": str(limit),
+        }
+        headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                res = await client.get(url, params=params, headers=headers)
+                if res.status_code != 200:
+                    logger.error(f"All profiles fetch failed: {res.status_code} {res.text}")
+                    return []
+                data = res.json()
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"All profiles fetch error: {e}")
+            return []
+
     def _motivation_text(self, first_name: str | None = None) -> str:
         name = (first_name or "Do'stim").strip() or "Do'stim"
         return (
@@ -326,6 +358,18 @@ class TelegramBotHandler:
         await self._write_json(self.motivation_logs_file, logs)
 
     async def _dispatch_inactive_motivation(self, bot: Bot, inactive_hours: int) -> tuple[int, int, int]:
+        # Sync all users from Supabase to subscribers first
+        all_profiles = await self._fetch_all_profiles(limit=1000)
+        subscribers = await self._get_subscribers()
+        for p in all_profiles:
+            try:
+                tid = int(p.get("telegram_id"))
+                if tid > 0:
+                    subscribers.add(tid)
+            except Exception:
+                continue
+        await self._save_subscribers(subscribers)
+
         profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
         if not profiles:
             return 0, 0, 0
@@ -683,8 +727,24 @@ class TelegramBotHandler:
                 custom_text = " ".join(context.args).strip()
 
         await update.message.reply_text(
-            f"⏳ Inactive userlar tekshirilmoqda... ({inactive_hours} soat+)"
+            f"⏳ Inactive userlar tekshirilmoqda va sync qilinmoqda... ({inactive_hours} soat+)"
         )
+
+        # Sync all users from Supabase to subscribers
+        all_profiles = await self._fetch_all_profiles(limit=1000)
+        subscribers = await self._get_subscribers()
+        sync_count = 0
+        for p in all_profiles:
+            try:
+                tid = int(p.get("telegram_id"))
+                if tid > 0:
+                    subscribers.add(tid)
+                    sync_count += 1
+            except Exception:
+                continue
+        if sync_count > 0:
+            await self._save_subscribers(subscribers)
+            logger.info(f"Synced {sync_count} users from Supabase to subscribers")
 
         profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
         if not profiles:
@@ -705,7 +765,7 @@ class TelegramBotHandler:
 
         if not targets:
             await update.message.reply_text(
-                "ℹ️ Inactive userlar bor, lekin ulardan hech biri bot obunachisi emas."
+                "ℹ️ Inactive userlar bor, lekin ulardan hech biri subscriber emas yoki sync xatosi."
             )
             return
 
