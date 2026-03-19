@@ -62,6 +62,32 @@ function badgeHowToText(
   return `🔓 Ochish: ${badge.level}-darajaga chiqing (yana ${levelLeft} daraja, ${xpLeft.toLocaleString()} XP kerak)`
 }
 
+function badgeNextActionText(
+  badge: BadgeDef,
+  p: { level: number; focusSeconds: number; quizzesCompleted: number; totalXP: number },
+): string {
+  const targetXP = xpNeededForLevel(badge.level)
+  const xpLeft = Math.max(0, targetXP - p.totalXP)
+
+  if (xpLeft <= 0) {
+    return '🎉 Siz bu badge’ni allaqachon ochgansiz.'
+  }
+
+  const quizCount = Math.max(1, Math.ceil(xpLeft / 20))
+  const focusBlocks = Math.max(1, Math.ceil(xpLeft / 10))
+  const focusMinutes = focusBlocks * 5
+
+  if (xpLeft <= 60) {
+    return `➡️ Tez yo'l: taxminan ${quizCount} ta quiz yoki ${focusMinutes} daqiqa fokus.`
+  }
+
+  if (xpLeft <= 200) {
+    return `➡️ Tavsiya: kuniga 2-3 quiz + 15 daqiqa fokus bilan tez yetasiz.`
+  }
+
+  return `➡️ Reja: Daily missiya + Reading Planni davom ettiring (${xpLeft.toLocaleString()} XP qoldi).`
+}
+
 // ── Sam's daily advice pool ───────────────────────────────────────────────────
 const SAM_ADVICE = [
   "Har kuni 25 daqiqa sof diqqat — yil oxirida 150 soat! 🚀",
@@ -385,6 +411,9 @@ const CabinetPage: React.FC = () => {
               <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5 leading-tight">{b.desc}</p>
               <p className="text-[10px] text-blue-600/80 dark:text-blue-400/80 mt-1 leading-tight font-medium">
                 {badgeHowToText(b, profileData)}
+              </p>
+              <p className="text-[10px] text-indigo-600/80 dark:text-indigo-300 mt-1 leading-tight">
+                {badgeNextActionText(b, profileData)}
               </p>
             </div>
           ))}
