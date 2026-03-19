@@ -182,9 +182,87 @@ class TelegramBotHandler:
         ]]
         return InlineKeyboardMarkup(keyboard)
 
+    def _normalize_news_text(self, raw_text: str) -> str:
+        text = raw_text.strip()
+        if not text:
+            return ""
+
+        header = ""
+        title = ""
+        body_lines: list[str] = []
+        links: list[str] = []
+        current_field: str | None = None
+        structured = False
+
+        for raw_line in text.splitlines():
+            line = raw_line.rstrip()
+            stripped = line.strip()
+
+            if not stripped:
+                if current_field == "body" and body_lines:
+                    body_lines.append("")
+                continue
+
+            if ":" in stripped:
+                key, value = stripped.split(":", 1)
+                normalized_key = key.strip().lower()
+                value = value.strip()
+
+                if normalized_key in {"header", "title", "body", "link", "links"}:
+                    structured = True
+                    if normalized_key == "header":
+                        header = value
+                        current_field = "header"
+                    elif normalized_key == "title":
+                        title = value
+                        current_field = "title"
+                    elif normalized_key == "body":
+                        current_field = "body"
+                        if value:
+                            body_lines.append(value)
+                    else:
+                        current_field = "links"
+                        if value:
+                            links.append(value)
+                    continue
+
+            if structured:
+                if current_field == "links":
+                    links.append(stripped)
+                elif current_field == "body":
+                    body_lines.append(line)
+                elif current_field == "header":
+                    header = f"{header} {stripped}".strip()
+                elif current_field == "title":
+                    title = f"{title} {stripped}".strip()
+                else:
+                    body_lines.append(line)
+            else:
+                body_lines.append(line)
+
+        if not structured:
+            return text
+
+        parts: list[str] = []
+        if header:
+            parts.append(f"📰 {header}")
+        if title:
+            parts.append(title)
+
+        body = "\n".join(body_lines).strip()
+        if body:
+            parts.append(body)
+
+        if links:
+            parts.append("🔗 Havolalar:\n" + "\n".join(links))
+
+        return "\n\n".join(part for part in parts if part.strip()).strip()
+
     def _format_news_text(self, post: dict[str, Any]) -> str:
         post_id = post.get("id", "?")
         text = str(post.get("text", "")).strip()
+        if text.startswith("📰"):
+            return f"{text}\n\n#news_{post_id}"
         return f"📰 SAHIFALAB Yangiliklari\n\n{text}\n\n#news_{post_id}"
 
     def _format_scheduled_item(self, item: dict[str, Any]) -> str:
@@ -218,7 +296,12 @@ class TelegramBotHandler:
         )
 
     def _extract_news_content(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> tuple[str, str | None]:
-        text = " ".join(context.args).strip()
+        text = ""
+        if update.message and update.message.text:
+            parts = update.message.text.split(maxsplit=1)
+            text = parts[1].strip() if len(parts) > 1 else ""
+        elif context.args:
+            text = " ".join(context.args).strip()
         reply = update.message.reply_to_message if update.message else None
         photo_file_id = None
         if reply and reply.photo:
@@ -562,9 +645,20 @@ class TelegramBotHandler:
         text, photo_file_id = self._extract_news_content(update, context)
         if not text:
             await update.message.reply_text(
-                "Foydalanish:\n/news Bugun soat 21:00 da jonli dars bo'ladi\nYoki rasmga reply qilib /news <caption> yuboring."
+                "Foydalanish:\n"
+                "/news Bugun soat 21:00 da jonli dars bo'ladi\n\n"
+                "Yoki structured format:\n"
+                "/news\n"
+                "header: SAHIFALAB YANGILIKLARI\n"
+                "title: Yangi kitob chiqdi\n"
+                "body: Batafsil ma'lumot mini app ichida.\n"
+                "link: https://t.me/sahifalab\n"
+                "link: https://example.com\n\n"
+                "Rasm bilan yuborish uchun rasmga reply qilib shu formatni yuboring."
             )
             return
+
+        text = self._normalize_news_text(text)
 
         post = await self._save_news_item(
             text=text,
