@@ -27,7 +27,7 @@ from telegram.ext import (
     filters,
     ContextTypes,
 )
-from telegram.error import Forbidden
+from telegram.error import BadRequest, Forbidden
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -358,18 +358,6 @@ class TelegramBotHandler:
         await self._write_json(self.motivation_logs_file, logs)
 
     async def _dispatch_inactive_motivation(self, bot: Bot, inactive_hours: int) -> tuple[int, int, int]:
-        # Sync all users from Supabase to subscribers first
-        all_profiles = await self._fetch_all_profiles(limit=1000)
-        subscribers = await self._get_subscribers()
-        for p in all_profiles:
-            try:
-                tid = int(p.get("telegram_id"))
-                if tid > 0:
-                    subscribers.add(tid)
-            except Exception:
-                continue
-        await self._save_subscribers(subscribers)
-
         profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
         if not profiles:
             return 0, 0, 0
@@ -394,9 +382,6 @@ class TelegramBotHandler:
             except Exception:
                 continue
 
-            if chat_id not in subscribers:
-                continue
-
             total_candidates += 1
             key = str(chat_id)
             prev = logs.get(key)
@@ -417,8 +402,10 @@ class TelegramBotHandler:
                     reply_markup=keyboard,
                 )
                 logs[key] = now.isoformat()
+                subscribers.add(chat_id)
                 sent += 1
-            except Forbidden:
+            except (Forbidden, BadRequest) as e:
+                logger.info(f"Auto motivation skipped for {chat_id}: {e}")
                 failed += 1
                 subscribers.discard(chat_id)
             except Exception as e:
@@ -727,24 +714,8 @@ class TelegramBotHandler:
                 custom_text = " ".join(context.args).strip()
 
         await update.message.reply_text(
-            f"⏳ Inactive userlar tekshirilmoqda va sync qilinmoqda... ({inactive_hours} soat+)"
+            f"⏳ Inactive userlar tekshirilmoqda... ({inactive_hours} soat+)"
         )
-
-        # Sync all users from Supabase to subscribers
-        all_profiles = await self._fetch_all_profiles(limit=1000)
-        subscribers = await self._get_subscribers()
-        sync_count = 0
-        for p in all_profiles:
-            try:
-                tid = int(p.get("telegram_id"))
-                if tid > 0:
-                    subscribers.add(tid)
-                    sync_count += 1
-            except Exception:
-                continue
-        if sync_count > 0:
-            await self._save_subscribers(subscribers)
-            logger.info(f"Synced {sync_count} users from Supabase to subscribers")
 
         profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
         if not profiles:
@@ -760,12 +731,12 @@ class TelegramBotHandler:
                 tid = int(p.get("telegram_id"))
             except Exception:
                 continue
-            if tid in subscribers:
+            if tid > 0:
                 targets.append(p)
 
         if not targets:
             await update.message.reply_text(
-                "ℹ️ Inactive userlar bor, lekin ulardan hech biri subscriber emas yoki sync xatosi."
+                "ℹ️ Inactive userlar bor, lekin ularda yaroqli Telegram ID topilmadi."
             )
             return
 
@@ -776,6 +747,7 @@ class TelegramBotHandler:
 
         sent = 0
         failed = 0
+        unreachable = 0
         for p in targets:
             chat_id = int(p["telegram_id"])
             first_name = p.get("first_name")
@@ -786,9 +758,12 @@ class TelegramBotHandler:
                     text=text,
                     reply_markup=keyboard,
                 )
+                subscribers.add(chat_id)
                 sent += 1
-            except Forbidden:
+            except (Forbidden, BadRequest) as e:
+                logger.info(f"Manual motivation skipped for {chat_id}: {e}")
                 failed += 1
+                unreachable += 1
                 subscribers.discard(chat_id)
             except Exception as e:
                 logger.warning(f"Failed to send motivation to {chat_id}: {e}")
@@ -796,7 +771,13 @@ class TelegramBotHandler:
 
         await self._save_subscribers(subscribers)
         await update.message.reply_text(
-            f"✅ Motivatsion xabar yuborildi.\nYuborildi: {sent}\nXatolik: {failed}\nNishon userlar: {len(targets)}"
+            f"✅ Motivatsion xabar yuborish yakunlandi.\n"
+            f"Yuborildi: {sent}\n"
+            f"Xatolik: {failed}\n"
+            f"Botni boshlamagan yoki bloklagan: {unreachable}\n"
+            f"Nishon userlar: {len(targets)}\n\n"
+            "Eslatma: bot foydalanuvchiga faqat u avval botni ochib /start bosgan bo'lsa yozishi mumkin."
+        )
         )
 
     # ── Send native Telegram invoice (Stars / Click / Payme) ─────────────
