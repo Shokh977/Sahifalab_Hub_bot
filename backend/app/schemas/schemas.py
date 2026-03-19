@@ -232,6 +232,19 @@ class QuizVerifyResponse(BaseModel):
     result_token: str          # HMAC-signed — prevents forged certificates
     is_first_attempt: bool     # True if first completion (award XP), False if retake (no XP)
 
+# AI Schemas
+class BookSummarizerRequest(BaseModel):
+    text: str
+    question: Optional[str] = None
+    max_sentences: int = 4
+
+class BookSummarizerResponse(BaseModel):
+    summary: str
+    assistant_reply: str
+    key_points: List[str]
+    word_count: int
+    sentence_count: int
+
 # Book Schemas
 class BookCreate(BaseModel):
     title: str

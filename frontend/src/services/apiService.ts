@@ -318,6 +318,17 @@ class ApiService {
     return this.axiosInstance.delete(
       `/api/audio/admin/ambient-sounds/${soundId}?telegram_id=${telegramId}`,
     )
-  }}
+  }
+
+  // ─── AI endpoints ────────────────────────────────────────────────────────
+
+  async bookSummarizer(text: string, question?: string, maxSentences: number = 4) {
+    return this.axiosInstance.post('/api/ai/book-summarizer', {
+      text,
+      question,
+      max_sentences: maxSentences,
+    })
+  }
+}
 
 export default new ApiService()

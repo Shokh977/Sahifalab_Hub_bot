@@ -87,6 +87,16 @@ const MENU_ITEMS: MenuItem[] = [
     iconBg: 'bg-amber-500/15',
     accentGlow: 'hover:shadow-[0_0_24px_rgba(245,158,11,0.2)]',
   },
+  {
+    id: 'bookSummarizer',
+    icon: '🤖',
+    title: 'SahifaLab AI',
+    titleUz: 'SahifaLab AI',
+    description: "Kitob matnini o'zbekcha qisqartiradi",
+    path: '/book-summarizer',
+    iconBg: 'bg-cyan-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(6,182,212,0.22)]',
+  },
 ]
 
 // Stagger children animation
@@ -194,6 +204,13 @@ export const MenuGrid: React.FC = () => {
           onClick={() => navigate(item.path)}
         />
       ))}
+
+      {/* Book Summarizer — full-width */}
+      <MenuCard
+        item={MENU_ITEMS[7]}
+        onClick={() => navigate(MENU_ITEMS[7].path)}
+        fullWidth
+      />
 
       {/* Admin panel — only visible to admins */}
       {isAdmin && (

@@ -7,7 +7,7 @@ import os
 import json
 import asyncio
 from pathlib import Path
-from datetime import datetime, UTC
+from datetime import datetime, UTC, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 import httpx
@@ -41,6 +41,13 @@ logger = logging.getLogger(__name__)
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://sahifalab-hub-bot.vercel.app")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://sahifalab-hub-bot-backend.up.railway.app")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+AUTO_MOTIVATE_ENABLED = os.getenv("AUTO_MOTIVATE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+AUTO_MOTIVATE_INACTIVE_HOURS = int(os.getenv("AUTO_MOTIVATE_INACTIVE_HOURS", "72"))
+AUTO_MOTIVATE_CHECK_MINUTES = int(os.getenv("AUTO_MOTIVATE_CHECK_MINUTES", "60"))
+AUTO_MOTIVATE_USER_COOLDOWN_HOURS = int(os.getenv("AUTO_MOTIVATE_USER_COOLDOWN_HOURS", "24"))
 
 # BotFather provider tokens (get from @BotFather → Payments → Connect provider)
 CLICK_PROVIDER_TOKEN = os.getenv("CLICK_PROVIDER_TOKEN", "")
@@ -56,10 +63,12 @@ class TelegramBotHandler:
         self.subscribers_file = self.data_dir / "subscribers.json"
         self.news_file = self.data_dir / "news_posts.json"
         self.scheduled_news_file = self.data_dir / "scheduled_news.json"
+        self.motivation_logs_file = self.data_dir / "motivation_logs.json"
         self.admin_ids = self._parse_admin_ids(os.getenv("BOT_ADMIN_IDS", ""))
         self.timezone = ZoneInfo(os.getenv("BOT_TIMEZONE", "Asia/Tashkent"))
         self.file_lock = asyncio.Lock()
         self.scheduler_task: asyncio.Task | None = None
+        self.last_auto_motivate_run: datetime | None = None
 
     @staticmethod
     def _parse_admin_ids(raw: str) -> set[int]:
@@ -266,6 +275,116 @@ class TelegramBotHandler:
         await self._save_subscribers(subscribers)
         return sent, failed
 
+    async def _fetch_inactive_profiles(self, inactive_hours: int, limit: int = 200) -> list[dict[str, Any]]:
+        """
+        Fetch users inactive in mini app by app_online_at.
+        Requires SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.
+        """
+        if not SUPABASE_URL or not SUPABASE_SERVICE_ROLE_KEY:
+            logger.warning("Supabase env is missing for inactive-user reminders")
+            return []
+
+        threshold = (datetime.now(UTC) - timedelta(hours=inactive_hours)).isoformat()
+        url = f"{SUPABASE_URL.rstrip('/')}/rest/v1/profiles"
+        params = {
+            "select": "telegram_id,first_name,username,app_online_at",
+            "or": f"(app_online_at.is.null,app_online_at.lt.{threshold})",
+            "order": "app_online_at.asc.nullsfirst",
+            "limit": str(limit),
+        }
+        headers = {
+            "apikey": SUPABASE_SERVICE_ROLE_KEY,
+            "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE_KEY}",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=20) as client:
+                res = await client.get(url, params=params, headers=headers)
+                if res.status_code != 200:
+                    logger.error(f"Inactive profiles fetch failed: {res.status_code} {res.text}")
+                    return []
+                data = res.json()
+                return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(f"Inactive profiles fetch error: {e}")
+            return []
+
+    def _motivation_text(self, first_name: str | None = None) -> str:
+        name = (first_name or "Do'stim").strip() or "Do'stim"
+        return (
+            f"Salom, {name}! 👋\n\n"
+            "Bugun 15 daqiqa SAHIFALAB bilan shug'ullansangiz ham katta natija bo'ladi. 📚\n"
+            "Kichik qadamlar — katta o'sish! 💪\n\n"
+            "Quyidagi tugma orqali mini app'ni oching:"
+        )
+
+    async def _get_motivation_logs(self) -> dict[str, str]:
+        data = await self._read_json(self.motivation_logs_file, default={})
+        return data if isinstance(data, dict) else {}
+
+    async def _save_motivation_logs(self, logs: dict[str, str]) -> None:
+        await self._write_json(self.motivation_logs_file, logs)
+
+    async def _dispatch_inactive_motivation(self, bot: Bot, inactive_hours: int) -> tuple[int, int, int]:
+        profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
+        if not profiles:
+            return 0, 0, 0
+
+        subscribers = await self._get_subscribers()
+        logs = await self._get_motivation_logs()
+        now = datetime.now(UTC)
+        cooldown = timedelta(hours=max(1, AUTO_MOTIVATE_USER_COOLDOWN_HOURS))
+
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
+            "📚 SAHIFALAB ni ochish",
+            web_app=WebAppInfo(url=MINI_APP_URL),
+        )]])
+
+        sent = 0
+        failed = 0
+        total_candidates = 0
+
+        for p in profiles:
+            try:
+                chat_id = int(p.get("telegram_id"))
+            except Exception:
+                continue
+
+            if chat_id not in subscribers:
+                continue
+
+            total_candidates += 1
+            key = str(chat_id)
+            prev = logs.get(key)
+            if prev:
+                try:
+                    prev_dt = datetime.fromisoformat(prev)
+                    if prev_dt.tzinfo is None:
+                        prev_dt = prev_dt.replace(tzinfo=UTC)
+                    if (now - prev_dt) < cooldown:
+                        continue
+                except Exception:
+                    pass
+
+            try:
+                await bot.send_message(
+                    chat_id=chat_id,
+                    text=self._motivation_text(p.get("first_name")),
+                    reply_markup=keyboard,
+                )
+                logs[key] = now.isoformat()
+                sent += 1
+            except Forbidden:
+                failed += 1
+                subscribers.discard(chat_id)
+            except Exception as e:
+                logger.warning(f"Failed to send auto motivation to {chat_id}: {e}")
+                failed += 1
+
+        await self._save_subscribers(subscribers)
+        await self._save_motivation_logs(logs)
+        return sent, failed, total_candidates
+
     async def _dispatch_due_scheduled_news(self, bot: Bot) -> None:
         scheduled = await self._get_scheduled_news()
         if not scheduled:
@@ -302,6 +421,23 @@ class TelegramBotHandler:
         while True:
             try:
                 await self._dispatch_due_scheduled_news(application.bot)
+
+                if AUTO_MOTIVATE_ENABLED:
+                    now = datetime.now(UTC)
+                    should_run = (
+                        self.last_auto_motivate_run is None
+                        or (now - self.last_auto_motivate_run) >= timedelta(minutes=max(5, AUTO_MOTIVATE_CHECK_MINUTES))
+                    )
+                    if should_run:
+                        sent, failed, candidates = await self._dispatch_inactive_motivation(
+                            application.bot,
+                            inactive_hours=max(1, AUTO_MOTIVATE_INACTIVE_HOURS),
+                        )
+                        self.last_auto_motivate_run = now
+                        if sent or failed:
+                            logger.info(
+                                f"Auto motivate run: candidates={candidates} sent={sent} failed={failed}"
+                            )
             except asyncio.CancelledError:
                 raise
             except Exception as e:
@@ -528,6 +664,81 @@ class TelegramBotHandler:
         await self._save_scheduled_news(new_items)
         await update.message.reply_text(f"🗑️ Rejalashtirilgan yangilik bekor qilindi: #{cancel_id}")
 
+    # ── /motivate_inactive (admin only) ──────────────────────────────────
+    async def motivate_inactive_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+
+        inactive_hours = 72
+        custom_text = ""
+
+        if context.args:
+            first = context.args[0].strip()
+            if first.isdigit():
+                inactive_hours = max(1, min(int(first), 24 * 30))
+                custom_text = " ".join(context.args[1:]).strip()
+            else:
+                custom_text = " ".join(context.args).strip()
+
+        await update.message.reply_text(
+            f"⏳ Inactive userlar tekshirilmoqda... ({inactive_hours} soat+)"
+        )
+
+        profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
+        if not profiles:
+            await update.message.reply_text(
+                "ℹ️ Inactive user topilmadi yoki Supabase sozlanmagan (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)."
+            )
+            return
+
+        subscribers = await self._get_subscribers()
+        targets: list[dict[str, Any]] = []
+        for p in profiles:
+            try:
+                tid = int(p.get("telegram_id"))
+            except Exception:
+                continue
+            if tid in subscribers:
+                targets.append(p)
+
+        if not targets:
+            await update.message.reply_text(
+                "ℹ️ Inactive userlar bor, lekin ulardan hech biri bot obunachisi emas."
+            )
+            return
+
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton(
+            "📚 SAHIFALAB ni ochish",
+            web_app=WebAppInfo(url=MINI_APP_URL),
+        )]])
+
+        sent = 0
+        failed = 0
+        for p in targets:
+            chat_id = int(p["telegram_id"])
+            first_name = p.get("first_name")
+            text = custom_text or self._motivation_text(first_name)
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    reply_markup=keyboard,
+                )
+                sent += 1
+            except Forbidden:
+                failed += 1
+                subscribers.discard(chat_id)
+            except Exception as e:
+                logger.warning(f"Failed to send motivation to {chat_id}: {e}")
+                failed += 1
+
+        await self._save_subscribers(subscribers)
+        await update.message.reply_text(
+            f"✅ Motivatsion xabar yuborildi.\nYuborildi: {sent}\nXatolik: {failed}\nNishon userlar: {len(targets)}"
+        )
+
     # ── Send native Telegram invoice (Stars / Click / Payme) ─────────────
     async def _send_invoice(
         self,
@@ -649,6 +860,7 @@ class TelegramBotHandler:
             "\n/schedule_news <sana> <matn> — Yangilikni vaqtga qo'yish (admin)"
             "\n/scheduled — Rejalashtirilganlar ro'yxati (admin)"
             "\n/cancel_news <id> — Rejalashtirilgan yangilikni bekor qilish (admin)"
+            "\n/motivate_inactive [soat] [matn] — Inactive userlarga DM yuborish (admin)"
         ) if self._is_admin(update.effective_user.id if update.effective_user else None) else ""
         await update.message.reply_text(
             "📋 *Buyruqlar ro'yxati:*\n\n"
@@ -705,6 +917,7 @@ class TelegramBotHandler:
         self.app.add_handler(CommandHandler("schedule_news", self.schedule_news_command))
         self.app.add_handler(CommandHandler("scheduled", self.scheduled_command))
         self.app.add_handler(CommandHandler("cancel_news", self.cancel_news_command))
+        self.app.add_handler(CommandHandler("motivate_inactive", self.motivate_inactive_command))
         # Payment handlers
         self.app.add_handler(PreCheckoutQueryHandler(self.pre_checkout))
         self.app.add_handler(
