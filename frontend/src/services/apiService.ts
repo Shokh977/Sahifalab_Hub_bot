@@ -329,6 +329,12 @@ class ApiService {
       max_sentences: maxSentences,
     })
   }
+
+  async aiChat(message: string) {
+    return this.axiosInstance.post('/api/ai/chat', {
+      message,
+    })
+  }
 }
 
 export default new ApiService()

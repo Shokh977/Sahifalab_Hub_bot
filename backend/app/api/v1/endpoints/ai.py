@@ -1,9 +1,37 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from app.schemas.schemas import BookSummarizerRequest, BookSummarizerResponse
-from app.services.ai_service import extractive_summary, key_points, answer_in_uzbek, split_sentences
+from app.services.ai_service import extractive_summary, key_points, answer_in_uzbek, split_sentences, chat_response
 
 router = APIRouter()
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ChatResponse(BaseModel):
+    reply: str
+
+
+@router.post('/chat', response_model=ChatResponse)
+async def ai_chat(payload: ChatRequest):
+    """
+    Chat endpoint for conversational AI interaction.
+    Users can ask questions about books, authors, and learning.
+    """
+    message = (payload.message or '').strip()
+    
+    if not message:
+        raise HTTPException(status_code=400, detail="Xabar bo'sh bo'lishi mumkin emas.")
+    
+    if len(message) > 2000:
+        raise HTTPException(status_code=400, detail="Xabar juda uzun. 2000 ta belgigacha qisqartiring.")
+    
+    reply = chat_response(message)
+    
+    return ChatResponse(reply=reply)
 
 
 @router.post('/book-summarizer', response_model=BookSummarizerResponse)
