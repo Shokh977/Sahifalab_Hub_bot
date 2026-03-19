@@ -97,6 +97,16 @@ const MENU_ITEMS: MenuItem[] = [
     iconBg: 'bg-cyan-500/15',
     accentGlow: 'hover:shadow-[0_0_24px_rgba(6,182,212,0.22)]',
   },
+  {
+    id: 'daily',
+    icon: '🔥',
+    title: 'Daily Missiya',
+    titleUz: 'Kunlik',
+    description: 'Bugungi vazifalar va streak',
+    path: '/daily',
+    iconBg: 'bg-rose-500/15',
+    accentGlow: 'hover:shadow-[0_0_24px_rgba(244,63,94,0.22)]',
+  },
 ]
 
 // Stagger children animation
@@ -209,6 +219,13 @@ export const MenuGrid: React.FC = () => {
       <MenuCard
         item={MENU_ITEMS[7]}
         onClick={() => navigate(MENU_ITEMS[7].path)}
+        fullWidth
+      />
+
+      {/* Daily mission — full-width */}
+      <MenuCard
+        item={MENU_ITEMS[8]}
+        onClick={() => navigate(MENU_ITEMS[8].path)}
         fullWidth
       />
 
