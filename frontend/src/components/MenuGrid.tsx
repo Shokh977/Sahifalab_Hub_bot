@@ -142,10 +142,9 @@ const cardVariant = {
 interface CardProps {
   item: MenuItem
   onClick: () => void
-  fullWidth?: boolean
 }
 
-const MenuCard: React.FC<CardProps> = ({ item, onClick, fullWidth }) => (
+const MenuCard: React.FC<CardProps> = ({ item, onClick }) => (
   <motion.button
     variants={cardVariant}
     whileTap={{ scale: 0.95 }}
@@ -154,32 +153,31 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick, fullWidth }) => (
       relative overflow-hidden
       bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm
       border border-gray-200/60 dark:border-slate-700/50
-      rounded-3xl p-5
+      rounded-2xl p-3.5
       transition-all duration-300
       card-glow
       ${item.accentGlow}
-      ${fullWidth ? 'col-span-2' : ''}
     `}
   >
     {/* Subtle gradient overlay */}
     <div className="absolute inset-0 bg-gradient-to-br from-sahifa-500/[0.03] to-transparent pointer-events-none" />
 
-    <div className={`relative ${fullWidth ? 'flex items-center gap-4' : 'text-center space-y-3'}`}>
+    <div className="relative text-center space-y-2">
       {/* Icon with background */}
       <div className={`
-        ${fullWidth ? '' : 'mx-auto'}
-        w-14 h-14 rounded-2xl ${item.iconBg}
+        mx-auto
+        w-11 h-11 rounded-xl ${item.iconBg}
         flex items-center justify-center
         shadow-sm
       `}>
-        <span className="text-3xl">{item.icon}</span>
+        <span className="text-2xl">{item.icon}</span>
       </div>
 
-      <div className={fullWidth ? 'text-left' : ''}>
-        <h3 className="font-bold text-sm text-gray-900 dark:text-white/90 leading-tight">
+      <div>
+        <h3 className="font-bold text-[12px] text-gray-900 dark:text-white/90 leading-tight line-clamp-2 min-h-[2rem]">
           {item.title}
         </h3>
-        <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5 leading-snug">
+        <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-0.5 leading-snug line-clamp-2 min-h-[1.9rem]">
           {item.description}
         </p>
       </div>
@@ -198,53 +196,15 @@ export const MenuGrid: React.FC = () => {
       variants={container}
       initial="hidden"
       animate="show"
-      className="grid grid-cols-2 gap-4"
+      className="grid grid-cols-3 gap-3"
     >
-      {/* Top 4: 2×2 grid */}
-      {MENU_ITEMS.slice(0, 4).map((item) => (
+      {MENU_ITEMS.map((item) => (
         <MenuCard
           key={item.id}
           item={item}
           onClick={() => navigate(item.path)}
         />
       ))}
-
-      {/* About — full-width */}
-      <MenuCard
-        item={MENU_ITEMS[4]}
-        onClick={() => navigate(MENU_ITEMS[4].path)}
-        fullWidth
-      />
-
-      {/* Cabinet + Leaderboard side by side */}
-      {MENU_ITEMS.slice(5, 7).map((item) => (
-        <MenuCard
-          key={item.id}
-          item={item}
-          onClick={() => navigate(item.path)}
-        />
-      ))}
-
-      {/* Book Summarizer — full-width */}
-      <MenuCard
-        item={MENU_ITEMS[7]}
-        onClick={() => navigate(MENU_ITEMS[7].path)}
-        fullWidth
-      />
-
-      {/* Daily mission — full-width */}
-      <MenuCard
-        item={MENU_ITEMS[8]}
-        onClick={() => navigate(MENU_ITEMS[8].path)}
-        fullWidth
-      />
-
-      {/* Reading plans — full-width */}
-      <MenuCard
-        item={MENU_ITEMS[9]}
-        onClick={() => navigate(MENU_ITEMS[9].path)}
-        fullWidth
-      />
 
       {/* Admin panel — only visible to admins */}
       {isAdmin && (
@@ -252,7 +212,7 @@ export const MenuGrid: React.FC = () => {
           variants={cardVariant}
           whileTap={{ scale: 0.96 }}
           onClick={() => navigate('/admin')}
-          className="col-span-2 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-gray-100/60 dark:bg-slate-800/40 border border-gray-200/50 dark:border-slate-700/30 text-gray-400 dark:text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
+          className="col-span-3 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-gray-100/60 dark:bg-slate-800/40 border border-gray-200/50 dark:border-slate-700/30 text-gray-400 dark:text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
         >
           <span>🔐</span>
           <span>Admin Panel</span>
