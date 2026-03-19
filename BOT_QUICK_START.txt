@@ -1,0 +1,70 @@
+# TL;DR - Start Bot and Test Motivate
+
+## Problem
+Bot `@sahifalab_hub_bot` doesn't reply to `/start` or any commands.
+
+## Reason
+**The bot process is NOT running.**
+
+---
+
+## Solution: Start the Bot
+
+```powershell
+cd "d:\My Data\Coding\SAHIFALAB\Telegram App"
+python bot/main.py
+```
+
+You'll see:
+```
+Starting SAHIFALAB Telegram Bot...
+Bot is running! Press Ctrl+C to stop.
+```
+
+---
+
+## Now Test It
+
+1. Open Telegram
+2. Find `@sahifalab_hub_bot`
+3. Send: `/start`
+4. Bot should reply with welcome message ✅
+
+---
+
+## Test Motivate Inactive
+
+1. Send: `/motivate_inactive 0`
+2. Bot responds:
+   ```
+   ✅ Inactive motivation dispatch completed!
+   Sent: 5
+   Failed: 2
+   Candidates: 7
+   ```
+
+**If Sent > 0 → System working!**
+
+---
+
+## For Production (Keeps Running)
+
+```powershell
+# Install PM2
+npm install -g pm2
+
+# Start bot
+pm2 start bot/main.py --name sahifalab-bot --interpreter python
+
+# View logs
+pm2 logs sahifalab-bot
+
+# Stop
+pm2 stop sahifalab-bot
+```
+
+---
+
+## That's it! 🎉
+
+Bot code is perfect. Just start the process and test!
