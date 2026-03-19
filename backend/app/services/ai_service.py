@@ -201,3 +201,37 @@ def extractive_summary(text: str, max_sentences: int = 4) -> str:
 def key_points(text: str, max_points: int = 5) -> List[str]:
     summary_sentences = split_sentences(extractive_summary(text, max_points))
     return summary_sentences[:max_points]
+
+
+def answer_in_uzbek(text: str, question: str | None = None, summary: str | None = None) -> str:
+    normalized_question = _normalize(question or "")
+    normalized_summary = _normalize(summary or "")
+
+    if normalized_question:
+        q_lower = normalized_question.lower()
+
+        if any(word in q_lower for word in ["muallif", "kim yozgan", "yozuvchi", "shoir"]):
+            return (
+                "Bu matnda muallif haqida aniq ma'lumot bo'lsa, u odatda kirish qismida yoki asar tavsifida bo'ladi. "
+                "Agar xohlasangiz, muallif nomini alohida yuboring, men qisqa izoh beraman."
+            )
+
+        if any(word in q_lower for word in ["asosiy g'oya", "mazmun", "nima haqida", "qisqacha"]):
+            if normalized_summary:
+                return f"Qisqacha mazmun: {normalized_summary}"
+            return "Matnning asosiy mazmuni undagi eng muhim fikr va voqealar atrofida qurilgan."
+
+        if any(word in q_lower for word in ["xulosa", "saboq", "fikr"]):
+            return (
+                "Bu matndan olinadigan asosiy xulosa — bilim, kuzatuv va mulohaza orqali mazmunni chuqurroq tushunish mumkin."
+            )
+
+    if normalized_summary:
+        return f"Mana qisqacha izoh: {normalized_summary}"
+
+    if text and text.strip():
+        short_summary = extractive_summary(text, max_sentences=3)
+        if short_summary:
+            return f"Mana qisqacha izoh: {short_summary}"
+
+    return "Matn bo'yicha qisqa izoh tayyorlab bo'lmadi. Iltimos, uzunroq matn yuboring."
