@@ -22,7 +22,7 @@ const AICompanionPage: React.FC = () => {
     {
       id: '1',
       type: 'ai',
-      text: "Assalomu alaykum! 👋 Men SahifaLab AI, Kitoblar haqida savollangiz bormi?",
+      text: "Salom! Men SAHIFALAB AI yordamchisiman. Kitoblar, o'qish va ta'lim bo'yicha savollaringizga yordam beraman.",
       timestamp: new Date(),
     },
   ])
