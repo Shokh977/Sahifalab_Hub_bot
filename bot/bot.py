@@ -479,7 +479,7 @@ class TelegramBotHandler:
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             f"Assalomu alaykum, {user.first_name}! 👋\n\n"
-            "Men *Sam* — SAHIFALAB mentori.\n"
+            "Men *Shoxrux* — SAHIFALAB mentori.\n"
             "Kitoblar, testlar va foydali resurslar shu yerda! 📖\n"
             "Siz yangiliklar kanaliga obuna qilindingiz. 📰\n\n"
             "👇 Tugmani bosing va ilovani oching:",
