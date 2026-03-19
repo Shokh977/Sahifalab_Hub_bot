@@ -206,6 +206,7 @@ const CabinetPage: React.FC = () => {
   } = useProgressStore()
 
   const [photoError, setPhotoError] = useState(false)
+  const [showAllLockedBadges, setShowAllLockedBadges] = useState(false)
   const photoUrl = (!photoError && tgUser?.photo_url) ? tgUser.photo_url : null
 
   const progress      = levelProgress(totalXP)
@@ -218,6 +219,8 @@ const CabinetPage: React.FC = () => {
   const profileData   = { level, focusSeconds, quizzesCompleted, totalXP }
   const earnedBadges  = BADGES.filter((b) => b.unlocked(profileData))
   const lockedBadges  = BADGES.filter((b) => !b.unlocked(profileData))
+  const nextBadge     = lockedBadges[0]
+  const visibleLockedBadges = showAllLockedBadges ? lockedBadges : lockedBadges.slice(0, 8)
 
   const displayName   = firstName || 'Foydalanuvchi'
   const focusHours    = (focusSeconds / 3600).toFixed(1)
@@ -384,39 +387,78 @@ const CabinetPage: React.FC = () => {
         <h2 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
           🏅 Yutuqlar
         </h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          {earnedBadges.map((b) => (
-            <motion.div
-              key={b.id}
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ type: 'spring', stiffness: 300 }}
-              className="bg-white dark:bg-gray-800 rounded-2xl p-3 text-center shadow-sm border border-gray-100 dark:border-gray-700"
-            >
-              <div className="text-3xl mb-1">{b.emoji}</div>
-              <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-tight">{b.name}</p>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">{b.desc}</p>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 leading-tight font-medium">
-                {badgeHowToText(b, profileData)}
-              </p>
-            </motion.div>
-          ))}
-          {lockedBadges.map((b) => (
-            <div
-              key={b.id}
-              className="bg-gray-50 dark:bg-gray-800/50 rounded-2xl p-3 text-center border border-dashed border-gray-200 dark:border-gray-700 opacity-50"
-            >
-              <div className="text-3xl mb-1 grayscale">🔒</div>
-              <p className="text-[11px] font-bold text-gray-500 dark:text-gray-500 leading-tight">{b.name}</p>
-              <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5 leading-tight">{b.desc}</p>
-              <p className="text-[10px] text-blue-600/80 dark:text-blue-400/80 mt-1 leading-tight font-medium">
-                {badgeHowToText(b, profileData)}
-              </p>
-              <p className="text-[10px] text-indigo-600/80 dark:text-indigo-300 mt-1 leading-tight">
-                {badgeNextActionText(b, profileData)}
-              </p>
+        <div className="space-y-3">
+          {nextBadge && (
+            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-2xl p-3">
+              <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-2">🎯 Keyingi badge</p>
+              <div className="flex items-start gap-3">
+                <div className="text-3xl">{nextBadge.emoji}</div>
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{nextBadge.name}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{nextBadge.desc}</p>
+                  <p className="text-[11px] text-blue-700 dark:text-blue-300 mt-1 font-semibold">
+                    {badgeHowToText(nextBadge, profileData)}
+                  </p>
+                  <p className="text-[11px] text-indigo-700/90 dark:text-indigo-300 mt-1">
+                    {badgeNextActionText(nextBadge, profileData)}
+                  </p>
+                </div>
+              </div>
             </div>
-          ))}
+          )}
+
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300">Ochildi ({earnedBadges.length})</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400">{BADGES.length} dan</p>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {earnedBadges.slice(0, 12).map((b) => (
+                <div
+                  key={b.id}
+                  className="rounded-xl p-2 text-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30"
+                >
+                  <div className="text-xl leading-none">{b.emoji}</div>
+                  <p className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 mt-1 truncate">{b.name}</p>
+                </div>
+              ))}
+            </div>
+            {earnedBadges.length > 12 && (
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">
+                +{earnedBadges.length - 12} ta ochilgan badge
+              </p>
+            )}
+          </div>
+
+          {lockedBadges.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 border border-gray-100 dark:border-gray-700">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300">Yopiq ({lockedBadges.length})</p>
+                {lockedBadges.length > 8 && (
+                  <button
+                    onClick={() => setShowAllLockedBadges((prev) => !prev)}
+                    className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold"
+                  >
+                    {showAllLockedBadges ? 'Kamroq' : 'Barchasini ko\'rish'}
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                {visibleLockedBadges.map((b) => (
+                  <div
+                    key={b.id}
+                    className="rounded-xl p-2 bg-gray-50 dark:bg-gray-800/60 border border-dashed border-gray-200 dark:border-gray-700"
+                  >
+                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 truncate">🔒 {b.name}</p>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      Lv.{b.level} kerak
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </motion.div>
 
