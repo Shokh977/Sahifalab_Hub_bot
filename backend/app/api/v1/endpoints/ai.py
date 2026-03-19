@@ -29,8 +29,8 @@ async def ai_chat(payload: ChatRequest):
     if len(message) > 2000:
         raise HTTPException(status_code=400, detail="Xabar juda uzun. 2000 ta belgigacha qisqartiring.")
     
-    reply = chat_response(message)
-    
+    reply = await chat_response(message)
+
     return ChatResponse(reply=reply)
 
 

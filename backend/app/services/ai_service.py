@@ -1,6 +1,25 @@
+import os
 import re
 from collections import Counter
 from typing import List
+
+from google import genai
+from google.genai import types
+from dotenv import load_dotenv
+
+load_dotenv()
+
+_GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
+_client = genai.Client(api_key=_GEMINI_KEY) if _GEMINI_KEY else None
+
+_SYSTEM_PROMPT = (
+    "Sen SAHIFALAB platformasining AI yordamchisi Sam'san. "
+    "16 yoshli aqlli va do'stona mentor sifatida gaplash. "
+    "Asosan o'zbek tilida javob ber, lekin foydalanuvchi rus yoki ingliz tilida yozsa, shu tilda javob ber. "
+    "Kitoblar, ta'lim, o'z-o'zini rivojlantirish mavzularida yordam ber. "
+    "Javoblarni qisqa, aniq va iliqlik bilan ber. Emoji ishlatishingiz mumkin."
+)
+
 
 UZ_STOPWORDS = {
     "va", "ham", "bu", "shu", "o\'sha", "lekin", "ammo", "bilan", "uchun", "yoki",
@@ -106,47 +125,33 @@ def _format_response(text: str) -> str:
     return text.strip()
 
 
-def chat_response(message: str) -> str:
+async def chat_response(message: str) -> str:
     """
-    Generate a chat response based on user message.
-    This is designed to feel like chatting with a knowledgeable friend.
+    Generate a chat response using Google Gemini 2.0 Flash.
+    Falls back to a simple local response if the API key is not configured.
     """
-    
     if not message or not message.strip():
         return "Xush, nima deyishni istaysiz? 🤔"
-    
-    normalized_msg = _normalize(message)
-    
-    # Detect question type
-    question_type = _detect_question_type(normalized_msg)
-    
-    # Handle greetings
-    if question_type == "greeting":
-        for key, response in GENERAL_RESPONSES.items():
-            if key in normalized_msg.lower():
-                return response
-        return "Assalomu alaykum! 👋 Kitoblar yoki ta'lim haqida savol bo'lsa, men yordamga tayyorman."
-    
-    # Handle thanks
-    if question_type == "thanks":
-        return "Marhamat! 😊 Yana nima yordam kerak?"
-    
-    # Handle book/author questions
-    if question_type == "author_question" or question_type == "book_question":
-        response = _get_knowledge_response(normalized_msg)
-        return _format_response(response)
-    
-    # Default general knowledge response
-    return (
-        "Buguni qanday savolingiz bor? 🤓\n\n"
-        "Men sizga quyidagi mavzular bo'yicha yordam bera olaman:\n"
-        "• 📚 O'zbek adabiyoti va klassiklari\n"
-        "• ✍️ Muallif va shoir haqida\n"
-        "• 📖 Kitob qanday o'qish kerak\n"
-        "• 💡 O'qish texnikasi va maslahatlar\n\n"
-        f"Savolingiz: \"{normalized_msg}\"\n\n"
-        "Agar bu mavzulardan biri bo'yicha malumat istasangiz, aniqroq ayting!"
-    )
+
+    if not _client:
+        return (
+            "AI hali sozlanmagan. Administrator GEMINI_API_KEY ni "
+            "backend .env fayliga qo'shishi kerak. 🔧"
+        )
+
+    try:
+        response = await _client.aio.models.generate_content(
+            model="gemini-flash-lite-latest",
+            contents=message,
+            config=types.GenerateContentConfig(
+                system_instruction=_SYSTEM_PROMPT,
+                max_output_tokens=512,
+                temperature=0.7,
+            ),
+        )
+        return response.text.strip()
+    except Exception as e:
+        return f"Xatolik yuz berdi: {str(e)}. Iltimos, keyinroq urinib ko'ring. 🙏"
 
 
 def split_sentences(text: str) -> List[str]:
