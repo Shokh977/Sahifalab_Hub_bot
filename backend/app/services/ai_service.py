@@ -2,15 +2,20 @@ import os
 import re
 from collections import Counter
 from typing import List
-
-from google import genai
-from google.genai import types
 from dotenv import load_dotenv
 
 load_dotenv()
 
 _GEMINI_KEY = os.getenv("GEMINI_API_KEY", "")
-_client = genai.Client(api_key=_GEMINI_KEY) if _GEMINI_KEY else None
+
+try:
+    from google import genai
+    from google.genai import types
+    _client = genai.Client(api_key=_GEMINI_KEY) if _GEMINI_KEY else None
+except Exception:
+    genai = None  # type: ignore
+    types = None  # type: ignore
+    _client = None
 
 _SYSTEM_PROMPT = (
     "Sen SAHIFALAB platformasining AI yordamchisi Sam'san. "
@@ -140,14 +145,15 @@ async def chat_response(message: str) -> str:
         )
 
     try:
+        config = types.GenerateContentConfig(
+            system_instruction=_SYSTEM_PROMPT,
+            max_output_tokens=512,
+            temperature=0.7,
+        ) if types else None
         response = await _client.aio.models.generate_content(
             model="gemini-flash-lite-latest",
             contents=message,
-            config=types.GenerateContentConfig(
-                system_instruction=_SYSTEM_PROMPT,
-                max_output_tokens=512,
-                temperature=0.7,
-            ),
+            config=config,
         )
         return response.text.strip()
     except Exception as e:
