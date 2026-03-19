@@ -26,6 +26,7 @@ import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from 
 interface BadgeDef {
   id:       string
   emoji:    string
+  level:    number
   name:     string
   desc:     string
   unlocked: (p: { level: number; focusSeconds: number; quizzesCompleted: number; totalXP: number }) => boolean
@@ -34,10 +35,32 @@ interface BadgeDef {
 const BADGES: BadgeDef[] = LEVEL_TITLES.map((levelInfo) => ({
   id: `level-${levelInfo.level}`,
   emoji: getLevelEmoji(levelInfo.level),
+  level: levelInfo.level,
   name: levelInfo.title,
   desc: levelInfo.description,
   unlocked: (p) => p.level >= levelInfo.level,
 }))
+
+function xpNeededForLevel(targetLevel: number): number {
+  // Level formula: floor(sqrt(xp / 100)) + 1
+  // Minimum XP for target level = (targetLevel - 1)^2 * 100
+  return Math.max(0, (targetLevel - 1) ** 2 * 100)
+}
+
+function badgeHowToText(
+  badge: BadgeDef,
+  p: { level: number; focusSeconds: number; quizzesCompleted: number; totalXP: number },
+): string {
+  const targetXP = xpNeededForLevel(badge.level)
+
+  if (p.level >= badge.level) {
+    return `✅ Ochildi: ${badge.level}-daraja (${targetXP.toLocaleString()} XP+)`
+  }
+
+  const levelLeft = badge.level - p.level
+  const xpLeft = Math.max(0, targetXP - p.totalXP)
+  return `🔓 Ochish: ${badge.level}-darajaga chiqing (yana ${levelLeft} daraja, ${xpLeft.toLocaleString()} XP kerak)`
+}
 
 // ── Sam's daily advice pool ───────────────────────────────────────────────────
 const SAM_ADVICE = [
@@ -347,6 +370,9 @@ const CabinetPage: React.FC = () => {
               <div className="text-3xl mb-1">{b.emoji}</div>
               <p className="text-[11px] font-bold text-gray-800 dark:text-gray-200 leading-tight">{b.name}</p>
               <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 leading-tight">{b.desc}</p>
+              <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1 leading-tight font-medium">
+                {badgeHowToText(b, profileData)}
+              </p>
             </motion.div>
           ))}
           {lockedBadges.map((b) => (
@@ -357,6 +383,9 @@ const CabinetPage: React.FC = () => {
               <div className="text-3xl mb-1 grayscale">🔒</div>
               <p className="text-[11px] font-bold text-gray-500 dark:text-gray-500 leading-tight">{b.name}</p>
               <p className="text-[10px] text-gray-400 dark:text-gray-600 mt-0.5 leading-tight">{b.desc}</p>
+              <p className="text-[10px] text-blue-600/80 dark:text-blue-400/80 mt-1 leading-tight font-medium">
+                {badgeHowToText(b, profileData)}
+              </p>
             </div>
           ))}
         </div>
