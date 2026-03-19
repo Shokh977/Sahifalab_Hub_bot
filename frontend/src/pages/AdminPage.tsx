@@ -900,9 +900,9 @@ const AdminPage: React.FC = () => {
                                           <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-gray-800 shadow-sm" title="Online" />
                                         )}
                                       </div>
-                                      <div>
-                                        <div className="font-medium text-gray-900 dark:text-white">{profile.first_name || 'Noma\'lum'}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400">@{profile.username || 'username yo\'q'} · {skin.name}</div>
+                                      <div className="min-w-0">
+                                        <div className="font-medium text-gray-900 dark:text-white truncate max-w-[120px]">{profile.first_name || 'Noma\'lum'}</div>
+                                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px]">@{profile.username || 'username yo\'q'} · {skin.name}</div>
                                       </div>
                                     </div>
                                   )
