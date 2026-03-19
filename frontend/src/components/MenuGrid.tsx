@@ -20,7 +20,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'study',
     icon: '🎯',
-    title: "Study With Sahifalab",
+    title: "Study",
     titleUz: "O'qish",
     description: 'Focus timer + ambient sounds',
     path: '/study',
@@ -50,7 +50,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'foydaliLinklar',
     icon: '🔗',
-    title: 'Foydali Linklar',
+    title: 'Linklar',
     titleUz: 'Resurslar',
     description: 'Resurslar & Videolar',
     path: '/resources',
@@ -60,7 +60,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'about',
     icon: '👤',
-    title: 'Biz Haqimizda',
+    title: 'Haqimizda',
     titleUz: 'Haqimizda',
     description: "Bizning hikoyamiz va missiyamiz",
     path: '/about',
@@ -70,7 +70,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'cabinet',
     icon: '🏅',
-    title: 'Mening Kabinetim',
+    title: 'Kabinet',
     titleUz: 'Kabinet',
     description: 'XP, Daraja va Yutuqlar',
     path: '/cabinet',
@@ -80,7 +80,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'leaderboard',
     icon: '🏆',
-    title: 'Liderlar Jadvali',
+    title: 'Reyting',
     titleUz: 'Reyting',
     description: "Top 10 o'quvchilar",
     path: '/leaderboard',
@@ -100,7 +100,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'daily',
     icon: '🔥',
-    title: 'Daily Missiya',
+    title: 'Daily',
     titleUz: 'Kunlik',
     description: 'Bugungi vazifalar va streak',
     path: '/daily',
@@ -110,7 +110,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'plans',
     icon: '🗓️',
-    title: 'Reading Plans',
+    title: 'Plans',
     titleUz: 'Rejalar',
     description: '7/14/30 kunlik yoʻl xaritasi',
     path: '/plans',
@@ -153,7 +153,7 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick }) => (
       relative overflow-hidden
       bg-white/80 dark:bg-slate-800/60 backdrop-blur-sm
       border border-gray-200/60 dark:border-slate-700/50
-      rounded-2xl p-3.5
+      rounded-2xl p-2.5 aspect-square
       transition-all duration-300
       card-glow
       ${item.accentGlow}
@@ -162,24 +162,21 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick }) => (
     {/* Subtle gradient overlay */}
     <div className="absolute inset-0 bg-gradient-to-br from-sahifa-500/[0.03] to-transparent pointer-events-none" />
 
-    <div className="relative text-center space-y-2">
+    <div className="relative h-full text-center flex flex-col items-center justify-center gap-1.5">
       {/* Icon with background */}
       <div className={`
         mx-auto
-        w-11 h-11 rounded-xl ${item.iconBg}
+        w-10 h-10 rounded-xl ${item.iconBg}
         flex items-center justify-center
         shadow-sm
       `}>
-        <span className="text-2xl">{item.icon}</span>
+        <span className="text-xl">{item.icon}</span>
       </div>
 
       <div>
-        <h3 className="font-bold text-[12px] text-gray-900 dark:text-white/90 leading-tight line-clamp-2 min-h-[2rem]">
-          {item.title}
+        <h3 className="font-bold text-[11px] text-gray-900 dark:text-white/90 leading-tight line-clamp-2">
+          {item.titleUz || item.title}
         </h3>
-        <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-0.5 leading-snug line-clamp-2 min-h-[1.9rem]">
-          {item.description}
-        </p>
       </div>
     </div>
   </motion.button>
