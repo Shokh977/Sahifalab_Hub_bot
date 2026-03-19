@@ -22,7 +22,7 @@ const AICompanionPage: React.FC = () => {
     {
       id: '1',
       type: 'ai',
-      text: "Assalomu alaykum! 👋 Men SahifaLab AI, sizning o'qish hamrahaziim. Kitoblar haqida savollangiz bormi? Har qanday kitob haqida malumat so'rasangiz yoki umumiy savollaringiz bo'lsa, men sizga o'zbekchada javob berib, yangi bilimlarni tushuntiraman.",
+      text: "Assalomu alaykum! 👋 Men SahifaLab AI, Kitoblar haqida savollangiz bormi?",
       timestamp: new Date(),
     },
   ])
@@ -201,7 +201,7 @@ const AICompanionPage: React.FC = () => {
           </motion.button>
         </form>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-4">
-          💡 Masalan: "Abdulla Qahhor kimdir?", "O'zbek tarixida eng muhim voqealar qanday?", yoki "Tilni yaxshi o'rganish uchun maslahat ber"
+          💡 Masalan: "Abdulla Qahhor kim?", "O'zbek tarixida eng muhim voqealar qanday?", yoki "Tilni yaxshi o'rganish uchun maslahat ber"
         </p>
       </div>
     </div>
