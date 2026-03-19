@@ -1,0 +1,63 @@
+# Bot Deployment - Quick Decision
+
+## Question: Where should I run the bot?
+
+### Answer: Depends on what you're doing
+
+---
+
+## 🧪 Testing/Development Right Now
+
+**Just run locally with PM2**:
+```powershell
+pm2 start bot/main.py --name sahifalab-bot --interpreter python
+```
+
+Bot keeps running even after you close terminal.
+
+---
+
+## 🚀 Production (24/7 Uptime)
+
+**Deploy to Railway** (you already have it set up):
+
+1. Push code to GitHub
+2. Railway auto-deploys
+3. Bot runs 24/7 in cloud
+
+---
+
+## ❌ DON'T Use Vercel
+
+Vercel = serverless functions (times out)
+Bots = need continuous connection
+
+**Telegram bots don't work on Vercel!**
+
+---
+
+## Architecture (Correct Setup)
+
+```
+Frontend (React)    → Vercel    ✅
+Backend (FastAPI)   → Railway   ✅
+Bot (Python)        → Railway   ✅  (or local PM2 for dev)
+Database            → Supabase  ✅
+```
+
+---
+
+## Right Now: Use This
+
+```powershell
+pm2 start bot/main.py --name sahifalab-bot --interpreter python
+```
+
+Then test:
+```
+/motivate_inactive 0
+```
+
+When ready for production → Deploy to Railway
+
+See **BOT_DEPLOYMENT_OPTIONS.md** for detailed setup!
