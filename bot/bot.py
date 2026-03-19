@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 MINI_APP_URL = os.getenv("MINI_APP_URL", "https://sahifalab-hub-bot.vercel.app")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://sahifalab-hub-bot-backend.up.railway.app")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://sahifalab-hub-bot-hsgt.vercel.app")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 

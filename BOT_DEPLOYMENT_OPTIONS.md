@@ -259,7 +259,7 @@ Both local (PM2) and cloud (Railway) need:
 TELEGRAM_BOT_TOKEN=123456:ABC...
 SUPABASE_URL=https://xxx.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=eyJ...
-API_BASE_URL=https://your-backend.up.railway.app
+API_BASE_URL=https://your-backend.vercel.app
 
 # Optional but recommended
 MINI_APP_URL=https://your-mini-app-url
