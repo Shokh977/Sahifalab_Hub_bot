@@ -16,6 +16,7 @@ import LeaderboardPage from './pages/LeaderboardPage'
 import BookSummarizerPage from './pages/BookSummarizerPage'
 import AICompanionPage from './pages/AICompanionPage'
 import DailyPage from './pages/DailyPage'
+import PlansPage from './pages/PlansPage'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import ProgressProvider from './components/ProgressProvider'
 import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp'
@@ -138,6 +139,7 @@ const App: React.FC = () => {
             <Route path="/book-summarizer" element={<BookSummarizerPage />} />
             <Route path="/ai-companion" element={<AICompanionPage />} />
             <Route path="/daily" element={<DailyPage />} />
+            <Route path="/plans" element={<PlansPage />} />
           </Routes>
         </ProgressProvider>
       </Router>

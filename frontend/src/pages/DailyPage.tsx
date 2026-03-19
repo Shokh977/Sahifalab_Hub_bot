@@ -235,6 +235,13 @@ const DailyPage: React.FC = () => {
         <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mt-1">
           Har kuni 3/3 vazifa bilan muntazamlikni ushlab turing.
         </p>
+
+        <button
+          onClick={() => navigate('/plans')}
+          className="mt-3 w-full py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold"
+        >
+          7/14/30 kunlik rejalarga o‘tish
+        </button>
       </motion.div>
     </div>
   )
