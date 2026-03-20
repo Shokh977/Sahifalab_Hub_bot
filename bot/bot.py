@@ -872,7 +872,6 @@ class TelegramBotHandler:
             f"Nishon userlar: {len(targets)}\n\n"
             "Eslatma: bot foydalanuvchiga faqat u avval botni ochib /start bosgan bo'lsa yozishi mumkin."
         )
-        )
 
     # ── Send native Telegram invoice (Stars / Click / Payme) ─────────────
     async def _send_invoice(

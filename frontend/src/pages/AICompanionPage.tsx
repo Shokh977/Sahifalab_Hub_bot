@@ -201,7 +201,7 @@ const AICompanionPage: React.FC = () => {
           </motion.button>
         </form>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-4">
-          💡 Masalan: "Abdulla Qahhor kim?", "O'zbek tarixida eng muhim voqealar qanday?", yoki "Tilni yaxshi o'rganish uchun maslahat ber"
+          💡 Masalan: "Abdulla Qahhor kim?"
         </p>
       </div>
     </div>
