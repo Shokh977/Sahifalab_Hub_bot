@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import asyncio
+import random
 from pathlib import Path
 from datetime import datetime, UTC, timedelta
 from typing import Any
@@ -426,12 +427,42 @@ class TelegramBotHandler:
 
     def _motivation_text(self, first_name: str | None = None) -> str:
         name = (first_name or "Do'stim").strip() or "Do'stim"
-        return (
-            f"Salom, {name}! 👋\n\n"
-            "Bugun 15 daqiqa SAHIFALAB bilan shug'ullansangiz ham katta natija bo'ladi. 📚\n"
-            "Kichik qadamlar — katta o'sish! 💪\n\n"
-            "Quyidagi tugma orqali mini app'ni oching:"
-        )
+        
+        # 5 different motivation messages
+        messages = [
+            (
+                f"Salom, {name}! 👋\n\n"
+                "Bugun 15 daqiqa SAHIFALAB bilan shug'ullansangiz ham katta natija bo'ladi. 📚\n"
+                "Kichik qadamlar — katta o'sish! 💪\n\n"
+                "Quyidagi tugma orqali mini app'ni oching:"
+            ),
+            (
+                f"Assalomu alaykum, {name}! 🌟\n\n"
+                "Sizni SAHIFALAB'da ko'rishga juda xursand bo'lardik! 😊\n"
+                "Har bir dars siz uchun yangi imkoniyat olib keladi. 🚀\n\n"
+                "Hozir o'quv platformasini oching:"
+            ),
+            (
+                f"Salom, {name}! 🎯\n\n"
+                "Biz sizning muvaffaqiyatingizni ko'zlaymiz! 💎\n"
+                "O'z bilimingizni oshiring va yangi ko'nikmalar o'rganing. 📖\n\n"
+                "Boshlash uchun tugma bosing:"
+            ),
+            (
+                f"Hey, {name}! ⚡\n\n"
+                "Buyuklar eng qiyin vazifalarni kichik bosqichlar bilan boshladilar! 🏆\n"
+                "Siz ham buning uchun tayyor musiz. 💪\n\n"
+                "SAHIFALAB'ga kiraylik:"
+            ),
+            (
+                f"Salam, {name}! 🌈\n\n"
+                "Ko'p vaqt o'tib ketdi — endi qaytamiz! 🎓\n"
+                "Sizning oldingi dasturlashlaringizni davom ettiring va yangi bilim orttiraylik. 📚\n\n"
+                "Mini app'ni bosing:"
+            ),
+        ]
+        
+        return random.choice(messages)
 
     async def _get_motivation_logs(self) -> dict[str, str]:
         data = await self._read_json(self.motivation_logs_file, default={})
