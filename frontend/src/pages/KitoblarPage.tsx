@@ -38,12 +38,27 @@ export const KitoblarPage: React.FC = () => {
   const [filter, setFilter] = useState('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [displayLimit, setDisplayLimit] = useState(12)
 
   useEffect(() => {
+    // Cache books in sessionStorage to avoid refetching
+    const cached = sessionStorage.getItem('books_cache')
+    if (cached) {
+      setBooks(JSON.parse(cached))
+      setLoading(false)
+      return
+    }
+
+    const controller = new AbortController()
     apiService.getBooks()
-      .then(r => setBooks(r.data))
+      .then(r => {
+        setBooks(r.data)
+        sessionStorage.setItem('books_cache', JSON.stringify(r.data))
+      })
       .catch(() => setError('Kitoblarni yuklab bo\'lmadi'))
       .finally(() => setLoading(false))
+
+    return () => controller.abort()
   }, [])
 
   const filtered = books.filter(b => {
@@ -115,51 +130,64 @@ export const KitoblarPage: React.FC = () => {
 
       {/* Books grid */}
       {!loading && filtered.length > 0 && (
-        <div className="grid grid-cols-2 gap-3">
-          {filtered.map(book => (
-            <button
-              key={book.id}
-              onClick={() => navigate(`/kitoblar/${book.id}`)}
-              className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md active:scale-95 transition-all"
-            >
-              {/* Cover */}
-              <div className="aspect-[3/4] relative overflow-hidden">
-                {book.thumbnail_url ? (
-                  <img
-                    src={book.thumbnail_url}
-                    alt={book.title}
-                    className="w-full h-full object-cover"
-                    onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                  />
-                ) : (
-                  <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
-                    <span className="text-5xl">📕</span>
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {filtered.slice(0, displayLimit).map(book => (
+              <button
+                key={book.id}
+                onClick={() => navigate(`/kitoblar/${book.id}`)}
+                className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md active:scale-95 transition-all"
+              >
+                {/* Cover */}
+                <div className="aspect-[3/4] relative overflow-hidden bg-gray-100 dark:bg-gray-700">
+                  {book.thumbnail_url ? (
+                    <img
+                      src={book.thumbnail_url}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                    />
+                  ) : (
+                    <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
+                      <span className="text-5xl">📕</span>
+                    </div>
+                  )}
+                  {/* Badge */}
+                  <div className={`absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded-full shadow ${
+                    book.is_paid
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-green-500 text-white'
+                  }`}>
+                    {book.is_paid ? `${book.price.toLocaleString()} UZS` : 'Bepul'}
                   </div>
-                )}
-                {/* Badge */}
-                <div className={`absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded-full shadow ${
-                  book.is_paid
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-green-500 text-white'
-                }`}>
-                  {book.is_paid ? `${book.price.toLocaleString()} UZS` : 'Bepul'}
                 </div>
-              </div>
 
-              {/* Info */}
-              <div className="p-2.5 space-y-0.5">
-                <p className="font-semibold text-xs text-gray-900 dark:text-white line-clamp-2 leading-snug">
-                  {book.title}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{book.author}</p>
-                <div className="flex items-center gap-2 pt-0.5">
-                  <span className="text-yellow-500 text-xs">★ {book.rating.toFixed(1)}</span>
-                  <span className="text-gray-400 text-xs">↓ {book.downloads}</span>
+                {/* Info */}
+                <div className="p-2.5 space-y-0.5">
+                  <p className="font-semibold text-xs text-gray-900 dark:text-white line-clamp-2 leading-snug">
+                    {book.title}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{book.author}</p>
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <span className="text-yellow-500 text-xs">★ {book.rating.toFixed(1)}</span>
+                    <span className="text-gray-400 text-xs">↓ {book.downloads}</span>
+                  </div>
                 </div>
-              </div>
+              </button>
+            ))}
+          </div>
+
+          {/* Load more button */}
+          {displayLimit < filtered.length && (
+            <button
+              onClick={() => setDisplayLimit(displayLimit + 12)}
+              className="w-full py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+            >
+              📚 Yana ko'rsating ({filtered.length - displayLimit} qolgan)
             </button>
-          ))}
-        </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -1,4 +1,5 @@
 import axios, { AxiosInstance } from 'axios'
+import { showToast } from '../components/ErrorBoundary'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
@@ -23,7 +24,7 @@ class ApiService {
       return config
     })
 
-    // Log every response
+    // Log every response and handle errors with toasts
     this.axiosInstance.interceptors.response.use(
       (response) => {
         console.debug(`[API] ← ${response.status} ${response.config.url}`, response.data)
@@ -32,8 +33,16 @@ class ApiService {
       (error) => {
         const status = error?.response?.status ?? 'NO_RESPONSE'
         const url = error?.config?.url ?? ''
-        const detail = error?.response?.data?.detail ?? error?.response?.data ?? error?.message ?? 'Unknown error'
+        const detail = error?.response?.data?.detail ?? error?.response?.data?.message ?? error?.response?.data ?? error?.message ?? 'Unknown error'
         console.error(`[API] ❌ ${status} ${url}`, detail, error?.response?.data)
+        
+        // Show toast notification for errors (unless it's from a query with showErrorToast = false)
+        const shouldShowToast = error?.config?.headers?.['X-Show-Error-Toast'] !== 'false'
+        if (shouldShowToast) {
+          const errorMessage = typeof detail === 'string' ? detail : JSON.stringify(detail).substring(0, 100)
+          showToast(errorMessage, 'error', 4000)
+        }
+        
         return Promise.reject(error)
       },
     )

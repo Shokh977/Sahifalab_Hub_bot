@@ -1,6 +1,7 @@
 import React, { useCallback } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
 import ThemeToggle from './components/ThemeToggle'
@@ -120,30 +121,33 @@ const AdminRoute: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <div className="min-h-screen bg-[#FAFAFA] dark:bg-slate-950 transition-colors duration-300">
-      <Router>
-        <ProgressProvider>
-          <TelegramBackButtonHandler />
-          <GlobalProgressBar />
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/study" element={<StudyWithMe />} />
-            <Route path="/quiz" element={<QuizPage />} />
-            <Route path="/kitoblar" element={<KitoblarPage />} />
-            <Route path="/kitoblar/:id" element={<BookDetailPage />} />
-            <Route path="/resources" element={<ResourcesPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/admin" element={<AdminRoute />} />
-            <Route path="/cabinet" element={<CabinetPage />} />
-            <Route path="/leaderboard" element={<LeaderboardPage />} />
-            <Route path="/book-summarizer" element={<BookSummarizerPage />} />
-            <Route path="/ai-companion" element={<AICompanionPage />} />
-            <Route path="/daily" element={<DailyPage />} />
-            <Route path="/plans" element={<PlansPage />} />
-          </Routes>
-        </ProgressProvider>
-      </Router>
-    </div>
+    <ErrorBoundary>
+      <div className="min-h-screen bg-[#FAFAFA] dark:bg-slate-950 transition-colors duration-300">
+        <Router>
+          <ProgressProvider>
+            <TelegramBackButtonHandler />
+            <GlobalProgressBar />
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/study" element={<StudyWithMe />} />
+              <Route path="/quiz" element={<QuizPage />} />
+              <Route path="/kitoblar" element={<KitoblarPage />} />
+              <Route path="/kitoblar/:id" element={<BookDetailPage />} />
+              <Route path="/resources" element={<ResourcesPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/admin" element={<AdminRoute />} />
+              <Route path="/cabinet" element={<CabinetPage />} />
+              <Route path="/leaderboard" element={<LeaderboardPage />} />
+              <Route path="/book-summarizer" element={<BookSummarizerPage />} />
+              <Route path="/ai-companion" element={<AICompanionPage />} />
+              <Route path="/daily" element={<DailyPage />} />
+              <Route path="/plans" element={<PlansPage />} />
+            </Routes>
+          </ProgressProvider>
+        </Router>
+        <ToastContainer />
+      </div>
+    </ErrorBoundary>
   )
 }
 

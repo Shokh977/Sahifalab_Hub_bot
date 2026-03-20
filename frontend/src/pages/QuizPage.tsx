@@ -80,55 +80,71 @@ const QuizList: React.FC<{
   quizzes: QuizSummary[]
   loading: boolean
   onStart: (q: QuizSummary) => void
-}> = ({ quizzes, loading, onStart }) => (
-  <div className="space-y-4">
-    <div className="text-center space-y-1 mb-2">
-      <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📝 Viktorina</h1>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        Bilimingizni sinab ko'ring va sertifikat qozoning!
-      </p>
-    </div>
+}> = ({ quizzes, loading, onStart }) => {
+  const [displayLimit, setDisplayLimit] = React.useState(10)
+  const displayed = quizzes.slice(0, displayLimit)
 
-    {loading ? (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
-        ))}
+  return (
+    <div className="space-y-4">
+      <div className="text-center space-y-1 mb-2">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📝 Viktorina</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Bilimingizni sinab ko'ring va sertifikat qozoning!
+        </p>
       </div>
-    ) : quizzes.length === 0 ? (
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
-        <p className="text-4xl mb-3">📚</p>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+          ))}
+        </div>
+      ) : quizzes.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
+          <p className="text-4xl mb-3">📚</p>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Hali viktorina qo'shilmagan</p>
       </div>
     ) : (
-      <div className="space-y-3">
-        {quizzes.map(quiz => (
-          <button
-            key={quiz.id}
-            onClick={() => onStart(quiz)}
-            className="w-full bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md hover:border-blue-200 dark:hover:border-blue-700 transition-all active:scale-[0.98]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-xl shrink-0">
-                📝
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{quiz.title}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">📕 {quiz.book_title}</p>
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
-                    {quiz.total_questions} savol
-                  </span>
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${DIFF_STYLE[quiz.difficulty] ?? DIFF_STYLE.medium}`}>
-                    {DIFF_LABEL[quiz.difficulty] ?? quiz.difficulty}
-                  </span>
+      <>
+        <div className="space-y-3">
+          {displayed.map(quiz => (
+            <button
+              key={quiz.id}
+              onClick={() => onStart(quiz)}
+              className="w-full bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md hover:border-blue-200 dark:hover:border-blue-700 transition-all active:scale-[0.98]"
+            >
+              <div className="flex items-start gap-3">
+                <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-xl shrink-0">
+                  📝
                 </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{quiz.title}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">📕 {quiz.book_title}</p>
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                      {quiz.total_questions} savol
+                    </span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full ${DIFF_STYLE[quiz.difficulty] ?? DIFF_STYLE.medium}`}>
+                      {DIFF_LABEL[quiz.difficulty] ?? quiz.difficulty}
+                    </span>
+                  </div>
+                </div>
+                <span className="text-gray-400 text-lg self-center">›</span>
               </div>
-              <span className="text-gray-400 text-lg self-center">›</span>
-            </div>
+            </button>
+          ))}
+        </div>
+
+        {/* Load more button */}
+        {displayLimit < quizzes.length && (
+          <button
+            onClick={() => setDisplayLimit(displayLimit + 10)}
+            className="w-full py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+          >
+            📚 Yana ko'rsating ({quizzes.length - displayLimit} qolgan)
           </button>
-        ))}
-      </div>
+        )}
+      </>
     )}
 
     {/* Certificate teaser */}
@@ -147,7 +163,9 @@ const QuizList: React.FC<{
       </p>
     </div>
   </div>
-)
+  )
+}
+
 
 // â”€â”€â”€ Quiz question step â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -410,8 +428,24 @@ export const QuizPage: React.FC = () => {
 
   // Fetch quiz list
   useEffect(() => {
+    // Check cache first
+    const cached = sessionStorage.getItem('quizzes_cache')
+    const cacheTime = sessionStorage.getItem('quizzes_cache_time')
+    const now = Date.now()
+    
+    // Use cache if less than 5 minutes old
+    if (cached && cacheTime && now - parseInt(cacheTime) < 5 * 60 * 1000) {
+      setQuizzes(JSON.parse(cached))
+      setListLoading(false)
+      return
+    }
+
     apiService.getQuizzes()
-      .then(r => setQuizzes(r.data))
+      .then(r => {
+        setQuizzes(r.data)
+        sessionStorage.setItem('quizzes_cache', JSON.stringify(r.data))
+        sessionStorage.setItem('quizzes_cache_time', Date.now().toString())
+      })
       .catch(() => {})
       .finally(() => setListLoading(false))
   }, [])

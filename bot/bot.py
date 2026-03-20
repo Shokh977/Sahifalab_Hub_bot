@@ -904,6 +904,88 @@ class TelegramBotHandler:
             "Eslatma: bot foydalanuvchiga faqat u avval botni ochib /start bosgan bo'lsa yozishi mumkin."
         )
 
+    # ── /admin (admin only) ─────────────────────────────────────────────
+    async def admin_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+
+        await update.message.reply_text(
+            "🛠️ Admin panel buyruqlari:\n\n"
+            "/stats — Bot statistikasi\n"
+            "/news <matn> — Yangilik yuborish\n"
+            "/schedule_news <sana> <matn> — Yangilikni vaqtga qo'yish\n"
+            "/scheduled — Rejalashtirilgan yangiliklar\n"
+            "/cancel_news <id> — Rejalashtirilganni bekor qilish\n"
+            "/motivate_inactive [soat] [matn] — Inactive userlarga DM\n"
+            "/motivation_logs [soni] — Oxirgi motivatsiya loglari\n\n"
+            "Maslahat: /stats buyrug'ini muntazam tekshirib turing."
+        )
+
+    # ── /stats (admin only) ─────────────────────────────────────────────
+    async def stats_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+
+        subscribers = await self._get_subscribers()
+        posts = await self._read_json(self.news_file, default=[])
+        scheduled = await self._get_scheduled_news()
+        motivation_logs = await self._get_motivation_logs()
+
+        total_posts = len(posts) if isinstance(posts, list) else 0
+        total_scheduled = len(scheduled)
+        motivated_users = len(motivation_logs)
+        last_run = self.last_auto_motivate_run.isoformat() if self.last_auto_motivate_run else "hali ishga tushmagan"
+
+        await update.message.reply_text(
+            "📊 Bot statistikasi:\n\n"
+            f"👥 Subscriberlar: {len(subscribers)}\n"
+            f"📰 Yangiliklar soni: {total_posts}\n"
+            f"⏰ Rejalashtirilgan yangiliklar: {total_scheduled}\n"
+            f"💬 Motivatsiya yuborilgan userlar (log): {motivated_users}\n"
+            f"🔐 Adminlar soni: {len(self.admin_ids)}\n"
+            f"🤖 Auto motivate: {'yoqilgan' if AUTO_MOTIVATE_ENABLED else 'o‘chirilgan'}\n"
+            f"⏱️ Inactive threshold: {AUTO_MOTIVATE_INACTIVE_HOURS} soat\n"
+            f"🔁 Tekshirish intervali: {AUTO_MOTIVATE_CHECK_MINUTES} daqiqa\n"
+            f"🧊 User cooldown: {AUTO_MOTIVATE_USER_COOLDOWN_HOURS} soat\n"
+            f"🕒 Oxirgi auto-run: {last_run}"
+        )
+
+    # ── /motivation_logs (admin only) ───────────────────────────────────
+    async def motivation_logs_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+
+        raw_limit = context.args[0] if context.args else "10"
+        try:
+            limit = max(1, min(int(raw_limit), 50))
+        except ValueError:
+            await update.message.reply_text("Foydalanish: /motivation_logs [1..50]")
+            return
+
+        logs = await self._get_motivation_logs()
+        if not logs:
+            await update.message.reply_text("Hozircha motivatsiya loglari yo'q.")
+            return
+
+        items: list[tuple[str, str]] = []
+        for chat_id, sent_at in logs.items():
+            items.append((str(chat_id), str(sent_at)))
+
+        items.sort(key=lambda x: x[1], reverse=True)
+        selected = items[:limit]
+
+        lines = [f"🗂️ Oxirgi motivatsiya loglari (top {len(selected)}):\n"]
+        for chat_id, sent_at in selected:
+            lines.append(f"• {chat_id} — {sent_at}")
+
+        await update.message.reply_text("\n".join(lines))
+
     # ── Send native Telegram invoice (Stars / Click / Payme) ─────────────
     async def _send_invoice(
         self,
@@ -1021,11 +1103,14 @@ class TelegramBotHandler:
     # ── /help ─────────────────────────────────────────────────────────────
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         admin_line = (
+            "\n/admin — Admin buyruqlari (admin)"
+            "\n/stats — Bot statistikasi (admin)"
             "\n/news <matn> — Yangilik yuborish (admin)"
             "\n/schedule_news <sana> <matn> — Yangilikni vaqtga qo'yish (admin)"
             "\n/scheduled — Rejalashtirilganlar ro'yxati (admin)"
             "\n/cancel_news <id> — Rejalashtirilgan yangilikni bekor qilish (admin)"
             "\n/motivate_inactive [soat] [matn] — Inactive userlarga DM yuborish (admin)"
+            "\n/motivation_logs [soni] — Oxirgi motivatsiya loglari (admin)"
         ) if self._is_admin(update.effective_user.id if update.effective_user else None) else ""
         await update.message.reply_text(
             "📋 *Buyruqlar ro'yxati:*\n\n"
@@ -1074,6 +1159,8 @@ class TelegramBotHandler:
         self.app = Application.builder().token(BOT_TOKEN).post_init(self.post_init).post_shutdown(self.post_shutdown).build()
         self.app.add_handler(CommandHandler("start", self.start))
         self.app.add_handler(CommandHandler("help", self.help_command))
+        self.app.add_handler(CommandHandler("admin", self.admin_command))
+        self.app.add_handler(CommandHandler("stats", self.stats_command))
         self.app.add_handler(CommandHandler("app", self.app_command))
         self.app.add_handler(CommandHandler("subscribe", self.subscribe_command))
         self.app.add_handler(CommandHandler("unsubscribe", self.unsubscribe_command))
@@ -1083,6 +1170,7 @@ class TelegramBotHandler:
         self.app.add_handler(CommandHandler("scheduled", self.scheduled_command))
         self.app.add_handler(CommandHandler("cancel_news", self.cancel_news_command))
         self.app.add_handler(CommandHandler("motivate_inactive", self.motivate_inactive_command))
+        self.app.add_handler(CommandHandler("motivation_logs", self.motivation_logs_command))
         # Payment handlers
         self.app.add_handler(PreCheckoutQueryHandler(self.pre_checkout))
         self.app.add_handler(

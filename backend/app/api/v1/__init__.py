@@ -1,9 +1,14 @@
 from fastapi import APIRouter
 
+from app.api.v1 import auth
 from app.api.v1.endpoints import users, products, orders, cart, hero, quizzes, books, resources, admin, payments, audio, ai
 
 api_router = APIRouter()
 
+# Authentication routes
+api_router.include_router(auth.router, tags=["auth"])
+
+# Existing routes
 api_router.include_router(users.router, prefix="/users", tags=["users"])
 api_router.include_router(products.router, prefix="/products", tags=["products"])
 api_router.include_router(orders.router, prefix="/orders", tags=["orders"])
