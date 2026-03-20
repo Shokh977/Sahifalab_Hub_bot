@@ -1,8 +1,9 @@
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 import os
+import logging
 from datetime import datetime, UTC
-from supabase import create_client
+import httpx
 
 from app.services.auth_service import (
     TelegramAuthData,
@@ -11,64 +12,89 @@ from app.services.auth_service import (
     decode_token,
 )
 
-router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+router = APIRouter(prefix="/auth", tags=["auth"])
 
-supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+
+def _supabase_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _ensure_supabase():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing)",
+        )
+
 
 @router.post("/telegram")
 async def telegram_login(data: TelegramAuthData):
     """
     Authenticate user with Telegram.
-    
+
     The mobile app sends the Telegram login data.
     We verify it's authentic, create/update user in database,
     and return a JWT token.
     """
-    
+    _ensure_supabase()
+
     # 1. Verify the data came from Telegram
     if not verify_telegram_auth(data, BOT_TOKEN):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid Telegram authentication"
-        )
-    
+        raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
+
     # 2. Check if user exists in Supabase
     try:
-        response = supabase.table("profiles").select("*").eq(
-            "telegram_id", data.id
-        ).execute()
-        
-        user_exists = len(response.data) > 0
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{data.id}", "select": "*"},
+                headers=_supabase_headers(),
+            )
+            rows = res.json() if res.status_code == 200 else []
+            user_exists = isinstance(rows, list) and len(rows) > 0
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
-    
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
     # 3. Create or update user
     try:
-        if not user_exists:
-            # Create new user
-            supabase.table("profiles").insert({
-                "telegram_id": data.id,
-                "first_name": data.first_name,
-                "username": data.username,
-                "photo_url": data.photo_url,
-                "app_created_at": datetime.now(UTC).isoformat(),
-                "app_last_login": datetime.now(UTC).isoformat(),
-            }).execute()
-        else:
-            # Update last login
-            supabase.table("profiles").update({
-                "app_last_login": datetime.now(UTC).isoformat(),
-            }).eq("telegram_id", data.id).execute()
+        async with httpx.AsyncClient(timeout=15) as client:
+            if not user_exists:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    json={
+                        "telegram_id": data.id,
+                        "first_name": data.first_name,
+                        "username": data.username,
+                        "photo_url": data.photo_url,
+                        "app_created_at": datetime.now(UTC).isoformat(),
+                        "app_last_login": datetime.now(UTC).isoformat(),
+                    },
+                    headers=_supabase_headers(),
+                )
+            else:
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"telegram_id": f"eq.{data.id}"},
+                    json={"app_last_login": datetime.now(UTC).isoformat()},
+                    headers=_supabase_headers(),
+                )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to update user: {str(e)}")
-    
+        raise HTTPException(status_code=500, detail=f"Failed to update user: {e}")
+
     # 4. Generate JWT token
     token_data = create_access_token(data.id)
-    
+
     return {
         "success": True,
         "telegram_id": data.id,
@@ -76,37 +102,36 @@ async def telegram_login(data: TelegramAuthData):
         **token_data,
     }
 
+
 @router.get("/me")
 async def get_current_user(authorization: str = Header(None)):
-    """
-    Get current user info from JWT token.
-    """
+    """Get current user info from JWT token."""
+    _ensure_supabase()
+
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
-    
-    # Extract token from "Bearer <token>"
+
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    
-    token = parts[1]
-    telegram_id = decode_token(token)
-    
+
+    telegram_id = decode_token(parts[1])
     if not telegram_id:
         raise HTTPException(status_code=401, detail="Invalid token")
-    
-    # Get user from database
+
     try:
-        response = supabase.table("profiles").select("*").eq(
-            "telegram_id", telegram_id
-        ).execute()
-        
-        if not response.data:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "*"},
+                headers=_supabase_headers(),
+            )
+            rows = res.json() if res.status_code == 200 else []
+
+        if not rows:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        user = response.data[0]
-        
-        # Return user data (exclude sensitive fields)
+
+        user = rows[0]
         return {
             "telegram_id": user.get("telegram_id"),
             "first_name": user.get("first_name"),
@@ -115,15 +140,15 @@ async def get_current_user(authorization: str = Header(None)):
             "level": user.get("level", 1),
             "xp": user.get("xp", 0),
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch user: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch user: {e}")
+
 
 @router.post("/logout")
 async def logout(authorization: str = Header(None)):
-    """
-    Logout user (client should discard token).
-    """
+    """Logout user (client should discard token)."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
-    
     return {"success": True, "message": "Logged out"}
