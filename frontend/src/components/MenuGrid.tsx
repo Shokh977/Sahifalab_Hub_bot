@@ -8,6 +8,7 @@ const ADMIN_TELEGRAM_IDS = [807466591]
 interface MenuItem {
   id: string
   icon: string
+  iconImage?: string   /* optional image URL to replace emoji */
   title: string
   titleUz: string
   description: string
@@ -90,6 +91,7 @@ const MENU_ITEMS: MenuItem[] = [
   {
     id: 'bookSummarizer',
     icon: '🤖',
+    iconImage: '/sahifalab.jpg',
     title: 'SahifaLab AI',
     titleUz: 'SahifaLab AI',
     description: "Kitob haqida suhbat, savol-javob",
@@ -168,9 +170,13 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick }) => (
         mx-auto
         w-10 h-10 rounded-xl ${item.iconBg}
         flex items-center justify-center
-        shadow-sm
+        shadow-sm overflow-hidden
       `}>
-        <span className="text-xl">{item.icon}</span>
+        {item.iconImage ? (
+          <img src={item.iconImage} alt={item.title} className="w-full h-full object-cover rounded-xl" />
+        ) : (
+          <span className="text-xl">{item.icon}</span>
+        )}
       </div>
 
       <div>
