@@ -15,7 +15,7 @@ interface ChatResponse {
 }
 
 // Admin can set this manually in code
-const SAHIFALAB_AI_AVATAR_URL = ''
+const SAHIFALAB_AI_AVATAR_URL = '/sahifalab.jpg'
 
 const AICompanionPage: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
