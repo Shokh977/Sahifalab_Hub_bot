@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import apiService from '@services/apiService'
+import { fetchBooks } from '../lib/supabase'
 
 interface Book {
   id: number
@@ -49,16 +49,13 @@ export const KitoblarPage: React.FC = () => {
       return
     }
 
-    const controller = new AbortController()
-    apiService.getBooks()
-      .then(r => {
-        setBooks(r.data)
-        sessionStorage.setItem('books_cache', JSON.stringify(r.data))
+    fetchBooks()
+      .then(data => {
+        setBooks(data as Book[])
+        sessionStorage.setItem('books_cache', JSON.stringify(data))
       })
       .catch(() => setError('Kitoblarni yuklab bo\'lmadi'))
       .finally(() => setLoading(false))
-
-    return () => controller.abort()
   }, [])
 
   const filtered = books.filter(b => {

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import apiService from '@services/apiService'
+import { fetchHeroContent } from '../lib/supabase'
 
 interface Quote {
   id: number
@@ -34,9 +34,9 @@ export const HeroSection: React.FC = () => {
   useEffect(() => {
     const fetchHero = async () => {
       try {
-        const response = await apiService.getHeroContent()
-        if (response.data) {
-          setHero(response.data)
+        const content = await fetchHeroContent()
+        if (content) {
+          setHero(content as Quote)
           return
         }
       } catch (error) {

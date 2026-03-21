@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
-import apiService from '../services/apiService'
+import { fetchAmbientSounds } from '../lib/supabase'
 import { useProgressStore } from '../context/progressStore'
 
 /* ──────────────────────────────────────────────────────────────────────────────
@@ -93,10 +93,10 @@ export const StudyWithMe: React.FC = () => {
   const [sounds, setSounds] = useState<SoundFromDB[]>([])
   const [soundsLoading, setSoundsLoading] = useState(true)
 
-  // Fetch ambient sounds on mount
+  // Fetch ambient sounds on mount (direct Supabase — fast)
   useEffect(() => {
-    apiService.getAmbientSounds()
-      .then(res => setSounds(res.data))
+    fetchAmbientSounds()
+      .then(data => setSounds(data as SoundFromDB[]))
       .catch(() => {})
       .finally(() => setSoundsLoading(false))
   }, [])

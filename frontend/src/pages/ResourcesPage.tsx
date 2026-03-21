@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import apiService from '@services/apiService'
+import { fetchResources } from '../lib/supabase'
 
 interface Resource {
   id: number
@@ -72,9 +72,9 @@ export const ResourcesPage: React.FC = () => {
   useEffect(() => {
     const fetchResources = async () => {
       try {
-        const response = await apiService.getResources()
-        if (Array.isArray(response.data) && response.data.length > 0) {
-          const normalized = response.data.map((item: any, index: number) => ({
+        const data = await fetchResources()
+        if (Array.isArray(data) && data.length > 0) {
+          const normalized = data.map((item: any, index: number) => ({
             id: item.id ?? 2000 + index,
             title: item.title,
             description: item.description,

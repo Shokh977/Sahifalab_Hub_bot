@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import apiService from '@services/apiService'
+import { fetchQuizzes, fetchQuiz } from '../lib/supabase'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import { useProgressStore } from '../context/progressStore'
@@ -455,10 +456,10 @@ export const QuizPage: React.FC = () => {
       return
     }
 
-    apiService.getQuizzes()
-      .then(r => {
-        setQuizzes(r.data)
-        sessionStorage.setItem('quizzes_cache', JSON.stringify(r.data))
+    fetchQuizzes()
+      .then(data => {
+        setQuizzes(data)
+        sessionStorage.setItem('quizzes_cache', JSON.stringify(data))
         sessionStorage.setItem('quizzes_cache_time', Date.now().toString())
       })
       .catch(() => {})
@@ -469,8 +470,8 @@ export const QuizPage: React.FC = () => {
     setView('loading')
     setError(null)
     try {
-      const r = await apiService.getQuiz(summary.id)
-      setActiveQuiz(r.data)
+      const quiz = await fetchQuiz(summary.id)
+      setActiveQuiz(quiz as QuizDetail)
       setVerifyResult(null)
       setView('quiz')
     } catch {

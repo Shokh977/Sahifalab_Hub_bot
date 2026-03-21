@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import apiService from '@services/apiService'
+import { fetchBook, fetchMyRating } from '../lib/supabase'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -78,8 +79,8 @@ const BookDetailPage: React.FC = () => {
   // Load book
   useEffect(() => {
     if (!id) return
-    apiService.getBook(Number(id))
-      .then(r => setBook(r.data))
+    fetchBook(Number(id))
+      .then(data => setBook(data as Book))
       .catch(() => setError('Kitob topilmadi'))
       .finally(() => setLoading(false))
   }, [id])
@@ -97,8 +98,8 @@ const BookDetailPage: React.FC = () => {
   // Load user's existing rating
   useEffect(() => {
     if (!book?.id || !user?.id) return
-    apiService.getMyRating(book.id, user.id)
-      .then(r => setMyRating(r.data?.rating ?? 0))
+    fetchMyRating(book.id, user.id)
+      .then(rating => setMyRating(rating))
       .catch(() => {})
   }, [book, user])
 
