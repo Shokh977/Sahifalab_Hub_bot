@@ -227,10 +227,11 @@ class QuizVerifyResponse(BaseModel):
     score: int
     total: int
     percentage: float
-    passed: bool               # >= 60%
+    passed: bool               # >= 80%
     certificate_eligible: bool # >= 80%
     result_token: str          # HMAC-signed — prevents forged certificates
-    is_first_attempt: bool     # True if first completion (award XP), False if retake (no XP)
+    is_first_attempt: bool     # True if first passing completion (XP awarded)
+    already_passed: bool = False  # True if user already passed this quiz before
 
 # AI Schemas
 class BookSummarizerRequest(BaseModel):

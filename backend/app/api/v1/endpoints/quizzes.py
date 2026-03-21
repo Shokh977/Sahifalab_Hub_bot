@@ -134,16 +134,19 @@ async def verify_quiz(
     total = len(questions)
     percentage = round(score / total * 100, 1) if total else 0.0
 
-    # Check if user has already completed this quiz
+    # Check if user has already PASSED this quiz (>= 80%)
     existing_completion = db.query(UserQuizCompletion).filter(
         UserQuizCompletion.telegram_id == body.telegram_id,
         UserQuizCompletion.quiz_id == quiz_id,
     ).first()
 
-    is_first_attempt = not existing_completion
+    passed = percentage >= 80
+    already_passed = existing_completion is not None
+    # XP is awarded only on the FIRST time the user scores >= 80%
+    xp_awarded = passed and not already_passed
 
-    # If this is first completion, record it
-    if is_first_attempt:
+    # Record completion only when user passes for the first time
+    if xp_awarded:
         try:
             completion = UserQuizCompletion(
                 quiz_id=quiz_id,
@@ -157,7 +160,7 @@ async def verify_quiz(
         except IntegrityError:
             # Race condition: another request beat us to it
             db.rollback()
-            is_first_attempt = False
+            xp_awarded = False
 
     ts = int(time.time())
     token = _sign_result(quiz_id, body.telegram_id, score, total, ts)
@@ -167,10 +170,11 @@ async def verify_quiz(
         score=score,
         total=total,
         percentage=percentage,
-        passed=percentage >= 60,
-        certificate_eligible=percentage >= 80,
+        passed=passed,
+        certificate_eligible=passed,
         result_token=f"{ts}:{token}",
-        is_first_attempt=is_first_attempt,
+        is_first_attempt=xp_awarded,
+        already_passed=already_passed,
     )
 
 

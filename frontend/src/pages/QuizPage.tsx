@@ -42,6 +42,7 @@ interface VerifyResult {
   certificate_eligible: boolean
   result_token: string
   is_first_attempt: boolean
+  already_passed: boolean
 }
 
 // â”€â”€â”€ Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -158,8 +159,8 @@ const QuizList: React.FC<{
     {/* XP + Daraja + Anti-farming info */}
     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-3">
       <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-        ℹ️ <strong>XP va Daraja qoidasi:</strong> bir xil viktorinani qayta yechishda XP qayta berilmaydi.
-        Daraja oshishi uchun <strong>yangi viktorinalar</strong> va <strong>fokus vaqti</strong> yig'ish kerak.
+        ℹ️ <strong>XP qoidasi:</strong> XP olish uchun kamida <strong>80%</strong> to'g'ri javob kerak.
+        Bir xil viktorinadan XP faqat <strong>bir marta</strong> beriladi. O'ta olmaguningizcha qayta urinishingiz mumkin!
       </p>
     </div>
   </div>
@@ -332,11 +333,25 @@ const QuizResults: React.FC<{
           <h2 className={`text-lg font-bold ${msg.color}`}>{msg.text}</h2>
         </div>
 
-        {/* Retake warning — no XP awarded */}
-        {!result.is_first_attempt && (
+        {/* XP status messages */}
+        {result.is_first_attempt && result.percentage >= 80 && (
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3">
+            <p className="text-xs text-green-700 dark:text-green-300 text-center">
+              <span className="font-semibold">🎉 Tabriklaymiz!</span> XP qo'lga kiritildi!
+            </p>
+          </div>
+        )}
+        {result.already_passed && (
           <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-3">
             <p className="text-xs text-blue-700 dark:text-blue-300 text-center">
-              <span className="font-semibold">ℹ️ Qayta urinish:</span> Bu viktorinani allaqachon tugatgansiz. XP berdirilmadi.
+              <span className="font-semibold">ℹ️ Qayta urinish:</span> Bu viktorinani allaqachon o'tgansiz. XP qayta berilmaydi.
+            </p>
+          </div>
+        )}
+        {!result.is_first_attempt && !result.already_passed && result.percentage < 80 && (
+          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-3">
+            <p className="text-xs text-orange-700 dark:text-orange-300 text-center">
+              <span className="font-semibold">💪 XP uchun 80% kerak.</span> Qayta urinib ko'ring!
             </p>
           </div>
         )}
@@ -476,8 +491,8 @@ export const QuizPage: React.FC = () => {
       )
       setVerifyResult(r.data)
       setView('results')
-      // Award XP only on first attempt to prevent farming
-      if (r.data.is_first_attempt) {
+      // Award XP only when user passes (>=80%) for the first time
+      if (r.data.is_first_attempt && r.data.percentage >= 80) {
         addQuizXP(r.data.score, r.data.total)
       }
     } catch {
