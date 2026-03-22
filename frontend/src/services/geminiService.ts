@@ -18,7 +18,9 @@ const SYSTEM_PROMPT =
 let _model: any = null
 
 // Models ordered by preference — free-tier availability changes over time
-const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash']
+const MODELS = ['gemini-2.0-flash']
+const MAX_RETRIES = 3
+const RETRY_DELAY_MS = 3000 // wait 3s before retrying on 429
 
 function buildModel(modelName: string) {
   const genAI = new GoogleGenerativeAI(GEMINI_KEY)
@@ -39,23 +41,32 @@ function getModel() {
   return _model
 }
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
+
 export async function geminiChat(message: string): Promise<string> {
   if (!GEMINI_KEY) {
     return 'AI hali sozlanmagan. Administrator VITE_GEMINI_API_KEY ni qo\'shishi kerak. 🔧'
   }
 
-  // Try each model in order until one succeeds
-  for (const modelName of MODELS) {
+  const model = getModel()!
+
+  // Retry with exponential back-off on 429 (rate limit)
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const model = buildModel(modelName)
       const result = await model.generateContent(message)
-      _model = model // cache the working model for next calls
       return result.response.text().trim()
     } catch (e: any) {
-      console.error(`[Gemini ${modelName}]`, e)
-      // If quota/rate-limit error (429), try next model
-      if (e?.message?.includes('429') || e?.status === 429) continue
-      // For other errors, stop trying
+      const is429 = e?.message?.includes('429') || e?.status === 429
+      console.error(`[Gemini attempt ${attempt + 1}]`, is429 ? '429 rate limit' : e)
+
+      if (is429 && attempt < MAX_RETRIES - 1) {
+        await sleep(RETRY_DELAY_MS * (attempt + 1)) // 3s, 6s, 9s
+        continue
+      }
+
+      if (is429) {
+        return 'AI hozir band. Iltimos, 30 soniyadan keyin qayta urinib ko\'ring. ⏳'
+      }
       const reason = e?.message || 'Noma\'lum xatolik'
       return `AI xatolik: ${reason} 🔧`
     }
