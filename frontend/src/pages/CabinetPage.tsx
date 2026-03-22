@@ -1,16 +1,16 @@
 /**
- * CabinetPage — SAHIFALAB Hub
+ * CabinetPage — SAHIFALAB Hub (Redesigned)
  *
- * User profile page showing:
- *   • Colour-coded letter avatar + name
- *   • Level card with XP ring
- *   • Stats grid (focus time, quizzes, XP, level)
- *   • Unlockable badges (Yutuqlar)
- *   • Sam's personalised daily advice
- *   • Link to Leaderboard
+ * Inspired by modern app profile screens:
+ *   • Compact profile header with avatar, name, XP & level
+ *   • Horizontal stats row
+ *   • Certificates section (re-download)
+ *   • Purchased books section
+ *   • Menu-style navigation items
+ *   • Badges overview
  */
 
-import React, { useMemo, useState } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
@@ -20,94 +20,38 @@ import {
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
-import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
+import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
+import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+import {
+  fetchMyCompletedQuizzes,
+  fetchQuizTitles,
+  fetchMyPurchasedBooks,
+  fetchBooksByIds,
+} from '../lib/supabase'
 
-// ── Badge definitions ─────────────────────────────────────────────────────────
-interface BadgeDef {
-  id:       string
-  emoji:    string
-  level:    number
-  name:     string
-  desc:     string
-  unlocked: (p: { level: number; focusSeconds: number; quizzesCompleted: number; totalXP: number }) => boolean
+// ── Types ──────────────────────────────────────────────────────────────────
+interface CompletedQuiz {
+  id: number
+  quiz_id: number
+  score: number
+  total: number
+  percentage: number
+  completed_at: string
+  quiz_title?: string
+  book_title?: string
 }
 
-const BADGES: BadgeDef[] = LEVEL_TITLES.map((levelInfo) => ({
-  id: `level-${levelInfo.level}`,
-  emoji: getLevelEmoji(levelInfo.level),
-  level: levelInfo.level,
-  name: levelInfo.title,
-  desc: levelInfo.description,
-  unlocked: (p) => p.level >= levelInfo.level,
-}))
-
-function xpNeededForLevel(targetLevel: number): number {
-  // Level formula: floor(sqrt(xp / 100)) + 1
-  // Minimum XP for target level = (targetLevel - 1)^2 * 100
-  return Math.max(0, (targetLevel - 1) ** 2 * 100)
-}
-
-function badgeHowToText(
-  badge: BadgeDef,
-  p: { level: number; focusSeconds: number; quizzesCompleted: number; totalXP: number },
-): string {
-  const targetXP = xpNeededForLevel(badge.level)
-
-  if (p.level >= badge.level) {
-    return `✅ Ochildi: ${badge.level}-daraja (${targetXP.toLocaleString()} XP+)`
-  }
-
-  const levelLeft = badge.level - p.level
-  const xpLeft = Math.max(0, targetXP - p.totalXP)
-  return `🔓 Ochish: ${badge.level}-darajaga chiqing (yana ${levelLeft} daraja, ${xpLeft.toLocaleString()} XP kerak)`
-}
-
-function badgeNextActionText(
-  badge: BadgeDef,
-  p: { level: number; focusSeconds: number; quizzesCompleted: number; totalXP: number },
-): string {
-  const targetXP = xpNeededForLevel(badge.level)
-  const xpLeft = Math.max(0, targetXP - p.totalXP)
-
-  if (xpLeft <= 0) {
-    return '🎉 Siz bu badge’ni allaqachon ochgansiz.'
-  }
-
-  const quizCount = Math.max(1, Math.ceil(xpLeft / 20))
-  const focusBlocks = Math.max(1, Math.ceil(xpLeft / 10))
-  const focusMinutes = focusBlocks * 5
-
-  if (xpLeft <= 60) {
-    return `➡️ Tez yo'l: taxminan ${quizCount} ta quiz yoki ${focusMinutes} daqiqa fokus.`
-  }
-
-  if (xpLeft <= 200) {
-    return `➡️ Tavsiya: kuniga 2-3 quiz + 15 daqiqa fokus bilan tez yetasiz.`
-  }
-
-  return `➡️ Reja: Daily missiya + Reading Planni davom ettiring (${xpLeft.toLocaleString()} XP qoldi).`
-}
-
-// ── Sam's daily advice pool ───────────────────────────────────────────────────
-const SAM_ADVICE = [
-  "Har kuni 25 daqiqa sof diqqat — yil oxirida 150 soat! 🚀",
-  "O'qish — kelajak o'zingizga eng yaxshi investitsiya. 💡",
-  "Har bir to'g'ri javob miyangizga yangi yo'l ochadi. 🧠",
-  "Sekin-asta, lekin to'xtamay — bu g'alaba yo'li! 🏆",
-  "Bugun o'qiganingiz ertaga sizni ajratib turadi. ✨",
-  "Diqqat — eng qimmat resurs. Uni to'g'ri sarfla! ⏰",
-  "Muvaffaqiyat — kundalik odatlarning yig'indisi. 🌱",
-  "Har bir sessiya kelajak uchun qurilayotgan poydevordir. 🏗️",
-  "Qiyin narsalar oson bo'ladi — faqat takrorlash kerak! 🔄",
-  "Bilim — hech kim tortib ololmaydigan boylik. 💪",
-  "Kichik qadamlar ham uzoq yo'lni bosib o'tadi. 👣",
-  "Bugun o'qimasang, ertaga o'kinarsan. Harakatdan to'xtama! 📚",
-]
-
-function pickAdvice(telegramId: number | null): string {
-  if (!telegramId) return SAM_ADVICE[0]
-  const dayOfYear  = Math.floor(Date.now() / 86_400_000)
-  return SAM_ADVICE[(telegramId + dayOfYear) % SAM_ADVICE.length]
+interface PurchasedBook {
+  id: number
+  book_id: number
+  amount: number
+  currency: string
+  completed_at: string
+  title?: string
+  author?: string
+  thumbnail_url?: string
+  category?: string
+  file_url?: string
 }
 
 // ── Avatar colour based on telegram_id ───────────────────────────────────────
@@ -126,7 +70,7 @@ function avatarColor(telegramId: number | null): string {
   return AVATAR_COLORS[telegramId % AVATAR_COLORS.length]
 }
 
-// ── Level gradient (matches GlobalProgressBar) ───────────────────────────────
+// ── Level gradient ───────────────────────────────────────────────────────────
 function levelGradient(level: number): string {
   if (level >= 50) return 'from-amber-300 to-yellow-600'
   if (level >= 40) return 'from-rose-500 to-pink-700'
@@ -142,60 +86,77 @@ function levelGradient(level: number): string {
   return 'from-gray-400 to-gray-500'
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────────
-const StatCard: React.FC<{
-  emoji: string
+// ── Menu row component ────────────────────────────────────────────────────────
+const MenuRow: React.FC<{
+  icon: string
   label: string
+  sublabel?: string
+  value?: string
+  onClick?: () => void
+}> = ({ icon, label, sublabel, value, onClick }) => (
+  <button
+    onClick={onClick}
+    className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+  >
+    <span className="text-xl w-8 text-center flex-shrink-0">{icon}</span>
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{label}</p>
+      {sublabel && (
+        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{sublabel}</p>
+      )}
+    </div>
+    {value && (
+      <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">{value}</span>
+    )}
+    <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+    </svg>
+  </button>
+)
+
+// ── Section wrapper ───────────────────────────────────────────────────────────
+const Section: React.FC<{
+  children: React.ReactNode
+  delay?: number
+}> = ({ children, delay = 0 }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 12 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3, delay }}
+    className="mx-4 bg-white dark:bg-gray-800/60 rounded-2xl border border-gray-100 dark:border-gray-700/50 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700/50"
+  >
+    {children}
+  </motion.div>
+)
+
+// ── Stat pill ─────────────────────────────────────────────────────────────────
+const StatPill: React.FC<{
+  emoji: string
   value: string | number
-  sub?: string
-}> = ({ emoji, label, value, sub }) => (
-  <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col gap-1">
-    <span className="text-2xl">{emoji}</span>
-    <p className="text-xs text-gray-500 dark:text-gray-400 font-medium">{label}</p>
-    <p className="text-lg font-bold text-gray-900 dark:text-white leading-tight">{value}</p>
-    {sub && <p className="text-[11px] text-gray-400 dark:text-gray-500">{sub}</p>}
+  label: string
+}> = ({ emoji, value, label }) => (
+  <div className="flex-1 text-center py-3">
+    <p className="text-lg font-bold text-gray-900 dark:text-white">{emoji} {value}</p>
+    <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">{label}</p>
   </div>
 )
 
-// ── SVG Arc for XP ring ───────────────────────────────────────────────────────
-const XpRing: React.FC<{ progress: number; level: number }> = ({ progress, level }) => {
-  const R         = 54
-  const circ      = 2 * Math.PI * R
-  const fill      = circ * Math.min(progress, 1)
-  const grad      = levelGradient(level)
-
-  return (
-    <div className="relative w-32 h-32 mx-auto">
-      <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
-        <defs>
-          <linearGradient id="xp-ring-grad" x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%"   stopColor={level >= 5 ? '#a855f7' : '#3b82f6'} />
-            <stop offset="100%" stopColor={level >= 5 ? '#7c3aed' : '#2563eb'} />
-          </linearGradient>
-        </defs>
-        <circle cx="60" cy="60" r={R} fill="none" strokeWidth="8"
-          className="stroke-gray-100 dark:stroke-gray-700" />
-        <motion.circle
-          cx="60" cy="60" r={R} fill="none" strokeWidth="8"
-          stroke="url(#xp-ring-grad)"
-          strokeLinecap="round"
-          strokeDasharray={`${fill} ${circ}`}
-          initial={{ strokeDasharray: `0 ${circ}` }}
-          animate={{ strokeDasharray: `${fill} ${circ}` }}
-          transition={{ duration: 1.2, ease: 'easeOut' }}
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-2xl font-black text-gray-900 dark:text-white">{level}</span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-widest">
-          daraja
-        </span>
-      </div>
-    </div>
-  )
+// ── Category gradient for book thumbnails ─────────────────────────────────────
+const COVER_GRADIENTS: Record<string, string> = {
+  psychology: 'from-purple-500 to-indigo-600',
+  fiction:    'from-emerald-500 to-teal-600',
+  science:   'from-blue-500 to-cyan-600',
+  business:  'from-yellow-500 to-orange-600',
+  default:   'from-sahifa-400 to-sahifa-600',
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────────
+function coverGradient(category?: string) {
+  return COVER_GRADIENTS[category?.toLowerCase() ?? ''] ?? COVER_GRADIENTS.default
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Main Page
+// ══════════════════════════════════════════════════════════════════════════════
 const CabinetPage: React.FC = () => {
   const navigate = useNavigate()
   const { user: tgUser } = useTelegramWebApp()
@@ -206,24 +167,78 @@ const CabinetPage: React.FC = () => {
   } = useProgressStore()
 
   const [photoError, setPhotoError] = useState(false)
-  const [showAllLockedBadges, setShowAllLockedBadges] = useState(false)
   const photoUrl = (!photoError && tgUser?.photo_url) ? tgUser.photo_url : null
 
-  const progress      = levelProgress(totalXP)
-  const { start, end} = levelBounds(level)
-  const xpInLevel     = totalXP - start
-  const xpForLevel    = end - start
-  const grad          = levelGradient(level)
-  const advice        = useMemo(() => pickAdvice(telegramId), [telegramId])
+  // Certificate & books state
+  const [completedQuizzes, setCompletedQuizzes] = useState<CompletedQuiz[]>([])
+  const [purchasedBooks, setPurchasedBooks] = useState<PurchasedBook[]>([])
+  const [loadingData, setLoadingData] = useState(true)
+  const [showCert, setShowCert] = useState(false)
+  const [certData, setCertData] = useState<CertificateData | null>(null)
+  const [expandCerts, setExpandCerts] = useState(false)
+  const [expandBooks, setExpandBooks] = useState(false)
 
-  const profileData   = { level, focusSeconds, quizzesCompleted, totalXP }
-  const earnedBadges  = BADGES.filter((b) => b.unlocked(profileData))
-  const lockedBadges  = BADGES.filter((b) => !b.unlocked(profileData))
-  const nextBadge     = lockedBadges[0]
-  const visibleLockedBadges = showAllLockedBadges ? lockedBadges : lockedBadges.slice(0, 8)
+  const progress  = levelProgress(totalXP)
+  const { start, end } = levelBounds(level)
+  const xpInLevel = totalXP - start
+  const xpForLevel = end - start
+  const grad = levelGradient(level)
+  const displayName = firstName || 'Foydalanuvchi'
+  const focusHours = (focusSeconds / 3600).toFixed(1)
 
-  const displayName   = firstName || 'Foydalanuvchi'
-  const focusHours    = (focusSeconds / 3600).toFixed(1)
+  // ── Load certificates & purchased books ──────────────────────────────────
+  useEffect(() => {
+    if (!telegramId) { setLoadingData(false); return }
+    setLoadingData(true)
+
+    Promise.all([
+      fetchMyCompletedQuizzes(telegramId).then(async (completions) => {
+        if (completions.length === 0) return []
+        const quizIds = [...new Set(completions.map(c => c.quiz_id))]
+        const titles = await fetchQuizTitles(quizIds)
+        const titleMap = new Map(titles.map(t => [t.id, t]))
+        return completions.map(c => ({
+          ...c,
+          quiz_title: titleMap.get(c.quiz_id)?.title ?? `Quiz #${c.quiz_id}`,
+          book_title: titleMap.get(c.quiz_id)?.book_title ?? '',
+        }))
+      }).catch(() => [] as CompletedQuiz[]),
+      fetchMyPurchasedBooks(telegramId).then(async (purchases) => {
+        if (purchases.length === 0) return []
+        const bookIds = [...new Set(purchases.map(p => p.book_id))]
+        const books = await fetchBooksByIds(bookIds)
+        const bookMap = new Map(books.map(b => [b.id, b]))
+        return purchases.map(p => ({
+          ...p,
+          title: bookMap.get(p.book_id)?.title ?? `Kitob #${p.book_id}`,
+          author: bookMap.get(p.book_id)?.author ?? '',
+          thumbnail_url: bookMap.get(p.book_id)?.thumbnail_url ?? '',
+          category: bookMap.get(p.book_id)?.category ?? '',
+          file_url: bookMap.get(p.book_id)?.file_url ?? '',
+        }))
+      }).catch(() => [] as PurchasedBook[]),
+    ]).then(([quizzes, books]) => {
+      setCompletedQuizzes(quizzes)
+      setPurchasedBooks(books)
+    }).finally(() => setLoadingData(false))
+  }, [telegramId])
+
+  // ── Open certificate modal ──────────────────────────────────────────────
+  const openCertificate = useCallback((quiz: CompletedQuiz) => {
+    setCertData({
+      userName: displayName,
+      quizTitle: quiz.quiz_title || `Quiz #${quiz.quiz_id}`,
+      score: quiz.score,
+      total: quiz.total,
+      percentage: quiz.percentage,
+      date: new Date(quiz.completed_at).toLocaleDateString('uz-UZ'),
+      certificateId: `SL-${quiz.quiz_id}-${telegramId}-${quiz.id}`,
+    })
+    setShowCert(true)
+  }, [displayName, telegramId])
+
+  const visibleCerts = expandCerts ? completedQuizzes : completedQuizzes.slice(0, 3)
+  const visibleBooks = expandBooks ? purchasedBooks : purchasedBooks.slice(0, 3)
 
   if (isLoading) {
     return (
@@ -237,244 +252,364 @@ const CabinetPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24 space-y-5">
+    <div className="max-w-md mx-auto pb-24 space-y-3">
 
-      {/* ── Profile card ───────────────────────────────────────────────── */}
+      {/* ═══ Profile Header ═══ */}
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4 }}
-        className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 rounded-3xl p-5 shadow-sm border border-gray-100 dark:border-gray-700"
+        transition={{ duration: 0.35 }}
+        className="px-4 pt-4 pb-5"
       >
+        {/* Top row: Avatar + Name + XP */}
         <div className="flex items-center gap-4">
-          {/* Avatar — Telegram photo if available, letter fallback */}
+          {/* Avatar */}
           <div className="flex-shrink-0 relative">
             {photoUrl ? (
               <img
                 src={photoUrl}
                 alt={displayName}
                 onError={() => setPhotoError(true)}
-                className="w-16 h-16 rounded-2xl object-cover shadow-md ring-2 ring-white dark:ring-gray-700"
+                className="w-16 h-16 rounded-full object-cover shadow-lg ring-2 ring-white dark:ring-gray-700"
               />
             ) : (
               <div
-                className={`w-16 h-16 rounded-2xl bg-gradient-to-br ${avatarColor(telegramId)} flex items-center justify-center shadow-md`}
+                className={`w-16 h-16 rounded-full bg-gradient-to-br ${avatarColor(telegramId)} flex items-center justify-center shadow-lg`}
               >
                 <span className="text-2xl font-black text-white">
                   {displayName.charAt(0).toUpperCase()}
                 </span>
               </div>
             )}
-            {/* Level badge chip overlaid on bottom-right of avatar */}
+            {/* Level pip */}
             <div
-              className={`absolute -bottom-1.5 -right-1.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[9px] font-black shadow-md border border-white dark:border-gray-800`}
+              className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-r ${grad} text-white text-[10px] font-black flex items-center justify-center shadow-md border-2 border-white dark:border-gray-900`}
             >
               {level}
             </div>
           </div>
 
-          {/* Name + handle */}
-          <div className="min-w-0">
-            <h1 className="text-xl font-black text-gray-900 dark:text-white truncate">
+          {/* Name + handle + level */}
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-black text-gray-900 dark:text-white truncate">
               {displayName}
             </h1>
             {username && (
-              <p className="text-sm text-gray-500 dark:text-gray-400">@{username}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">@{username}</p>
             )}
-            <div
-              className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-xs font-semibold shadow-sm`}
-            >
-              <span>{getLevelEmoji(level)}</span>
-              <span>{getLevelTitle(level)}</span>
+            <div className="flex items-center gap-2 mt-1">
+              <div
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[11px] font-semibold shadow-sm`}
+              >
+                <span>{getLevelEmoji(level)}</span>
+                <span>{getLevelTitle(level)}</span>
+              </div>
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                ⚡ {totalXP.toLocaleString()} XP
+              </span>
             </div>
           </div>
         </div>
 
-        {/* XP ring */}
+        {/* XP progress bar */}
         <div className="mt-4">
-          <XpRing progress={progress} level={level} />
-          <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-            {xpInLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP • Jami {totalXP.toLocaleString()} XP
-          </p>
-          <p className="text-center text-xs text-gray-600 dark:text-gray-300 italic mt-2">
-            {getLevelDescription(level)}
-          </p>
+          <div className="flex justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1.5 px-0.5">
+            <span>Lv.{level}</span>
+            <span>{xpInLevel} / {xpForLevel} XP</span>
+            <span>Lv.{level + 1}</span>
+          </div>
+          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+            <motion.div
+              className={`h-full rounded-full bg-gradient-to-r ${grad}`}
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(progress * 100, 100)}%` }}
+              transition={{ duration: 1, ease: 'easeOut' }}
+            />
+          </div>
         </div>
       </motion.div>
 
-      {/* ── Sam greeting ───────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.08 }}
-        className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800/40 rounded-2xl p-4 flex gap-3 items-start"
-      >
-        <span className="text-3xl flex-shrink-0">🧑‍💻</span>
-        <div>
-          <p className="text-sm font-bold text-amber-900 dark:text-amber-300 mb-0.5">
-            Sam aytmoqda:
-          </p>
-          <p className="text-sm text-amber-800 dark:text-amber-200 leading-relaxed">
-            Assalomu alaykum, <strong>{displayName}</strong>!{' '}
-            Bugun <strong>{focusHours}</strong> soat diqqat bilan ishladingiz.{' '}
-            {parseFloat(focusHours) >= 1 ? 'Ajoyib natija! 🔥' : "Yana bir sessiya qoldi, uddalaysiz! 💪"}
-          </p>
-          <p className="text-xs text-amber-700 dark:text-amber-400 mt-2 italic">
-            "{advice}"
-          </p>
+      {/* ═══ Stats Row ═══ */}
+      <Section delay={0.05}>
+        <div className="flex divide-x divide-gray-100 dark:divide-gray-700/50">
+          <StatPill emoji="⏱" value={`${focusHours}h`} label="Diqqat" />
+          <StatPill emoji="📝" value={quizzesCompleted} label="Testlar" />
+          <StatPill emoji="⚡" value={totalXP.toLocaleString()} label="XP" />
+          <StatPill emoji="🏅" value={level} label="Daraja" />
         </div>
-      </motion.div>
+      </Section>
 
-      {/* ── Stats grid ─────────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.15 }}
-      >
-        <h2 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
-          📊 Statistika
-        </h2>
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard
-            emoji="⏱"
-            label="Jami Diqqat Vaqti"
-            value={formatFocusTime(focusSeconds)}
-            sub={`${focusHours} soat`}
-          />
-          <StatCard
-            emoji="📝"
-            label="Testlar Yakunlandi"
-            value={quizzesCompleted}
-            sub={quizzesCompleted === 0 ? 'Hali boshlanmadi' : 'ta test'}
-          />
-          <StatCard
-            emoji="⚡"
-            label="Jami XP"
-            value={totalXP.toLocaleString()}
-            sub="tajriba ballari"
-          />
-          <StatCard
-            emoji="🏅"
-            label="Yutuqlar"
-            value={`${earnedBadges.length} / ${BADGES.length}`}
-            sub="badge qozonildi"
-          />
+      {/* ═══ Certificates Section ═══ */}
+      <Section delay={0.1}>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎓</span>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Sertifikatlarim</h2>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            {completedQuizzes.length} ta
+          </span>
         </div>
-      </motion.div>
 
-      {/* ── Gamification info (UZ) ───────────────────────────────────── */}
+        {loadingData ? (
+          <div className="px-4 py-6 text-center">
+            <div className="text-2xl animate-pulse">⏳</div>
+          </div>
+        ) : completedQuizzes.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-3xl mb-2">📜</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hali sertifikat yo'q</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Quizlardan 80%+ oling va sertifikat qozing!</p>
+            <button
+              onClick={() => navigate('/quiz')}
+              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+            >
+              Quizlarga o'tish →
+            </button>
+          </div>
+        ) : (
+          <>
+            {visibleCerts.map((quiz) => (
+              <button
+                key={quiz.id}
+                onClick={() => openCertificate(quiz)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+              >
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-lg">🏆</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {quiz.quiz_title}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {quiz.score}/{quiz.total} ({quiz.percentage}%) • {new Date(quiz.completed_at).toLocaleDateString('uz-UZ')}
+                  </p>
+                </div>
+                <span className="text-xs font-medium text-sahifa-500">Yuklab olish</span>
+              </button>
+            ))}
+            {completedQuizzes.length > 3 && (
+              <button
+                onClick={() => setExpandCerts(prev => !prev)}
+                className="w-full py-2.5 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 text-center"
+              >
+                {expandCerts ? 'Kamroq' : `Barchasini ko'rish (${completedQuizzes.length})`}
+              </button>
+            )}
+          </>
+        )}
+      </Section>
+
+      {/* ═══ Purchased Books Section ═══ */}
+      <Section delay={0.15}>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">📚</span>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Xarid qilgan kitoblarim</h2>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            {purchasedBooks.length} ta
+          </span>
+        </div>
+
+        {loadingData ? (
+          <div className="px-4 py-6 text-center">
+            <div className="text-2xl animate-pulse">⏳</div>
+          </div>
+        ) : purchasedBooks.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-3xl mb-2">🛒</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hali kitob sotib olinmagan</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Premium kitoblarni sotib oling</p>
+            <button
+              onClick={() => navigate('/kitoblar')}
+              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+            >
+              Kitoblarga o'tish →
+            </button>
+          </div>
+        ) : (
+          <>
+            {visibleBooks.map((book) => (
+              <button
+                key={book.id}
+                onClick={() => navigate(`/kitoblar/${book.book_id}`)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+              >
+                {/* Thumbnail */}
+                <div className="w-10 h-14 rounded-lg overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-700">
+                  {book.thumbnail_url ? (
+                    <img
+                      src={book.thumbnail_url}
+                      alt={book.title}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
+                      <span className="text-lg">📕</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {book.title}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {book.author}
+                  </p>
+                  {book.completed_at && (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+                      {new Date(book.completed_at).toLocaleDateString('uz-UZ')}
+                    </p>
+                  )}
+                </div>
+                {book.file_url && (
+                  <span className="text-xs font-medium text-emerald-500">📥</span>
+                )}
+                <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            ))}
+            {purchasedBooks.length > 3 && (
+              <button
+                onClick={() => setExpandBooks(prev => !prev)}
+                className="w-full py-2.5 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 text-center"
+              >
+                {expandBooks ? 'Kamroq' : `Barchasini ko'rish (${purchasedBooks.length})`}
+              </button>
+            )}
+          </>
+        )}
+      </Section>
+
+      {/* ═══ Navigation Menu ═══ */}
+      <Section delay={0.2}>
+        <MenuRow
+          icon="🏆"
+          label="Liderlar Jadvali"
+          sublabel="Top 10 o'quvchilar"
+          onClick={() => navigate('/leaderboard')}
+        />
+        <MenuRow
+          icon="📝"
+          label="Testlar"
+          sublabel="Bilimingizni sinab ko'ring"
+          onClick={() => navigate('/quiz')}
+        />
+        <MenuRow
+          icon="📚"
+          label="Kitoblar"
+          sublabel="Bepul va Premium kitoblar"
+          onClick={() => navigate('/kitoblar')}
+        />
+        <MenuRow
+          icon="🎯"
+          label="O'qish sessiyasi"
+          sublabel="Fokus timer + ambient sounds"
+          onClick={() => navigate('/study')}
+        />
+        <MenuRow
+          icon="🤖"
+          label="SahifaLab AI"
+          sublabel="Savolingiz bormi? Yozing!"
+          onClick={() => navigate('/ai-companion')}
+        />
+      </Section>
+
+      {/* ═══ Badges Section ═══ */}
+      <Section delay={0.25}>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🏅</span>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Yutuqlar</h2>
+          </div>
+        </div>
+
+        {/* Earned badges row */}
+        <div className="px-4 py-3">
+          {quizzesCompleted === 0 && totalXP === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
+              Quizlar yechib, focus sessiyalari boshlab yutuqlar oching! 🚀
+            </p>
+          ) : (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
+              {Array.from({ length: Math.min(level, 20) }, (_, i) => i + 1).map((lvl) => (
+                <div
+                  key={lvl}
+                  className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${
+                    lvl <= level
+                      ? 'bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 border border-amber-200 dark:border-amber-700/40'
+                      : 'bg-gray-100 dark:bg-gray-800 border border-dashed border-gray-200 dark:border-gray-700'
+                  }`}
+                >
+                  <span className={`text-lg ${lvl <= level ? '' : 'opacity-30 grayscale'}`}>
+                    {getLevelEmoji(lvl)}
+                  </span>
+                </div>
+              ))}
+              {level < 20 && (
+                <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
+                  <span className="text-xs text-gray-400">+{20 - level}</span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </Section>
+
+      {/* ═══ More Items ═══ */}
+      <Section delay={0.3}>
+        <MenuRow
+          icon="🔗"
+          label="Resurslar"
+          sublabel="Foydali linklar va videolar"
+          onClick={() => navigate('/resources')}
+        />
+        <MenuRow
+          icon="🔥"
+          label="Kunlik vazifalar"
+          sublabel="Daily streak va missiyalar"
+          onClick={() => navigate('/daily')}
+        />
+        <MenuRow
+          icon="🗓️"
+          label="O'qish rejasi"
+          sublabel="7/14/30 kunlik yo'l xaritasi"
+          onClick={() => navigate('/plans')}
+        />
+        <MenuRow
+          icon="ℹ️"
+          label="Haqimizda"
+          sublabel="Bizning hikoyamiz va missiyamiz"
+          onClick={() => navigate('/about')}
+        />
+      </Section>
+
+      {/* ═══ Gamification tip ═══ */}
       <motion.div
-        initial={{ opacity: 0, y: 16 }}
+        initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.18 }}
-        className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3"
+        transition={{ duration: 0.3, delay: 0.35 }}
+        className="mx-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3"
       >
         <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
           📌 <strong>Daraja qanday oshadi?</strong> Yangi quizlardan olingan XP va fokus vaqtidan.
           <br />
           🛡️ <strong>XP farming o'chirilgan:</strong> bir xil quizni qayta ishlash orqali XP olinmaydi.
           <br />
-          🎨 <strong>Skinlar:</strong> daraja, XP, quiz soni va fokus vaqti oshgani sari yangi avatar skinlar ochiladi.
+          🎓 <strong>Sertifikat:</strong> Quiz natijasi 80%+ bo'lsa, sertifikat yuklab olinadi.
         </p>
       </motion.div>
 
-      {/* ── Badges ─────────────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.22 }}
-      >
-        <h2 className="text-sm font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider mb-3">
-          🏅 Yutuqlar
-        </h2>
-        <div className="space-y-3">
-          {nextBadge && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800/40 rounded-2xl p-3">
-              <p className="text-[11px] font-bold text-blue-700 dark:text-blue-300 mb-2">🎯 Keyingi badge</p>
-              <div className="flex items-start gap-3">
-                <div className="text-3xl">{nextBadge.emoji}</div>
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-gray-900 dark:text-gray-100">{nextBadge.name}</p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{nextBadge.desc}</p>
-                  <p className="text-[11px] text-blue-700 dark:text-blue-300 mt-1 font-semibold">
-                    {badgeHowToText(nextBadge, profileData)}
-                  </p>
-                  <p className="text-[11px] text-indigo-700/90 dark:text-indigo-300 mt-1">
-                    {badgeNextActionText(nextBadge, profileData)}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+      {/* Spacer */}
+      <div className="h-4" />
 
-          <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 border border-gray-100 dark:border-gray-700">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300">Ochildi ({earnedBadges.length})</p>
-              <p className="text-[10px] text-gray-500 dark:text-gray-400">{BADGES.length} dan</p>
-            </div>
-            <div className="grid grid-cols-4 gap-2">
-              {earnedBadges.slice(0, 12).map((b) => (
-                <div
-                  key={b.id}
-                  className="rounded-xl p-2 text-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30"
-                >
-                  <div className="text-xl leading-none">{b.emoji}</div>
-                  <p className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 mt-1 truncate">{b.name}</p>
-                </div>
-              ))}
-            </div>
-            {earnedBadges.length > 12 && (
-              <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-2">
-                +{earnedBadges.length - 12} ta ochilgan badge
-              </p>
-            )}
-          </div>
-
-          {lockedBadges.length > 0 && (
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-3 border border-gray-100 dark:border-gray-700">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] font-bold text-gray-700 dark:text-gray-300">Yopiq ({lockedBadges.length})</p>
-                {lockedBadges.length > 8 && (
-                  <button
-                    onClick={() => setShowAllLockedBadges((prev) => !prev)}
-                    className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold"
-                  >
-                    {showAllLockedBadges ? 'Kamroq' : 'Barchasini ko\'rish'}
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                {visibleLockedBadges.map((b) => (
-                  <div
-                    key={b.id}
-                    className="rounded-xl p-2 bg-gray-50 dark:bg-gray-800/60 border border-dashed border-gray-200 dark:border-gray-700"
-                  >
-                    <p className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 truncate">🔒 {b.name}</p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
-                      Lv.{b.level} kerak
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* ── Leaderboard link ───────────────────────────────────────────── */}
-      <motion.button
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.30 }}
-        onClick={() => navigate('/leaderboard')}
-        className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 text-white font-bold text-sm shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
-      >
-        <span>🏆</span>
-        <span>Liderlar Jadvali</span>
-        <span>→</span>
-      </motion.button>
-
+      {/* ═══ Certificate Modal ═══ */}
+      {showCert && certData && (
+        <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />
+      )}
     </div>
   )
 }

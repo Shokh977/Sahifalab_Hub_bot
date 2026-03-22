@@ -145,3 +145,52 @@ export async function fetchMyRating(bookId: number, telegramId: number) {
   if (error) throw error
   return data?.rating ?? 0
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CABINET PAGE QUERIES
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Fetch user's completed quizzes (for certificates) */
+export async function fetchMyCompletedQuizzes(telegramId: number) {
+  const { data, error } = await supabase
+    .from('user_quiz_completion')
+    .select('id, quiz_id, score, total, percentage, completed_at')
+    .eq('telegram_id', telegramId)
+    .order('completed_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+/** Fetch quiz titles for a list of quiz IDs (for certificate display) */
+export async function fetchQuizTitles(quizIds: number[]) {
+  if (quizIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('quiz')
+    .select('id, title, book_title')
+    .in('id', quizIds)
+  if (error) throw error
+  return data ?? []
+}
+
+/** Fetch user's purchased books (completed purchases only) */
+export async function fetchMyPurchasedBooks(telegramId: number) {
+  const { data, error } = await supabase
+    .from('book_purchase')
+    .select('id, book_id, amount, currency, status, completed_at')
+    .eq('telegram_id', telegramId)
+    .eq('status', 'completed')
+    .order('completed_at', { ascending: false })
+  if (error) throw error
+  return data ?? []
+}
+
+/** Fetch book details for a list of book IDs */
+export async function fetchBooksByIds(bookIds: number[]) {
+  if (bookIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('book')
+    .select('id, title, author, thumbnail_url, category, file_url')
+    .in('id', bookIds)
+  if (error) throw error
+  return data ?? []
+}
