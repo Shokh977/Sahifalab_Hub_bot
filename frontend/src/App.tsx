@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
@@ -102,6 +102,15 @@ const TelegramBackButtonHandler: React.FC = () => {
   const isHome = location.pathname === '/'
   const handleBack = useCallback(() => navigate(-1), [navigate])
   useTelegramBackButton(isHome, handleBack)
+
+  // Google Analytics — track page views on route change
+  useEffect(() => {
+    const g = (window as any).gtag
+    if (typeof g === 'function') {
+      g('event', 'page_view', { page_path: location.pathname })
+    }
+  }, [location.pathname])
+
   return null
 }
 
