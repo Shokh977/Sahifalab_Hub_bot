@@ -17,59 +17,51 @@ const SYSTEM_PROMPT =
 
 let _model: any = null
 
+// Models ordered by preference — free-tier availability changes over time
+const MODELS = ['gemini-2.0-flash', 'gemini-1.5-flash']
+
+function buildModel(modelName: string) {
+  const genAI = new GoogleGenerativeAI(GEMINI_KEY)
+  return genAI.getGenerativeModel({
+    model: modelName,
+    systemInstruction: SYSTEM_PROMPT,
+    generationConfig: {
+      maxOutputTokens: 512,
+      temperature: 0.7,
+    },
+  })
+}
+
 function getModel() {
   if (_model) return _model
   if (!GEMINI_KEY) return null
-  const genAI = new GoogleGenerativeAI(GEMINI_KEY)
-  // Try gemini-2.0-flash-lite first; fall back to gemini-1.5-flash if unavailable
-  _model = genAI.getGenerativeModel({
-    model: 'gemini-2.0-flash-lite',
-    systemInstruction: SYSTEM_PROMPT,
-    generationConfig: {
-      maxOutputTokens: 512,
-      temperature: 0.7,
-    },
-  })
+  _model = buildModel(MODELS[0])
   return _model
 }
 
-function getFallbackModel() {
-  if (!GEMINI_KEY) return null
-  const genAI = new GoogleGenerativeAI(GEMINI_KEY)
-  return genAI.getGenerativeModel({
-    model: 'gemini-1.5-flash',
-    systemInstruction: SYSTEM_PROMPT,
-    generationConfig: {
-      maxOutputTokens: 512,
-      temperature: 0.7,
-    },
-  })
-}
-
 export async function geminiChat(message: string): Promise<string> {
-  const model = getModel()
-  if (!model) {
+  if (!GEMINI_KEY) {
     return 'AI hali sozlanmagan. Administrator VITE_GEMINI_API_KEY ni qo\'shishi kerak. 🔧'
   }
-  try {
-    const result = await model.generateContent(message)
-    return result.response.text().trim()
-  } catch (e: any) {
-    console.error('[Gemini primary]', e)
-    // Try fallback model
+
+  // Try each model in order until one succeeds
+  for (const modelName of MODELS) {
     try {
-      const fallback = getFallbackModel()
-      if (fallback) {
-        const result = await fallback.generateContent(message)
-        _model = fallback // switch to working model
-        return result.response.text().trim()
-      }
-    } catch (e2: any) {
-      console.error('[Gemini fallback]', e2)
+      const model = buildModel(modelName)
+      const result = await model.generateContent(message)
+      _model = model // cache the working model for next calls
+      return result.response.text().trim()
+    } catch (e: any) {
+      console.error(`[Gemini ${modelName}]`, e)
+      // If quota/rate-limit error (429), try next model
+      if (e?.message?.includes('429') || e?.status === 429) continue
+      // For other errors, stop trying
+      const reason = e?.message || 'Noma\'lum xatolik'
+      return `AI xatolik: ${reason} 🔧`
     }
-    const reason = e?.message || e?.status || 'Noma\'lum xatolik'
-    return `AI xatolik: ${reason} 🔧`
   }
+
+  return 'AI modellari hozir ishlamayapti. Iltimos, keyinroq urinib ko\'ring. 🙏'
 }
 
 export const isGeminiConfigured = !!GEMINI_KEY
