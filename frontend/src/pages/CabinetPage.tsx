@@ -20,7 +20,7 @@ import {
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
-import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
+import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import {
   fetchMyCompletedQuizzes,
@@ -152,6 +152,11 @@ const COVER_GRADIENTS: Record<string, string> = {
 
 function coverGradient(category?: string) {
   return COVER_GRADIENTS[category?.toLowerCase() ?? ''] ?? COVER_GRADIENTS.default
+}
+
+// ── XP needed for a target level ──────────────────────────────────────────────
+function xpNeededForLevel(targetLevel: number): number {
+  return Math.max(0, (targetLevel - 1) ** 2 * 100)
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -518,46 +523,139 @@ const CabinetPage: React.FC = () => {
         />
       </Section>
 
-      {/* ═══ Badges Section ═══ */}
-      <Section delay={0.25}>
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-lg">🏅</span>
-            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Yutuqlar</h2>
-          </div>
-        </div>
+      {/* ═══ Badges / Yutuqlar Section ═══ */}
+      {(() => {
+        const earned = LEVEL_TITLES.filter(b => level >= b.level)
+        const locked = LEVEL_TITLES.filter(b => level < b.level)
+        const nextBadge = locked[0]
+        const xpForNext = nextBadge ? xpNeededForLevel(nextBadge.level) : 0
+        const xpLeft = Math.max(0, xpForNext - totalXP)
+        const progressToNext = nextBadge
+          ? Math.min(1, (totalXP - xpNeededForLevel(nextBadge.level - 1)) / Math.max(1, xpForNext - xpNeededForLevel(nextBadge.level - 1)))
+          : 1
 
-        {/* Earned badges row */}
-        <div className="px-4 py-3">
-          {quizzesCompleted === 0 && totalXP === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-2">
-              Quizlar yechib, focus sessiyalari boshlab yutuqlar oching! 🚀
-            </p>
-          ) : (
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-hide">
-              {Array.from({ length: Math.min(level, 20) }, (_, i) => i + 1).map((lvl) => (
-                <div
-                  key={lvl}
-                  className={`flex-shrink-0 w-12 h-12 rounded-xl flex items-center justify-center ${
-                    lvl <= level
-                      ? 'bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 border border-amber-200 dark:border-amber-700/40'
-                      : 'bg-gray-100 dark:bg-gray-800 border border-dashed border-gray-200 dark:border-gray-700'
-                  }`}
-                >
-                  <span className={`text-lg ${lvl <= level ? '' : 'opacity-30 grayscale'}`}>
-                    {getLevelEmoji(lvl)}
-                  </span>
+        return (
+          <>
+            {/* Next badge card */}
+            {nextBadge && (
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: 0.25 }}
+                className="mx-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/40 rounded-2xl p-4"
+              >
+                <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">🎯 Keyingi yutuq</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 rounded-2xl bg-white/80 dark:bg-gray-800/60 border-2 border-blue-200 dark:border-blue-700 flex items-center justify-center shadow-sm">
+                    <span className="text-2xl">{getLevelEmoji(nextBadge.level)}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-base font-bold text-gray-900 dark:text-white">{nextBadge.title}</p>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 font-semibold">Lv.{nextBadge.level}</span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{nextBadge.description}</p>
+                    {/* Progress bar */}
+                    <div className="mt-2">
+                      <div className="h-1.5 rounded-full bg-blue-100 dark:bg-blue-900/40 overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full bg-gradient-to-r from-blue-400 to-indigo-500"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.max(progressToNext * 100, 2)}%` }}
+                          transition={{ duration: 0.8, ease: 'easeOut' }}
+                        />
+                      </div>
+                      <p className="text-[10px] text-blue-600 dark:text-blue-400 mt-1 font-medium">
+                        Yana {xpLeft.toLocaleString()} XP kerak • Quiz yoki fokus sessiyasi boshla!
+                      </p>
+                    </div>
+                  </div>
                 </div>
-              ))}
-              {level < 20 && (
-                <div className="flex-shrink-0 w-12 h-12 rounded-xl bg-gray-100 dark:bg-gray-800 border border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center">
-                  <span className="text-xs text-gray-400">+{20 - level}</span>
+              </motion.div>
+            )}
+
+            {/* Earned + Locked in one section */}
+            <Section delay={0.3}>
+              <div className="px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">🏅</span>
+                  <h2 className="text-sm font-bold text-gray-900 dark:text-white">Yutuqlar</h2>
+                </div>
+                <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                  {earned.length} / {LEVEL_TITLES.length} ochildi
+                </span>
+              </div>
+
+              {/* Earned badges */}
+              {earned.length > 0 && (
+                <div className="px-4 py-3">
+                  <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">✅ Ochildi</p>
+                  <div className="grid grid-cols-4 gap-2">
+                    {earned.map((b) => (
+                      <div
+                        key={b.level}
+                        className="rounded-xl p-2 text-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30"
+                      >
+                        <div className="text-xl leading-none">{getLevelEmoji(b.level)}</div>
+                        <p className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 mt-1 truncate">{b.title}</p>
+                        <p className="text-[8px] text-emerald-600/60 dark:text-emerald-400/50">Lv.{b.level}</p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
-          )}
-        </div>
-      </Section>
+
+              {/* Locked badges */}
+              {locked.length > 0 && (
+                <div className="px-4 py-3">
+                  <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">🔒 Yopiq ({locked.length})</p>
+                  <div className="space-y-1.5">
+                    {locked.slice(0, 5).map((b) => {
+                      const reqXP = xpNeededForLevel(b.level)
+                      const myProgress = Math.min(1, totalXP / Math.max(1, reqXP))
+                      return (
+                        <div
+                          key={b.level}
+                          className="flex items-center gap-3 rounded-xl p-2.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/40"
+                        >
+                          <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
+                            <span className="text-base opacity-40 grayscale">{getLevelEmoji(b.level)}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">{b.title}</p>
+                              <span className="text-[10px] text-gray-400 dark:text-gray-500">Lv.{b.level} • {reqXP.toLocaleString()} XP</span>
+                            </div>
+                            <div className="mt-1 h-1 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
+                              <div
+                                className="h-full rounded-full bg-gray-300 dark:bg-gray-600 transition-all"
+                                style={{ width: `${myProgress * 100}%` }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {locked.length > 5 && (
+                      <p className="text-center text-[10px] text-gray-400 dark:text-gray-500 pt-1">
+                        +{locked.length - 5} ta yopiq yutuq
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Empty state */}
+              {earned.length === 0 && (
+                <div className="px-4 py-6 text-center">
+                  <p className="text-3xl mb-2">🌱</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Quizlar yechib, fokus sessiya boshlab yutuqlar oching!</p>
+                </div>
+              )}
+            </Section>
+          </>
+        )
+      })()}
 
       {/* ═══ More Items ═══ */}
       <Section delay={0.3}>
