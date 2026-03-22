@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import apiService from '../services/apiService'
+import { geminiChat } from '../services/geminiService'
 
 interface Message {
   id: string
@@ -59,18 +59,18 @@ const AICompanionPage: React.FC = () => {
     setLoading(true)
 
     try {
-      const response = await apiService.aiChat(trimmedInput)
+      const reply = await geminiChat(trimmedInput)
       
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        text: response.data.reply,
+        text: reply,
         timestamp: new Date(),
       }
 
       setMessages((prev) => [...prev, aiMessage])
     } catch (err: any) {
-      const errorMsg = err?.response?.data?.detail || 'Xizmatda xatolik yuz berdi'
+      const errorMsg = err?.message || 'Xizmatda xatolik yuz berdi'
       setError(String(errorMsg))
       
       // Add error message as AI response

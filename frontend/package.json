@@ -11,6 +11,7 @@
     "lint": "eslint src --ext .js,.jsx,.ts,.tsx"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@supabase/supabase-js": "^2.99.2",
     "@vercel/analytics": "^2.0.1",
     "axios": "^1.6.0",
