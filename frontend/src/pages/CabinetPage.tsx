@@ -22,6 +22,7 @@ import {
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+import PageWrapper from '../components/PageWrapper'
 import {
   fetchMyCompletedQuizzes,
   fetchQuizTitles,
@@ -257,7 +258,7 @@ const CabinetPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-24 space-y-3">
+    <PageWrapper className="space-y-3" topPadding="">
 
       {/* ═══ Profile Header ═══ */}
       <motion.div
@@ -708,7 +709,7 @@ const CabinetPage: React.FC = () => {
       {showCert && certData && (
         <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />
       )}
-    </div>
+    </PageWrapper>
   )
 }
 

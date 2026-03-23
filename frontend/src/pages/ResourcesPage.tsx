@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { fetchResources } from '../lib/supabase'
+import PageWrapper from '../components/PageWrapper'
 
 interface Resource {
   id: number
@@ -121,7 +122,7 @@ export const ResourcesPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-4 pb-24 space-y-5">
+    <PageWrapper className="space-y-5">
       {/* Header */}
       <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white shadow-md">
         <h1 className="text-2xl font-bold">🔗 Foydali Linklar</h1>
@@ -204,7 +205,7 @@ export const ResourcesPage: React.FC = () => {
           ))}
         </div>
       )}
-    </div>
+    </PageWrapper>
   )
 }
 

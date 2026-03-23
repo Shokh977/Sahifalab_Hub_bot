@@ -1,8 +1,9 @@
 import React from 'react'
+import PageWrapper from '../components/PageWrapper'
 
 export const AboutPage: React.FC = () => {
   return (
-    <div className="space-y-6">
+    <PageWrapper className="space-y-6">
       {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
@@ -168,7 +169,7 @@ export const AboutPage: React.FC = () => {
           </a>
         </div>
       </div>
-    </div>
+    </PageWrapper>
   )
 }
 

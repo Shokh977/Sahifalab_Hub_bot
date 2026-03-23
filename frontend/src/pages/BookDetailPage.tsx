@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import apiService from '@services/apiService'
 import { fetchBook, fetchMyRating } from '../lib/supabase'
+import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -144,7 +145,7 @@ const BookDetailPage: React.FC = () => {
   // ── Loading skeleton ──────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="max-w-md mx-auto py-4 px-4 animate-pulse space-y-4">
+      <PageWrapper className="animate-pulse space-y-4">
         <div className="h-8 w-8 bg-gray-200 dark:bg-gray-700 rounded-full" />
         <div className="bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-sm">
           <div className="aspect-[3/4] bg-gray-200 dark:bg-gray-700" />
@@ -155,14 +156,14 @@ const BookDetailPage: React.FC = () => {
             <div className="h-12 bg-gray-200 dark:bg-gray-700 rounded-xl mt-4" />
           </div>
         </div>
-      </div>
+      </PageWrapper>
     )
   }
 
-  // ── Error ─────────────────────────────────────────────────────────────────
+  // ── Error ──────────────────────────────────────────────────────────────────────────────
   if (error || !book) {
     return (
-      <div className="max-w-md mx-auto py-4 px-4">
+      <PageWrapper>
         <button onClick={() => navigate(-1)} className="text-sahifa-600 dark:text-sahifa-400 text-sm mb-4 flex items-center gap-1">
           ← Orqaga
         </button>
@@ -170,14 +171,14 @@ const BookDetailPage: React.FC = () => {
           <div className="text-4xl mb-2">📭</div>
           <p>{error || 'Kitob topilmadi'}</p>
         </div>
-      </div>
+      </PageWrapper>
     )
   }
 
   const categoryLabel = CATEGORY_LABELS[book.category?.toLowerCase()] ?? book.category
 
   return (
-    <div className="max-w-md mx-auto py-4 px-4 pb-24">
+    <PageWrapper>
       {/* Back */}
       <button
         onClick={() => navigate(-1)}
@@ -325,7 +326,7 @@ const BookDetailPage: React.FC = () => {
           )}
         </div>
       </div>
-    </div>
+    </PageWrapper>
   )
 }
 

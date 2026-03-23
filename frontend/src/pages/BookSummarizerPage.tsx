@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 import apiService from '../services/apiService'
+import PageWrapper from '../components/PageWrapper'
 
 interface SummarizerResponse {
   summary: string
@@ -44,7 +45,7 @@ const BookSummarizerPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24 space-y-4">
+    <PageWrapper className="space-y-4">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -173,7 +174,7 @@ const BookSummarizerPage: React.FC = () => {
           </div>
         </motion.div>
       )}
-    </div>
+    </PageWrapper>
   )
 }
 

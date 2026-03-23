@@ -8,6 +8,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import PageWrapper from '../components/PageWrapper'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
@@ -212,7 +213,7 @@ const LeaderboardPage: React.FC = () => {
     : ''
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24 space-y-4">
+    <PageWrapper className="space-y-4">
 
       {/* Header */}
       <motion.div
@@ -377,7 +378,7 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
         </p>
       </motion.div>
 
-    </div>
+    </PageWrapper>
   )
 }
 

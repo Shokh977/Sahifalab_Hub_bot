@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import apiService from '@services/apiService'
 import { fetchQuizzes, fetchQuiz } from '../lib/supabase'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import PageWrapper from '../components/PageWrapper'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import { useProgressStore } from '../context/progressStore'
 
@@ -531,7 +532,7 @@ export const QuizPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24">
+    <PageWrapper className="space-y-4">
       {/* Error banner */}
       {error && (
         <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
@@ -556,7 +557,7 @@ export const QuizPage: React.FC = () => {
           onExit={handleExit}
         />
       )}
-    </div>
+    </PageWrapper>
   )
 }
 

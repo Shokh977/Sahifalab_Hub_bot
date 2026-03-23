@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import PageWrapper from '../components/PageWrapper'
 
 type DailyState = {
   reflectionDone: boolean
@@ -120,7 +121,7 @@ const DailyPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24 space-y-4">
+    <PageWrapper className="space-y-4">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -243,7 +244,7 @@ const DailyPage: React.FC = () => {
           7/14/30 kunlik rejalarga o‘tish
         </button>
       </motion.div>
-    </div>
+    </PageWrapper>
   )
 }
 

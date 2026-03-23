@@ -29,55 +29,78 @@ const ADMIN_TELEGRAM_IDS = [807466591]
 
 const HomePage: React.FC = () => {
   const { user } = useTelegramWebApp()
+  const { isTelegram } = usePlatform()
 
   return (
-    <main className="max-w-md mx-auto pt-6 px-5 pb-28 paper-texture">
-      {/* ── Header ─────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, ease: 'easeOut' }}
-        className="mb-8"
-      >
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-extrabold tracking-tight">
-            <span className="bg-gradient-to-r from-sahifa-400 via-sahifa-500 to-sahifa-600 bg-clip-text text-transparent">
-              SAHIFALAB
-            </span>
-          </h1>
-          <ThemeToggle />
+    <main className={`mx-auto pt-6 px-5 pb-10 paper-texture ${isTelegram ? 'max-w-md pb-28' : 'max-w-6xl'}`}>
+
+      {/* ── Desktop two-column layout ───────────────────────────────────── */}
+      <div className="lg:flex lg:gap-12 lg:items-start">
+
+        {/* Left column: header + hero (desktop) or full width (Telegram/mobile) */}
+        <div className="lg:w-72 lg:flex-shrink-0 lg:sticky lg:top-4">
+
+          {/* Header — hidden in web (sidebar already shows logo) */}
+          <motion.div
+            initial={{ opacity: 0, y: -12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
+            className={`mb-6 ${!isTelegram ? 'lg:hidden' : ''}`}
+          >
+            <div className="flex items-center justify-between">
+              <h1 className="text-3xl font-extrabold tracking-tight">
+                <span className="bg-gradient-to-r from-sahifa-400 via-sahifa-500 to-sahifa-600 bg-clip-text text-transparent">
+                  SAHIFALAB
+                </span>
+              </h1>
+              <ThemeToggle />
+            </div>
+          </motion.div>
+
+          {/* Welcome card — always visible */}
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.05 }}
+            className="mb-6"
+          >
+            <div className="speech-bubble px-4 py-3">
+              <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
+                {user?.first_name
+                  ? `Assalomu alaykum, ${user.first_name}! 👋`
+                  : 'Assalomu alaykum! 👋'}
+              </p>
+              <p className="text-xs text-sahifa-600/80 dark:text-sahifa-400/80 mt-1 italic">
+                Sahifalab sizning mentoringiz 📚
+              </p>
+            </div>
+          </motion.div>
+
+          {/* Hero — below welcome on mobile, sidebar-pinned on desktop */}
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            <HeroSection />
+          </motion.div>
         </div>
 
-        {/* Sam speech bubble */}
-        <div className="speech-bubble mt-4 px-4 py-3">
-          <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
-            {user?.first_name
-              ? `Assalomu alaykum, ${user.first_name}! 👋`
-              : 'Assalomu alaykum! 👋'}
-          </p>
-          <p className="text-xs text-sahifa-600/80 dark:text-sahifa-400/80 mt-1 italic">
-           Sahifalab sizning mentoringiz 📚
-          </p>
+        {/* Right column: Menu Grid */}
+        <div className="flex-1 min-w-0 mt-6 lg:mt-0">
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            {/* Section label on desktop */}
+            <p className="hidden lg:block text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3">
+              Asosiy bo'limlar
+            </p>
+            <MenuGrid />
+          </motion.div>
         </div>
-      </motion.div>
-
-      {/* ── Hero ───────────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.1 }}
-      >
-        <HeroSection />
-      </motion.div>
-
-      {/* ── Menu Grid ──────────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        <MenuGrid />
-      </motion.div>
+      </div>
 
       {/* ── Footer ─────────────────────────────────────────────── */}
       <motion.footer

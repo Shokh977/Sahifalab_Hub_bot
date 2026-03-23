@@ -71,7 +71,7 @@ const GlobalProgressBar: React.FC = () => {
       onClick={() => navigate('/cabinet')}
       onKeyDown={(e) => e.key === 'Enter' && navigate('/cabinet')}
     >
-      <div className="max-w-md mx-auto flex items-center gap-3">
+      <div className="max-w-6xl mx-auto flex items-center gap-3">
 
         {/* ── Avatar / Level badge ─────────────────────────────────────── */}
         <div className="flex-shrink-0 relative">

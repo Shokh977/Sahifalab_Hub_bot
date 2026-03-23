@@ -3,6 +3,7 @@ import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
 import { fetchAmbientSounds } from '../lib/supabase'
 import { useProgressStore } from '../context/progressStore'
+import PageWrapper from '../components/PageWrapper'
 
 /* ──────────────────────────────────────────────────────────────────────────────
    Sound data is loaded dynamically from the database.
@@ -190,7 +191,7 @@ export const StudyWithMe: React.FC = () => {
   }, [sound])
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 space-y-5 pb-20">
+    <PageWrapper className="space-y-5">
       {/* Header */}
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
@@ -411,7 +412,7 @@ export const StudyWithMe: React.FC = () => {
           Har 4 sessiyadan so'ng uzunroq dam oling!
         </p>
       </div>
-    </div>
+    </PageWrapper>
   )
 }
 

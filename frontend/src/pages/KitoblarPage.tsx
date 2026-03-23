@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchBooks } from '../lib/supabase'
+import PageWrapper from '../components/PageWrapper'
 
 interface Book {
   id: number
@@ -65,7 +66,7 @@ export const KitoblarPage: React.FC = () => {
   })
 
   return (
-    <div className="max-w-md mx-auto py-4 px-4 pb-24 space-y-5">
+    <PageWrapper className="space-y-5">
       {/* Header */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📚 Kitoblar</h1>
@@ -128,7 +129,7 @@ export const KitoblarPage: React.FC = () => {
       {/* Books grid */}
       {!loading && filtered.length > 0 && (
         <>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {filtered.slice(0, displayLimit).map(book => (
               <button
                 key={book.id}
@@ -186,7 +187,7 @@ export const KitoblarPage: React.FC = () => {
           )}
         </>
       )}
-    </div>
+    </PageWrapper>
   )
 }
 

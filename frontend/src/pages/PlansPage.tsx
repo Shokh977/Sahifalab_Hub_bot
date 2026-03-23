@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import PageWrapper from '../components/PageWrapper'
 
 type PlanDuration = 7 | 14 | 30
 
@@ -137,7 +138,7 @@ const PlansPage: React.FC = () => {
   }, [plan, todayKey])
 
   return (
-    <div className="max-w-md mx-auto px-4 py-4 pb-24 space-y-4">
+    <PageWrapper className="space-y-4">
       <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -246,7 +247,7 @@ const PlansPage: React.FC = () => {
           </motion.div>
         </>
       )}
-    </div>
+    </PageWrapper>
   )
 }
 

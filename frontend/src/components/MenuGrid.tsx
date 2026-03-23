@@ -199,7 +199,7 @@ export const MenuGrid: React.FC = () => {
       variants={container}
       initial="hidden"
       animate="show"
-      className="grid grid-cols-3 gap-3"
+      className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3"
     >
       {MENU_ITEMS.map((item) => (
         <MenuCard
@@ -215,7 +215,7 @@ export const MenuGrid: React.FC = () => {
           variants={cardVariant}
           whileTap={{ scale: 0.96 }}
           onClick={() => navigate('/admin')}
-          className="col-span-3 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-gray-100/60 dark:bg-slate-800/40 border border-gray-200/50 dark:border-slate-700/30 text-gray-400 dark:text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
+          className="col-span-3 sm:col-span-4 lg:col-span-5 mt-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-gray-100/60 dark:bg-slate-800/40 border border-gray-200/50 dark:border-slate-700/30 text-gray-400 dark:text-slate-500 hover:text-sahifa-400 transition-colors text-xs font-medium"
         >
           <span>🔐</span>
           <span>Admin Panel</span>
