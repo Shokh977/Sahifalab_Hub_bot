@@ -20,6 +20,9 @@ import DailyPage from './pages/DailyPage'
 import PlansPage from './pages/PlansPage'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import ProgressProvider from './components/ProgressProvider'
+import TelegramLayout from './components/TelegramLayout'
+import WebLayout from './components/WebLayout'
+import { usePlatform } from './hooks/usePlatform'
 import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
@@ -95,22 +98,13 @@ const HomePage: React.FC = () => {
   )
 }
 
-// Handles Telegram BackButton for the whole app
+// Handles Telegram BackButton for the whole app (Telegram mode only)
 const TelegramBackButtonHandler: React.FC = () => {
   const location = useLocation()
   const navigate = useNavigate()
   const isHome = location.pathname === '/'
   const handleBack = useCallback(() => navigate(-1), [navigate])
   useTelegramBackButton(isHome, handleBack)
-
-  // Google Analytics — track page views on route change
-  useEffect(() => {
-    const g = (window as any).gtag
-    if (typeof g === 'function') {
-      g('event', 'page_view', { page_path: location.pathname })
-    }
-  }, [location.pathname])
-
   return null
 }
 
@@ -128,34 +122,72 @@ const AdminRoute: React.FC = () => {
   return <AdminPage />
 }
 
+// All app routes — shared between both layout modes
+const AppRoutes: React.FC = () => (
+  <Routes>
+    <Route path="/" element={<HomePage />} />
+    <Route path="/study" element={<StudyWithMe />} />
+    <Route path="/quiz" element={<QuizPage />} />
+    <Route path="/kitoblar" element={<KitoblarPage />} />
+    <Route path="/kitoblar/:id" element={<BookDetailPage />} />
+    <Route path="/resources" element={<ResourcesPage />} />
+    <Route path="/about" element={<AboutPage />} />
+    <Route path="/admin" element={<AdminRoute />} />
+    <Route path="/cabinet" element={<CabinetPage />} />
+    <Route path="/leaderboard" element={<LeaderboardPage />} />
+    <Route path="/book-summarizer" element={<BookSummarizerPage />} />
+    <Route path="/ai-companion" element={<AICompanionPage />} />
+    <Route path="/daily" element={<DailyPage />} />
+    <Route path="/plans" element={<PlansPage />} />
+  </Routes>
+)
+
+/**
+ * AppShell — picks TelegramLayout or WebLayout based on detected platform.
+ *
+ * Telegram Mini App:  TelegramLayout → same behavior as before (no change)
+ * Normal browser:     WebLayout → desktop sidebar + mobile bottom nav
+ *
+ * GA4 page view tracking runs in BOTH modes from a single place here.
+ */
+const AppShell: React.FC = () => {
+  const { isTelegram } = usePlatform()
+  const location = useLocation()
+
+  // Google Analytics — track page views on every route change (both modes)
+  useEffect(() => {
+    const g = (window as any).gtag
+    if (typeof g === 'function') {
+      g('event', 'page_view', { page_path: location.pathname })
+    }
+  }, [location.pathname])
+
+  if (isTelegram) {
+    return (
+      <TelegramLayout>
+        <TelegramBackButtonHandler />
+        <GlobalProgressBar />
+        <AppRoutes />
+      </TelegramLayout>
+    )
+  }
+
+  return (
+    <WebLayout>
+      <AppRoutes />
+    </WebLayout>
+  )
+}
+
 const App: React.FC = () => {
   return (
     <ErrorBoundary>
-      <div className="min-h-screen bg-[#FAFAFA] dark:bg-slate-950 transition-colors duration-300">
-        <Router>
-          <ProgressProvider>
-            <TelegramBackButtonHandler />
-            <GlobalProgressBar />
-            <Routes>
-              <Route path="/" element={<HomePage />} />
-              <Route path="/study" element={<StudyWithMe />} />
-              <Route path="/quiz" element={<QuizPage />} />
-              <Route path="/kitoblar" element={<KitoblarPage />} />
-              <Route path="/kitoblar/:id" element={<BookDetailPage />} />
-              <Route path="/resources" element={<ResourcesPage />} />
-              <Route path="/about" element={<AboutPage />} />
-              <Route path="/admin" element={<AdminRoute />} />
-              <Route path="/cabinet" element={<CabinetPage />} />
-              <Route path="/leaderboard" element={<LeaderboardPage />} />
-              <Route path="/book-summarizer" element={<BookSummarizerPage />} />
-              <Route path="/ai-companion" element={<AICompanionPage />} />
-              <Route path="/daily" element={<DailyPage />} />
-              <Route path="/plans" element={<PlansPage />} />
-            </Routes>
-          </ProgressProvider>
-        </Router>
+      <Router>
+        <ProgressProvider>
+          <AppShell />
+        </ProgressProvider>
         <ToastContainer />
-      </div>
+      </Router>
     </ErrorBoundary>
   )
 }
