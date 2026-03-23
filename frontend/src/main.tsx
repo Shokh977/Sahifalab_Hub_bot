@@ -13,9 +13,9 @@ if (GA_ID && !GA_ID.includes('XXXX')) {
   document.head.appendChild(script)
 
   window.dataLayer = window.dataLayer || []
-  function gtag(...args: any[]) { window.dataLayer.push(args) }
-  gtag('js', new Date())
-  gtag('config', GA_ID)
+  window.gtag = function (...args: any[]) { window.dataLayer.push(args) }
+  window.gtag('js', new Date())
+  window.gtag('config', GA_ID, { send_page_view: false }) // we send page views manually on route change
 }
 
 declare global {
