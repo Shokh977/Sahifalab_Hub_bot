@@ -1,6 +1,5 @@
 /**
  * SAHIFALAB Admin Panel
- * Sam (16yo mentor) brand voice — Uzbek-first, clean and simple.
  * Authentication: Admin enters their Telegram ID; backend validates against AdminUser table.
  */
 import React, { useState, useEffect, useCallback } from 'react'

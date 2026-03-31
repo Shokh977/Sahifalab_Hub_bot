@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.config import settings
-from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating
+from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating, User
 from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog
 from app.schemas.admin_schemas import (
     HeroContentCreate, HeroContentUpdate, HeroContentResponse,
@@ -411,7 +411,7 @@ async def get_admin_stats(
     admin: AdminUser = Depends(verify_admin)
 ):
     """Get admin dashboard statistics"""
-    total_users = db.query(Quiz).count()  # Approximate
+    total_users = db.query(User).count()
     total_quizzes = db.query(Quiz).count()
     total_books = db.query(Book).filter(Book.is_available == True).count()
     total_resources = db.query(Book).filter(Book.is_available == True).count()  # Placeholder
