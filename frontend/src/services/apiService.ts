@@ -491,6 +491,24 @@ class ApiService {
     return this.axiosInstance.get('/api/enrollments/mine')
   }
 
+  /** Paid course: create Telegram invoice link */
+  async createCourseInvoiceLink(courseId: number, provider: 'telegram_stars' = 'telegram_stars') {
+    return this.axiosInstance.post('/api/enrollments/create-invoice-link', {
+      course_id: courseId,
+      provider,
+    })
+  }
+
+  /** Paid course: confirm payment from invoice callback */
+  async confirmCoursePayment(orderId: string) {
+    return this.axiosInstance.post('/api/enrollments/confirm-payment', { order_id: orderId })
+  }
+
+  /** Paid course: read payment order status */
+  async getCoursePaymentOrder(orderId: string) {
+    return this.axiosInstance.get(`/api/enrollments/order/${orderId}`)
+  }
+
   // ─── Lessons ──────────────────────────────────────────────────────────────
 
   /** Public: list all lessons for a course */

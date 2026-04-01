@@ -14,6 +14,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
 import VideoPlayer from '../components/VideoPlayer'
 import { useAuth } from '../context/AuthContext'
+import { usePlatform } from '../hooks/usePlatform'
+import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import apiService from '../services/apiService'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -172,6 +174,8 @@ const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
+  const { isTelegram } = usePlatform()
+  const { webApp } = useTelegramWebApp()
 
   const [course, setCourse]   = useState<Course | null>(null)
   const [lessons, setLessons] = useState<Lesson[]>([])
@@ -214,9 +218,38 @@ const CourseDetailPage: React.FC = () => {
     if (!course || isOwner || isEnrolled || enrollLoading) return
     setEnrollLoading(true)
     try {
-      await apiService.enrollCourse(course.id)
-      setIsEnrolled(true)
-      setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
+      if (!course.is_paid) {
+        await apiService.enrollCourse(course.id)
+        setIsEnrolled(true)
+        setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
+        return
+      }
+
+      if (!isTelegram || !webApp) {
+        setError("Pullik kurs to'lovi faqat Telegram ilovasida ishlaydi")
+        return
+      }
+
+      const inv = await apiService.createCourseInvoiceLink(course.id, 'telegram_stars')
+      const invoiceUrl = inv.data?.invoice_url as string | undefined
+      const orderId = inv.data?.order_id as string | undefined
+
+      if (!invoiceUrl || !orderId) {
+        setError("Invoice yaratilmadi")
+        return
+      }
+
+      webApp.openInvoice(invoiceUrl, async (status: string) => {
+        if (status === 'paid') {
+          try {
+            await apiService.confirmCoursePayment(orderId)
+            setIsEnrolled(true)
+            setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
+          } catch {
+            // handled by global API toast
+          }
+        }
+      })
     } finally {
       setEnrollLoading(false)
     }
@@ -381,7 +414,9 @@ const CourseDetailPage: React.FC = () => {
                 ? '✅ Siz yozilgansiz'
                 : enrollLoading
                   ? '⏳ Tekshirilmoqda...'
-                  : `💳 ${course.price.toLocaleString()} so'mga xarid qilish`}
+                  : isTelegram
+                    ? `⭐ ${course.price.toLocaleString()} so'mga xarid qilish`
+                    : '📱 Telegram ichida to\'lash'}
             </button>
           ) : (
             <button
