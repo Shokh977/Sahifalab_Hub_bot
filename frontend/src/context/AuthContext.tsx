@@ -123,7 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Web: login via bot-code verify response ───────────────────────────────
   const loginWithCode = useCallback((data: Record<string, any>) => {
-    const { access_token, telegram_id, first_name, username, photo_url, role, status_account } = data
+    const { access_token, telegram_id, first_name, username, photo_url, role, status_account, status } = data
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)
     setWebUser({
@@ -132,7 +132,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       username,
       photo_url,
       role: role ?? 'student',
-      status: status_account ?? 'active',
+      status: status_account ?? status ?? 'active',
       level: data.level ?? 1,
       total_xp: data.total_xp ?? 0,
     })

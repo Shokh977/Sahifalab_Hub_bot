@@ -3,8 +3,12 @@ from typing import Optional
 import os
 import logging
 import secrets
+import hashlib
 from datetime import datetime, UTC, timedelta
 import httpx
+from pydantic import BaseModel, HttpUrl
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 
 from app.services.auth_service import (
     TelegramAuthData,
@@ -20,6 +24,25 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+
+
+class GoogleSignInRequest(BaseModel):
+    id_token: str
+
+
+class PhotoUpdateRequest(BaseModel):
+    photo_url: HttpUrl
+
+
+def _google_sub_to_internal_id(sub: str) -> int:
+    """
+    Convert Google `sub` to a stable negative integer so it can coexist with
+    Telegram positive IDs in the existing schema.
+    """
+    digest = hashlib.sha256(sub.encode("utf-8")).hexdigest()
+    compact = int(digest[:15], 16) % 900_000_000
+    return -(100_000_000 + compact)
 
 
 def _supabase_headers() -> dict:
@@ -163,6 +186,130 @@ async def get_current_user(authorization: str = Header(None)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch user: {e}")
+
+
+@router.post("/google")
+async def google_sign_in(body: GoogleSignInRequest):
+    """Sign up/sign in with Google ID token (web)."""
+    _ensure_supabase()
+
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google auth not configured (GOOGLE_CLIENT_ID missing)")
+
+    try:
+        idinfo = google_id_token.verify_oauth2_token(
+            body.id_token,
+            google_requests.Request(),
+            GOOGLE_CLIENT_ID,
+        )
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid Google token")
+
+    sub = idinfo.get("sub")
+    if not sub:
+        raise HTTPException(status_code=401, detail="Invalid Google token payload")
+
+    telegram_id = _google_sub_to_internal_id(sub)
+    first_name = idinfo.get("given_name") or idinfo.get("name") or "Google User"
+    email = idinfo.get("email")
+    username = (email.split("@")[0] if isinstance(email, str) and "@" in email else None)
+    photo_url = idinfo.get("picture")
+
+    # Upsert profile
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            chk = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "telegram_id"},
+                headers=_supabase_headers(),
+            )
+            rows = chk.json() if chk.status_code == 200 else []
+            exists = isinstance(rows, list) and len(rows) > 0
+
+            if not exists:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    json={
+                        "telegram_id": telegram_id,
+                        "first_name": first_name,
+                        "username": username,
+                        "photo_url": photo_url,
+                        "app_created_at": datetime.now(UTC).isoformat(),
+                        "app_last_login": datetime.now(UTC).isoformat(),
+                    },
+                    headers=_supabase_headers(),
+                )
+            else:
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"telegram_id": f"eq.{telegram_id}"},
+                    json={
+                        "first_name": first_name,
+                        "username": username,
+                        "photo_url": photo_url,
+                        "app_last_login": datetime.now(UTC).isoformat(),
+                    },
+                    headers=_supabase_headers(),
+                )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Profile upsert failed: {e}")
+
+    # Fetch role/status (default remains student/active)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "role,status"},
+                headers=_supabase_headers(),
+            )
+            profile = (res.json() or [{}])[0] if res.status_code == 200 else {}
+    except Exception:
+        profile = {}
+
+    token_data = create_access_token(telegram_id)
+    return {
+        "status": "ok",
+        "telegram_id": telegram_id,
+        "first_name": first_name,
+        "username": username,
+        "photo_url": photo_url,
+        "role": profile.get("role", "student"),
+        "status_account": profile.get("status", "active"),
+        **token_data,
+    }
+
+
+@router.patch("/me/photo")
+async def update_my_photo(body: PhotoUpdateRequest, authorization: str = Header(None)):
+    """Update current user's profile photo URL."""
+    _ensure_supabase()
+
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    telegram_id = decode_token(parts[1])
+    if not telegram_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}"},
+                json={"photo_url": str(body.photo_url)},
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update photo: {e}")
+
+    return {"ok": True, "photo_url": str(body.photo_url)}
 
 
 @router.post("/logout")

@@ -15,6 +15,13 @@ import { useAuth } from '../context/AuthContext'
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 const POLL_MS = 2000
 const BOT_USERNAME = (import.meta.env.VITE_BOT_USERNAME as string | undefined) || 'Sahifalab_hub_bot'
+const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || ''
+
+declare global {
+  interface Window {
+    google?: any
+  }
+}
 
 type PageState = 'loading' | 'waiting' | 'success' | 'expired' | 'error'
 
@@ -27,6 +34,7 @@ const LoginPage: React.FC = () => {
   const [code, setCode] = useState('')
   const [errorMsg, setErrorMsg] = useState('')
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const googleBtnRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (isAuthenticated) navigate('/', { replace: true })
@@ -73,6 +81,52 @@ const LoginPage: React.FC = () => {
 
   useEffect(() => { requestCode() }, [requestCode])
 
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID || !googleBtnRef.current) return
+
+    const initGoogle = () => {
+      if (!window.google?.accounts?.id || !googleBtnRef.current) return
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: async (resp: { credential?: string }) => {
+          if (!resp?.credential) return
+          try {
+            const res = await axios.post(`${API_BASE}/api/auth/google`, { id_token: resp.credential })
+            loginWithCode(res.data)
+            navigate('/', { replace: true })
+          } catch (err: any) {
+            const detail = err?.response?.data?.detail || "Google kirishda xatolik"
+            setErrorMsg(String(detail))
+            setPageState('error')
+          }
+        },
+      })
+      window.google.accounts.id.renderButton(googleBtnRef.current, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'continue_with',
+        width: 320,
+      })
+    }
+
+    if (window.google?.accounts?.id) {
+      initGoogle()
+      return
+    }
+
+    const script = document.createElement('script')
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    script.onload = initGoogle
+    document.head.appendChild(script)
+
+    return () => {
+      if (script.parentNode) script.parentNode.removeChild(script)
+    }
+  }, [loginWithCode, navigate])
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-sahifa-50 via-white to-sahifa-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
@@ -114,6 +168,19 @@ const LoginPage: React.FC = () => {
                 </svg>
                 @{BOT_USERNAME} — Kirish
               </a>
+
+              {GOOGLE_CLIENT_ID && (
+                <>
+                  <div className="flex items-center gap-3">
+                    <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                    <span className="text-[11px] text-gray-400 dark:text-gray-500">yoki</span>
+                    <span className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+                  </div>
+                  <div className="flex justify-center">
+                    <div ref={googleBtnRef} />
+                  </div>
+                </>
+              )}
 
               <div className="flex items-center justify-center gap-2 text-sm text-gray-400 dark:text-gray-500">
                 <span className="flex gap-1">

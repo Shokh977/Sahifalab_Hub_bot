@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext'
 import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import PageWrapper from '../components/PageWrapper'
+import apiService from '../services/apiService'
 import {
   fetchMyCompletedQuizzes,
   fetchQuizTitles,
@@ -190,8 +191,23 @@ const CabinetPage: React.FC = () => {
   const effectiveQuizCount    = quizzesCompleted
 
   const [photoError, setPhotoError] = useState(false)
+  const [photoSaving, setPhotoSaving] = useState(false)
   const rawPhotoUrl = isWeb ? authUser?.photo_url : tgUser?.photo_url
   const photoUrl = (!photoError && rawPhotoUrl) ? rawPhotoUrl : null
+
+  const handlePhotoUpdate = useCallback(async () => {
+    const next = window.prompt('Yangi profil rasmi URL manzilini kiriting:', rawPhotoUrl || '')
+    if (!next) return
+    try {
+      setPhotoSaving(true)
+      await apiService.updateMyPhoto(next.trim())
+      window.location.reload()
+    } catch {
+      alert('Profil rasmi yangilanmadi. URL ni tekshirib qayta urinib ko\'ring.')
+    } finally {
+      setPhotoSaving(false)
+    }
+  }, [rawPhotoUrl])
 
   // Certificate & books state
   const [completedQuizzes, setCompletedQuizzes] = useState<CompletedQuiz[]>([])
@@ -331,6 +347,15 @@ const CabinetPage: React.FC = () => {
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
                 ⚡ {effectiveTotalXP.toLocaleString()} XP
               </span>
+              {isWeb && (
+                <button
+                  onClick={handlePhotoUpdate}
+                  disabled={photoSaving}
+                  className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors"
+                >
+                  {photoSaving ? '⏳' : '🖼️ Rasm'}
+                </button>
+              )}
             </div>
           </div>
         </div>

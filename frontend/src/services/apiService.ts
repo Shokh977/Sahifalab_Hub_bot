@@ -367,6 +367,11 @@ class ApiService {
     return this.axiosInstance.post(`/api/auth/admin/reject-teacher/${telegramId}`)
   }
 
+  /** Current user: update profile photo URL */
+  async updateMyPhoto(photoUrl: string) {
+    return this.axiosInstance.patch('/api/auth/me/photo', { photo_url: photoUrl })
+  }
+
   // ─── Teacher profile ──────────────────────────────────────────────────────
 
   /** Get calling teacher's own profile (auto-creates row if not yet present) */
