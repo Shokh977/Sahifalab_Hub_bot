@@ -5,6 +5,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import apiService from '@services/apiService'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { useAuth } from '../context/AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
@@ -126,6 +127,7 @@ const formatFocusTime = (seconds: number): string => {
 
 const AdminPage: React.FC = () => {
   const { user: tgUser } = useTelegramWebApp()
+  const { user: authUser } = useAuth()
   const [telegramId, setTelegramId] = useState('')
   const [adminId, setAdminId] = useState<number | null>(null)
   const [authError, setAuthError] = useState('')
@@ -193,6 +195,13 @@ const AdminPage: React.FC = () => {
       setAdminId(tgUser.id)
     }
   }, [tgUser, adminId])
+
+  // ── Auto-login for web admins (logged in via bot-code auth) ──────────────
+  useEffect(() => {
+    if (authUser?.id && ADMIN_TELEGRAM_IDS.includes(authUser.id) && !adminId) {
+      setAdminId(authUser.id)
+    }
+  }, [authUser, adminId])
 
   const checkDb = async () => {
     if (!adminId) return
@@ -711,7 +720,7 @@ const AdminPage: React.FC = () => {
             </label>
             <input
               type="number"
-              value={telegramId || (tgUser?.id?.toString() ?? '')}
+              value={telegramId || (tgUser?.id?.toString() ?? authUser?.id?.toString() ?? '')}
               onChange={(e) => setTelegramId(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               placeholder="123456789"

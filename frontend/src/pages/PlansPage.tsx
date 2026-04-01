@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { useAuth } from '../context/AuthContext'
 import PageWrapper from '../components/PageWrapper'
 
 type PlanDuration = 7 | 14 | 30
@@ -34,8 +35,9 @@ function diffDays(startDate: string, endDate: string): number {
 const PlansPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useTelegramWebApp()
+  const { user: authUser } = useAuth()
 
-  const userKey = String(user?.id ?? 'guest')
+  const userKey = String(user?.id ?? authUser?.id ?? 'guest')
   const planStorageKey = `study_plan_${userKey}`
   const todayKey = tashkentDateKey(0)
 
