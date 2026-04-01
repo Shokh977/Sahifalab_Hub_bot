@@ -11,6 +11,7 @@ import { fetchBook, fetchMyRating } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
+import { usePlatform } from '../hooks/usePlatform'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,7 @@ const BookDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useTelegramWebApp()
   const { user: authUser } = useAuth()
+  const { isTelegram } = usePlatform()
   const effectiveUserId = user?.id ?? authUser?.id ?? null
 
   const [book, setBook] = useState<Book | null>(null)
@@ -308,7 +310,7 @@ const BookDetailPage: React.FC = () => {
               </div>
             ) : (
               /* Not purchased → payment options */
-              <PaymentSection book={book} telegramId={user?.id ?? 0} onPurchased={() => setPurchased(true)} />
+              <PaymentSection book={book} telegramId={effectiveUserId ?? 0} isTelegram={isTelegram} onPurchased={() => setPurchased(true)} />
             )
           ) : (
             /* Free book → download */
@@ -349,9 +351,10 @@ interface PaymentSectionProps {
   book: Book
   telegramId: number
   onPurchased: () => void
+  isTelegram?: boolean
 }
 
-const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPurchased }) => {
+const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPurchased, isTelegram = false }) => {
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState('')       // which provider is loading
   const [msg, setMsg] = useState('')
@@ -397,16 +400,14 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
 
       setPendingOrderId(orderId)
 
-      // 2. Open native Telegram payment form inside mini app
-      if (window.Telegram?.WebApp?.openInvoice) {
+      // 2. Open payment
+      if (isTelegram && window.Telegram?.WebApp?.openInvoice) {
+        // Native Telegram mini-app invoice sheet
         setMsg('')
         window.Telegram.WebApp.openInvoice(invoiceUrl, async (status) => {
           console.log('[Payment] openInvoice callback:', status)
           if (status === 'paid') {
-            // Frontend confirms payment directly to backend
-            try {
-              await apiService.confirmPayment(orderId)
-            } catch { /* bot will also confirm as backup */ }
+            try { await apiService.confirmPayment(orderId) } catch { /* bot backs up */ }
             setPolling(false)
             setPendingOrderId(null)
             setMsg('✅ To\'lov muvaffaqiyatli amalga oshirildi!')
@@ -419,19 +420,14 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
             setPolling(false)
             setPendingOrderId(null)
           } else {
-            // status === 'pending' → start polling as backup
             setPolling(true)
           }
         })
       } else {
-        // Fallback: open invoice URL directly (works outside mini apps too)
-        setMsg('⏳ To\'lov sahifasi ochilmoqda...')
+        // Web browser — open payment page in a new tab, poll for completion
+        setMsg('⏳ To\'lov sahifasi ochilmoqda…')
         setPolling(true)
-        if (window.Telegram?.WebApp?.openTelegramLink) {
-          window.Telegram.WebApp.openTelegramLink(invoiceUrl)
-        } else {
-          window.open(invoiceUrl, '_blank')
-        }
+        window.open(invoiceUrl, '_blank', 'noopener')
       }
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || 'Noma\'lum xato'
@@ -481,16 +477,23 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
         </div>
       )}
 
-      {/* ⭐ Telegram Stars */}
-      <button
-        onClick={() => handlePay('telegram_stars')}
-        disabled={loading === 'telegram_stars'}
-        className="flex items-center gap-3 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.97] text-white px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-md transition-all disabled:opacity-60"
-      >
-        <span className="text-xl">⭐</span>
-        <span className="flex-1 text-left">Telegram Stars</span>
-        <span className="text-xs opacity-80">{Math.max(1, Math.round(book.price / 250))} ⭐</span>
-      </button>
+      {/* ⭐ Telegram Stars — only available inside Telegram Mini App */}
+      {isTelegram ? (
+        <button
+          onClick={() => handlePay('telegram_stars')}
+          disabled={loading === 'telegram_stars'}
+          className="flex items-center gap-3 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.97] text-white px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-md transition-all disabled:opacity-60"
+        >
+          <span className="text-xl">⭐</span>
+          <span className="flex-1 text-left">Telegram Stars</span>
+          <span className="text-xs opacity-80">{Math.max(1, Math.round(book.price / 250))} ⭐</span>
+        </button>
+      ) : (
+        <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-400 dark:text-slate-500">
+          <span className="text-lg">⭐</span>
+          <span>Telegram Stars faqat Telegram ilovasida mavjud</span>
+        </div>
+      )}
 
       {/* 💳 Click */}
       <button
