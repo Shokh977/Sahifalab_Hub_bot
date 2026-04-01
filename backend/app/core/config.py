@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     CLICK_PROVIDER_TOKEN: str = ""   # BotFather → Payments → Click
     PAYME_PROVIDER_TOKEN: str = ""   # BotFather → Payments → Payme
 
+    # Bunny.net CDN — video storage (Step 10)
+    # BUNNY_STORAGE_ZONE   → Storage zone name in Bunny.net panel
+    # BUNNY_API_KEY        → Storage zone FTP / API password (Read/Write)
+    # BUNNY_CDN_HOSTNAME   → Pull-zone hostname, e.g. sahifalab.b-cdn.net
+    # BUNNY_STORAGE_REGION → Storage endpoint region (default = de/Frankfurt)
+    #   Options: de (default) | ny | la | sg | syd | br | jh
+    BUNNY_STORAGE_ZONE:   str = ""
+    BUNNY_API_KEY:        str = ""
+    BUNNY_CDN_HOSTNAME:   str = ""
+    BUNNY_STORAGE_REGION: str = "de"
+
     @field_validator('ADMIN_TELEGRAM_IDS', mode='before')
     @classmethod
     def parse_admin_ids(cls, v):

@@ -32,6 +32,7 @@ import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
 import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
 import CourseCreatePage from './pages/CourseCreatePage'
+import LessonCreatePage from './pages/LessonCreatePage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 
@@ -201,6 +202,8 @@ const AppRoutes: React.FC = () => (
         <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
         <Route path="/courses/create" element={<CourseCreatePage />} />
         <Route path="/courses/:id/edit" element={<CourseCreatePage />} />
+        <Route path="/courses/:courseId/lessons/add" element={<LessonCreatePage />} />
+        <Route path="/courses/:courseId/lessons/:lessonId/edit" element={<LessonCreatePage />} />
       </Route>
 
       {/* Teacher application — any authenticated user */}
