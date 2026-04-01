@@ -565,7 +565,52 @@ const CabinetPage: React.FC = () => {
           sublabel="Savolingiz bormi? Yozing!"
           onClick={() => navigate('/ai-companion')}
         />
+        <MenuRow
+          icon="🎓"
+          label="Kurslar"
+          sublabel="Barcha kurslarni ko'rish"
+          onClick={() => navigate('/courses')}
+        />
       </Section>
+
+      {/* ═══ Role-based: teacher / admin ═══ */}
+      {authUser && (
+        <Section delay={0.25}>
+          {(authUser.role === 'teacher' && authUser.status === 'active') && (
+            <MenuRow
+              icon="📊"
+              label="O'qituvchi paneli"
+              sublabel="Kurslarim, talabalar, daromad"
+              onClick={() => navigate('/teacher')}
+            />
+          )}
+          {(authUser.role === 'teacher' && authUser.status === 'pending') && (
+            <div className="flex items-center gap-3 px-4 py-3.5">
+              <span className="text-xl w-8 text-center">⏳</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white">Ariza ko'rib chiqilmoqda</p>
+                <p className="text-xs text-amber-600 dark:text-amber-400">Admin tasdiqlashini kuting</p>
+              </div>
+            </div>
+          )}
+          {authUser.role === 'student' && (
+            <MenuRow
+              icon="🎓"
+              label="O'qituvchi bo'lish"
+              sublabel="O'z kurslaringizni yarating va pul ishlang"
+              onClick={() => navigate('/become-teacher')}
+            />
+          )}
+          {authUser.role === 'admin' && (
+            <MenuRow
+              icon="🛠"
+              label="Admin paneli"
+              sublabel="Platforma boshqaruvi"
+              onClick={() => navigate('/admin')}
+            />
+          )}
+        </Section>
+      )}
 
       {/* ═══ Badges / Yutuqlar Section ═══ */}
       {(() => {

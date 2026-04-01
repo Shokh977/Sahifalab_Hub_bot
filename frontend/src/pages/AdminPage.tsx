@@ -70,7 +70,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users'
 
 interface TeacherRequest {
   telegram_id: number
@@ -127,6 +127,18 @@ interface PlatformAnalytics {
   top_courses: TopCourse[]
   teacher_leaderboard: TeacherLeaderboardItem[]
   recent_orders: RecentOrder[]
+}
+
+interface AdminUserProfile {
+  telegram_id: number
+  first_name: string | null
+  username: string | null
+  photo_url: string | null
+  role: 'student' | 'teacher' | 'admin'
+  status: 'active' | 'pending' | 'suspended'
+  total_xp: number
+  level: number
+  app_created_at: string | null
 }
 
 // ─── Quiz form types ──────────────────────────────────────────────────────────
@@ -247,6 +259,14 @@ const AdminPage: React.FC = () => {
   const [platformAnalytics, setPlatformAnalytics] = useState<PlatformAnalytics | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(false)
   const [analyticsError, setAnalyticsError] = useState('')
+
+  // Users management
+  const [userSearchQ, setUserSearchQ] = useState('')
+  const [userSearchResults, setUserSearchResults] = useState<AdminUserProfile[]>([])
+  const [userSearchLoading, setUserSearchLoading] = useState(false)
+  const [userSearchError, setUserSearchError] = useState('')
+  const [userRoleActionId, setUserRoleActionId] = useState<number | null>(null)
+  const [userMsg, setUserMsg] = useState('')
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -437,6 +457,40 @@ const AdminPage: React.FC = () => {
     }
   }, [adminId])
 
+  const searchUsers = useCallback(async (q?: string) => {
+    if (!adminId) return
+    setUserSearchLoading(true)
+    setUserSearchError('')
+    setUserMsg('')
+    try {
+      const res = await apiService.searchAdminUsers(q, 50)
+      setUserSearchResults(res.data ?? [])
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Qidiruv xatosi'
+      setUserSearchError(String(detail))
+    } finally {
+      setUserSearchLoading(false)
+    }
+  }, [adminId])
+
+  const handleSetUserRole = async (telegramId: number, role: string, status: string) => {
+    setUserRoleActionId(telegramId)
+    setUserMsg('')
+    try {
+      await apiService.setUserRole(telegramId, role, status)
+      setUserMsg(`✅ ${telegramId} → ${role} (${status})`)
+      // Update local list optimistically
+      setUserSearchResults(prev =>
+        prev.map(u => u.telegram_id === telegramId ? { ...u, role: role as any, status: status as any } : u)
+      )
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
+      setUserMsg(`❌ ${detail}`)
+    } finally {
+      setUserRoleActionId(null)
+    }
+  }
+
   const handleApproveTeacher = async (telegramId: number) => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
@@ -478,7 +532,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'sounds') loadSounds()
     if (activeTab === 'teachers') loadTeacherRequests()
     if (activeTab === 'analytics') loadPlatformAnalytics()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics])
+    if (activeTab === 'users') searchUsers()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -906,6 +961,7 @@ const AdminPage: React.FC = () => {
             { id: 'sounds', label: '🎵 Tovushlar' },
             { id: 'teachers', label: '🎓 O\'qituvchilar' },
             { id: 'analytics', label: '📈 Analitika' },
+            { id: 'users', label: '👤 Foydalanuvchilar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -2129,6 +2185,137 @@ const AdminPage: React.FC = () => {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* ── Users Tab ─────────────────────────────────────────────────── */}
+        {activeTab === 'users' && (
+          <div className="space-y-4">
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">👤 Foydalanuvchilarni boshqarish</h2>
+
+            {/* Search input */}
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={userSearchQ}
+                onChange={(e) => setUserSearchQ(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && searchUsers(userSearchQ)}
+                placeholder="Ism, username yoki Telegram ID..."
+                className="flex-1 px-4 py-3 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+              />
+              <button
+                onClick={() => searchUsers(userSearchQ)}
+                disabled={userSearchLoading}
+                className="px-4 py-3 bg-sahifa-600 hover:bg-sahifa-700 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors shrink-0"
+              >
+                {userSearchLoading ? '⏳' : '🔍'}
+              </button>
+            </div>
+
+            {userMsg && (
+              <p className={`text-sm px-3 py-2 rounded-xl ${userMsg.startsWith('✅') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'}`}>
+                {userMsg}
+              </p>
+            )}
+            {userSearchError && (
+              <p className="text-sm text-red-500 dark:text-red-400">❌ {userSearchError}</p>
+            )}
+
+            {/* Results */}
+            {userSearchResults.length === 0 && !userSearchLoading && (
+              <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-6">
+                Qidirish uchun matn yozing va Enter bosing
+              </p>
+            )}
+
+            <div className="space-y-3">
+              {userSearchResults.map((u) => {
+                const roleBadge =
+                  u.role === 'admin'   ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                  u.role === 'teacher' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                  'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                const statusBadge =
+                  u.status === 'active'    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                  u.status === 'pending'   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                const isBusy = userRoleActionId === u.telegram_id
+                return (
+                  <div
+                    key={u.telegram_id}
+                    className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm space-y-3"
+                  >
+                    {/* User info row */}
+                    <div className="flex items-center gap-3">
+                      {u.photo_url ? (
+                        <img src={u.photo_url} alt={u.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                          {(u.first_name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                          {u.first_name || 'Noma\'lum'}
+                          {u.username && <span className="text-gray-400 ml-1 font-normal">@{u.username}</span>}
+                        </p>
+                        <p className="text-xs text-gray-400">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP</p>
+                      </div>
+                      <div className="flex flex-col gap-1 items-end shrink-0">
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleBadge}`}>{u.role}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusBadge}`}>{u.status}</span>
+                      </div>
+                    </div>
+
+                    {/* Role action buttons */}
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        onClick={() => handleSetUserRole(u.telegram_id, 'student', 'active')}
+                        disabled={isBusy || (u.role === 'student' && u.status === 'active')}
+                        className="py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40 transition-colors"
+                      >
+                        👤 Student
+                      </button>
+                      <button
+                        onClick={() => handleSetUserRole(u.telegram_id, 'teacher', 'active')}
+                        disabled={isBusy || (u.role === 'teacher' && u.status === 'active')}
+                        className="py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-40 transition-colors"
+                      >
+                        🎓 Teacher
+                      </button>
+                      <button
+                        onClick={() => handleSetUserRole(u.telegram_id, 'admin', 'active')}
+                        disabled={isBusy || u.role === 'admin'}
+                        className="py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-40 transition-colors"
+                      >
+                        🛠 Admin
+                      </button>
+                    </div>
+
+                    {/* Suspend/Activate quick actions */}
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <button
+                        onClick={() => handleSetUserRole(u.telegram_id, u.role, 'active')}
+                        disabled={isBusy || u.status === 'active'}
+                        className="py-1.5 rounded-xl text-xs font-semibold bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-40 transition-colors"
+                      >
+                        ✅ Faollashtirish
+                      </button>
+                      <button
+                        onClick={() => handleSetUserRole(u.telegram_id, u.role, 'suspended')}
+                        disabled={isBusy || u.status === 'suspended'}
+                        className="py-1.5 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 disabled:opacity-40 transition-colors"
+                      >
+                        🚫 Bloklash
+                      </button>
+                    </div>
+
+                    {isBusy && (
+                      <p className="text-xs text-center text-gray-400 animate-pulse">Saqlanmoqda…</p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
         )}
 

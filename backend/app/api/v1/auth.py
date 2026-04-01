@@ -642,3 +642,99 @@ async def reject_teacher(
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
     return {"success": True, "message": "Teacher application rejected", "telegram_id": target_telegram_id}
+
+
+# ── Admin: user management ────────────────────────────────────────────────────
+
+class SetUserRoleRequest(BaseModel):
+    role: str    # student | teacher | admin
+    status: str = "active"  # active | pending | suspended
+
+
+@router.get("/admin/users")
+async def list_users(
+    q: Optional[str] = None,
+    limit: int = 50,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Admin: search / list platform users.
+    - ?q=<text>  searches first_name and username (ilike) or exact telegram_id
+    - Returns up to `limit` results ordered by creation date desc.
+    """
+    _ensure_supabase()
+    await _resolve_admin_id(authorization)
+
+    params: dict = {
+        "select": "telegram_id,first_name,username,photo_url,role,status,total_xp,level,app_created_at",
+        "order": "app_created_at.desc",
+        "limit": str(min(limit, 200)),
+    }
+
+    if q and q.strip():
+        q = q.strip()
+        try:
+            tid = int(q)
+            params["telegram_id"] = f"eq.{tid}"
+        except ValueError:
+            # Supabase OR filter
+            params["or"] = f"(first_name.ilike.*{q}*,username.ilike.*{q}*)"
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params=params,
+                headers=_supabase_headers(),
+            )
+            if res.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+            return res.json() or []
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.patch("/admin/users/{target_telegram_id}/role")
+async def set_user_role(
+    target_telegram_id: int,
+    body: SetUserRoleRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Admin: directly set a user's role (student / teacher / admin) and status.
+    Useful for promoting users, demoting, or fixing stuck pending states.
+    """
+    _ensure_supabase()
+    await _resolve_admin_id(authorization)
+
+    allowed_roles   = {"student", "teacher", "admin"}
+    allowed_statuses = {"active", "pending", "suspended"}
+
+    if body.role not in allowed_roles:
+        raise HTTPException(status_code=400, detail=f"Invalid role. Use one of: {', '.join(allowed_roles)}")
+    if body.status not in allowed_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Use one of: {', '.join(allowed_statuses)}")
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{target_telegram_id}"},
+                json={"role": body.role, "status": body.status},
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return {
+        "success": True,
+        "telegram_id": target_telegram_id,
+        "role": body.role,
+        "status": body.status,
+    }

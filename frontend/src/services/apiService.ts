@@ -372,6 +372,16 @@ class ApiService {
     return this.axiosInstance.post(`/api/auth/admin/reject-teacher/${telegramId}`)
   }
 
+  /** Admin: search/list all users (q = name or telegram_id) */
+  async searchAdminUsers(q?: string, limit = 50) {
+    return this.axiosInstance.get('/api/auth/admin/users', { params: { q: q || undefined, limit } })
+  }
+
+  /** Admin: directly set a user's role and status */
+  async setUserRole(telegramId: number, role: string, status: string) {
+    return this.axiosInstance.patch(`/api/auth/admin/users/${telegramId}/role`, { role, status })
+  }
+
   /** Current user: update profile photo URL */
   async updateMyPhoto(photoUrl: string) {
     return this.axiosInstance.patch('/api/auth/me/photo', { photo_url: photoUrl })
