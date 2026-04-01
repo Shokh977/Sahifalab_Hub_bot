@@ -104,6 +104,16 @@ async def _is_enrolled(course_id: int, student_id: int) -> bool:
     return len(rows) > 0
 
 
+async def _can_access_lesson(lesson: dict, caller_id: int) -> bool:
+    """Return True when caller can access the lesson content."""
+    teacher_id = await _get_course_teacher(lesson["course_id"])
+    if caller_id == teacher_id or caller_id in ADMIN_IDS:
+        return True
+    if lesson.get("is_free"):
+        return True
+    return await _is_enrolled(lesson["course_id"], caller_id)
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class LessonCreate(BaseModel):
@@ -315,6 +325,44 @@ async def update_lesson(
 
     rows = res.json()
     return rows[0] if isinstance(rows, list) and rows else {"ok": True}
+
+
+@router.post("/{lesson_id}/complete")
+async def complete_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
+    """Student marks lesson as completed (tracked per user+lesson)."""
+    caller_id = await _resolve_caller(authorization)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        chk = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lessons",
+            params={"id": f"eq.{lesson_id}", "select": "id, course_id, is_free"},
+            headers=_supabase_headers(),
+        )
+    rows = chk.json() if chk.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    lesson = rows[0]
+
+    if not await _can_access_lesson(lesson, caller_id):
+        raise HTTPException(status_code=403, detail="Lesson is locked")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/lesson_progress",
+            params={"on_conflict": "lesson_id,student_id"},
+            json={
+                "course_id": lesson["course_id"],
+                "lesson_id": lesson_id,
+                "student_id": caller_id,
+                "is_completed": True,
+            },
+            headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+        )
+    if res.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Failed to save progress: {res.text}")
+
+    return {"ok": True, "lesson_id": lesson_id, "completed": True}
 
 
 @router.delete("/{lesson_id}")

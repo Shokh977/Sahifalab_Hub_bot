@@ -69,6 +69,22 @@ interface TeacherAnalytics {
   completed_orders: number
   gross_stars: number
   estimated_revenue_uzs: number
+  course_performance?: Array<{
+    course_id: number
+    title: string
+    lesson_count: number
+    enrolled_students: number
+    completed_lessons: number
+    completion_rate: number
+  }>
+  top_students?: Array<{
+    student_id: number
+    first_name: string
+    username?: string | null
+    total_xp: number
+    level: number
+    completed_lessons: number
+  }>
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -418,6 +434,89 @@ const TeacherDashboardPage: React.FC = () => {
             loading={analyticsLoading}
           />
         </div>
+      </motion.div>
+
+      {/* Course performance */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.09 }}
+        className="mb-6"
+      >
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+          Kurs bo'yicha performance
+        </h2>
+        {analyticsLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-12 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+            ))}
+          </div>
+        ) : !(analytics?.course_performance?.length) ? (
+          <div className="text-xs text-gray-400 dark:text-gray-500">
+            Hali performance ma'lumotlari yo'q
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {analytics.course_performance.slice(0, 6).map((row) => (
+              <div
+                key={row.course_id}
+                className="p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{row.title}</p>
+                  <span className="text-xs font-semibold text-sahifa-600 dark:text-sahifa-400">
+                    {row.completion_rate.toFixed(1)}%
+                  </span>
+                </div>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  👥 {row.enrolled_students} · 📹 {row.lesson_count} · ✅ {row.completed_lessons}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </motion.div>
+
+      {/* Top students in courses */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="mb-6"
+      >
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+          Eng faol talabalar (kurslar)
+        </h2>
+        {analyticsLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-12 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+            ))}
+          </div>
+        ) : !(analytics?.top_students?.length) ? (
+          <div className="text-xs text-gray-400 dark:text-gray-500">Hali ma'lumot yo'q</div>
+        ) : (
+          <div className="space-y-2">
+            {analytics.top_students.slice(0, 5).map((s) => (
+              <div
+                key={s.student_id}
+                className="flex items-center justify-between gap-3 p-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                    {s.first_name}
+                    {s.username ? <span className="text-[11px] text-gray-400 ml-1">@{s.username}</span> : null}
+                  </p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Lv {s.level} · {s.total_xp.toLocaleString()} XP</p>
+                </div>
+                <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                  ✅ {s.completed_lessons}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* Quick actions */}

@@ -89,7 +89,7 @@ async def _get_teacher_courses(teacher_id: int) -> list[dict]:
             f"{SUPABASE_URL}/rest/v1/courses",
             params={
                 "teacher_id": f"eq.{teacher_id}",
-                "select": "id, title, is_published, is_paid, enrolled_count, price, created_at",
+                "select": "id, title, is_published, is_paid, enrolled_count, total_lessons, price, created_at",
                 "order": "created_at.desc",
             },
             headers=_supabase_headers(),
@@ -217,9 +217,126 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
     gross_stars = 0
     completed_orders = 0
     recent_orders: list[dict] = []
+    course_performance: list[dict] = []
+    top_students: list[dict] = []
 
     if course_ids:
         ids_csv = ",".join(str(x) for x in course_ids)
+
+        # Lesson counts by course (for completion rates)
+        async with httpx.AsyncClient(timeout=10) as client:
+            lres = await client.get(
+                f"{SUPABASE_URL}/rest/v1/lessons",
+                params={"course_id": f"in.({ids_csv})", "select": "course_id,id"},
+                headers=_supabase_headers(),
+            )
+        if lres.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {lres.text}")
+        lesson_rows = lres.json() if isinstance(lres.json(), list) else []
+
+        lesson_count_by_course: dict[int, int] = {}
+        for r in lesson_rows:
+            cid = int(r.get("course_id") or 0)
+            if cid:
+                lesson_count_by_course[cid] = lesson_count_by_course.get(cid, 0) + 1
+
+        # Enrollment rows (for enrolled students per course)
+        async with httpx.AsyncClient(timeout=10) as client:
+            eres = await client.get(
+                f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                params={
+                    "course_id": f"in.({ids_csv})",
+                    "is_active": "eq.true",
+                    "select": "course_id,student_id",
+                },
+                headers=_supabase_headers(),
+            )
+        if eres.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {eres.text}")
+        enroll_rows = eres.json() if isinstance(eres.json(), list) else []
+
+        students_by_course: dict[int, set[int]] = {}
+        for r in enroll_rows:
+            cid = int(r.get("course_id") or 0)
+            sid = int(r.get("student_id") or 0)
+            if cid and sid:
+                students_by_course.setdefault(cid, set()).add(sid)
+
+        # Lesson progress rows
+        async with httpx.AsyncClient(timeout=10) as client:
+            pres = await client.get(
+                f"{SUPABASE_URL}/rest/v1/lesson_progress",
+                params={
+                    "course_id": f"in.({ids_csv})",
+                    "is_completed": "eq.true",
+                    "select": "course_id,lesson_id,student_id",
+                    "limit": "50000",
+                },
+                headers=_supabase_headers(),
+            )
+        if pres.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {pres.text}")
+        progress_rows = pres.json() if isinstance(pres.json(), list) else []
+
+        completed_count_by_course: dict[int, int] = {}
+        student_completed_total: dict[int, int] = {}
+        for r in progress_rows:
+            cid = int(r.get("course_id") or 0)
+            sid = int(r.get("student_id") or 0)
+            if cid:
+                completed_count_by_course[cid] = completed_count_by_course.get(cid, 0) + 1
+            if sid:
+                student_completed_total[sid] = student_completed_total.get(sid, 0) + 1
+
+        # Build course performance rows
+        for c in courses:
+            cid = int(c.get("id") or 0)
+            if not cid:
+                continue
+            lesson_count = int(c.get("total_lessons") or lesson_count_by_course.get(cid, 0) or 0)
+            enrolled_students = len(students_by_course.get(cid, set()))
+            completed_lessons = int(completed_count_by_course.get(cid, 0))
+            total_expected = lesson_count * enrolled_students
+            completion_rate = round((completed_lessons / total_expected) * 100, 1) if total_expected > 0 else 0.0
+            course_performance.append({
+                "course_id": cid,
+                "title": c.get("title", f"Course {cid}"),
+                "lesson_count": lesson_count,
+                "enrolled_students": enrolled_students,
+                "completed_lessons": completed_lessons,
+                "completion_rate": completion_rate,
+            })
+
+        course_performance.sort(key=lambda x: x["completion_rate"], reverse=True)
+
+        # Top students by completed lessons across teacher's courses
+        student_ids = [str(sid) for sid in sorted(student_completed_total.keys())[:2000]]
+        if student_ids:
+            sid_csv = ",".join(student_ids)
+            async with httpx.AsyncClient(timeout=10) as client:
+                sres = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={
+                        "telegram_id": f"in.({sid_csv})",
+                        "select": "telegram_id,first_name,username,total_xp,level",
+                    },
+                    headers=_supabase_headers(),
+                )
+            profiles = sres.json() if sres.status_code == 200 and isinstance(sres.json(), list) else []
+            pmap = {int(p.get("telegram_id")): p for p in profiles if p.get("telegram_id") is not None}
+
+            ranked = sorted(student_completed_total.items(), key=lambda kv: kv[1], reverse=True)[:10]
+            for sid, completed in ranked:
+                p = pmap.get(sid, {})
+                top_students.append({
+                    "student_id": sid,
+                    "first_name": p.get("first_name", "Student"),
+                    "username": p.get("username"),
+                    "total_xp": int(p.get("total_xp") or 0),
+                    "level": int(p.get("level") or 1),
+                    "completed_lessons": completed,
+                })
+
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(
                 f"{SUPABASE_URL}/rest/v1/course_payment_orders",
@@ -252,5 +369,7 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
         "completed_orders": completed_orders,
         "gross_stars": gross_stars,
         "estimated_revenue_uzs": estimated_revenue_uzs,
+        "course_performance": course_performance,
+        "top_students": top_students,
         "recent_orders": recent_orders,
     }

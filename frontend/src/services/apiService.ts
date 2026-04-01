@@ -526,6 +526,11 @@ class ApiService {
     return this.axiosInstance.get(`/api/lessons/${lessonId}`)
   }
 
+  /** Student: mark lesson as completed */
+  async completeLesson(lessonId: number) {
+    return this.axiosInstance.post(`/api/lessons/${lessonId}/complete`)
+  }
+
   /** Teacher: create a lesson */
   async createLesson(data: {
     course_id:        number

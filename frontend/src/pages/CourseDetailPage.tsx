@@ -277,6 +277,12 @@ const CourseDetailPage: React.FC = () => {
             }
           : l
       )))
+
+      const canComplete = !!(lesson.is_free || isOwner || isEnrolled)
+      const hasPlayableVideo = !!(detail?.video_url) || lesson.video_source === 'youtube'
+      if (canComplete && hasPlayableVideo) {
+        apiService.completeLesson(lesson.id).catch(() => {})
+      }
     } catch {
       // API service already shows toast
     }
