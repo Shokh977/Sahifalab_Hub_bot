@@ -568,6 +568,11 @@ class ApiService {
     return this.axiosInstance.post(`/api/lessons/${lessonId}/complete`)
   }
 
+  /** Student: fetch completed lesson IDs for a course */
+  async getMyLessonProgress(courseId: number) {
+    return this.axiosInstance.get('/api/lessons/my-progress', { params: { course_id: courseId } })
+  }
+
   /** Teacher: create a lesson */
   async createLesson(data: {
     course_id:        number

@@ -58,6 +58,15 @@ interface PurchasedBook {
   file_url?: string
 }
 
+interface EnrolledCourse {
+  course_id: number
+  enrolled_at: string
+  title: string
+  thumbnail_url: string
+  total_lessons: number
+  completed_lessons: number
+}
+
 // ── Avatar colour based on telegram_id ───────────────────────────────────────
 const AVATAR_COLORS = [
   'from-blue-400 to-blue-600',
@@ -217,6 +226,8 @@ const CabinetPage: React.FC = () => {
   const [certData, setCertData] = useState<CertificateData | null>(null)
   const [expandCerts, setExpandCerts] = useState(false)
   const [expandBooks, setExpandBooks] = useState(false)
+  const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([])
+  const [loadingCourses, setLoadingCourses] = useState(true)
 
   const progress  = levelProgress(effectiveTotalXP)
   const { start, end } = levelBounds(effectiveLevel)
@@ -261,6 +272,36 @@ const CabinetPage: React.FC = () => {
       setCompletedQuizzes(quizzes)
       setPurchasedBooks(books)
     }).finally(() => setLoadingData(false))
+  }, [effectiveTelegramId])
+
+  // ── Load enrolled courses with lesson progress ────────────────────────────
+  useEffect(() => {
+    if (!effectiveTelegramId) { setLoadingCourses(false); return }
+    setLoadingCourses(true)
+    apiService.getMyEnrollments()
+      .then(async (res) => {
+        const enrollments: any[] = Array.isArray(res.data) ? res.data : []
+        const withProgress = await Promise.all(
+          enrollments.map(async (e) => {
+            const courseData = e.courses ?? {}
+            const [lessonsRes, progressRes] = await Promise.all([
+              apiService.getLessons(e.course_id).catch(() => ({ data: [] as any[] })),
+              apiService.getMyLessonProgress(e.course_id).catch(() => ({ data: { completed_lesson_ids: [] as number[] } })),
+            ])
+            return {
+              course_id: e.course_id,
+              enrolled_at: e.created_at ?? '',
+              title: courseData.title ?? `Kurs #${e.course_id}`,
+              thumbnail_url: courseData.thumbnail_url ?? '',
+              total_lessons: Array.isArray(lessonsRes.data) ? lessonsRes.data.length : 0,
+              completed_lessons: progressRes.data?.completed_lesson_ids?.length ?? 0,
+            } satisfies EnrolledCourse
+          })
+        )
+        setEnrolledCourses(withProgress)
+      })
+      .catch(() => {})
+      .finally(() => setLoadingCourses(false))
   }, [effectiveTelegramId])
 
   // ── Open certificate modal ──────────────────────────────────────────────
@@ -386,6 +427,87 @@ const CabinetPage: React.FC = () => {
           <StatPill emoji="⚡" value={effectiveTotalXP.toLocaleString()} label="XP" />
           <StatPill emoji="🏅" value={effectiveLevel} label="Daraja" />
         </div>
+      </Section>
+
+      {/* ═══ My Enrolled Courses ═══ */}
+      <Section delay={0.08}>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎒</span>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Mening Kurslarim</h2>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            {enrolledCourses.length} ta
+          </span>
+        </div>
+
+        {loadingCourses ? (
+          <div className="px-4 py-6 text-center">
+            <div className="text-2xl animate-pulse">⏳</div>
+          </div>
+        ) : enrolledCourses.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-3xl mb-2">🎒</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hali kursga yozilmagansiz</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">O'rganishni boshlash uchun kurs tanlang</p>
+            <button
+              onClick={() => navigate('/courses')}
+              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+            >
+              Kurslarga o'tish →
+            </button>
+          </div>
+        ) : (
+          enrolledCourses.map((course) => {
+            const pct = course.total_lessons > 0
+              ? Math.round((course.completed_lessons / course.total_lessons) * 100)
+              : 0
+            const isDone = pct === 100
+            return (
+              <button
+                key={course.course_id}
+                onClick={() => navigate(`/courses/${course.course_id}`)}
+                className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+              >
+                {/* Thumbnail */}
+                <div className="w-12 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-gray-100 dark:bg-gray-700">
+                  {course.thumbnail_url ? (
+                    <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center">
+                      <span className="text-xl">🎓</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Info + progress */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{course.title}</p>
+                  <div className="mt-1.5">
+                    <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${isDone ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-sahifa-400 to-sahifa-600'}`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                    <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
+                      {course.completed_lessons}/{course.total_lessons} dars •{' '}
+                      {isDone ? (
+                        <span className="text-emerald-500 font-semibold">✅ Yakunlandi</span>
+                      ) : (
+                        <span>{pct}% bajarildi</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            )
+          })
+        )}
       </Section>
 
       {/* ═══ Certificates Section ═══ */}

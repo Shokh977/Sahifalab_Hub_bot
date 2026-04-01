@@ -73,8 +73,9 @@ const LessonRow: React.FC<{
   isOwner: boolean
   isEnrolled: boolean
   isExpanded: boolean
+  isCompleted: boolean
   onToggle: () => void
-}> = ({ lesson, index, isOwner, isEnrolled, isExpanded, onToggle }) => {
+}> = ({ lesson, index, isOwner, isEnrolled, isExpanded, isCompleted, onToggle }) => {
   const unlocked = lesson.is_free || isOwner || isEnrolled
   return (
     <div>
@@ -95,11 +96,13 @@ const LessonRow: React.FC<{
       >
         {/* Order badge */}
         <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-          unlocked
-            ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-700 dark:text-sahifa-300'
-            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+          isCompleted
+            ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400'
+            : unlocked
+              ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-700 dark:text-sahifa-300'
+              : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
         }`}>
-          {unlocked ? (isExpanded ? '⏸' : '▶') : '🔒'}
+          {isCompleted ? '✅' : unlocked ? (isExpanded ? '⏸' : '▶') : '🔒'}
         </div>
 
         {/* Info */}
@@ -184,6 +187,7 @@ const CourseDetailPage: React.FC = () => {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [isEnrolled, setIsEnrolled] = useState(false)
   const [enrollLoading, setEnrollLoading] = useState(false)
+  const [completedIds, setCompletedIds] = useState<Set<number>>(new Set())
 
   const courseId = parseInt(id ?? '0', 10)
   const isOwner  = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -213,6 +217,17 @@ const CourseDetailPage: React.FC = () => {
       .catch(() => setError("Kurs yuklanmadi. Iltimos, qayta urinib ko'ring."))
       .finally(() => setLoading(false))
   }, [courseId, user])
+
+  // ── Load lesson progress when enrolled ───────────────────────────────────
+  useEffect(() => {
+    if (!courseId || !isEnrolled) return
+    apiService.getMyLessonProgress(courseId)
+      .then((res) => {
+        const ids: number[] = res.data?.completed_lesson_ids ?? []
+        setCompletedIds(new Set(ids))
+      })
+      .catch(() => {})
+  }, [courseId, isEnrolled])
 
   const handleEnroll = async () => {
     if (!course || isOwner || isEnrolled || enrollLoading) return
@@ -281,7 +296,9 @@ const CourseDetailPage: React.FC = () => {
       const canComplete = !!(lesson.is_free || isOwner || isEnrolled)
       const hasPlayableVideo = !!(detail?.video_url) || lesson.video_source === 'youtube'
       if (canComplete && hasPlayableVideo) {
-        apiService.completeLesson(lesson.id).catch(() => {})
+        apiService.completeLesson(lesson.id)
+          .then(() => setCompletedIds(prev => new Set([...prev, lesson.id])))
+          .catch(() => {})
       }
     } catch {
       // API service already shows toast
@@ -467,6 +484,29 @@ const CourseDetailPage: React.FC = () => {
           )}
         </div>
 
+        {/* Course progress bar — visible to enrolled students */}
+        {isEnrolled && lessons.length > 0 && (
+          <div className="mb-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">📈 Kurs bo'yicha progress</span>
+              <span className="text-xs font-bold text-sahifa-600 dark:text-sahifa-400">
+                {completedIds.size}/{lessons.length} ({lessons.length > 0 ? Math.round((completedIds.size / lessons.length) * 100) : 0}%)
+              </span>
+            </div>
+            <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+              <motion.div
+                className={`h-full rounded-full ${completedIds.size === lessons.length ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-sahifa-400 to-sahifa-600'}`}
+                initial={{ width: 0 }}
+                animate={{ width: `${lessons.length > 0 ? (completedIds.size / lessons.length) * 100 : 0}%` }}
+                transition={{ duration: 0.7, ease: 'easeOut' }}
+              />
+            </div>
+            {completedIds.size === lessons.length && completedIds.size > 0 && (
+              <p className="text-xs text-emerald-500 font-semibold mt-1.5 text-center">🎉 Siz kursni tugatdingiz!</p>
+            )}
+          </div>
+        )}
+
         {lessons.length === 0 ? (
           <div className="text-center py-10 space-y-2 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl">
             <span className="text-4xl">🎬</span>
@@ -491,6 +531,7 @@ const CourseDetailPage: React.FC = () => {
                 index={i}
                 isOwner={isOwner}
                 isEnrolled={isEnrolled}
+                isCompleted={completedIds.has(lesson.id)}
                 isExpanded={expandedId === lesson.id}
                 onToggle={() => handleToggleLesson(lesson)}
               />

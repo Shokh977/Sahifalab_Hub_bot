@@ -167,6 +167,30 @@ async def list_lessons(course_id: int = Query(..., description="Course ID")):
     return res.json()
 
 
+@router.get("/my-progress")
+async def my_lesson_progress(
+    course_id: int = Query(..., description="Course ID"),
+    authorization: Optional[str] = Header(None),
+):
+    """Student: return list of lesson_ids they have completed in a given course."""
+    caller_id = await _resolve_caller(authorization)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lesson_progress",
+            params={
+                "student_id": f"eq.{caller_id}",
+                "course_id": f"eq.{course_id}",
+                "is_completed": "eq.true",
+                "select": "lesson_id",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    return {"completed_lesson_ids": [r["lesson_id"] for r in rows if isinstance(r, dict)]}
+
+
 @router.get("/{lesson_id}")
 async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
     """
