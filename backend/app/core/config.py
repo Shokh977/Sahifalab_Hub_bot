@@ -57,7 +57,17 @@ class Settings(BaseSettings):
         "http://localhost:5173",
         "http://localhost:8000",
         "https://sahifalab-hub-bot.vercel.app",
+        # Allow any Vercel preview/production URL for this project
+        "https://sahifalab-hub-bot-*.vercel.app",
     ]
+
+    @field_validator('CORS_ORIGINS', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v):
+        """Also accept CORS_ORIGINS as a comma-separated env var string."""
+        if isinstance(v, str):
+            return [o.strip() for o in v.split(',') if o.strip()]
+        return v
     
     # Security — '*' allows Railway's internal hostnames
     ALLOWED_HOSTS: List[str] = ["*"]
