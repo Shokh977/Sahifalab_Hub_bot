@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { fetchHeroContent } from '../lib/supabase'
+import { Megaphone, Quote } from 'lucide-react'
 
 interface Quote {
   id: number
@@ -53,10 +54,10 @@ export const HeroSection: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="glass rounded-3xl p-6 mb-8 animate-pulse">
-        <div className="h-4 bg-sahifa-500/10 rounded w-1/3 mb-4" />
-        <div className="h-5 bg-sahifa-500/10 rounded w-full mb-2" />
-        <div className="h-5 bg-sahifa-500/10 rounded w-3/4" />
+      <div className="surface-card p-6 mb-8 animate-pulse">
+        <div className="h-4 bg-gray-100 dark:bg-[#202020] rounded w-1/3 mb-4" />
+        <div className="h-5 bg-gray-100 dark:bg-[#202020] rounded w-full mb-2" />
+        <div className="h-5 bg-gray-100 dark:bg-[#202020] rounded w-3/4" />
       </div>
     )
   }
@@ -72,41 +73,27 @@ export const HeroSection: React.FC = () => {
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-      className="relative rounded-3xl mb-8 overflow-hidden"
+      className="surface-card relative mb-8 overflow-hidden"
     >
-      {/* Gradient background — light: subtle warm, dark: deep orange-red */}
-      <div className="absolute inset-0 bg-gradient-to-br from-sahifa-100/80 via-sahifa-50 to-orange-50 dark:from-sahifa-600/90 dark:via-sahifa-700/80 dark:to-red-900/70" />
+      <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sahifa-500/50 to-transparent" />
 
-      {/* Glassmorphism overlay */}
-      <div className="absolute inset-0 backdrop-blur-sm bg-white/30 dark:bg-white/[0.03]" />
-
-      {/* Decorative elements */}
-      <div className="absolute -top-6 -right-6 w-24 h-24 bg-sahifa-300/20 dark:bg-sahifa-400/20 rounded-full blur-2xl" />
-      <div className="absolute -bottom-4 -left-4 w-20 h-20 bg-orange-200/25 dark:bg-orange-300/15 rounded-full blur-xl" />
-
-      {/* Content */}
-      <div className="relative p-6 space-y-4">
-        {/* Header */}
+      <div className="relative p-6 space-y-5">
         <div className="flex items-center gap-2.5">
-          <span className="text-2xl animate-float">
-            {isAnnouncement ? '📢' : '✦'}
-          </span>
-          <p className="text-[11px] uppercase tracking-[0.2em] text-sahifa-700/80 dark:text-sahifa-200/80 font-semibold">
+          <div className="w-10 h-10 rounded-2xl bg-sahifa-500/10 text-sahifa-600 dark:text-sahifa-400 flex items-center justify-center">
+            {isAnnouncement ? <Megaphone className="w-[18px] h-[18px]" strokeWidth={1.9} /> : <Quote className="w-[18px] h-[18px]" strokeWidth={1.9} />}
+          </div>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400 font-semibold">
             {isAnnouncement ? 'E\'lon' : 'Kun iqtibosi'}
           </p>
         </div>
 
-        {/* Quote */}
-        <blockquote className="text-lg font-semibold leading-relaxed text-gray-900/90 dark:text-white/95 tracking-wide">
-          <span className="text-sahifa-400/60 dark:text-sahifa-300/60 text-2xl leading-none mr-1">"</span>
+        <blockquote className="text-[20px] sm:text-[22px] font-semibold leading-[1.45] text-gray-900 dark:text-white tracking-[-0.02em]">
           {hero.text}
-          <span className="text-sahifa-400/60 dark:text-sahifa-300/60 text-2xl leading-none ml-1">"</span>
         </blockquote>
 
-        {/* Author */}
         <div className="flex items-center gap-2 pt-1">
-          <div className="w-6 h-px bg-gradient-to-r from-sahifa-400/50 to-transparent" />
-          <p className="text-sm font-medium text-sahifa-700/70 dark:text-sahifa-200/70 italic">
+          <div className="w-8 h-px bg-sahifa-500/40" />
+          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
             {hero.author}
           </p>
         </div>

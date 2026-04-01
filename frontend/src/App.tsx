@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { BookOpen, Sparkles } from 'lucide-react'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
@@ -57,11 +58,17 @@ const HomePage: React.FC = () => {
             className={`mb-6 ${!isTelegram ? 'lg:hidden' : ''}`}
           >
             <div className="flex items-center justify-between">
-              <h1 className="text-3xl font-extrabold tracking-tight">
-                <span className="bg-gradient-to-r from-sahifa-400 via-sahifa-500 to-sahifa-600 bg-clip-text text-transparent">
-                  SAHIFALAB
-                </span>
-              </h1>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-sahifa-500 text-white flex items-center justify-center shadow-[0_10px_24px_rgba(255,106,42,0.18)]">
+                  <BookOpen className="w-5 h-5" strokeWidth={2} />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-gray-900 dark:text-white">
+                    SAHIFALAB
+                  </h1>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Premium learning workspace</p>
+                </div>
+              </div>
               <ThemeToggle />
             </div>
           </motion.div>
@@ -74,13 +81,17 @@ const HomePage: React.FC = () => {
             className="mb-6"
           >
             <div className="speech-bubble px-4 py-3">
-              <p className="text-sm text-gray-700 dark:text-gray-200 leading-relaxed">
+              <div className="flex items-center gap-2 mb-2 text-sahifa-500">
+                <Sparkles className="w-4 h-4" strokeWidth={1.9} />
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Dashboard</span>
+              </div>
+              <p className="text-sm text-gray-900 dark:text-gray-100 leading-relaxed font-medium">
                 {user?.first_name
-                  ? `Assalomu alaykum, ${user.first_name}! 👋`
-                  : 'Assalomu alaykum! 👋'}
+                  ? `Assalomu alaykum, ${user.first_name}!`
+                  : 'Assalomu alaykum!'}
               </p>
-              <p className="text-xs text-sahifa-600/80 dark:text-sahifa-400/80 mt-1 italic">
-                Sahifalab sizning mentoringiz 📚
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Fokus, kurslar va bilim — bitta tartibli ish maydonida.
               </p>
             </div>
           </motion.div>
@@ -103,7 +114,7 @@ const HomePage: React.FC = () => {
             transition={{ duration: 0.5, delay: 0.2 }}
           >
             {/* Section label on desktop */}
-            <p className="hidden lg:block text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3">
+            <p className="hidden lg:block text-xs font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500 mb-3">
               Asosiy bo'limlar
             </p>
             <MenuGrid />
@@ -156,7 +167,9 @@ const NotFoundPage: React.FC = () => {
   const navigate = useNavigate()
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 bg-[#FAFAFA] dark:bg-slate-950">
-      <div className="text-7xl select-none">📭</div>
+      <div className="w-20 h-20 rounded-[28px] bg-sahifa-500/10 text-sahifa-500 flex items-center justify-center">
+        <BookOpen className="w-9 h-9" strokeWidth={1.8} />
+      </div>
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">404</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">Bu sahifa mavjud emas</p>
@@ -165,7 +178,7 @@ const NotFoundPage: React.FC = () => {
         onClick={() => navigate('/', { replace: true })}
         className="px-6 py-2.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-sm font-semibold rounded-xl transition-colors"
       >
-        🏠 Bosh sahifaga qaytish
+        Bosh sahifaga qaytish
       </button>
     </div>
   )

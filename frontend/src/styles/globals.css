@@ -31,18 +31,18 @@
 /* ── Light mode (default) ──────────────────────────────────────────────────── */
 :root {
   color-scheme: light;
-  --tg-theme-bg-color: #FAFAFA;
-  --tg-theme-text-color: #1E293B;
-  --tg-theme-hint-color: #64748B;
-  --tg-theme-link-color: #F26722;
-  --tg-theme-button-color: #F26722;
+  --tg-theme-bg-color: #FFFFFF;
+  --tg-theme-text-color: #111827;
+  --tg-theme-hint-color: #6B7280;
+  --tg-theme-link-color: #FF6A2A;
+  --tg-theme-button-color: #FF6A2A;
   --tg-theme-button-text-color: #ffffff;
-  --tg-theme-secondary-bg-color: #FFFFFF;
+  --tg-theme-secondary-bg-color: #F7F7F8;
 
-  --sahifa-orange: #F26722;
-  --sahifa-orange-glow: rgba(242, 103, 34, 0.2);
-  --sahifa-bg: #FAFAFA;
-  --sahifa-surface: #FFFFFF;
+  --sahifa-orange: #FF6A2A;
+  --sahifa-orange-glow: rgba(255, 106, 42, 0.16);
+  --sahifa-bg: #FFFFFF;
+  --sahifa-surface: #F7F7F8;
   --sahifa-border: #E5E7EB;
   --sahifa-card: #FFFFFF;
 }
@@ -50,20 +50,20 @@
 /* ── Dark mode ─────────────────────────────────────────────────────────────── */
 :root.dark {
   color-scheme: dark;
-  --tg-theme-bg-color: #0F172A;
-  --tg-theme-text-color: #F1F5F9;
-  --tg-theme-hint-color: #64748B;
-  --tg-theme-link-color: #F26722;
-  --tg-theme-button-color: #F26722;
+  --tg-theme-bg-color: #0F0F0F;
+  --tg-theme-text-color: #F5F5F5;
+  --tg-theme-hint-color: #9CA3AF;
+  --tg-theme-link-color: #FF6A2A;
+  --tg-theme-button-color: #FF6A2A;
   --tg-theme-button-text-color: #ffffff;
-  --tg-theme-secondary-bg-color: #1E293B;
+  --tg-theme-secondary-bg-color: #1A1A1A;
 
-  --sahifa-orange: #F26722;
-  --sahifa-orange-glow: rgba(242, 103, 34, 0.3);
-  --sahifa-bg: #0F172A;
-  --sahifa-surface: #1E293B;
-  --sahifa-border: #334155;
-  --sahifa-card: #162033;
+  --sahifa-orange: #FF6A2A;
+  --sahifa-orange-glow: rgba(255, 106, 42, 0.2);
+  --sahifa-bg: #0F0F0F;
+  --sahifa-surface: #1A1A1A;
+  --sahifa-border: #2A2A2A;
+  --sahifa-card: #1A1A1A;
 }
 
 * {
@@ -76,7 +76,9 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--sahifa-bg);
+  background:
+    radial-gradient(circle at top, rgba(255, 106, 42, 0.05), transparent 24%),
+    var(--sahifa-bg);
   color: var(--tg-theme-text-color);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
@@ -95,9 +97,8 @@ body {
   position: absolute;
   inset: 0;
   background-image:
-    radial-gradient(ellipse at 20% 50%, rgba(242, 103, 34, 0.04) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 20%, rgba(255, 215, 0, 0.03) 0%, transparent 50%),
-    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23F26722' fill-opacity='0.015'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    linear-gradient(to bottom, rgba(17, 24, 39, 0.015), transparent 15%),
+    radial-gradient(circle at top right, rgba(255, 106, 42, 0.045), transparent 22%);
   pointer-events: none;
   z-index: 0;
 }
@@ -108,24 +109,24 @@ body {
 
 /* ── Glassmorphism ─────────────────────────────────────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(16px) saturate(180%);
-  -webkit-backdrop-filter: blur(16px) saturate(180%);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(17, 24, 39, 0.06);
 }
 .dark .glass {
-  background: rgba(22, 32, 51, 0.65);
-  border: 1px solid rgba(242, 103, 34, 0.12);
+  background: rgba(26, 26, 26, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.05);
 }
 .glass-light {
-  background: rgba(242, 103, 34, 0.06);
+  background: rgba(255, 106, 42, 0.06);
   backdrop-filter: blur(12px) saturate(160%);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
-  border: 1px solid rgba(242, 103, 34, 0.12);
+  border: 1px solid rgba(255, 106, 42, 0.12);
 }
 .dark .glass-light {
-  background: rgba(242, 103, 34, 0.08);
-  border: 1px solid rgba(242, 103, 34, 0.15);
+  background: rgba(255, 106, 42, 0.08);
+  border: 1px solid rgba(255, 106, 42, 0.16);
 }
 
 /* ── Neon glow bar ─────────────────────────────────────────────────────────── */
@@ -146,31 +147,28 @@ body {
 /* ── Speech bubble ─────────────────────────────────────────────────────────── */
 .speech-bubble {
   position: relative;
-  background: rgba(242, 103, 34, 0.06);
-  border: 1px solid rgba(242, 103, 34, 0.15);
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(17, 24, 39, 0.06);
   border-radius: 1.25rem;
-  border-bottom-left-radius: 0.375rem;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.06);
 }
 .dark .speech-bubble {
-  background: rgba(242, 103, 34, 0.1);
-  border-color: rgba(242, 103, 34, 0.2);
+  background: rgba(26, 26, 26, 0.95);
+  border-color: rgba(255, 255, 255, 0.05);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
 }
 .speech-bubble::after {
   content: '';
   position: absolute;
-  bottom: -6px;
-  left: 16px;
-  width: 12px;
-  height: 12px;
-  background: rgba(242, 103, 34, 0.06);
-  border-right: 1px solid rgba(242, 103, 34, 0.15);
-  border-bottom: 1px solid rgba(242, 103, 34, 0.15);
-  transform: rotate(45deg);
+  inset: auto auto -1px 24px;
+  width: 26px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--sahifa-orange), transparent);
+  border: 0;
+  transform: none;
 }
 .dark .speech-bubble::after {
-  background: rgba(242, 103, 34, 0.1);
-  border-right-color: rgba(242, 103, 34, 0.2);
-  border-bottom-color: rgba(242, 103, 34, 0.2);
+  background: linear-gradient(90deg, var(--sahifa-orange), transparent);
 }
 
 /* ── Card glow on hover ────────────────────────────────────────────────────── */
@@ -178,10 +176,10 @@ body {
   transition: box-shadow 0.3s ease, transform 0.3s ease;
 }
 .card-glow:hover {
-  box-shadow: 0 0 20px rgba(242, 103, 34, 0.12), 0 8px 32px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(255, 106, 42, 0.08);
 }
 .dark .card-glow:hover {
-  box-shadow: 0 0 20px rgba(242, 103, 34, 0.2), 0 8px 32px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 106, 42, 0.1);
 }
 .card-glow:active {
   transform: scale(0.96);
@@ -194,24 +192,35 @@ body {
 
 @layer components {
   .btn-primary {
-    @apply px-5 py-2.5 bg-sahifa-500 text-white rounded-2xl font-semibold transition-all hover:bg-sahifa-600 shadow-glow-sm hover:shadow-glow active:scale-95;
+    @apply px-5 py-2.5 bg-sahifa-500 text-white rounded-2xl font-semibold transition-all hover:bg-sahifa-600 active:scale-95;
+    box-shadow: 0 10px 24px rgba(255, 106, 42, 0.18);
   }
 
   .btn-secondary {
     @apply px-5 py-2.5 rounded-2xl font-semibold transition-all
-           bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200
-           dark:bg-slate-800 dark:text-gray-200 dark:border-slate-700 dark:hover:bg-slate-700;
+           bg-gray-50 text-gray-700 border border-gray-200 hover:bg-gray-100
+           dark:bg-[#1A1A1A] dark:text-gray-200 dark:border-[#2A2A2A] dark:hover:bg-[#202020];
   }
 
   .card {
-    @apply rounded-3xl shadow-card p-5 transition-all
-           bg-white border border-gray-200/60
-           dark:bg-slate-850 dark:border-slate-800/50;
+      @apply rounded-3xl p-5 transition-all
+        bg-white border border-gray-200/70
+        dark:bg-[#1A1A1A] dark:border-[#2A2A2A];
+      box-shadow: 0 8px 30px rgba(15, 23, 42, 0.05);
   }
 
   .input-field {
     @apply w-full px-4 py-2.5 rounded-2xl focus:outline-none focus:ring-2 focus:ring-sahifa-500/50 focus:border-sahifa-500 transition-all
            bg-gray-50 text-gray-900 border border-gray-200 placeholder-gray-400
-           dark:bg-slate-800 dark:text-white dark:border-slate-700 dark:placeholder-slate-500;
+           dark:bg-[#141414] dark:text-white dark:border-[#2A2A2A] dark:placeholder-slate-500;
+  }
+
+  .surface-card {
+    @apply rounded-[24px] border border-gray-200/70 bg-white dark:bg-[#1A1A1A] dark:border-[#2A2A2A];
+    box-shadow: 0 10px 34px rgba(15, 23, 42, 0.05);
+  }
+
+  .premium-shell {
+    @apply bg-white dark:bg-[#0F0F0F];
   }
 }

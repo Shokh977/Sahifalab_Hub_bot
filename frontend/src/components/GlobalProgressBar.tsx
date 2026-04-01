@@ -13,16 +13,16 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { Award, ChevronRight, Clock3 } from 'lucide-react'
 import {
   useProgressStore,
-  calcLevel,
   levelBounds,
   levelProgress,
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
-import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
+import { getLevelTitle } from '../utils/levelTitles'
 
 // ── Level colour tiers (orange-forward) ───────────────────────────────────────
 function levelGradient(level: number): string {
@@ -41,7 +41,7 @@ function levelGradient(level: number): string {
 }
 
 function levelLabel(level: number): string {
-  return `${getLevelEmoji(level)} ${getLevelTitle(level)}`
+  return getLevelTitle(level)
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -71,11 +71,11 @@ const GlobalProgressBar: React.FC = () => {
       role="button"
       tabIndex={0}
       aria-label={`Daraja ${level} — kabinetni ochish`}
-      className="sticky top-0 z-50 bg-white/90 dark:bg-slate-950/90 backdrop-blur-xl border-b border-gray-200/50 dark:border-sahifa-500/10 px-4 py-2.5 cursor-pointer select-none active:opacity-80 transition-all duration-300"
+      className="sticky top-0 z-50 bg-white/88 dark:bg-[#0F0F0F]/92 backdrop-blur-xl border-b border-gray-200/70 dark:border-[#2A2A2A] px-4 py-2.5 cursor-pointer select-none active:opacity-80 transition-all duration-300"
       onClick={() => navigate('/cabinet')}
       onKeyDown={(e) => e.key === 'Enter' && navigate('/cabinet')}
     >
-      <div className="max-w-6xl mx-auto flex items-center gap-3">
+      <div className="max-w-[1200px] mx-auto flex items-center gap-3">
 
         {/* ── Avatar / Level badge ─────────────────────────────────────── */}
         <div className="flex-shrink-0 relative">
@@ -84,24 +84,18 @@ const GlobalProgressBar: React.FC = () => {
               src={photoUrl}
               alt="avatar"
               onError={() => setPhotoError(true)}
-              className="w-10 h-10 rounded-full object-cover shadow-glow-sm ring-2 ring-sahifa-500/20 dark:ring-sahifa-500/30"
+              className="w-10 h-10 rounded-2xl object-cover shadow-sm ring-1 ring-gray-200 dark:ring-[#2A2A2A]"
             />
           ) : (
             <div
-              className={`w-10 h-10 rounded-full bg-gradient-to-br ${grad} flex flex-col items-center justify-center shadow-glow-sm`}
+              className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${grad} flex items-center justify-center shadow-sm`}
             >
-              <span className="text-[10px] leading-none">
-                {levelLabel(level)}
-              </span>
-              <span className="text-white text-[10px] font-bold leading-none mt-0.5">
-                {level}
-              </span>
+              <Award className="w-4 h-4 text-white" strokeWidth={2} />
             </div>
           )}
-          {/* Gold star level chip */}
           {photoUrl && (
             <div
-              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-gradient-to-br from-amber-400 to-sahifa-500 flex items-center justify-center shadow-glow-sm text-white text-[9px] font-black border border-white dark:border-slate-950"
+              className="absolute -bottom-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-sahifa-500 flex items-center justify-center shadow-sm text-white text-[9px] font-black border border-white dark:border-[#0F0F0F]"
             >
               {level}
             </div>
@@ -111,18 +105,18 @@ const GlobalProgressBar: React.FC = () => {
         {/* ── XP bar ────────────────────────────────────────────────────── */}
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex justify-between items-center">
-            <span className="text-xs font-semibold text-sahifa-600 dark:text-sahifa-300/90 truncate">
-              ⭐ Daraja&nbsp;{level}
+            <span className="text-xs font-semibold text-gray-900 dark:text-white truncate flex items-center gap-1.5">
+              <span className="text-sahifa-500">Level {level}</span>
+              <span className="text-gray-400 dark:text-gray-500 font-medium truncate">{levelLabel(level)}</span>
             </span>
             <span className="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums ml-2 flex-shrink-0">
               {xpInLevel.toLocaleString()}&nbsp;/&nbsp;{xpForLevel.toLocaleString()}&nbsp;XP
             </span>
           </div>
 
-          {/* Neon progress track */}
-          <div className="h-2 bg-gray-200 dark:bg-slate-800 rounded-full overflow-hidden relative">
+          <div className="h-2 bg-gray-100 dark:bg-[#1A1A1A] rounded-full overflow-hidden relative border border-gray-200/70 dark:border-[#2A2A2A]">
             <motion.div
-              className="h-full rounded-full neon-bar"
+              className="h-full rounded-full bg-gradient-to-r from-sahifa-500 to-sahifa-600"
               initial={false}
               animate={{ width: `${Math.min(progress * 100, 100)}%` }}
               transition={{ duration: 0.9, ease: [0.34, 1.56, 0.64, 1] }}
@@ -131,12 +125,14 @@ const GlobalProgressBar: React.FC = () => {
         </div>
 
         {/* ── Focus clock ───────────────────────────────────────────────── */}
-        <div className="flex-shrink-0 flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400">
-          <span className="text-sm">⏱</span>
+        <div className="hidden sm:flex flex-shrink-0 items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 rounded-2xl px-3 py-2 bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200/70 dark:border-[#2A2A2A]">
+          <Clock3 className="w-3.5 h-3.5" strokeWidth={1.9} />
           <span className="font-mono font-semibold tabular-nums text-sahifa-500/80 dark:text-sahifa-400/80">
             {formatFocusTime(focusSeconds)}
           </span>
         </div>
+
+        <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" strokeWidth={2} />
 
         {/* ── Syncing indicator ─────────────────────────────────────────── */}
         {isSyncing && (

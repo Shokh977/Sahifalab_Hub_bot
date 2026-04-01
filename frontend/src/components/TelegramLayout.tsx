@@ -13,7 +13,7 @@ import React from 'react'
 
 const TelegramLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
-    <div className="min-h-screen bg-[#FAFAFA] dark:bg-slate-950 transition-colors duration-300">
+    <div className="min-h-screen premium-shell transition-colors duration-300">
       {children}
     </div>
   )

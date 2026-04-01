@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useThemeStore } from '../context/themeStore'
+import { Moon, SunMedium } from 'lucide-react'
 
 const ThemeToggle: React.FC = () => {
   const { theme, toggle } = useThemeStore()
@@ -34,11 +35,11 @@ const ThemeToggle: React.FC = () => {
         onClick={handleToggle}
         whileTap={{ scale: 0.85 }}
         className={`
-          relative w-9 h-9 rounded-xl flex items-center justify-center
+          relative w-10 h-10 rounded-2xl flex items-center justify-center
           transition-colors duration-300
           ${isDark
-            ? 'bg-slate-800 hover:bg-slate-700 border border-slate-700/50'
-            : 'bg-sahifa-50 hover:bg-sahifa-100 border border-sahifa-200/50'
+            ? 'bg-[#1A1A1A] hover:bg-[#202020] border border-white/5 text-white'
+            : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 shadow-sm'
           }
         `}
         aria-label={isDark ? "Yorug' rejim" : "Qorong'i rejim"}
@@ -51,9 +52,9 @@ const ThemeToggle: React.FC = () => {
               animate={{ rotate: 0, scale: 1, opacity: 1 }}
               exit={{ rotate: 90, scale: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="text-lg"
+              className="flex items-center justify-center"
             >
-              🌙
+              <Moon className="w-[18px] h-[18px]" strokeWidth={1.9} />
             </motion.span>
           ) : (
             <motion.span
@@ -62,9 +63,9 @@ const ThemeToggle: React.FC = () => {
               animate={{ rotate: 0, scale: 1, opacity: 1 }}
               exit={{ rotate: -90, scale: 0, opacity: 0 }}
               transition={{ duration: 0.3, ease: 'easeOut' }}
-              className="text-lg"
+              className="flex items-center justify-center"
             >
-              ☀️
+              <SunMedium className="w-[18px] h-[18px]" strokeWidth={1.9} />
             </motion.span>
           )}
         </AnimatePresence>
@@ -83,13 +84,13 @@ const ThemeToggle: React.FC = () => {
               px-3.5 py-2 rounded-xl whitespace-nowrap
               text-xs font-medium shadow-lg
               ${isDark
-                ? 'bg-slate-800 border border-slate-700 text-sahifa-300'
-                : 'bg-white border border-sahifa-200 text-sahifa-700 shadow-sahifa-100/50'
+                ? 'bg-[#1A1A1A] border border-white/5 text-gray-200'
+                : 'bg-white border border-gray-200 text-gray-700'
               }
             `}
           >
-            Yangi ko'rinish sizga yoqdimi? 😊
-            <div className="text-[10px] mt-0.5 opacity-60 italic">— Sam</div>
+            Rejim almashtirildi
+            <div className="text-[10px] mt-0.5 opacity-60">Interfeys yangilandi</div>
           </motion.div>
         )}
       </AnimatePresence>
