@@ -344,6 +344,28 @@ class ApiService {
       message,
     })
   }
+
+  // ─── Teacher application ───────────────────────────────────────────────────
+
+  /** Current user applies to become a teacher (sets role=teacher, status=pending) */
+  async applyTeacher() {
+    return this.axiosInstance.post('/api/auth/apply-teacher')
+  }
+
+  /** Admin: list pending teacher applications */
+  async getTeacherRequests() {
+    return this.axiosInstance.get('/api/auth/admin/teacher-requests')
+  }
+
+  /** Admin: approve a teacher application (sets status=active) */
+  async approveTeacher(telegramId: number) {
+    return this.axiosInstance.post(`/api/auth/admin/approve-teacher/${telegramId}`)
+  }
+
+  /** Admin: reject a teacher application (reverts to student) */
+  async rejectTeacher(telegramId: number) {
+    return this.axiosInstance.post(`/api/auth/admin/reject-teacher/${telegramId}`)
+  }
 }
 
 export default new ApiService()

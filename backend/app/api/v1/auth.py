@@ -326,3 +326,172 @@ async def verify_code(code: str):
         "status_account": profile.get("status", "active"),
         **token_data,
     }
+
+
+# ── Teacher application flow ──────────────────────────────────────────────────
+
+async def _resolve_telegram_id(authorization: Optional[str]) -> int:
+    """Decode Bearer JWT → telegram_id, raising 401 on failure."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    telegram_id = decode_token(parts[1])
+    if not telegram_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return telegram_id
+
+
+async def _resolve_admin_id(authorization: Optional[str]) -> int:
+    """Like _resolve_telegram_id but also verifies the user is an admin."""
+    telegram_id = await _resolve_telegram_id(authorization)
+    _ensure_supabase()
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "role"},
+                headers=_supabase_headers(),
+            )
+            profile = (res.json() or [{}])[0] if res.status_code == 200 else {}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    if profile.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return telegram_id
+
+
+@router.post("/apply-teacher")
+async def apply_teacher(authorization: Optional[str] = Header(None)):
+    """
+    Current user applies to become a teacher.
+    Sets profiles.role = 'teacher', profiles.status = 'pending'.
+    Idempotent — returns current status if already applied.
+    """
+    _ensure_supabase()
+    telegram_id = await _resolve_telegram_id(authorization)
+
+    # Fetch current profile
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "role,status"},
+                headers=_supabase_headers(),
+            )
+            profile = (res.json() or [{}])[0] if res.status_code == 200 else {}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    current_role   = profile.get("role", "student")
+    current_status = profile.get("status", "active")
+
+    if current_role == "admin":
+        raise HTTPException(status_code=400, detail="Admin cannot apply as teacher")
+
+    # Already submitted — return current state
+    if current_role == "teacher":
+        return {"success": True, "already_applied": True, "status": current_status}
+
+    # Set role=teacher, status=pending
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}"},
+                json={"role": "teacher", "status": "pending"},
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return {"success": True, "already_applied": False, "status": "pending"}
+
+
+@router.get("/admin/teacher-requests")
+async def list_teacher_requests(authorization: Optional[str] = Header(None)):
+    """
+    Admin: list all pending teacher applications.
+    Returns profiles where role='teacher' AND status='pending'.
+    """
+    _ensure_supabase()
+    await _resolve_admin_id(authorization)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={
+                    "role": "eq.teacher",
+                    "status": "eq.pending",
+                    "select": "telegram_id,first_name,username,photo_url,total_xp,level,created_at",
+                    "order": "created_at.asc",
+                },
+                headers=_supabase_headers(),
+            )
+            if res.status_code != 200:
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+            return res.json() or []
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@router.post("/admin/approve-teacher/{target_telegram_id}")
+async def approve_teacher(
+    target_telegram_id: int,
+    authorization: Optional[str] = Header(None),
+):
+    """Admin approves a pending teacher — sets status='active'."""
+    _ensure_supabase()
+    await _resolve_admin_id(authorization)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{target_telegram_id}"},
+                json={"role": "teacher", "status": "active"},
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return {"success": True, "message": "Teacher approved", "telegram_id": target_telegram_id}
+
+
+@router.post("/admin/reject-teacher/{target_telegram_id}")
+async def reject_teacher(
+    target_telegram_id: int,
+    authorization: Optional[str] = Header(None),
+):
+    """Admin rejects a teacher application — reverts to role='student', status='active'."""
+    _ensure_supabase()
+    await _resolve_admin_id(authorization)
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{target_telegram_id}"},
+                json={"role": "student", "status": "active"},
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    return {"success": True, "message": "Teacher application rejected", "telegram_id": target_telegram_id}

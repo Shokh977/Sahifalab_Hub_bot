@@ -70,7 +70,17 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers'
+
+interface TeacherRequest {
+  telegram_id: number
+  first_name: string | null
+  username: string | null
+  photo_url: string | null
+  total_xp: number
+  level: number
+  created_at: string
+}
 
 // ─── Quiz form types ──────────────────────────────────────────────────────────
 interface QuizQuestionForm {
@@ -178,6 +188,13 @@ const AdminPage: React.FC = () => {
   const [bookCoverUploading, setBookCoverUploading] = useState(false)
   const [bookCoverPercent, setBookCoverPercent] = useState(0)
   const [bookCoverMsg, setBookCoverMsg] = useState('')
+
+  // Teacher requests
+  const [teacherRequests, setTeacherRequests] = useState<TeacherRequest[]>([])
+  const [teacherReqLoading, setTeacherReqLoading] = useState(false)
+  const [teacherReqError, setTeacherReqError] = useState('')
+  const [teacherActionId, setTeacherActionId] = useState<number | null>(null)
+  const [teacherMsg, setTeacherMsg] = useState('')
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -338,6 +355,52 @@ const AdminPage: React.FC = () => {
     }
   }, [])
 
+  const loadTeacherRequests = useCallback(async () => {
+    if (!adminId) return
+    setTeacherReqLoading(true)
+    setTeacherReqError('')
+    try {
+      const res = await apiService.getTeacherRequests()
+      setTeacherRequests(res.data ?? [])
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Yuklab bo\'lmadi'
+      setTeacherReqError(String(detail))
+    } finally {
+      setTeacherReqLoading(false)
+    }
+  }, [adminId])
+
+  const handleApproveTeacher = async (telegramId: number) => {
+    setTeacherActionId(telegramId)
+    setTeacherMsg('')
+    try {
+      await apiService.approveTeacher(telegramId)
+      setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
+      loadTeacherRequests()
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
+      setTeacherMsg(`❌ ${detail}`)
+    } finally {
+      setTeacherActionId(null)
+    }
+  }
+
+  const handleRejectTeacher = async (telegramId: number) => {
+    if (!window.confirm(`Arizani rad etasizmi? ID: ${telegramId}`)) return
+    setTeacherActionId(telegramId)
+    setTeacherMsg('')
+    try {
+      await apiService.rejectTeacher(telegramId)
+      setTeacherMsg(`🚫 ${telegramId} rad etildi`)
+      loadTeacherRequests()
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
+      setTeacherMsg(`❌ ${detail}`)
+    } finally {
+      setTeacherActionId(null)
+    }
+  }
+
   useEffect(() => {
     if (!adminId) return
     loadStats()
@@ -346,7 +409,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'quiz') loadAdminQuizzes()
     if (activeTab === 'books') loadBooks()
     if (activeTab === 'sounds') loadSounds()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds])
+    if (activeTab === 'teachers') loadTeacherRequests()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -772,6 +836,7 @@ const AdminPage: React.FC = () => {
             { id: 'quiz', label: '📝 Quiz' },
             { id: 'books', label: '📚 Kitoblar' },
             { id: 'sounds', label: '🎵 Tovushlar' },
+            { id: 'teachers', label: '🎓 O\'qituvchilar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -1771,6 +1836,94 @@ const AdminPage: React.FC = () => {
                 <li>Vercel env vars-ga qo'shing: <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">VITE_SUPABASE_URL</code> va <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">VITE_SUPABASE_ANON_KEY</code></li>
               </ol>
             </div>
+          </div>
+        )}
+
+        {/* ── Teachers Tab ────────────────────────────────────────────── */}
+        {activeTab === 'teachers' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">O'qituvchi arizalari</h2>
+              <button
+                onClick={loadTeacherRequests}
+                disabled={teacherReqLoading}
+                className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-50"
+              >
+                {teacherReqLoading ? 'Yuklanmoqda…' : '↻ Yangilash'}
+              </button>
+            </div>
+
+            {teacherMsg && (
+              <div className="text-sm px-3 py-2 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200">
+                {teacherMsg}
+              </div>
+            )}
+
+            {teacherReqError && (
+              <div className="text-xs p-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/50">
+                ❌ {teacherReqError}
+              </div>
+            )}
+
+            {teacherReqLoading ? (
+              <div className="space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-20 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                ))}
+              </div>
+            ) : teacherRequests.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-6 text-center">
+                <div className="text-4xl mb-2">🎓</div>
+                <p className="text-sm text-gray-500 dark:text-gray-400">Hozircha pending ariza yo'q</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {teacherRequests.map((req) => (
+                  <div
+                    key={req.telegram_id}
+                    className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      {req.photo_url ? (
+                        <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold shrink-0">
+                          {(req.first_name || '?').charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                          {req.first_name || 'Noma\'lum'}
+                          {req.username && <span className="text-gray-400 ml-1 font-normal">@{req.username}</span>}
+                        </p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500">
+                          ID: {req.telegram_id} · Lv {req.level} · {req.total_xp} XP
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 shrink-0">
+                        ⏳ Pending
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => handleApproveTeacher(req.telegram_id)}
+                        disabled={teacherActionId === req.telegram_id}
+                        className="flex-1 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                      >
+                        {teacherActionId === req.telegram_id ? '…' : '✅ Tasdiqlash'}
+                      </button>
+                      <button
+                        onClick={() => handleRejectTeacher(req.telegram_id)}
+                        disabled={teacherActionId === req.telegram_id}
+                        className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
+                      >
+                        {teacherActionId === req.telegram_id ? '…' : '🚫 Rad etish'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 

@@ -27,6 +27,7 @@ import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import RoleGuard from './components/RoleGuard'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
+import TeacherApplyPage from './pages/TeacherApplyPage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 
@@ -192,6 +193,9 @@ const AppRoutes: React.FC = () => (
       <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
         <Route path="/teacher" element={<TeacherDashboardPage />} />
       </Route>
+
+      {/* Teacher application — any authenticated user */}
+      <Route path="/become-teacher" element={<TeacherApplyPage />} />
     </Route>
 
     {/* 404 — catch-all */}

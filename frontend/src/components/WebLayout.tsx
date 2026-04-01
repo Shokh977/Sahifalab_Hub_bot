@@ -158,11 +158,39 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
                 O'qituvchi
               </p>
             </div>
+            {user?.status === 'pending' ? (
+              /* Pending teacher — show notice instead of nav link */
+              <div className="mx-3 my-1 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">⏳ Ko'rib chiqilmoqda</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-tight">
+                  Arizangiz admin tasdiqlashini kutmoqda
+                </p>
+              </div>
+            ) : (
+              <SidebarNavItem
+                icon="🎓"
+                label="O'qituvchi paneli"
+                path="/teacher"
+                active={isActive('/teacher')}
+                onClick={onNavClick}
+              />
+            )}
+          </>
+        )}
+
+        {/* Become teacher CTA — only for active students */}
+        {user?.role === 'student' && user.status === 'active' && (
+          <>
+            <div className="pt-4 pb-1">
+              <p className="px-3 text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-600 font-semibold">
+                Karyera
+              </p>
+            </div>
             <SidebarNavItem
               icon="🎓"
-              label="O'qituvchi paneli"
-              path="/teacher"
-              active={isActive('/teacher')}
+              label="O'qituvchi bo'lish"
+              path="/become-teacher"
+              active={isActive('/become-teacher')}
               onClick={onNavClick}
             />
           </>
