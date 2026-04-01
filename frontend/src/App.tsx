@@ -145,6 +145,26 @@ const AdminRoute: React.FC = () => {
   return <AdminPage />
 }
 
+// 404 page
+const NotFoundPage: React.FC = () => {
+  const navigate = useNavigate()
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 bg-[#FAFAFA] dark:bg-slate-950">
+      <div className="text-7xl select-none">📭</div>
+      <div className="text-center space-y-1">
+        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">404</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Bu sahifa mavjud emas</p>
+      </div>
+      <button
+        onClick={() => navigate('/', { replace: true })}
+        className="px-6 py-2.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-sm font-semibold rounded-xl transition-colors"
+      >
+        🏠 Bosh sahifaga qaytish
+      </button>
+    </div>
+  )
+}
+
 // All app routes — shared between both layout modes
 const AppRoutes: React.FC = () => (
   <Routes>
@@ -173,6 +193,9 @@ const AppRoutes: React.FC = () => (
         <Route path="/teacher" element={<TeacherDashboardPage />} />
       </Route>
     </Route>
+
+    {/* 404 — catch-all */}
+    <Route path="*" element={<NotFoundPage />} />
   </Routes>
 )
 
