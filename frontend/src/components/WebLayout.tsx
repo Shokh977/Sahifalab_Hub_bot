@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import ThemeToggle from './ThemeToggle'
 import GlobalProgressBar from './GlobalProgressBar'
 import { useAuth } from '../context/AuthContext'
+import { useProgressStore } from '../context/progressStore'
 
 // ── Logout button ─────────────────────────────────────────────────────────────
 const LogoutButton: React.FC = () => {
@@ -95,11 +96,16 @@ const SidebarNavItem: React.FC<NavItem & { active: boolean; onClick?: () => void
 const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) => {
   const location = useLocation()
   const { user } = useAuth()
+  const { totalXP, level: storeLevel, isInitialized } = useProgressStore()
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
 
   const showTeacherSection = user?.role === 'teacher' || user?.role === 'admin'
   const showAdminSection = user?.role === 'admin'
+
+  // Live gamification values — store is populated by ProgressProvider on both platforms
+  const displayLevel = isInitialized ? storeLevel : (user?.level ?? 1)
+  const displayXP    = isInitialized ? totalXP    : (user?.total_xp ?? 0)
 
   return (
     <>
@@ -194,7 +200,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
             )}
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">{user.first_name}</p>
-              <p className="text-[10px] text-slate-400 dark:text-slate-500">Lv.{user.level ?? 1} · {(user.total_xp ?? 0).toLocaleString()} XP</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500">Lv.{displayLevel} · {displayXP.toLocaleString()} XP</p>
             </div>
             <LogoutButton />
           </div>
