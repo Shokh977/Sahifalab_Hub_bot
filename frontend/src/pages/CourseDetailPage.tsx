@@ -13,6 +13,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
 import VideoPlayer from '../components/VideoPlayer'
+import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
@@ -188,6 +189,8 @@ const CourseDetailPage: React.FC = () => {
   const [isEnrolled, setIsEnrolled] = useState(false)
   const [enrollLoading, setEnrollLoading] = useState(false)
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set())
+  const [showCert, setShowCert] = useState(false)
+  const [certData, setCertData] = useState<CertificateData | null>(null)
 
   const courseId = parseInt(id ?? '0', 10)
   const isOwner  = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -303,6 +306,21 @@ const CourseDetailPage: React.FC = () => {
     } catch {
       // API service already shows toast
     }
+  }
+
+  const handleOpenCertificate = () => {
+    if (!course || lessons.length === 0 || completedIds.size !== lessons.length) return
+    const userName = user?.first_name || user?.username || 'Talaba'
+    setCertData({
+      userName,
+      quizTitle: `${course.title} kursi`,
+      score: lessons.length,
+      total: lessons.length,
+      percentage: 100,
+      date: new Date().toLocaleDateString('uz-UZ'),
+      certificateId: `CRS-${course.id}-${user?.id ?? 'UNKNOWN'}`,
+    })
+    setShowCert(true)
   }
 
   if (loading) {
@@ -502,7 +520,15 @@ const CourseDetailPage: React.FC = () => {
               />
             </div>
             {completedIds.size === lessons.length && completedIds.size > 0 && (
-              <p className="text-xs text-emerald-500 font-semibold mt-1.5 text-center">🎉 Siz kursni tugatdingiz!</p>
+              <div className="mt-2 space-y-2">
+                <p className="text-xs text-emerald-500 font-semibold text-center">🎉 Siz kursni tugatdingiz!</p>
+                <button
+                  onClick={handleOpenCertificate}
+                  className="w-full py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 transition-all"
+                >
+                  🎓 Kurs sertifikatini yuklab olish
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -539,6 +565,11 @@ const CourseDetailPage: React.FC = () => {
           </div>
         )}
       </motion.div>
+
+      {/* ── Completion certificate modal ─────────────────────────────────── */}
+      {showCert && certData && (
+        <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />
+      )}
 
     </PageWrapper>
   )
