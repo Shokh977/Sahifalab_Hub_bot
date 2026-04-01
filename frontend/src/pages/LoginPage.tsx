@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
 import { useAuth } from '../context/AuthContext'
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000') as string
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 const POLL_MS = 2000
 const BOT_USERNAME = (import.meta.env.VITE_BOT_USERNAME as string | undefined) || 'Sahifalab_hub_bot'
 

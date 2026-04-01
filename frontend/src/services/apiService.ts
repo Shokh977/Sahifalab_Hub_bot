@@ -1,7 +1,7 @@
 import axios, { AxiosInstance } from 'axios'
 import { showToast } from '../components/ErrorBoundary'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_BASE_URL = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
 class ApiService {
   private axiosInstance: AxiosInstance

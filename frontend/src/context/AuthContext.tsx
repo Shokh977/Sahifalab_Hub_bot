@@ -18,7 +18,7 @@ import axios from 'axios'
 import { usePlatform } from '../hooks/usePlatform'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
-const API_BASE = (import.meta.env.VITE_API_URL || 'http://localhost:8000') as string
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
