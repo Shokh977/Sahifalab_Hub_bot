@@ -1,13 +1,42 @@
 <!doctype html>
-<html lang="en">
+<html lang="uz">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0088cc" />
-    <meta name="description" content="SAHIFALAB - Telegram Mini App" />
+
+    <!-- Favicon & PWA icons -->
+    <link rel="icon" type="image/jpeg" href="/sahifalab.jpg" />
+    <link rel="apple-touch-icon" href="/sahifalab.jpg" />
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0ea5e9" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="SAHIFALAB" />
+
+    <!-- Primary SEO -->
+    <title>SAHIFALAB — O'quv platformasi</title>
+    <meta name="description" content="SAHIFALAB — kitoblar, testlar, fokus vaqt va reyting. Bilimingizni oshiring va yutuqlarga erishing." />
+    <meta name="keywords" content="sahifalab, kitoblar, testlar, o'qish, fokus, telegram, uzbek, ta'lim" />
+    <meta name="author" content="SAHIFALAB" />
+    <meta name="robots" content="index, follow" />
+
+    <!-- Open Graph (Facebook / Telegram link preview) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="SAHIFALAB" />
+    <meta property="og:title" content="SAHIFALAB — O'quv platformasi" />
+    <meta property="og:description" content="Kitoblar, testlar, fokus vaqt va reyting. Bilimingizni oshiring." />
+    <meta property="og:image" content="https://sahifalab-hub-bot.vercel.app/sahifalab.jpg" />
+    <meta property="og:url" content="https://sahifalab-hub-bot.vercel.app/" />
+
+    <!-- Twitter / X card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="SAHIFALAB — O'quv platformasi" />
+    <meta name="twitter:description" content="Kitoblar, testlar, fokus vaqt va reyting. Bilimingizni oshiring." />
+    <meta name="twitter:image" content="https://sahifalab-hub-bot.vercel.app/sahifalab.jpg" />
+
+    <!-- Telegram Mini App JS (no-op in regular browsers) -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <title>SAHIFALAB</title>
   </head>
   <body>
     <div id="root"></div>
