@@ -81,6 +81,24 @@ async def _create_profile_row(telegram_id: int) -> dict:
     return rows[0]
 
 
+async def _get_teacher_courses(teacher_id: int) -> list[dict]:
+    """Fetch all courses owned by teacher."""
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={
+                "teacher_id": f"eq.{teacher_id}",
+                "select": "id, title, is_published, is_paid, enrolled_count, price, created_at",
+                "order": "created_at.desc",
+            },
+            headers=_supabase_headers(),
+        )
+    if res.status_code != 200:
+        raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    return res.json() if isinstance(res.json(), list) else []
+
+
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class TeacherProfileUpdate(BaseModel):
@@ -175,3 +193,64 @@ async def get_teacher_profile_by_id(telegram_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Teacher profile not found")
     return row
+
+
+@router.get("/analytics")
+async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
+    """
+    Return aggregate analytics for the calling teacher:
+      - courses/enrollments totals
+      - completed paid orders (Telegram Stars)
+      - estimated earnings in UZS
+      - recent payment orders list
+    """
+    _ensure_supabase()
+    teacher_id = await _get_telegram_id(authorization)
+
+    courses = await _get_teacher_courses(teacher_id)
+    course_ids = [c.get("id") for c in courses if c.get("id") is not None]
+
+    total_students = sum(int(c.get("enrolled_count") or 0) for c in courses)
+    published_courses = sum(1 for c in courses if c.get("is_published"))
+    paid_courses = sum(1 for c in courses if c.get("is_paid"))
+
+    gross_stars = 0
+    completed_orders = 0
+    recent_orders: list[dict] = []
+
+    if course_ids:
+        ids_csv = ",".join(str(x) for x in course_ids)
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/course_payment_orders",
+                params={
+                    "course_id": f"in.({ids_csv})",
+                    "status": "eq.completed",
+                    "select": "order_id, course_id, student_id, amount, currency, status, created_at, completed_at",
+                    "order": "created_at.desc",
+                    "limit": "200",
+                },
+                headers={**_supabase_headers(), "Prefer": "count=exact"},
+            )
+        if res.status_code != 200:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+
+        orders = res.json() if isinstance(res.json(), list) else []
+        completed_orders = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+        gross_stars = sum(int(o.get("amount") or 0) for o in orders if o.get("currency") == "XTR")
+        recent_orders = orders[:20]
+
+    # Approximate conversion (same as payments module): 1 Star ≈ 250 UZS
+    estimated_revenue_uzs = gross_stars * 250
+
+    return {
+        "teacher_id": teacher_id,
+        "courses_count": len(courses),
+        "published_courses": published_courses,
+        "paid_courses": paid_courses,
+        "total_students": total_students,
+        "completed_orders": completed_orders,
+        "gross_stars": gross_stars,
+        "estimated_revenue_uzs": estimated_revenue_uzs,
+        "recent_orders": recent_orders,
+    }

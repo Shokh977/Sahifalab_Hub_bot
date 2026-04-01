@@ -401,6 +401,11 @@ class ApiService {
     return this.axiosInstance.get(`/api/teacher/profile/${telegramId}`)
   }
 
+  /** Teacher: aggregate analytics (students, paid orders, income estimate) */
+  async getTeacherAnalytics() {
+    return this.axiosInstance.get('/api/teacher/analytics')
+  }
+
   // ─── Categories ───────────────────────────────────────────────────────────
 
   /** Public: list all course categories */

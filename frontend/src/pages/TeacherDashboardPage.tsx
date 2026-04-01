@@ -61,6 +61,16 @@ interface MyCourse {
   categories?:  { name: string; icon: string } | null
 }
 
+interface TeacherAnalytics {
+  courses_count: number
+  published_courses: number
+  paid_courses: number
+  total_students: number
+  completed_orders: number
+  gross_stars: number
+  estimated_revenue_uzs: number
+}
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 interface StatCardProps {
@@ -184,6 +194,8 @@ const TeacherDashboardPage: React.FC = () => {
   const [profileLoading, setProfileLoading] = useState(true)
   const [myCourses, setMyCourses] = useState<MyCourse[]>([])
   const [coursesLoading, setCoursesLoading] = useState(true)
+  const [analytics, setAnalytics] = useState<TeacherAnalytics | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(true)
 
   // ── Fetch stats from Supabase ────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
@@ -221,6 +233,13 @@ const TeacherDashboardPage: React.FC = () => {
       .then(res => setMyCourses(res.data))
       .catch(() => {})
       .finally(() => setCoursesLoading(false))
+  }, [])
+
+  useEffect(() => {
+    apiService.getTeacherAnalytics()
+      .then(res => setAnalytics(res.data))
+      .catch(() => {})
+      .finally(() => setAnalyticsLoading(false))
   }, [])
 
   // ── Stat card definitions ────────────────────────────────────────────────
@@ -363,6 +382,44 @@ const TeacherDashboardPage: React.FC = () => {
         {statCards.map(s => <StatCard key={s.label} {...s} />)}
       </motion.div>
 
+      {/* Revenue analytics */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.07 }}
+        className="mb-6"
+      >
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+          Daromad analitikasi
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <StatCard
+            icon="⭐"
+            label="Jami Stars"
+            value={analytics?.gross_stars?.toLocaleString() ?? 0}
+            sub={analyticsLoading ? 'Yuklanmoqda...' : `To'lovlar: ${analytics?.completed_orders ?? 0}`}
+            color="from-amber-50 to-yellow-100 dark:from-amber-900/20 dark:to-yellow-900/30"
+            loading={analyticsLoading}
+          />
+          <StatCard
+            icon="💸"
+            label="Taxminiy daromad"
+            value={`${(analytics?.estimated_revenue_uzs ?? 0).toLocaleString()} so'm`}
+            sub="1 Star ≈ 250 so'm"
+            color="from-emerald-50 to-green-100 dark:from-emerald-900/20 dark:to-green-900/30"
+            loading={analyticsLoading}
+          />
+          <StatCard
+            icon="🎯"
+            label="Pullik kurslar"
+            value={`${analytics?.paid_courses ?? 0} / ${analytics?.courses_count ?? 0}`}
+            sub={`Talabalar: ${analytics?.total_students ?? 0}`}
+            color="from-violet-50 to-fuchsia-100 dark:from-violet-900/20 dark:to-fuchsia-900/30"
+            loading={analyticsLoading}
+          />
+        </div>
+      </motion.div>
+
       {/* Quick actions */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
@@ -403,7 +460,7 @@ const TeacherDashboardPage: React.FC = () => {
           <ActionButton
             icon="📊"
             label="Analitika"
-            description="Ko'rishlar, o'tish darajasi va baholash statistikasi"
+            description="Daromad va pullik kurs statistikasi yuqorida ko'rsatilgan"
             disabled
           />
         </div>
