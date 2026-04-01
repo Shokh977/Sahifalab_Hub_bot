@@ -178,14 +178,16 @@ const CabinetPage: React.FC = () => {
   const { isWeb } = usePlatform()
   const { user: authUser } = useAuth()
 
-  const effectiveTelegramId   = (isWeb ? authUser?.id    : telegramId)    ?? null
-  const effectiveFirstName    = isWeb  ? (authUser?.first_name ?? '')      : (firstName ?? '')
-  const effectiveUsername     = isWeb  ? (authUser?.username ?? '')        : (username ?? '')
-  const effectiveTotalXP      = isWeb  ? (authUser?.total_xp ?? 0)        : totalXP
-  const effectiveLevel        = isWeb  ? (authUser?.level ?? 1)           : level
-  const effectiveFocusSeconds = isWeb  ? 0                                : focusSeconds
-  const effectiveIsLoading    = isWeb  ? false                            : isLoading
-  const effectiveQuizCount    = isWeb  ? 0                                : quizzesCompleted
+  // ProgressProvider initializes the store from authUser.id on both platforms,
+  // so progressStore values are valid for web and Telegram users alike.
+  const effectiveTelegramId   = telegramId   ?? authUser?.id   ?? null
+  const effectiveFirstName    = firstName    || authUser?.first_name || ''
+  const effectiveUsername     = username     || authUser?.username   || ''
+  const effectiveTotalXP      = totalXP      || authUser?.total_xp  || 0
+  const effectiveLevel        = level        || authUser?.level     || 1
+  const effectiveFocusSeconds = focusSeconds
+  const effectiveIsLoading    = isLoading
+  const effectiveQuizCount    = quizzesCompleted
 
   const [photoError, setPhotoError] = useState(false)
   const rawPhotoUrl = isWeb ? authUser?.photo_url : tgUser?.photo_url

@@ -10,6 +10,7 @@ import apiService from '@services/apiService'
 import { fetchBook, fetchMyRating } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { useAuth } from '../context/AuthContext'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,8 @@ const BookDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useTelegramWebApp()
+  const { user: authUser } = useAuth()
+  const effectiveUserId = user?.id ?? authUser?.id ?? null
 
   const [book, setBook] = useState<Book | null>(null)
   const [loading, setLoading] = useState(true)
@@ -88,28 +91,28 @@ const BookDetailPage: React.FC = () => {
 
   // Check purchase status for paid books
   useEffect(() => {
-    if (!book?.is_paid || !user?.id) return
+    if (!book?.is_paid || !effectiveUserId) return
     setPurchaseChecking(true)
-    apiService.checkPurchase(book.id, user.id)
+    apiService.checkPurchase(book.id, effectiveUserId)
       .then(r => setPurchased(r.data?.purchased === true))
       .catch(() => {})
       .finally(() => setPurchaseChecking(false))
-  }, [book, user])
+  }, [book, effectiveUserId])
 
   // Load user's existing rating
   useEffect(() => {
-    if (!book?.id || !user?.id) return
-    fetchMyRating(book.id, user.id)
+    if (!book?.id || !effectiveUserId) return
+    fetchMyRating(book.id, effectiveUserId)
       .then(rating => setMyRating(rating))
       .catch(() => {})
-  }, [book, user])
+  }, [book, effectiveUserId])
 
   const handleRate = async (stars: number) => {
-    if (!book || !user?.id) return
+    if (!book || !effectiveUserId) return
     setRatingLoading(true)
     setRatingMsg('')
     try {
-      const res = await apiService.rateBook(book.id, user.id, stars)
+      const res = await apiService.rateBook(book.id, effectiveUserId, stars)
       setMyRating(stars)
       setBook(prev => prev ? { ...prev, rating: res.data.average } : prev)
       setRatingMsg('✅ Baholandi!')
