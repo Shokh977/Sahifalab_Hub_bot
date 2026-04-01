@@ -1,52 +1,60 @@
 -- ══════════════════════════════════════════════════════════════════════════════
--- Migration 006 — teacher_profiles table
+-- Migration 006: teacher_profiles table
 -- Run in: Supabase Dashboard → SQL Editor → New Query → Run
 -- ══════════════════════════════════════════════════════════════════════════════
 
--- One row per approved teacher.
--- Counters (total_courses, total_students, total_earnings, rating) are updated
--- by the backend whenever course/enrollment/payment events occur.
-
+-- ── 1. Create table ───────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS public.teacher_profiles (
-  id              uuid          DEFAULT gen_random_uuid() PRIMARY KEY,
-  telegram_id     bigint        UNIQUE NOT NULL,          -- FK to profiles.telegram_id
-  bio             text,                                    -- short teacher bio
-  specialization  text,                                    -- e.g. "Python, Data Science"
-  avatar_url      text,                                    -- overrides profiles.photo_url if set
-  social_links    jsonb         NOT NULL DEFAULT '{}'::jsonb, -- { "telegram": "@...", "github": "...", ... }
+  id                uuid        DEFAULT gen_random_uuid() PRIMARY KEY,
+  telegram_id       bigint      UNIQUE NOT NULL,  -- FK to profiles.telegram_id
+  bio               text        NOT NULL DEFAULT '',
+  specialization    text        NOT NULL DEFAULT '',
+  experience_years  int         NOT NULL DEFAULT 0,
+  education         text        NOT NULL DEFAULT '',
+  website_url       text        NOT NULL DEFAULT '',
+  youtube_url       text        NOT NULL DEFAULT '',
+  telegram_channel  text        NOT NULL DEFAULT '',  -- e.g. @channel_name
+  profile_complete  boolean     NOT NULL DEFAULT false,
 
-  -- Denormalized counters — updated by backend triggers / service layer
-  total_courses   int           NOT NULL DEFAULT 0,
-  total_students  int           NOT NULL DEFAULT 0,
-  total_earnings  numeric(14,2) NOT NULL DEFAULT 0.00,    -- cumulative net earnings (UZS)
-  rating          numeric(3,2)  NOT NULL DEFAULT 0.00,    -- avg course rating 0.00–5.00
+  -- Denormalised counters (updated by triggers or backend logic)
+  total_students    int         NOT NULL DEFAULT 0,
+  total_courses     int         NOT NULL DEFAULT 0,
+  total_earnings    numeric(14,2) NOT NULL DEFAULT 0,   -- UZS
+  commission_rate   numeric(4,2)  NOT NULL DEFAULT 0.70, -- 70%
 
-  is_verified     boolean       NOT NULL DEFAULT false,   -- manually set by admin
-
-  created_at      timestamptz   DEFAULT now(),
-  updated_at      timestamptz   DEFAULT now()
+  created_at        timestamptz DEFAULT now(),
+  updated_at        timestamptz DEFAULT now()
 );
 
--- Auto-update updated_at (reuses the function created in migration 001)
+-- ── 2. Auto-update updated_at ─────────────────────────────────────────────────
+-- Reuse the set_updated_at() function already defined by the profiles migration.
 DROP TRIGGER IF EXISTS teacher_profiles_set_updated_at ON public.teacher_profiles;
 CREATE TRIGGER teacher_profiles_set_updated_at
   BEFORE UPDATE ON public.teacher_profiles
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
--- Index for fast lookup
-CREATE INDEX IF NOT EXISTS idx_teacher_profiles_telegram
+-- ── 3. Index for fast lookups ─────────────────────────────────────────────────
+CREATE INDEX IF NOT EXISTS idx_teacher_profiles_telegram_id
   ON public.teacher_profiles (telegram_id);
 
--- ── Row Level Security ────────────────────────────────────────────────────────
+-- ── 4. Row Level Security ──────────────────────────────────────────────────────
 ALTER TABLE public.teacher_profiles ENABLE ROW LEVEL SECURITY;
 
--- Public can read all teacher profiles (needed for course listing pages)
+-- Anyone (anon) can read all teacher profiles (for public course/teacher pages)
 DROP POLICY IF EXISTS "teacher_profiles: public read" ON public.teacher_profiles;
 CREATE POLICY "teacher_profiles: public read"
-  ON public.teacher_profiles
-  FOR SELECT
-  TO anon
-  USING (true);
+  ON public.teacher_profiles FOR SELECT TO anon USING (true);
 
--- Writes go through the backend service-role key which bypasses RLS.
--- No anon write policy is needed.
+-- Anon can insert (backend uses anon key to create the first row on behalf of teacher)
+DROP POLICY IF EXISTS "teacher_profiles: anon insert" ON public.teacher_profiles;
+CREATE POLICY "teacher_profiles: anon insert"
+  ON public.teacher_profiles FOR INSERT TO anon WITH CHECK (true);
+
+-- Anon can update (backend validates ownership via JWT before calling Supabase)
+DROP POLICY IF EXISTS "teacher_profiles: anon update" ON public.teacher_profiles;
+CREATE POLICY "teacher_profiles: anon update"
+  ON public.teacher_profiles FOR UPDATE TO anon USING (true) WITH CHECK (true);
+
+-- ── 5. Verification queries ───────────────────────────────────────────────────
+-- SELECT * FROM public.teacher_profiles LIMIT 5;
+-- SELECT count(*) FROM public.teacher_profiles;

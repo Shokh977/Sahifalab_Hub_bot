@@ -13,6 +13,7 @@ import { useAuth } from '../context/AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
+import apiService from '../services/apiService'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_IDS = [807466591]
@@ -33,6 +34,17 @@ interface TopStudent {
   level:             number
   quizzes_completed: number
   app_online_at:     string | null
+}
+
+interface TeacherProfile {
+  bio:              string
+  specialization:   string
+  experience_years: number
+  total_students:   number
+  total_courses:    number
+  total_earnings:   number
+  commission_rate:  number
+  profile_complete: boolean
 }
 
 // ── Stat card ─────────────────────────────────────────────────────────────────
@@ -154,6 +166,8 @@ const TeacherDashboardPage: React.FC = () => {
   const [statsLoading, setStatsLoading] = useState(true)
   const [top5, setTop5] = useState<TopStudent[]>([])
   const [top5Loading, setTop5Loading] = useState(true)
+  const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
 
   // ── Fetch stats from Supabase ────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
@@ -200,6 +214,13 @@ const TeacherDashboardPage: React.FC = () => {
   }, [])
 
   useEffect(() => { fetchStats() }, [fetchStats])
+
+  useEffect(() => {
+    apiService.getTeacherProfile()
+      .then(res => setTeacherProfile(res.data))
+      .catch(() => { /* silently ignore — profile may not exist yet */ })
+      .finally(() => setProfileLoading(false))
+  }, [])
 
   // ── Stat card definitions ────────────────────────────────────────────────
   const statCards: StatCardProps[] = [
@@ -259,6 +280,66 @@ const TeacherDashboardPage: React.FC = () => {
           </span>
         </div>
       </motion.div>
+
+      {/* Teacher own profile banner */}
+      {!profileLoading && (
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.03 }}
+          className="mb-5"
+        >
+          {!teacherProfile?.profile_complete ? (
+            /* Incomplete profile prompt */
+            <div className="flex items-start gap-3 p-4 rounded-2xl bg-sahifa-50 dark:bg-sahifa-900/20 border border-sahifa-200 dark:border-sahifa-800">
+              <span className="text-2xl shrink-0 mt-0.5">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-sahifa-700 dark:text-sahifa-300">
+                  Profilingizni to'ldiring
+                </p>
+                <p className="text-xs text-sahifa-600/80 dark:text-sahifa-400/80 mt-0.5 leading-relaxed">
+                  Bio va mutaxassislik qo'shsangiz o'quvchilar sizni tezroq topadi.
+                </p>
+              </div>
+              <Link
+                to="/teacher/setup"
+                className="shrink-0 px-3 py-1.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-xs font-semibold rounded-xl transition-colors"
+              >
+                To'ldirish →
+              </Link>
+            </div>
+          ) : (
+            /* Completed profile card */
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-lg shrink-0">
+                {(user?.first_name || '?').charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {user?.first_name} · {teacherProfile.specialization || 'O\'qituvchi'}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate leading-relaxed">
+                  {teacherProfile.bio || ''}
+                </p>
+              </div>
+              <div className="text-right shrink-0 space-y-0.5">
+                <p className="text-xs font-bold text-sahifa-600 dark:text-sahifa-400">
+                  {teacherProfile.total_students} talaba
+                </p>
+                <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                  {Math.round(teacherProfile.commission_rate * 100)}% komisyon
+                </p>
+              </div>
+              <Link
+                to="/teacher/setup"
+                className="shrink-0 ml-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 text-[11px] text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              >
+                ✏️
+              </Link>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* Supabase not configured warning */}
       {!isSupabaseConfigured && (

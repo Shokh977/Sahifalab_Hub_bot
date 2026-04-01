@@ -369,21 +369,29 @@ class ApiService {
 
   // ─── Teacher profile ──────────────────────────────────────────────────────
 
-  /** Fetch (or auto-create) own teacher_profiles row. Requires teacher/admin JWT. */
+  /** Get calling teacher's own profile (auto-creates row if not yet present) */
   async getTeacherProfile() {
     return this.axiosInstance.get('/api/teacher/profile')
   }
 
-  /** Update own teacher profile (bio, specialization, social_links). */
+  /**
+   * Update teacher profile fields.
+   * Omit fields you don't want to change.
+   */
   async updateTeacherProfile(data: {
-    bio?: string
-    specialization?: string
-    social_links?: Record<string, string>
+    bio?:              string
+    specialization?:   string
+    experience_years?: number
+    education?:        string
+    website_url?:      string
+    youtube_url?:      string
+    telegram_channel?: string
+    profile_complete?: boolean
   }) {
-    return this.axiosInstance.put('/api/teacher/profile', data)
+    return this.axiosInstance.patch('/api/teacher/profile', data)
   }
 
-  /** Public: fetch any teacher's profile by telegram_id. */
+  /** Public: read any teacher's profile by telegram_id */
   async getPublicTeacherProfile(telegramId: number) {
     return this.axiosInstance.get(`/api/teacher/profile/${telegramId}`)
   }

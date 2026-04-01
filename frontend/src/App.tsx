@@ -28,6 +28,7 @@ import LoginPage from './pages/LoginPage'
 import RoleGuard from './components/RoleGuard'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import TeacherApplyPage from './pages/TeacherApplyPage'
+import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 
@@ -192,6 +193,7 @@ const AppRoutes: React.FC = () => (
       {/* Teacher & Admin role-gated routes */}
       <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
         <Route path="/teacher" element={<TeacherDashboardPage />} />
+        <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
       </Route>
 
       {/* Teacher application — any authenticated user */}

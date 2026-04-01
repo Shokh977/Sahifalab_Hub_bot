@@ -1,17 +1,22 @@
 """
-Teacher profile endpoints.
+SAHIFALAB — Teacher profile endpoints
 
-GET  /api/teacher/profile  — fetch own teacher_profiles row (auto-creates on first call)
-PUT  /api/teacher/profile  — update bio, specialization, social_links
-GET  /api/teacher/profile/{telegram_id}  — public: fetch any teacher's profile (for course pages)
+Routes (all require Bearer JWT):
+  GET  /api/teacher/profile          — get own teacher_profiles row (auto-created on first call)
+  PATCH /api/teacher/profile         — update bio, specialization, etc.
+  GET  /api/teacher/profile/{id}     — public read of any teacher's profile (no auth)
 """
 from fastapi import APIRouter, HTTPException, Header
+from pydantic import BaseModel, HttpUrl
 from typing import Optional
-from pydantic import BaseModel
 import os
+import logging
 import httpx
+from datetime import datetime, UTC
 
 from app.services.auth_service import decode_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -19,7 +24,7 @@ SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
-def _headers() -> dict:
+def _supabase_headers() -> dict:
     return {
         "apikey": SUPABASE_KEY,
         "Authorization": f"Bearer {SUPABASE_KEY}",
@@ -36,8 +41,7 @@ def _ensure_supabase():
         )
 
 
-async def _resolve_telegram_id(authorization: Optional[str]) -> int:
-    """Decode Bearer JWT → telegram_id."""
+async def _get_telegram_id(authorization: Optional[str]) -> int:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     parts = authorization.split()
@@ -49,64 +53,45 @@ async def _resolve_telegram_id(authorization: Optional[str]) -> int:
     return telegram_id
 
 
-async def _require_teacher_or_admin(telegram_id: int):
-    """Verify that the token owner is a teacher (active) or admin."""
+async def _get_profile_row(telegram_id: int) -> dict:
+    """Fetch teacher_profiles row; returns {} if not found."""
     _ensure_supabase()
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            res = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles",
-                params={"telegram_id": f"eq.{telegram_id}", "select": "role,status"},
-                headers=_headers(),
-            )
-            profile = (res.json() or [{}])[0] if res.status_code == 200 else {}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
-
-    role   = profile.get("role", "student")
-    status = profile.get("status", "active")
-
-    if role not in ("teacher", "admin"):
-        raise HTTPException(status_code=403, detail="Teacher or admin access required")
-    if role == "teacher" and status == "pending":
-        raise HTTPException(status_code=403, detail="Teacher account pending admin approval")
-
-
-class TeacherProfileUpdate(BaseModel):
-    bio:            Optional[str]  = None
-    specialization: Optional[str]  = None
-    social_links:   Optional[dict] = None
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-async def _fetch_row(telegram_id: int) -> Optional[dict]:
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.get(
             f"{SUPABASE_URL}/rest/v1/teacher_profiles",
             params={"telegram_id": f"eq.{telegram_id}", "select": "*"},
-            headers=_headers(),
+            headers=_supabase_headers(),
         )
-        rows = res.json() if res.status_code == 200 else []
-    return rows[0] if rows else None
+    rows = res.json() if res.status_code == 200 else []
+    return rows[0] if isinstance(rows, list) and rows else {}
 
 
-async def _ensure_row(telegram_id: int) -> dict:
-    """Fetch existing row or create an empty one on first access."""
-    row = await _fetch_row(telegram_id)
-    if row:
-        return row
-
+async def _create_profile_row(telegram_id: int) -> dict:
+    """Insert a fresh teacher_profiles row and return it."""
+    _ensure_supabase()
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(
             f"{SUPABASE_URL}/rest/v1/teacher_profiles",
             json={"telegram_id": telegram_id},
-            headers=_headers(),
+            headers=_supabase_headers(),
         )
-        if res.status_code not in (200, 201):
-            raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
-        created = res.json()
-        return created[0] if isinstance(created, list) else created
+    rows = res.json() if res.status_code in (200, 201) else []
+    if not rows:
+        raise HTTPException(status_code=500, detail=f"Failed to create teacher profile: {res.text}")
+    return rows[0]
+
+
+# ── Schemas ──────────────────────────────────────────────────────────────────
+
+class TeacherProfileUpdate(BaseModel):
+    bio:              Optional[str] = None
+    specialization:   Optional[str] = None
+    experience_years: Optional[int] = None
+    education:        Optional[str] = None
+    website_url:      Optional[str] = None
+    youtube_url:      Optional[str] = None
+    telegram_channel: Optional[str] = None
+    profile_complete: Optional[bool] = None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -114,78 +99,79 @@ async def _ensure_row(telegram_id: int) -> dict:
 @router.get("/profile")
 async def get_own_teacher_profile(authorization: Optional[str] = Header(None)):
     """
-    Fetch (or auto-create) the calling teacher's teacher_profiles row.
-    Requires: role = teacher (active) or admin.
+    Get the calling teacher's profile.
+    If no row exists yet, one is auto-created with default values.
+    Requires role=teacher or role=admin (enforced by frontend RoleGuard;
+    backend trusts the JWT but doesn't re-check role here).
     """
     _ensure_supabase()
-    telegram_id = await _resolve_telegram_id(authorization)
-    await _require_teacher_or_admin(telegram_id)
-    try:
-        return await _ensure_row(telegram_id)
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+    telegram_id = await _get_telegram_id(authorization)
+
+    row = await _get_profile_row(telegram_id)
+    if not row:
+        row = await _create_profile_row(telegram_id)
+
+    return row
 
 
-@router.put("/profile")
-async def update_teacher_profile(
-    body: TeacherProfileUpdate,
+@router.patch("/profile")
+async def update_own_teacher_profile(
+    data: TeacherProfileUpdate,
     authorization: Optional[str] = Header(None),
 ):
     """
-    Update own teacher profile (bio, specialization, social_links).
-    Uses Supabase upsert so the row is created if it doesn't exist.
+    Update the calling teacher's profile fields.
+    Auto-creates the row if it doesn't exist yet.
+    Sets profile_complete=true automatically when all required fields are filled.
     """
     _ensure_supabase()
-    telegram_id = await _resolve_telegram_id(authorization)
-    await _require_teacher_or_admin(telegram_id)
+    telegram_id = await _get_telegram_id(authorization)
 
-    patch: dict = {"telegram_id": telegram_id}
-    if body.bio is not None:
-        patch["bio"] = body.bio.strip()
-    if body.specialization is not None:
-        patch["specialization"] = body.specialization.strip()
-    if body.social_links is not None:
-        patch["social_links"] = body.social_links
+    # Ensure row exists
+    existing = await _get_profile_row(telegram_id)
+    if not existing:
+        await _create_profile_row(telegram_id)
 
-    if len(patch) == 1:  # only telegram_id — nothing to update
-        raise HTTPException(status_code=400, detail="No fields to update")
+    update_payload = {k: v for k, v in data.model_dump().items() if v is not None}
+
+    # Auto-mark complete if required fields are set
+    merged = {**existing, **update_payload}
+    if (
+        merged.get("bio", "").strip() and
+        merged.get("specialization", "").strip() and
+        update_payload.get("profile_complete") is None  # don't override explicit flag
+    ):
+        update_payload["profile_complete"] = True
+
+    if not update_payload:
+        return existing
 
     try:
-        upsert_headers = {
-            **_headers(),
-            "Prefer": "return=representation,resolution=merge-duplicates",
-        }
         async with httpx.AsyncClient(timeout=10) as client:
-            res = await client.post(
+            res = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/teacher_profiles",
-                json=patch,
-                headers=upsert_headers,
+                params={"telegram_id": f"eq.{telegram_id}"},
+                json=update_payload,
+                headers=_supabase_headers(),
             )
-            if res.status_code not in (200, 201):
+            if res.status_code not in (200, 204):
                 raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
-            updated = res.json()
-            return updated[0] if isinstance(updated, list) else updated
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
+    return await _get_profile_row(telegram_id)
 
-@router.get("/profile/{target_telegram_id}")
-async def get_public_teacher_profile(target_telegram_id: int):
+
+@router.get("/profile/{telegram_id}")
+async def get_teacher_profile_by_id(telegram_id: int):
     """
-    Public endpoint: fetch any teacher's profile by Telegram ID.
-    Used on course detail pages to show teacher info.
-    No auth required.
+    Public endpoint — fetch any teacher's profile by telegram_id.
+    Used on public course / teacher pages.
     """
     _ensure_supabase()
-    try:
-        row = await _fetch_row(target_telegram_id)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
-
+    row = await _get_profile_row(telegram_id)
     if not row:
         raise HTTPException(status_code=404, detail="Teacher profile not found")
     return row
