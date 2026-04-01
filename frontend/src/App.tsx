@@ -22,13 +22,16 @@ import GlobalProgressBar from './components/GlobalProgressBar'
 import ProgressProvider from './components/ProgressProvider'
 import TelegramLayout from './components/TelegramLayout'
 import WebLayout from './components/WebLayout'
+import AuthGuard from './components/AuthGuard'
+import { AuthProvider, useAuth } from './context/AuthContext'
+import LoginPage from './pages/LoginPage'
 import { usePlatform } from './hooks/usePlatform'
-import { useTelegramWebApp, useTelegramBackButton } from './hooks/useTelegramWebApp'
+import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
 const HomePage: React.FC = () => {
-  const { user } = useTelegramWebApp()
+  const { user } = useAuth()
   const { isTelegram } = usePlatform()
 
   return (
@@ -133,7 +136,7 @@ const TelegramBackButtonHandler: React.FC = () => {
 
 // Route guard: only allows admin Telegram users through
 const AdminRoute: React.FC = () => {
-  const { user } = useTelegramWebApp()
+  const { user } = useAuth()
   const isAdmin = user?.id ? ADMIN_TELEGRAM_IDS.includes(user.id) : false
 
   // If Telegram WebApp not loaded yet (user is null), still show AdminPage
@@ -148,20 +151,26 @@ const AdminRoute: React.FC = () => {
 // All app routes — shared between both layout modes
 const AppRoutes: React.FC = () => (
   <Routes>
-    <Route path="/" element={<HomePage />} />
-    <Route path="/study" element={<StudyWithMe />} />
-    <Route path="/quiz" element={<QuizPage />} />
-    <Route path="/kitoblar" element={<KitoblarPage />} />
-    <Route path="/kitoblar/:id" element={<BookDetailPage />} />
-    <Route path="/resources" element={<ResourcesPage />} />
-    <Route path="/about" element={<AboutPage />} />
-    <Route path="/admin" element={<AdminRoute />} />
-    <Route path="/cabinet" element={<CabinetPage />} />
-    <Route path="/leaderboard" element={<LeaderboardPage />} />
-    <Route path="/book-summarizer" element={<BookSummarizerPage />} />
-    <Route path="/ai-companion" element={<AICompanionPage />} />
-    <Route path="/daily" element={<DailyPage />} />
-    <Route path="/plans" element={<PlansPage />} />
+    {/* Public — accessible without authentication */}
+    <Route path="/login" element={<LoginPage />} />
+
+    {/* Protected — AuthGuard checks JWT in web mode; passes through in Telegram */}
+    <Route element={<AuthGuard />}>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/study" element={<StudyWithMe />} />
+      <Route path="/quiz" element={<QuizPage />} />
+      <Route path="/kitoblar" element={<KitoblarPage />} />
+      <Route path="/kitoblar/:id" element={<BookDetailPage />} />
+      <Route path="/resources" element={<ResourcesPage />} />
+      <Route path="/about" element={<AboutPage />} />
+      <Route path="/admin" element={<AdminRoute />} />
+      <Route path="/cabinet" element={<CabinetPage />} />
+      <Route path="/leaderboard" element={<LeaderboardPage />} />
+      <Route path="/book-summarizer" element={<BookSummarizerPage />} />
+      <Route path="/ai-companion" element={<AICompanionPage />} />
+      <Route path="/daily" element={<DailyPage />} />
+      <Route path="/plans" element={<PlansPage />} />
+    </Route>
   </Routes>
 )
 
@@ -206,9 +215,11 @@ const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <Router>
-        <ProgressProvider>
-          <AppShell />
-        </ProgressProvider>
+        <AuthProvider>
+          <ProgressProvider>
+            <AppShell />
+          </ProgressProvider>
+        </AuthProvider>
         <ToastContainer />
       </Router>
     </ErrorBoundary>

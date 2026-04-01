@@ -12,14 +12,14 @@
  */
 
 import { useEffect } from 'react'
-import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
 
 const HEARTBEAT_MS = 5 * 60 * 1000   // 5 minutes
 const PRESENCE_MS = 45 * 1000        // 45 seconds
 
 const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useTelegramWebApp()
+  const { user } = useAuth()
   const { init, syncToSupabase, pendingFocusSeconds, pingPresence } = useProgressStore()
 
   // ── 1. Initialize store when Telegram user is available ─────────────────
