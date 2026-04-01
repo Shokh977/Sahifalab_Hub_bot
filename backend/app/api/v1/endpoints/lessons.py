@@ -92,6 +92,7 @@ class LessonCreate(BaseModel):
     title:            str
     description:      Optional[str] = ""
     video_url:        Optional[str] = ""
+    video_source:     Optional[str] = "bunny"   # 'youtube' | 'bunny' | 'none'
     duration_minutes: Optional[int] = 0
     order_index:      Optional[int] = 0
     is_free:          Optional[bool] = False
@@ -101,6 +102,7 @@ class LessonUpdate(BaseModel):
     title:            Optional[str] = None
     description:      Optional[str] = None
     video_url:        Optional[str] = None
+    video_source:     Optional[str] = None      # 'youtube' | 'bunny' | 'none'
     duration_minutes: Optional[int] = None
     order_index:      Optional[int] = None
     is_free:          Optional[bool] = None
@@ -126,7 +128,7 @@ async def list_lessons(course_id: int = Query(..., description="Course ID")):
             f"{SUPABASE_URL}/rest/v1/lessons",
             params={
                 "course_id": f"eq.{course_id}",
-                "select": "id, course_id, title, description, duration_minutes, order_index, is_free, created_at",
+                "select": "id, course_id, title, description, video_source, duration_minutes, order_index, is_free, created_at",
                 "order": "order_index.asc",
             },
             headers=_supabase_headers(),
@@ -157,9 +159,10 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
         raise HTTPException(status_code=404, detail="Lesson not found")
     lesson = rows[0]
 
-    # For paid lessons, hide video_url unless caller is teacher/admin
-    # (enrollment gating will be added in Step 11)
-    if not lesson.get("is_free"):
+    # Hide video_url only for Bunny-hosted paid lessons (YouTube URLs are already public)
+    # Enrollment gating added in Step 11
+    is_bunny = lesson.get("video_source", "bunny") == "bunny"
+    if not lesson.get("is_free") and is_bunny:
         caller_id: Optional[int] = None
         if authorization:
             try:
@@ -184,6 +187,7 @@ async def create_lesson(body: LessonCreate, authorization: Optional[str] = Heade
         "title":            body.title,
         "description":      body.description or "",
         "video_url":        body.video_url or "",
+        "video_source":     body.video_source or "bunny",
         "duration_minutes": body.duration_minutes or 0,
         "order_index":      body.order_index or 0,
         "is_free":          bool(body.is_free),
@@ -264,7 +268,7 @@ async def update_lesson(
     course_id = rows[0]["course_id"]
     await _assert_course_owner(course_id, caller_id)
 
-    patch = {k: v for k, v in body.model_dump().items() if v is not None}
+    patch = body.model_dump(exclude_none=True)
     if not patch:
         raise HTTPException(status_code=400, detail="No fields to update")
 

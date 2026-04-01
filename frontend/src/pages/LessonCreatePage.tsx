@@ -6,25 +6,24 @@
  *   /courses/:courseId/lessons/:lessonId/edit   → edit mode (pre-fill from API)
  *
  * Fields:
- *   title, description, order_index, is_free toggle,
- *   video (VideoUploadWidget → sets video_url + duration_minutes auto)
- *
- * On save:
- *   create → POST /api/lessons    → redirect to /courses/:courseId
- *   edit   → PATCH /api/lessons/:id → redirect back
+ *   title, description, VideoSourcePicker (YouTube OR Bunny.net),
+ *   duration_minutes, order_index, is_free toggle
  */
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
-import VideoUploadWidget from '../components/VideoUploadWidget'
+import VideoSourcePicker from '../components/VideoSourcePicker'
 import apiService from '../services/apiService'
 
 // ── types ─────────────────────────────────────────────────────────────────────
+type VideoSource = 'youtube' | 'bunny' | 'none'
+
 type FormState = {
   title:            string
   description:      string
   video_url:        string
+  video_source:     VideoSource
   duration_minutes: number
   order_index:      number
   is_free:          boolean
@@ -34,6 +33,7 @@ const EMPTY: FormState = {
   title:            '',
   description:      '',
   video_url:        '',
+  video_source:     'bunny',
   duration_minutes: 0,
   order_index:      1,
   is_free:          false,
@@ -65,15 +65,15 @@ const LessonCreatePage: React.FC = () => {
     courseId: string
     lessonId?: string
   }>()
-  const navigate  = useNavigate()
-  const isEdit    = !!lessonId
-  const cId       = parseInt(courseId ?? '0', 10)
+  const navigate = useNavigate()
+  const isEdit   = !!lessonId
+  const cId      = parseInt(courseId ?? '0', 10)
 
-  const [form, setForm]       = useState<FormState>(EMPTY)
-  const [status, setStatus]   = useState<'idle' | 'loading' | 'saving' | 'saved' | 'error'>('idle')
-  const [errorMsg, setError]  = useState('')
+  const [form, setForm]      = useState<FormState>(EMPTY)
+  const [status, setStatus]  = useState<'idle' | 'loading' | 'saving' | 'saved' | 'error'>('idle')
+  const [errorMsg, setError] = useState('')
 
-  // ── load existing lesson for edit ────────────────────────────────────────
+  // ── load existing lesson for edit ─────────────────────────────────────────
   useEffect(() => {
     if (!isEdit || !lessonId) return
     setStatus('loading')
@@ -84,6 +84,7 @@ const LessonCreatePage: React.FC = () => {
           title:            l.title            ?? '',
           description:      l.description      ?? '',
           video_url:        l.video_url        ?? '',
+          video_source:     (l.video_source    ?? 'bunny') as VideoSource,
           duration_minutes: l.duration_minutes ?? 0,
           order_index:      l.order_index      ?? 1,
           is_free:          !!l.is_free,
@@ -93,12 +94,8 @@ const LessonCreatePage: React.FC = () => {
       .catch(() => { setError('Dars yuklanmadi'); setStatus('error') })
   }, [isEdit, lessonId])
 
-  // ── field helper ─────────────────────────────────────────────────────────
-  const set = (key: keyof FormState, value: string | number | boolean) =>
-    setForm(prev => ({ ...prev, [key]: value }))
-
-  // ── video uploaded callback ───────────────────────────────────────────────
-  const onUploaded = (url: string, durationSec: number) => {
+  // ── video picker callback ─────────────────────────────────────────────────
+  const onVideoChange = (url: string, durationSec: number) => {
     setForm(prev => ({
       ...prev,
       video_url:        url,
@@ -118,6 +115,7 @@ const LessonCreatePage: React.FC = () => {
       title:            form.title.trim(),
       description:      form.description.trim(),
       video_url:        form.video_url,
+      video_source:     form.video_source,
       duration_minutes: form.duration_minutes,
       order_index:      form.order_index,
       is_free:          form.is_free,
@@ -158,7 +156,7 @@ const LessonCreatePage: React.FC = () => {
             {isEdit ? 'Darsni tahrirlash' : 'Yangi dars'}
           </h1>
           <p className="text-xs text-gray-500 dark:text-gray-400">
-            {isEdit ? 'Dars ma\'lumotlarini yangilang' : 'Kursga yangi dars qo\'shing'}
+            {isEdit ? "Dars ma'lumotlarini yangilang" : "Kursga yangi dars qo'shing"}
           </p>
         </div>
       </motion.div>
@@ -180,7 +178,7 @@ const LessonCreatePage: React.FC = () => {
             <input
               type="text"
               value={form.title}
-              onChange={e => set('title', e.target.value)}
+              onChange={e => setForm(p => ({ ...p, title: e.target.value }))}
               placeholder="Masalan: Python ga kirish"
               className={inputCls}
               maxLength={120}
@@ -191,37 +189,32 @@ const LessonCreatePage: React.FC = () => {
           <Field label="Qisqa tavsif" hint="Ushbu darsda nima o'rganiladi?">
             <textarea
               value={form.description}
-              onChange={e => set('description', e.target.value)}
+              onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
               placeholder="Darsning qisqacha mazmuni..."
               rows={3}
               className={`${inputCls} resize-none`}
             />
           </Field>
 
-          {/* Video upload */}
-          <Field
-            label="Video"
-            hint={
-              form.video_url
-                ? `CDN: ${form.video_url}`
-                : 'mp4 · webm · mov · mkv — maks. 500 MB'
-            }
-          >
-            <VideoUploadWidget
+          {/* Video source picker */}
+          <Field label="Video manba">
+            <VideoSourcePicker
               courseId={cId || undefined}
-              onUploaded={onUploaded}
-              existingUrl={form.video_url}
+              source={form.video_source}
+              videoUrl={form.video_url}
+              onSourceChange={s => setForm(prev => ({ ...prev, video_source: s, video_url: '' }))}
+              onVideoChange={onVideoChange}
               disabled={status === 'saving' || status === 'saved'}
             />
           </Field>
 
           {/* Duration + Order */}
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Davomiyligi (daqiqa)" hint="Video yuklansa avtomatik to'ladi">
+            <Field label="Davomiyligi (daqiqa)" hint="YouTube uchun qo'lda kiriting">
               <input
                 type="number"
                 value={form.duration_minutes}
-                onChange={e => set('duration_minutes', parseInt(e.target.value) || 0)}
+                onChange={e => setForm(p => ({ ...p, duration_minutes: parseInt(e.target.value) || 0 }))}
                 min={0}
                 className={inputCls}
               />
@@ -230,7 +223,7 @@ const LessonCreatePage: React.FC = () => {
               <input
                 type="number"
                 value={form.order_index}
-                onChange={e => set('order_index', parseInt(e.target.value) || 1)}
+                onChange={e => setForm(p => ({ ...p, order_index: parseInt(e.target.value) || 1 }))}
                 min={1}
                 className={inputCls}
               />
@@ -244,12 +237,12 @@ const LessonCreatePage: React.FC = () => {
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">Bepul namuna</p>
                 <p className="text-[11px] text-gray-400 dark:text-gray-500">
                   {form.is_free
-                    ? 'Ro\'yxatdan o\'tmaganlar ham ko\'rishi mumkin'
-                    : 'Faqat yozilgan talabalar ko\'radi'}
+                    ? "Ro'yxatdan o'tmaganlar ham ko'rishi mumkin"
+                    : "Faqat yozilgan talabalar ko'radi"}
                 </p>
               </div>
               <div
-                onClick={() => set('is_free', !form.is_free)}
+                onClick={() => setForm(p => ({ ...p, is_free: !p.is_free }))}
                 className={`w-11 h-6 rounded-full transition-colors ${
                   form.is_free ? 'bg-amber-400' : 'bg-slate-200 dark:bg-slate-700'
                 } relative cursor-pointer`}
@@ -276,7 +269,7 @@ const LessonCreatePage: React.FC = () => {
           >
             {status === 'saving' && '⏳ Saqlanmoqda...'}
             {status === 'saved'  && '✅ Saqlandi!'}
-            {(status === 'idle' || status === 'error') && (isEdit ? '💾 Saqlash' : '➕ Dars qo\'shish')}
+            {(status === 'idle' || status === 'error') && (isEdit ? '💾 Saqlash' : "➕ Dars qo'shish")}
           </button>
 
         </motion.form>

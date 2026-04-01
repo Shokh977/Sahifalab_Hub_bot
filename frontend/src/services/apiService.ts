@@ -482,6 +482,7 @@ class ApiService {
     title:            string
     description?:     string
     video_url?:       string
+    video_source?:    string
     duration_minutes?: number
     order_index?:     number
     is_free?:         boolean
@@ -494,6 +495,7 @@ class ApiService {
     title?:            string
     description?:      string
     video_url?:        string
+    video_source?:     string
     duration_minutes?: number
     order_index?:      number
     is_free?:          boolean

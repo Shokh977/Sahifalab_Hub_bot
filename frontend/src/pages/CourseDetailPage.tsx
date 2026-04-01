@@ -5,13 +5,14 @@
  *  • Course header (thumbnail, title, badges, stats, teacher card)
  *  • Category / Level / Language / Duration metadata row
  *  • Description
- *  • Lesson list (free lessons unlocked; paid lessons locked unless enrolled)
+ *  • Lesson list — click a free/unlocked lesson → inline VideoPlayer expands
  *  • Sticky enroll / "Already enrolled" CTA
  */
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
+import VideoPlayer from '../components/VideoPlayer'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
@@ -39,6 +40,8 @@ interface Lesson {
   id:               number
   title:            string
   description:      string
+  video_url:        string
+  video_source:     'youtube' | 'bunny' | 'none'
   duration_minutes: number
   order_index:      number
   is_free:          boolean
@@ -62,53 +65,104 @@ function levelLabel(level: string) {
 }
 
 // ── Lesson row ────────────────────────────────────────────────────────────────
-const LessonRow: React.FC<{ lesson: Lesson; index: number; isOwner: boolean }> = ({ lesson, index, isOwner }) => {
+const LessonRow: React.FC<{
+  lesson: Lesson
+  index: number
+  isOwner: boolean
+  isExpanded: boolean
+  onToggle: () => void
+}> = ({ lesson, index, isOwner, isExpanded, onToggle }) => {
   const unlocked = lesson.is_free || isOwner
   return (
-    <motion.div
-      initial={{ opacity: 0, x: -6 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.03 }}
-      className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
-        unlocked
-          ? 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-sahifa-300 dark:hover:border-sahifa-600 cursor-pointer'
-          : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50'
-      }`}
-    >
-      {/* Order badge */}
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
-        unlocked
-          ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-700 dark:text-sahifa-300'
-          : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-      }`}>
-        {unlocked ? index + 1 : '🔒'}
-      </div>
-
-      {/* Info */}
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-medium truncate ${
-          unlocked ? 'text-gray-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
+    <div>
+      <motion.div
+        initial={{ opacity: 0, x: -6 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ delay: index * 0.03 }}
+        onClick={unlocked ? onToggle : undefined}
+        className={`flex items-center gap-3 p-3 rounded-xl border transition-colors ${
+          unlocked
+            ? `border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 cursor-pointer ${
+                isExpanded
+                  ? 'border-sahifa-300 dark:border-sahifa-600'
+                  : 'hover:border-sahifa-300 dark:hover:border-sahifa-600'
+              }`
+            : 'border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50'
+        }`}
+      >
+        {/* Order badge */}
+        <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${
+          unlocked
+            ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-700 dark:text-sahifa-300'
+            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
         }`}>
-          {lesson.title}
-        </p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {lesson.duration_minutes > 0 && (
-            <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              ⏱ {lesson.duration_minutes} daq
-            </span>
-          )}
-          {lesson.is_free && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold">
-              Bepul
-            </span>
-          )}
+          {unlocked ? (isExpanded ? '⏸' : '▶') : '🔒'}
         </div>
-      </div>
 
-      {unlocked && (
-        <span className="text-sahifa-500 dark:text-sahifa-400 text-sm shrink-0">▶</span>
-      )}
-    </motion.div>
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className={`text-sm font-medium truncate ${
+            unlocked ? 'text-gray-900 dark:text-white' : 'text-slate-400 dark:text-slate-500'
+          }`}>
+            {lesson.title}
+          </p>
+          <div className="flex items-center gap-2 mt-0.5">
+            {lesson.duration_minutes > 0 && (
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                ⏱ {lesson.duration_minutes} daq
+              </span>
+            )}
+            {lesson.is_free && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-semibold">
+                Bepul
+              </span>
+            )}
+            {lesson.video_source === 'youtube' && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">
+                📺 YouTube
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Owner edit link */}
+        {isOwner && (
+          <Link
+            to={`/courses/${lesson.id}/lessons/${lesson.id}/edit`}
+            onClick={e => e.stopPropagation()}
+            className="text-[11px] text-slate-400 hover:text-sahifa-500 shrink-0 px-1"
+          >
+            ✏️
+          </Link>
+        )}
+      </motion.div>
+
+      {/* Inline video player */}
+      <AnimatePresence>
+        {isExpanded && unlocked && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.25 }}
+            className="overflow-hidden"
+          >
+            <div className="pt-2 pb-1 px-1">
+              <VideoPlayer
+                videoSource={lesson.video_source ?? 'bunny'}
+                videoUrl={lesson.video_url ?? ''}
+                title={lesson.title}
+              />
+              {lesson.description && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-1 leading-relaxed">
+                  {lesson.description}
+                </p>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -122,6 +176,7 @@ const CourseDetailPage: React.FC = () => {
   const [lessons, setLessons] = useState<Lesson[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
+  const [expandedId, setExpandedId] = useState<number | null>(null)
 
   const courseId = parseInt(id ?? '0', 10)
   const isOwner  = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -318,7 +373,14 @@ const CourseDetailPage: React.FC = () => {
         ) : (
           <div className="space-y-2">
             {lessons.map((lesson, i) => (
-              <LessonRow key={lesson.id} lesson={lesson} index={i} isOwner={isOwner} />
+              <LessonRow
+                key={lesson.id}
+                lesson={lesson}
+                index={i}
+                isOwner={isOwner}
+                isExpanded={expandedId === lesson.id}
+                onToggle={() => setExpandedId(prev => prev === lesson.id ? null : lesson.id)}
+              />
             ))}
           </div>
         )}
