@@ -11,6 +11,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import ThemeToggle from './ThemeToggle'
 import GlobalProgressBar from './GlobalProgressBar'
+import { useAuth } from '../context/AuthContext'
 
 // ── Navigation definitions ────────────────────────────────────────────────────
 
@@ -78,8 +79,12 @@ const SidebarNavItem: React.FC<NavItem & { active: boolean; onClick?: () => void
 
 const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) => {
   const location = useLocation()
+  const { user } = useAuth()
   const isActive = (path: string) =>
     path === '/' ? location.pathname === '/' : location.pathname.startsWith(path)
+
+  const showTeacherSection = user?.role === 'teacher' || user?.role === 'admin'
+  const showAdminSection = user?.role === 'admin'
 
   return (
     <>
@@ -123,6 +128,42 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
             onClick={onNavClick}
           />
         ))}
+
+        {/* Teacher section */}
+        {showTeacherSection && (
+          <>
+            <div className="pt-4 pb-1">
+              <p className="px-3 text-[10px] uppercase tracking-widest text-sahifa-400 dark:text-sahifa-600 font-semibold">
+                O'qituvchi
+              </p>
+            </div>
+            <SidebarNavItem
+              icon="🎓"
+              label="O'qituvchi paneli"
+              path="/teacher"
+              active={isActive('/teacher')}
+              onClick={onNavClick}
+            />
+          </>
+        )}
+
+        {/* Admin section */}
+        {showAdminSection && (
+          <>
+            <div className="pt-4 pb-1">
+              <p className="px-3 text-[10px] uppercase tracking-widest text-red-400 dark:text-red-600 font-semibold">
+                Admin
+              </p>
+            </div>
+            <SidebarNavItem
+              icon="🔐"
+              label="Admin panel"
+              path="/admin"
+              active={isActive('/admin')}
+              onClick={onNavClick}
+            />
+          </>
+        )}
       </nav>
 
       {/* Bottom: theme toggle + attribution */}

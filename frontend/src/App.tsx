@@ -25,10 +25,10 @@ import WebLayout from './components/WebLayout'
 import AuthGuard from './components/AuthGuard'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
+import RoleGuard from './components/RoleGuard'
+import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
-
-const ADMIN_TELEGRAM_IDS = [807466591]
 
 const HomePage: React.FC = () => {
   const { user } = useAuth()
@@ -134,16 +134,13 @@ const TelegramBackButtonHandler: React.FC = () => {
   return null
 }
 
-// Route guard: only allows admin Telegram users through
+// Route guard: only allows admin role through
 const AdminRoute: React.FC = () => {
-  const { user } = useAuth()
-  const isAdmin = user?.id ? ADMIN_TELEGRAM_IDS.includes(user.id) : false
+  const { user, isLoading } = useAuth()
 
-  // If Telegram WebApp not loaded yet (user is null), still show AdminPage
-  // because it has its own login gate. But if user IS detected and NOT admin, redirect.
-  if (user && !isAdmin) {
-    return <Navigate to="/" replace />
-  }
+  if (isLoading) return null
+  if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin') return <Navigate to="/" replace />
 
   return <AdminPage />
 }
@@ -170,6 +167,11 @@ const AppRoutes: React.FC = () => (
       <Route path="/ai-companion" element={<AICompanionPage />} />
       <Route path="/daily" element={<DailyPage />} />
       <Route path="/plans" element={<PlansPage />} />
+
+      {/* Teacher & Admin role-gated routes */}
+      <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
+        <Route path="/teacher" element={<TeacherDashboardPage />} />
+      </Route>
     </Route>
   </Routes>
 )
