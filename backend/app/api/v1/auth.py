@@ -2,7 +2,8 @@ from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 import os
 import logging
-from datetime import datetime, UTC
+import secrets
+from datetime import datetime, UTC, timedelta
 import httpx
 
 from app.services.auth_service import (
@@ -170,3 +171,158 @@ async def logout(authorization: str = Header(None)):
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     return {"success": True, "message": "Logged out"}
+
+
+# ── Bot-code auth flow ────────────────────────────────────────────────────────
+# 1. Frontend calls POST /api/auth/request-code  → gets a short-lived code
+# 2. Frontend shows:  t.me/<BOT_USERNAME>?start=auth_<code>
+# 3. User taps link → Telegram opens bot → bot claims the code (see bot/bot.py)
+# 4. Frontend polls  GET /api/auth/verify-code/<code> every 2 s
+# 5. When claimed → backend issues JWT and returns it
+# ─────────────────────────────────────────────────────────────────────────────
+
+BOT_USERNAME = os.getenv("BOT_USERNAME", "Sahifalab_hub_bot")
+CODE_TTL_MINUTES = 10
+
+
+@router.post("/request-code")
+async def request_code():
+    """Generate a one-time auth code and return the bot deep-link."""
+    _ensure_supabase()
+
+    code = secrets.token_hex(4)          # 8 hex chars, e.g. "a3f19c2b"
+    expires_at = (datetime.now(UTC) + timedelta(minutes=CODE_TTL_MINUTES)).isoformat()
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/auth_codes",
+                json={"code": code, "expires_at": expires_at},
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 201):
+                raise HTTPException(status_code=500, detail=f"Failed to create code: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    bot_link = f"https://t.me/{BOT_USERNAME}?start=auth_{code}"
+    return {"code": code, "bot_link": bot_link, "expires_in_seconds": CODE_TTL_MINUTES * 60}
+
+
+@router.get("/verify-code/{code}")
+async def verify_code(code: str):
+    """
+    Poll this endpoint until the bot claims the code.
+    Returns:
+      - 202 {"status": "pending"}  — not yet claimed
+      - 200 {"status": "ok", "access_token": ..., ...}  — claimed, JWT issued
+      - 410 {"detail": "expired"}  — code is expired or used
+    """
+    _ensure_supabase()
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/auth_codes",
+                params={"code": f"eq.{code}", "select": "*"},
+                headers=_supabase_headers(),
+            )
+            rows = res.json() if res.status_code == 200 else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="Code not found")
+
+    row = rows[0]
+
+    # Check expiry / already used
+    expires_at = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
+    if row.get("used") or datetime.now(UTC) > expires_at:
+        raise HTTPException(status_code=410, detail="Code expired or already used")
+
+    # Not yet claimed by the bot
+    if not row.get("telegram_id"):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=202, content={"status": "pending"})
+
+    telegram_id = row["telegram_id"]
+    first_name   = row.get("first_name", "")
+    username     = row.get("username")
+    photo_url    = row.get("photo_url")
+
+    # Mark code as used
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/auth_codes",
+                params={"code": f"eq.{code}"},
+                json={"used": True},
+                headers=_supabase_headers(),
+            )
+    except Exception:
+        pass  # non-fatal — worst case it gets polled once more
+
+    # Upsert profile
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Check if profile exists
+            chk = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "telegram_id"},
+                headers=_supabase_headers(),
+            )
+            exists = isinstance(chk.json(), list) and len(chk.json()) > 0
+
+            if not exists:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    json={
+                        "telegram_id": telegram_id,
+                        "first_name": first_name,
+                        "username": username,
+                        "photo_url": photo_url,
+                        "app_created_at": datetime.now(UTC).isoformat(),
+                        "app_last_login": datetime.now(UTC).isoformat(),
+                    },
+                    headers=_supabase_headers(),
+                )
+            else:
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"telegram_id": f"eq.{telegram_id}"},
+                    json={
+                        "photo_url": photo_url,
+                        "app_last_login": datetime.now(UTC).isoformat(),
+                    },
+                    headers=_supabase_headers(),
+                )
+    except Exception as e:
+        logger.warning(f"Profile upsert warning: {e}")
+
+    # Fetch role + status
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "role,status"},
+                headers=_supabase_headers(),
+            )
+            profile = (res.json() or [{}])[0] if res.status_code == 200 else {}
+    except Exception:
+        profile = {}
+
+    token_data = create_access_token(telegram_id)
+
+    return {
+        "status": "ok",
+        "telegram_id": telegram_id,
+        "first_name": first_name,
+        "username": username,
+        "photo_url": photo_url,
+        "role": profile.get("role", "student"),
+        "status_account": profile.get("status", "active"),
+        **token_data,
+    }

@@ -53,6 +53,8 @@ interface AuthContextValue {
   isAuthenticated: boolean
   /** Web-only: call with Telegram Login Widget data → stores JWT + user */
   loginWithTelegram: (data: TelegramWidgetData) => Promise<void>
+  /** Web-only: call with data returned by GET /api/auth/verify-code → stores JWT + user */
+  loginWithCode: (data: Record<string, any>) => void
   /** Web-only: clears JWT and user */
   logout: () => void
 }
@@ -114,6 +116,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWebUser({ id: telegram_id, first_name, username, photo_url, role: role ?? 'student', status: status ?? 'active' })
   }, [])
 
+  // ── Web: login via bot-code verify response ───────────────────────────────
+  const loginWithCode = useCallback((data: Record<string, any>) => {
+    const { access_token, telegram_id, first_name, username, photo_url, role, status_account } = data
+    localStorage.setItem('auth_token', access_token)
+    setToken(access_token)
+    setWebUser({
+      id: telegram_id,
+      first_name,
+      username,
+      photo_url,
+      role: role ?? 'student',
+      status: status_account ?? 'active',
+    })
+  }, [])
+
   // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(() => {
     localStorage.removeItem('auth_token')
@@ -144,7 +161,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, logout }}
+      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, logout }}
     >
       {children}
     </AuthContext.Provider>
