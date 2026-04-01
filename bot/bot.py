@@ -431,7 +431,7 @@ class TelegramBotHandler:
         # 5 different motivation messages
         messages = [
             (
-                f"Salom, {name}! 👋\n\n"
+                f"Assalomu alaykum, {name}! 👋\n\n"
                 "Bugun 15 daqiqa SAHIFALAB bilan shug'ullansangiz ham katta natija bo'ladi. 📚\n"
                 "Kichik qadamlar — katta o'sish! 💪\n\n"
                 "Quyidagi tugma orqali mini app'ni oching:"
@@ -443,21 +443,28 @@ class TelegramBotHandler:
                 "Hozir o'quv platformasini oching:"
             ),
             (
-                f"Salom, {name}! 🎯\n\n"
+                 f"Assalomu alaykum, {name}! 🌟\n\n"
+                   "Bilim — bu sizdan hech kim tortib ololmaydigan yagona boylikdir. 💎\n"
+                   "Bugungi mutolaa sizning ertangi yuksakligingiz poydevori bo'ladi. 🏛️\n\n"
+                   "Yangi bilimlarni o'zlashtirishga tayyormisiz?\n"
+                   "Marhamat, ilovaga kiring:"
+             ),
+            (
+                f"Assalomu alaykum, {name}! 🎯\n\n"
                 "Biz sizning muvaffaqiyatingizni ko'zlaymiz! 💎\n"
                 "O'z bilimingizni oshiring va yangi ko'nikmalar o'rganing. 📖\n\n"
                 "Boshlash uchun tugma bosing:"
             ),
             (
-                f"Hey, {name}! ⚡\n\n"
+                f"Assalomu alaykum, {name}! ⚡\n\n"
                 "Buyuklar eng qiyin vazifalarni kichik bosqichlar bilan boshladilar! 🏆\n"
-                "Siz ham buning uchun tayyor musiz. 💪\n\n"
+                "Siz ham buning uchun tayyormisiz. 💪\n\n"
                 "SAHIFALAB'ga kiraylik:"
             ),
             (
-                f"Salam, {name}! 🌈\n\n"
+                f"Assalomu alaykum, {name}! \n\n"
                 "Ko'p vaqt o'tib ketdi — endi qaytamiz! 🎓\n"
-                "Sizning oldingi dasturlashlaringizni davom ettiring va yangi bilim orttiraylik. 📚\n\n"
+                "Oldingi darslaringizni davom ettiring va yangi bilim ortiring. 📚\n\n"
                 "Mini app'ni bosing:"
             ),
         ]
@@ -694,7 +701,6 @@ class TelegramBotHandler:
             f"Assalomu alaykum, {user.first_name}! 👋\n\n"
             "Men *Shoxrux* — SAHIFALAB mentori.\n"
             "Kitoblar, testlar va foydali resurslar shu yerda! 📖\n"
-            "Siz yangiliklar kanaliga obuna qilindingiz. 📰\n\n"
             "👇 Tugmani bosing va ilovani oching:",
             parse_mode="Markdown",
             reply_markup=reply_markup,
