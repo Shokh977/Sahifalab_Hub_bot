@@ -175,6 +175,11 @@ class ApiService {
     return this.axiosInstance.get('/api/admin/dashboard/stats', this.adminParams(telegramId))
   }
 
+  /** Admin: platform-wide analytics (Step 15) */
+  async getAdminPlatformAnalytics(telegramId: number) {
+    return this.axiosInstance.get('/api/admin/platform-analytics', this.adminParams(telegramId))
+  }
+
   async debugDb(telegramId: number) {
     return this.axiosInstance.get('/api/admin/debug', this.adminParams(telegramId))
   }

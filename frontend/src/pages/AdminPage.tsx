@@ -70,7 +70,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics'
 
 interface TeacherRequest {
   telegram_id: number
@@ -80,6 +80,53 @@ interface TeacherRequest {
   total_xp: number
   level: number
   created_at: string
+}
+
+// ─── Platform analytics types (Step 15) ──────────────────────────────────────
+interface PlatformSummary {
+  total_courses: number
+  published_courses: number
+  paid_courses: number
+  total_enrollments: number
+  total_teachers: number
+  total_completed_orders: number
+  gross_stars: number
+  estimated_revenue_uzs: number
+}
+
+interface TopCourse {
+  id: number
+  title: string
+  teacher_id: number
+  enrolled_count: number
+  is_paid: boolean
+  price: number
+}
+
+interface TeacherLeaderboardItem {
+  teacher_id: number
+  first_name: string
+  username: string | null
+  courses_count: number
+  total_students: number
+  total_stars: number
+  estimated_uzs: number
+  completed_orders: number
+}
+
+interface RecentOrder {
+  order_id: string
+  course_id: number
+  student_id: number
+  amount: number
+  completed_at: string
+}
+
+interface PlatformAnalytics {
+  summary: PlatformSummary
+  top_courses: TopCourse[]
+  teacher_leaderboard: TeacherLeaderboardItem[]
+  recent_orders: RecentOrder[]
 }
 
 // ─── Quiz form types ──────────────────────────────────────────────────────────
@@ -195,6 +242,11 @@ const AdminPage: React.FC = () => {
   const [teacherReqError, setTeacherReqError] = useState('')
   const [teacherActionId, setTeacherActionId] = useState<number | null>(null)
   const [teacherMsg, setTeacherMsg] = useState('')
+
+  // Platform Analytics (Step 15)
+  const [platformAnalytics, setPlatformAnalytics] = useState<PlatformAnalytics | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsError, setAnalyticsError] = useState('')
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -370,6 +422,21 @@ const AdminPage: React.FC = () => {
     }
   }, [adminId])
 
+  const loadPlatformAnalytics = useCallback(async () => {
+    if (!adminId) return
+    setAnalyticsLoading(true)
+    setAnalyticsError('')
+    try {
+      const res = await apiService.getAdminPlatformAnalytics(adminId)
+      setPlatformAnalytics(res.data)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Analitika yuklanmadi'
+      setAnalyticsError(String(detail))
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }, [adminId])
+
   const handleApproveTeacher = async (telegramId: number) => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
@@ -410,7 +477,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'books') loadBooks()
     if (activeTab === 'sounds') loadSounds()
     if (activeTab === 'teachers') loadTeacherRequests()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests])
+    if (activeTab === 'analytics') loadPlatformAnalytics()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -837,6 +905,7 @@ const AdminPage: React.FC = () => {
             { id: 'books', label: '📚 Kitoblar' },
             { id: 'sounds', label: '🎵 Tovushlar' },
             { id: 'teachers', label: '🎓 O\'qituvchilar' },
+            { id: 'analytics', label: '📈 Analitika' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -1923,6 +1992,142 @@ const AdminPage: React.FC = () => {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Analytics Tab (Step 15) ────────────────────────────────────── */}
+        {activeTab === 'analytics' && (
+          <div className="space-y-5">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">📈 Platforma Analitikasi</h2>
+              <button
+                onClick={loadPlatformAnalytics}
+                disabled={analyticsLoading}
+                className="text-xs bg-sahifa-600 hover:bg-sahifa-700 text-white px-3 py-1.5 rounded-lg disabled:opacity-50 transition-colors"
+              >
+                {analyticsLoading ? '⏳ Yuklanmoqda…' : '🔄 Yangilash'}
+              </button>
+            </div>
+
+            {analyticsError && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 text-sm text-red-600 dark:text-red-400">
+                ❌ {analyticsError}
+              </div>
+            )}
+
+            {analyticsLoading && !platformAnalytics && (
+              <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">⏳ Yuklanmoqda…</div>
+            )}
+
+            {platformAnalytics && (
+              <>
+                {/* Summary cards */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">Umumiy ko'rsatkichlar</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <StatCard emoji="🎓" label="Jami kurslar" value={platformAnalytics.summary.total_courses} />
+                    <StatCard emoji="✅" label="Chiqarilgan" value={platformAnalytics.summary.published_courses} />
+                    <StatCard emoji="👥" label="Jami yozilishlar" value={platformAnalytics.summary.total_enrollments} />
+                    <StatCard emoji="🧑‍🏫" label="O'qituvchilar" value={platformAnalytics.summary.total_teachers} />
+                    <StatCard emoji="⭐" label="Jami Stars" value={platformAnalytics.summary.gross_stars} />
+                    <StatCard emoji="💰" label="Daromad (so'm)" value={platformAnalytics.summary.estimated_revenue_uzs.toLocaleString('uz-UZ')} />
+                    <StatCard emoji="💳" label="To'langan buyurtmalar" value={platformAnalytics.summary.total_completed_orders} />
+                    <StatCard emoji="🔒" label="Pullik kurslar" value={platformAnalytics.summary.paid_courses} />
+                  </div>
+                </div>
+
+                {/* Teacher leaderboard */}
+                {platformAnalytics.teacher_leaderboard.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">O'qituvchilar reytingi (Stars)</h3>
+                    <div className="space-y-2">
+                      {platformAnalytics.teacher_leaderboard.map((t, i) => (
+                        <div
+                          key={t.teacher_id}
+                          className="bg-white dark:bg-gray-800 rounded-2xl p-4 flex items-center gap-3 shadow-sm border border-gray-100 dark:border-gray-700"
+                        >
+                          <span className={`text-lg font-bold w-7 text-center ${i === 0 ? 'text-yellow-500' : i === 1 ? 'text-gray-400' : i === 2 ? 'text-amber-600' : 'text-gray-400'}`}>
+                            {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                              {t.first_name}
+                              {t.username && <span className="text-gray-400 font-normal ml-1">@{t.username}</span>}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {t.courses_count} kurs · {t.total_students} talaba · {t.completed_orders} buyurtma
+                            </p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-sm font-bold text-amber-500">⭐ {t.total_stars}</p>
+                            <p className="text-xs text-gray-400">{t.estimated_uzs.toLocaleString('uz-UZ')} so'm</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Top courses */}
+                {platformAnalytics.top_courses.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">Top 10 kurs (yozilishlar bo'yicha)</h3>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                      {platformAnalytics.top_courses.map((course, i) => (
+                        <div
+                          key={course.id}
+                          className={`flex items-center gap-3 px-4 py-3 ${i !== platformAnalytics.top_courses.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
+                        >
+                          <span className="text-xs font-bold text-gray-400 w-5 text-center">#{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{course.title}</p>
+                            <p className="text-xs text-gray-400">
+                              {course.is_paid ? `⭐ ${course.price} Stars` : '🎁 Bepul'}
+                            </p>
+                          </div>
+                          <span className="text-sm font-semibold text-sahifa-600 dark:text-sahifa-400 shrink-0">
+                            👥 {course.enrolled_count}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent orders */}
+                {platformAnalytics.recent_orders.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 uppercase tracking-wider">So'nggi to'lovlar (20 ta)</h3>
+                    <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+                      {platformAnalytics.recent_orders.map((order, i) => (
+                        <div
+                          key={order.order_id}
+                          className={`flex items-center gap-3 px-4 py-3 ${i !== platformAnalytics.recent_orders.length - 1 ? 'border-b border-gray-100 dark:border-gray-700' : ''}`}
+                        >
+                          <span className="text-base shrink-0">⭐</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">
+                              Kurs #{order.course_id} · Talaba {order.student_id}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {order.completed_at ? new Date(order.completed_at).toLocaleDateString('uz-UZ', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                            </p>
+                          </div>
+                          <span className="text-sm font-bold text-amber-500 shrink-0">{order.amount} ⭐</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {platformAnalytics.summary.total_courses === 0 && (
+                  <div className="text-center py-10 text-gray-400 dark:text-gray-500 text-sm">
+                    <p className="text-3xl mb-2">📭</p>
+                    <p>Hali kurslar yoki ma'lumot yo'q</p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         )}

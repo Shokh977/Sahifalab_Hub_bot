@@ -1,4 +1,6 @@
 import json
+import os
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -14,6 +16,30 @@ from app.schemas.admin_schemas import (
 )
 
 router = APIRouter()
+
+# ── Supabase helpers (for course/enrollment/payment data) ─────────────────────
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+STARS_RATE = 250  # 1 Star ≈ 250 UZS
+
+
+def _supabase_headers() -> dict:
+    return {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+
+def _ensure_supabase():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(
+            status_code=503,
+            detail="Supabase not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing)",
+        )
+
 
 # Helper function to verify admin
 async def verify_admin(telegram_id: int, db: Session = Depends(get_db)):
@@ -465,3 +491,144 @@ async def get_quiz_audit_logs(
         query = query.filter(QuizAuditLog.quiz_id == quiz_id)
     
     return query.order_by(QuizAuditLog.created_at.desc()).offset(skip).limit(limit).all()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Platform Analytics (Step 15) — admin-only, Supabase data
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/platform-analytics")
+async def get_platform_analytics(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """
+    Platform-wide analytics for admin:
+      - summary: courses, enrollments, teachers, total Stars, revenue estimate
+      - top_courses: top 10 by enrolled_count
+      - teacher_leaderboard: each teacher's Stars earned + students
+      - recent_orders: last 20 completed payment orders
+    """
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        # All courses (public + unpublished — admin sees everything)
+        courses_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"select": "id,teacher_id,title,is_published,is_paid,enrolled_count,price"},
+            headers=_supabase_headers(),
+        )
+        # All teacher profiles
+        teachers_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+            params={"select": "telegram_id,first_name,username"},
+            headers=_supabase_headers(),
+        )
+        # All completed payment orders
+        orders_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_payment_orders",
+            params={
+                "status": "eq.completed",
+                "select": "order_id,course_id,student_id,amount,completed_at",
+                "order": "completed_at.desc",
+            },
+            headers=_supabase_headers(),
+        )
+
+    courses: list[dict] = courses_res.json() if courses_res.status_code == 200 else []
+    teachers: list[dict] = teachers_res.json() if teachers_res.status_code == 200 else []
+    completed_orders: list[dict] = orders_res.json() if orders_res.status_code == 200 else []
+
+    # ── Summary aggregation ──────────────────────────────────────────────────
+    total_courses = len(courses)
+    published_courses = sum(1 for c in courses if c.get("is_published"))
+    paid_courses_count = sum(1 for c in courses if c.get("is_paid"))
+    total_enrollments = sum(int(c.get("enrolled_count") or 0) for c in courses)
+    total_teachers = len(teachers)
+    gross_stars = sum(int(o.get("amount") or 0) for o in completed_orders)
+    estimated_revenue_uzs = gross_stars * STARS_RATE
+
+    # ── Per-teacher aggregation ──────────────────────────────────────────────
+    course_to_teacher: dict[int, int] = {
+        int(c["id"]): int(c.get("teacher_id") or 0)
+        for c in courses if c.get("id") and c.get("teacher_id")
+    }
+
+    teacher_stars:   dict[int, int] = {}
+    teacher_orders:  dict[int, int] = {}
+    for o in completed_orders:
+        cid = o.get("course_id")
+        tid = course_to_teacher.get(int(cid)) if cid else None
+        if tid:
+            teacher_stars[tid]  = teacher_stars.get(tid, 0)  + int(o.get("amount") or 0)
+            teacher_orders[tid] = teacher_orders.get(tid, 0) + 1
+
+    teacher_courses_count: dict[int, int] = {}
+    teacher_students:      dict[int, int] = {}
+    for c in courses:
+        tid = int(c.get("teacher_id") or 0)
+        if tid:
+            teacher_courses_count[tid] = teacher_courses_count.get(tid, 0) + 1
+            teacher_students[tid]      = teacher_students.get(tid, 0) + int(c.get("enrolled_count") or 0)
+
+    teacher_info: dict[int, dict] = {
+        int(t["telegram_id"]): t
+        for t in teachers if t.get("telegram_id")
+    }
+
+    all_teacher_ids = (
+        set(course_to_teacher.values())
+        | set(teacher_info.keys())
+    ) - {0}
+
+    teacher_leaderboard = sorted(
+        [
+            {
+                "teacher_id": tid,
+                "first_name": teacher_info.get(tid, {}).get("first_name") or f"Teacher {tid}",
+                "username": teacher_info.get(tid, {}).get("username"),
+                "courses_count": teacher_courses_count.get(tid, 0),
+                "total_students": teacher_students.get(tid, 0),
+                "total_stars": teacher_stars.get(tid, 0),
+                "estimated_uzs": teacher_stars.get(tid, 0) * STARS_RATE,
+                "completed_orders": teacher_orders.get(tid, 0),
+            }
+            for tid in all_teacher_ids
+        ],
+        key=lambda x: x["total_stars"],
+        reverse=True,
+    )
+
+    # ── Top 10 courses by enrollment ─────────────────────────────────────────
+    top_courses = sorted(
+        [
+            {
+                "id": c.get("id"),
+                "title": c.get("title") or f"Course #{c.get('id')}",
+                "teacher_id": c.get("teacher_id"),
+                "enrolled_count": int(c.get("enrolled_count") or 0),
+                "is_paid": bool(c.get("is_paid")),
+                "price": int(c.get("price") or 0),
+            }
+            for c in courses
+        ],
+        key=lambda x: x["enrolled_count"],
+        reverse=True,
+    )[:10]
+
+    return {
+        "summary": {
+            "total_courses": total_courses,
+            "published_courses": published_courses,
+            "paid_courses": paid_courses_count,
+            "total_enrollments": total_enrollments,
+            "total_teachers": total_teachers,
+            "total_completed_orders": len(completed_orders),
+            "gross_stars": gross_stars,
+            "estimated_revenue_uzs": estimated_revenue_uzs,
+        },
+        "top_courses": top_courses,
+        "teacher_leaderboard": teacher_leaderboard,
+        "recent_orders": completed_orders[:20],
+    }
