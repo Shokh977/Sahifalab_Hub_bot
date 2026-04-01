@@ -21,6 +21,7 @@ import {
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { useAuth } from '../context/AuthContext'
 import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
 
 // ── Level colour tiers (orange-forward) ───────────────────────────────────────
@@ -50,8 +51,11 @@ const GlobalProgressBar: React.FC = () => {
   const { totalXP, level, focusSeconds, isInitialized, isSyncing } =
     useProgressStore()
 
+  const { user: authUser } = useAuth()
   const [photoError, setPhotoError] = useState(false)
-  const photoUrl = (!photoError && tgUser?.photo_url) ? tgUser.photo_url : null
+  // Telegram mode: use WebApp photo. Web mode: fall back to auth profile photo.
+  const rawPhoto = tgUser?.photo_url ?? authUser?.photo_url ?? null
+  const photoUrl = (!photoError && rawPhoto) ? rawPhoto : null
 
   // Don't render until profile is loaded (avoids flash of level 1)
   if (!isInitialized) return null

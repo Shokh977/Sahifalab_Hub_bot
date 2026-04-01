@@ -10,6 +10,7 @@ import { motion } from 'framer-motion'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
+import { useAuth } from '../context/AuthContext'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
@@ -135,6 +136,9 @@ const LeaderRow: React.FC<{
 // ── Page ──────────────────────────────────────────────────────────────────────
 const LeaderboardPage: React.FC = () => {
   const { telegramId } = useProgressStore()
+  const { user: authUser } = useAuth()
+  // progressStore.telegramId is set after init(); authUser.id is available immediately
+  const selfId: number | null = telegramId ?? authUser?.id ?? null
 
   const [top10,     setTop10]     = useState<LeaderRow[]>([])
   const [selfRank,  setSelfRank]  = useState<number | null>(null)
@@ -163,14 +167,14 @@ const LeaderboardPage: React.FC = () => {
       setTop10(top ?? [])
 
       // Check if current user is in top 10
-      const inTop = (top ?? []).some((r) => r.telegram_id === telegramId)
+      const inTop = (top ?? []).some((r) => r.telegram_id === selfId)
 
-      if (!inTop && telegramId) {
+      if (!inTop && selfId) {
         // Fetch user's own row
         const { data: me } = await supabase
           .from('profiles')
           .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
-          .eq('telegram_id', telegramId)
+          .eq('telegram_id', selfId)
           .single()
 
         if (me) {
@@ -204,7 +208,7 @@ const LeaderboardPage: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [telegramId])
+  }, [selfId])
 
   useEffect(() => { fetchLeaderboard() }, [fetchLeaderboard])
 
@@ -339,7 +343,7 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
               key={row.telegram_id}
               row={row}
               rank={i + 1}
-              isSelf={row.telegram_id === telegramId}
+              isSelf={row.telegram_id === selfId}
               animDelay={i * 0.06}
             />
           ))}
