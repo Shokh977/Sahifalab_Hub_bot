@@ -511,6 +511,23 @@ class ApiService {
     return this.axiosInstance.delete(`/api/courses/${courseId}`)
   }
 
+  // ─── Course ratings ───────────────────────────────────────────────────────
+
+  /** Public: list all reviews for a course */
+  async getCourseReviews(courseId: number) {
+    return this.axiosInstance.get(`/api/courses/${courseId}/reviews`)
+  }
+
+  /** Auth: get current user's own rating for a course */
+  async getMyCourseRating(courseId: number) {
+    return this.axiosInstance.get(`/api/courses/${courseId}/my-rating`)
+  }
+
+  /** Enrolled student: submit or update a rating + review */
+  async rateCourse(courseId: number, rating: number, review = '') {
+    return this.axiosInstance.post(`/api/courses/${courseId}/rate`, { rating, review })
+  }
+
   // ─── Enrollments ─────────────────────────────────────────────────────────
 
   /** Student: check if current user is enrolled in a course */

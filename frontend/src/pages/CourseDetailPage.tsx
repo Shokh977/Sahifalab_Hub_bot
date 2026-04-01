@@ -50,6 +50,19 @@ interface Lesson {
   is_free:          boolean
 }
 
+interface Review {
+  id: number
+  student_id: number
+  rating: number
+  review: string
+  created_at: string
+  profiles?: {
+    first_name?: string
+    username?:   string
+    photo_url?:  string
+  } | null
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function formatDuration(minutes: number) {
   if (!minutes) return ''
@@ -191,6 +204,12 @@ const CourseDetailPage: React.FC = () => {
   const [completedIds, setCompletedIds] = useState<Set<number>>(new Set())
   const [showCert, setShowCert] = useState(false)
   const [certData, setCertData] = useState<CertificateData | null>(null)
+  const [reviews, setReviews]           = useState<Review[]>([])
+  const [myRating, setMyRating]         = useState(0)
+  const [myReview, setMyReview]         = useState('')
+  const [hoverStar, setHoverStar]       = useState(0)
+  const [ratingLoading, setRatingLoading] = useState(false)
+  const [reviewsLoading, setReviewsLoading] = useState(false)
 
   const courseId = parseInt(id ?? '0', 10)
   const isOwner  = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -231,6 +250,49 @@ const CourseDetailPage: React.FC = () => {
       })
       .catch(() => {})
   }, [courseId, isEnrolled])
+
+  // ── Load reviews + my rating ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!courseId) return
+    setReviewsLoading(true)
+    apiService.getCourseReviews(courseId)
+      .then(r => setReviews(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setReviewsLoading(false))
+  }, [courseId])
+
+  useEffect(() => {
+    if (!courseId || !user) return
+    apiService.getMyCourseRating(courseId)
+      .then(r => {
+        setMyRating(r.data?.rating ?? 0)
+        setMyReview(r.data?.review ?? '')
+      })
+      .catch(() => {})
+  }, [courseId, user])
+
+  const handleSubmitRating = async (stars: number) => {
+    if (!stars || ratingLoading) return
+    setRatingLoading(true)
+    try {
+      await apiService.rateCourse(courseId, stars, myReview)
+      setMyRating(stars)
+      // Refresh review list
+      const r = await apiService.getCourseReviews(courseId)
+      setReviews(Array.isArray(r.data) ? r.data : [])
+      // Update course rating shown in header
+      setCourse(prev => {
+        if (!prev) return prev
+        const allRatings = r.data as Review[]
+        const avg = allRatings.length
+          ? allRatings.reduce((s: number, x: Review) => s + x.rating, 0) / allRatings.length
+          : 0
+        return { ...prev, rating: parseFloat(avg.toFixed(2)) }
+      })
+    } catch { /* toast shown by interceptor */ } finally {
+      setRatingLoading(false)
+    }
+  }
 
   const handleEnroll = async () => {
     if (!course || isOwner || isEnrolled || enrollLoading) return
@@ -561,6 +623,98 @@ const CourseDetailPage: React.FC = () => {
                 isExpanded={expandedId === lesson.id}
                 onToggle={() => handleToggleLesson(lesson)}
               />
+            ))}
+          </div>
+        )}
+      </motion.div>
+
+      {/* ── Rating & Reviews ─────────────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="mt-6"
+      >
+        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
+          ⭐ Baholash va sharhlar
+        </h2>
+
+        {/* Star widget — enrolled only */}
+        {isEnrolled && (
+          <div className="mb-4 p-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 font-medium">
+              {myRating ? `Sizning bahoyingiz: ${myRating} ★` : 'Kursni baholang:'}
+            </p>
+            {/* Stars row */}
+            <div className="flex gap-1 mb-3">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button
+                  key={star}
+                  onMouseEnter={() => setHoverStar(star)}
+                  onMouseLeave={() => setHoverStar(0)}
+                  onClick={() => handleSubmitRating(star)}
+                  disabled={ratingLoading}
+                  className={`text-2xl transition-transform hover:scale-110 ${(hoverStar || myRating) >= star ? 'text-amber-400' : 'text-slate-300 dark:text-slate-600'}`}
+                >
+                  ★
+                </button>
+              ))}
+              {ratingLoading && <span className="text-xs text-gray-400 ml-2 self-center">⏳</span>}
+            </div>
+            {/* Optional review text */}
+            <textarea
+              value={myReview}
+              onChange={e => setMyReview(e.target.value)}
+              placeholder="Qo'shimcha fikr bildiring (ixtiyoriy)..."
+              rows={2}
+              className="w-full text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-gray-800 dark:text-gray-200 p-2 resize-none focus:outline-none focus:ring-2 focus:ring-sahifa-400"
+            />
+            {myReview.trim() && (
+              <button
+                onClick={() => handleSubmitRating(myRating || 5)}
+                disabled={ratingLoading}
+                className="mt-2 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 disabled:opacity-50"
+              >
+                💾 Saqlash
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Reviews list */}
+        {reviewsLoading ? (
+          <div className="text-center py-4"><span className="text-2xl animate-pulse">⏳</span></div>
+        ) : reviews.length === 0 ? (
+          <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
+            Hali sharh yo'q. Birinchi bo'lib fikr bildiring!
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {reviews.map(r => (
+              <div
+                key={r.id}
+                className="flex gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700"
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center shrink-0 text-white text-xs font-bold">
+                  {(r.profiles?.first_name ?? 'A').charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5">
+                    <span className="text-xs font-semibold text-gray-900 dark:text-white">
+                      {r.profiles?.first_name ?? r.profiles?.username ?? 'Foydalanuvchi'}
+                    </span>
+                    <span className="text-xs text-amber-400">
+                      {'★'.repeat(r.rating)}{'☆'.repeat(5 - r.rating)}
+                    </span>
+                    <span className="text-[10px] text-gray-400 dark:text-gray-500 ml-auto">
+                      {new Date(r.created_at).toLocaleDateString('uz-UZ')}
+                    </span>
+                  </div>
+                  {r.review && (
+                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{r.review}</p>
+                  )}
+                </div>
+              </div>
             ))}
           </div>
         )}

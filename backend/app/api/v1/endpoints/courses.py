@@ -5,6 +5,11 @@ Public routes (no auth):
   GET  /api/courses                  — list published courses (filters: category, level, search, teacher_id)
   GET  /api/courses/categories       — list all categories
   GET  /api/courses/{id}             — course detail (published, or own unpublished)
+  GET  /api/courses/{id}/reviews     — list ratings/reviews for a course
+
+Auth routes (Bearer JWT):
+  POST   /api/courses/{id}/rate      — enrolled student submits/updates a rating + review
+  GET    /api/courses/{id}/my-rating — current user's own rating for a course
 
 Teacher/Admin routes (Bearer JWT required):
   POST   /api/courses                — create course (teacher/admin only)
@@ -115,6 +120,11 @@ class CourseUpdate(BaseModel):
     is_published:           Optional[bool] = None
     total_lessons:          Optional[int] = None
     total_duration_minutes: Optional[int] = None
+
+
+class CourseRateBody(BaseModel):
+    rating: int                 # 1–5
+    review: Optional[str] = ""  # optional text review
 
 
 # ── Routes ────────────────────────────────────────────────────────────────────
@@ -326,6 +336,107 @@ async def update_course(
         )
     if res.status_code not in (200, 201, 204):
         raise HTTPException(status_code=502, detail=f"Failed to update course: {res.text}")
+    rows = res.json()
+    return rows[0] if isinstance(rows, list) and rows else {"ok": True}
+
+
+@router.get("/{course_id}/reviews")
+async def list_course_reviews(course_id: int):
+    """Public: list all ratings/reviews for a course, newest first."""
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_ratings",
+            params={
+                "course_id": f"eq.{course_id}",
+                "select": "id, student_id, rating, review, created_at, profiles(first_name, username, photo_url)",
+                "order": "created_at.desc",
+                "limit": "50",
+            },
+            headers=_supabase_headers(),
+        )
+    if res.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Supabase error: {res.text}")
+    return res.json()
+
+
+@router.get("/{course_id}/my-rating")
+async def my_course_rating(course_id: int, authorization: Optional[str] = Header(None)):
+    """Auth: return current user's rating+review for a course, or null."""
+    caller_id = await _resolve_teacher_id(authorization)
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_ratings",
+            params={
+                "course_id": f"eq.{course_id}",
+                "student_id": f"eq.{caller_id}",
+                "select": "rating, review",
+                "limit": "1",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    return rows[0] if rows else {"rating": 0, "review": ""}
+
+
+@router.post("/{course_id}/rate")
+async def rate_course(
+    course_id: int,
+    body: CourseRateBody,
+    authorization: Optional[str] = Header(None),
+):
+    """Enrolled student: submit or update a 1–5 star rating + optional text review."""
+    caller_id = await _resolve_teacher_id(authorization)
+    if not 1 <= body.rating <= 5:
+        raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
+
+    _ensure_supabase()
+
+    # Only enrolled students (or course owner / admin) may rate
+    async with httpx.AsyncClient(timeout=10) as client:
+        enroll_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id": f"eq.{course_id}",
+                "student_id": f"eq.{caller_id}",
+                "is_active": "eq.true",
+                "select": "id",
+                "limit": "1",
+            },
+            headers=_supabase_headers(),
+        )
+        course_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}", "select": "teacher_id"},
+            headers=_supabase_headers(),
+        )
+
+    course_rows = course_res.json() if course_res.status_code == 200 else []
+    if not course_rows:
+        raise HTTPException(status_code=404, detail="Course not found")
+    teacher_id = course_rows[0]["teacher_id"]
+
+    enrolled = bool((enroll_res.json() if enroll_res.status_code == 200 else []))
+    is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
+    if not enrolled and not is_owner_or_admin:
+        raise HTTPException(status_code=403, detail="Only enrolled students can rate this course")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/course_ratings",
+            params={"on_conflict": "course_id,student_id"},
+            json={
+                "course_id": course_id,
+                "student_id": caller_id,
+                "rating": body.rating,
+                "review": body.review or "",
+            },
+            headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+        )
+    if res.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Failed to save rating: {res.text}")
+
     rows = res.json()
     return rows[0] if isinstance(rows, list) and rows else {"ok": True}
 
