@@ -39,7 +39,8 @@ interface NavItem {
 
 const NAV_MAIN: NavItem[] = [
   { icon: '🏠', label: 'Bosh sahifa',   path: '/' },
-  { icon: '🎯', label: "O'qish",         path: '/study' },
+  { icon: '�', label: 'Kurslar',        path: '/courses' },
+  { icon: '�🎯', label: "O'qish",         path: '/study' },
   { icon: '📝', label: 'Test',           path: '/quiz' },
   { icon: '📚', label: 'Kitoblar',       path: '/kitoblar' },
   { icon: '🔗', label: 'Resurslar',      path: '/resources' },

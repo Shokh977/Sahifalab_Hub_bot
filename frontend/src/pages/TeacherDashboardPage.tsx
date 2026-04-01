@@ -47,6 +47,20 @@ interface TeacherProfile {
   profile_complete: boolean
 }
 
+interface MyCourse {
+  id:           number
+  title:        string
+  thumbnail_url: string
+  is_published: boolean
+  is_paid:      boolean
+  price:        number
+  level:        string
+  total_lessons: number
+  enrolled_count: number
+  rating:       number
+  categories?:  { name: string; icon: string } | null
+}
+
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 interface StatCardProps {
@@ -168,6 +182,8 @@ const TeacherDashboardPage: React.FC = () => {
   const [top5Loading, setTop5Loading] = useState(true)
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(true)
+  const [myCourses, setMyCourses] = useState<MyCourse[]>([])
+  const [coursesLoading, setCoursesLoading] = useState(true)
 
   // ── Fetch stats from Supabase ────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
@@ -198,6 +214,13 @@ const TeacherDashboardPage: React.FC = () => {
       .then(res => setTeacherProfile(res.data))
       .catch(() => { /* silently ignore — profile may not exist yet */ })
       .finally(() => setProfileLoading(false))
+  }, [])
+
+  useEffect(() => {
+    apiService.getMyCourses()
+      .then(res => setMyCourses(res.data))
+      .catch(() => {})
+      .finally(() => setCoursesLoading(false))
   }, [])
 
   // ── Stat card definitions ────────────────────────────────────────────────
@@ -375,7 +398,7 @@ const TeacherDashboardPage: React.FC = () => {
             icon="➕"
             label="Yangi kurs yaratish"
             description="Video darslar, testlar va materiallar bilan kurs tuzing"
-            disabled
+            to="/courses/create"
           />
           <ActionButton
             icon="📊"
@@ -384,6 +407,83 @@ const TeacherDashboardPage: React.FC = () => {
             disabled
           />
         </div>
+      </motion.div>
+
+      {/* My courses */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="mb-6"
+      >
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Mening kurslarim</h2>
+          <Link
+            to="/courses/create"
+            className="text-[11px] font-semibold text-sahifa-500 dark:text-sahifa-400 hover:underline"
+          >
+            + Yangi kurs
+          </Link>
+        </div>
+
+        {coursesLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map(i => (
+              <div key={i} className="h-16 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
+            ))}
+          </div>
+        ) : myCourses.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+            <span className="text-3xl">🎬</span>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hali kurs yo'q</p>
+            <Link
+              to="/courses/create"
+              className="text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+            >
+              Birinchi kursni yarating →
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {myCourses.map(course => (
+              <Link
+                key={course.id}
+                to={`/courses/${course.id}`}
+                className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-sahifa-300 dark:hover:border-sahifa-600 transition-colors"
+              >
+                {/* Thumbnail */}
+                <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-sahifa-50 dark:bg-sahifa-900/20 flex items-center justify-center">
+                  {course.thumbnail_url ? (
+                    <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="text-xl">{course.categories?.icon ?? '📚'}</span>
+                  )}
+                </div>
+                {/* Info */}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{course.title}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    {course.categories?.name} · {course.total_lessons} dars
+                    {course.enrolled_count > 0 && ` · 👥 ${course.enrolled_count}`}
+                  </p>
+                </div>
+                {/* Status */}
+                <div className="shrink-0 text-right space-y-0.5">
+                  <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                    course.is_published
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                  }`}>
+                    {course.is_published ? '✅ Chop' : '⏳ Qoralama'}
+                  </span>
+                  {course.is_paid && (
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500">{course.price.toLocaleString()} so'm</p>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
       </motion.div>
 
       {/* Top 5 students */}

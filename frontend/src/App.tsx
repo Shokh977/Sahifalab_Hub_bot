@@ -29,6 +29,7 @@ import RoleGuard from './components/RoleGuard'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import TeacherApplyPage from './pages/TeacherApplyPage'
 import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
+import CoursesPage from './pages/CoursesPage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 
@@ -189,6 +190,8 @@ const AppRoutes: React.FC = () => (
       <Route path="/ai-companion" element={<AICompanionPage />} />
       <Route path="/daily" element={<DailyPage />} />
       <Route path="/plans" element={<PlansPage />} />
+      <Route path="/courses" element={<CoursesPage />} />
+      <Route path="/courses/:id" element={<CoursesPage />} />
 
       {/* Teacher & Admin role-gated routes */}
       <Route element={<RoleGuard roles={['teacher', 'admin']} />}>

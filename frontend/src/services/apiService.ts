@@ -395,6 +395,74 @@ class ApiService {
   async getPublicTeacherProfile(telegramId: number) {
     return this.axiosInstance.get(`/api/teacher/profile/${telegramId}`)
   }
+
+  // ─── Categories ───────────────────────────────────────────────────────────
+
+  /** Public: list all course categories */
+  async getCategories() {
+    return this.axiosInstance.get('/api/courses/categories')
+  }
+
+  // ─── Courses ──────────────────────────────────────────────────────────────
+
+  /** Public: list published courses with optional filters */
+  async getCourses(filters?: {
+    category?:   string
+    level?:      string
+    search?:     string
+    teacher_id?: number
+    limit?:      number
+    offset?:     number
+  }) {
+    return this.axiosInstance.get('/api/courses', { params: filters })
+  }
+
+  /** Public: get a single course by ID */
+  async getCourse(courseId: number) {
+    return this.axiosInstance.get(`/api/courses/${courseId}`)
+  }
+
+  /** Teacher: list own courses (all statuses) */
+  async getMyCourses() {
+    return this.axiosInstance.get('/api/courses/mine')
+  }
+
+  /** Teacher/Admin: create a new course */
+  async createCourse(data: {
+    title:          string
+    description?:   string
+    category_id?:   number
+    thumbnail_url?: string
+    price?:         number
+    is_paid?:       boolean
+    level?:         string
+    language?:      string
+    is_published?:  boolean
+  }) {
+    return this.axiosInstance.post('/api/courses', data)
+  }
+
+  /** Teacher/Admin: update a course */
+  async updateCourse(courseId: number, data: {
+    title?:                  string
+    description?:            string
+    category_id?:            number
+    thumbnail_url?:          string
+    price?:                  number
+    is_paid?:                boolean
+    level?:                  string
+    language?:               string
+    is_published?:           boolean
+    total_lessons?:          number
+    total_duration_minutes?: number
+  }) {
+    return this.axiosInstance.patch(`/api/courses/${courseId}`, data)
+  }
+
+  /** Teacher/Admin: delete a course */
+  async deleteCourse(courseId: number) {
+    return this.axiosInstance.delete(`/api/courses/${courseId}`)
+  }
 }
 
 export default new ApiService()
