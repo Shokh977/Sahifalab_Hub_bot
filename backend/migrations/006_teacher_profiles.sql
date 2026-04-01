@@ -27,7 +27,15 @@ CREATE TABLE IF NOT EXISTS public.teacher_profiles (
 );
 
 -- ── 2. Auto-update updated_at ─────────────────────────────────────────────────
--- Reuse the set_updated_at() function already defined by the profiles migration.
+-- Create the function if it doesn't already exist (safe to run multiple times).
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
 DROP TRIGGER IF EXISTS teacher_profiles_set_updated_at ON public.teacher_profiles;
 CREATE TRIGGER teacher_profiles_set_updated_at
   BEFORE UPDATE ON public.teacher_profiles
