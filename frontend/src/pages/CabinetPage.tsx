@@ -67,6 +67,19 @@ interface EnrolledCourse {
   completed_lessons: number
 }
 
+interface CourseCertificate {
+  course_id: number
+  certificate_id: string
+  issued_at: string
+  total_lessons: number
+  completed_lessons: number
+  courses?: {
+    id?: number
+    title?: string
+    thumbnail_url?: string
+  } | null
+}
+
 // ── Avatar colour based on telegram_id ───────────────────────────────────────
 const AVATAR_COLORS = [
   'from-blue-400 to-blue-600',
@@ -228,6 +241,8 @@ const CabinetPage: React.FC = () => {
   const [expandBooks, setExpandBooks] = useState(false)
   const [enrolledCourses, setEnrolledCourses] = useState<EnrolledCourse[]>([])
   const [loadingCourses, setLoadingCourses] = useState(true)
+  const [courseCerts, setCourseCerts] = useState<CourseCertificate[]>([])
+  const [loadingCourseCerts, setLoadingCourseCerts] = useState(true)
 
   const progress  = levelProgress(effectiveTotalXP)
   const { start, end } = levelBounds(effectiveLevel)
@@ -304,6 +319,18 @@ const CabinetPage: React.FC = () => {
       .finally(() => setLoadingCourses(false))
   }, [effectiveTelegramId])
 
+  // ── Load persisted course certificates ────────────────────────────────────
+  useEffect(() => {
+    if (!effectiveTelegramId) { setLoadingCourseCerts(false); return }
+    setLoadingCourseCerts(true)
+    apiService.getMyCourseCertificates()
+      .then((res) => {
+        setCourseCerts(Array.isArray(res.data) ? res.data : [])
+      })
+      .catch(() => setCourseCerts([]))
+      .finally(() => setLoadingCourseCerts(false))
+  }, [effectiveTelegramId])
+
   // ── Open certificate modal ──────────────────────────────────────────────
   const openCertificate = useCallback((quiz: CompletedQuiz) => {
     setCertData({
@@ -317,6 +344,20 @@ const CabinetPage: React.FC = () => {
     })
     setShowCert(true)
   }, [displayName, effectiveTelegramId])
+
+  const openCourseCertificate = useCallback((cert: CourseCertificate) => {
+    const courseTitle = cert.courses?.title || `Kurs #${cert.course_id}`
+    setCertData({
+      userName: displayName,
+      quizTitle: `${courseTitle} kursi`,
+      score: cert.completed_lessons || cert.total_lessons || 0,
+      total: cert.total_lessons || cert.completed_lessons || 0,
+      percentage: 100,
+      date: new Date(cert.issued_at).toLocaleDateString('uz-UZ'),
+      certificateId: cert.certificate_id,
+    })
+    setShowCert(true)
+  }, [displayName])
 
   const visibleCerts = expandCerts ? completedQuizzes : completedQuizzes.slice(0, 3)
   const visibleBooks = expandBooks ? purchasedBooks : purchasedBooks.slice(0, 3)
@@ -569,6 +610,52 @@ const CabinetPage: React.FC = () => {
               </button>
             )}
           </>
+        )}
+      </Section>
+
+      {/* ═══ Course Certificates Section ═══ */}
+      <Section delay={0.12}>
+        <div className="px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🎖️</span>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">Kurs sertifikatlarim</h2>
+          </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            {courseCerts.length} ta
+          </span>
+        </div>
+
+        {loadingCourseCerts ? (
+          <div className="px-4 py-6 text-center">
+            <div className="text-2xl animate-pulse">⏳</div>
+          </div>
+        ) : courseCerts.length === 0 ? (
+          <div className="px-4 py-6 text-center">
+            <p className="text-3xl mb-2">🎓</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Hali kurs sertifikati yo'q</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Kurslarni 100% yakunlang va sertifikat oling</p>
+          </div>
+        ) : (
+          courseCerts.map((cert) => (
+            <button
+              key={cert.certificate_id}
+              onClick={() => openCourseCertificate(cert)}
+              className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+            >
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-200 dark:from-indigo-900/30 dark:to-violet-800/30 flex items-center justify-center flex-shrink-0">
+                <span className="text-lg">🎓</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                  {cert.courses?.title ?? `Kurs #${cert.course_id}`}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {cert.completed_lessons}/{cert.total_lessons} dars • {new Date(cert.issued_at).toLocaleDateString('uz-UZ')}
+                </p>
+              </div>
+              <span className="text-xs font-medium text-sahifa-500">Yuklab olish</span>
+            </button>
+          ))
         )}
       </Section>
 

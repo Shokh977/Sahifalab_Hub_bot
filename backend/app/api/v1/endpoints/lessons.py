@@ -191,6 +191,27 @@ async def my_lesson_progress(
     return {"completed_lesson_ids": [r["lesson_id"] for r in rows if isinstance(r, dict)]}
 
 
+@router.get("/my-course-certificates")
+async def my_course_certificates(authorization: Optional[str] = Header(None)):
+    """Student: list course completion certificates for current user."""
+    caller_id = await _resolve_caller(authorization)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_certificates",
+            params={
+                "student_id": f"eq.{caller_id}",
+                "select": "course_id,certificate_id,issued_at,total_lessons,completed_lessons,courses(id,title,thumbnail_url)",
+                "order": "issued_at.desc",
+            },
+            headers=_supabase_headers(),
+        )
+    if res.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch certificates: {res.text}")
+    return res.json()
+
+
 @router.get("/{lesson_id}")
 async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
     """
@@ -386,7 +407,57 @@ async def complete_lesson(lesson_id: int, authorization: Optional[str] = Header(
     if res.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail=f"Failed to save progress: {res.text}")
 
-    return {"ok": True, "lesson_id": lesson_id, "completed": True}
+    certificate_issued = False
+    course_id = lesson["course_id"]
+
+    # Auto-issue course certificate when all lessons are completed
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            total_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/lessons",
+                params={"course_id": f"eq.{course_id}", "select": "id"},
+                headers=_supabase_headers(),
+            )
+            done_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/lesson_progress",
+                params={
+                    "course_id": f"eq.{course_id}",
+                    "student_id": f"eq.{caller_id}",
+                    "is_completed": "eq.true",
+                    "select": "lesson_id",
+                },
+                headers=_supabase_headers(),
+            )
+
+        total_rows = total_res.json() if total_res.status_code == 200 else []
+        done_rows = done_res.json() if done_res.status_code == 200 else []
+        total_lessons = len(total_rows)
+        completed_lessons = len(done_rows)
+
+        if total_lessons > 0 and completed_lessons >= total_lessons:
+            async with httpx.AsyncClient(timeout=10) as client:
+                cert_res = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/course_certificates",
+                    params={"on_conflict": "course_id,student_id"},
+                    json={
+                        "course_id": course_id,
+                        "student_id": caller_id,
+                        "certificate_id": f"CRS-{course_id}-{caller_id}",
+                        "total_lessons": total_lessons,
+                        "completed_lessons": completed_lessons,
+                    },
+                    headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
+                )
+            certificate_issued = cert_res.status_code in (200, 201)
+    except Exception as e:
+        logger.warning("Failed to auto-issue course certificate for course %s, student %s: %s", course_id, caller_id, e)
+
+    return {
+        "ok": True,
+        "lesson_id": lesson_id,
+        "completed": True,
+        "certificate_issued": certificate_issued,
+    }
 
 
 @router.delete("/{lesson_id}")

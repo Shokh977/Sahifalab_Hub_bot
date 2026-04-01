@@ -573,6 +573,11 @@ class ApiService {
     return this.axiosInstance.get('/api/lessons/my-progress', { params: { course_id: courseId } })
   }
 
+  /** Student: fetch my issued course certificates */
+  async getMyCourseCertificates() {
+    return this.axiosInstance.get('/api/lessons/my-course-certificates')
+  }
+
   /** Teacher: create a lesson */
   async createLesson(data: {
     course_id:        number
