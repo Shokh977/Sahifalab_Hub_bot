@@ -20,6 +20,8 @@ import {
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { usePlatform } from '../hooks/usePlatform'
+import { useAuth } from '../context/AuthContext'
 import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import PageWrapper from '../components/PageWrapper'
@@ -172,8 +174,22 @@ const CabinetPage: React.FC = () => {
     isLoading,
   } = useProgressStore()
 
+  // ── Platform bridge: web uses auth data; Telegram uses progressStore ──────
+  const { isWeb } = usePlatform()
+  const { user: authUser } = useAuth()
+
+  const effectiveTelegramId   = (isWeb ? authUser?.id    : telegramId)    ?? null
+  const effectiveFirstName    = isWeb  ? (authUser?.first_name ?? '')      : (firstName ?? '')
+  const effectiveUsername     = isWeb  ? (authUser?.username ?? '')        : (username ?? '')
+  const effectiveTotalXP      = isWeb  ? (authUser?.total_xp ?? 0)        : totalXP
+  const effectiveLevel        = isWeb  ? (authUser?.level ?? 1)           : level
+  const effectiveFocusSeconds = isWeb  ? 0                                : focusSeconds
+  const effectiveIsLoading    = isWeb  ? false                            : isLoading
+  const effectiveQuizCount    = isWeb  ? 0                                : quizzesCompleted
+
   const [photoError, setPhotoError] = useState(false)
-  const photoUrl = (!photoError && tgUser?.photo_url) ? tgUser.photo_url : null
+  const rawPhotoUrl = isWeb ? authUser?.photo_url : tgUser?.photo_url
+  const photoUrl = (!photoError && rawPhotoUrl) ? rawPhotoUrl : null
 
   // Certificate & books state
   const [completedQuizzes, setCompletedQuizzes] = useState<CompletedQuiz[]>([])
@@ -184,21 +200,21 @@ const CabinetPage: React.FC = () => {
   const [expandCerts, setExpandCerts] = useState(false)
   const [expandBooks, setExpandBooks] = useState(false)
 
-  const progress  = levelProgress(totalXP)
-  const { start, end } = levelBounds(level)
-  const xpInLevel = totalXP - start
+  const progress  = levelProgress(effectiveTotalXP)
+  const { start, end } = levelBounds(effectiveLevel)
+  const xpInLevel = effectiveTotalXP - start
   const xpForLevel = end - start
-  const grad = levelGradient(level)
-  const displayName = firstName || 'Foydalanuvchi'
-  const focusHours = (focusSeconds / 3600).toFixed(1)
+  const grad = levelGradient(effectiveLevel)
+  const displayName = effectiveFirstName || 'Foydalanuvchi'
+  const focusHours = (effectiveFocusSeconds / 3600).toFixed(1)
 
   // ── Load certificates & purchased books ──────────────────────────────────
   useEffect(() => {
-    if (!telegramId) { setLoadingData(false); return }
+    if (!effectiveTelegramId) { setLoadingData(false); return }
     setLoadingData(true)
 
     Promise.all([
-      fetchMyCompletedQuizzes(telegramId).then(async (completions) => {
+      fetchMyCompletedQuizzes(effectiveTelegramId).then(async (completions) => {
         if (completions.length === 0) return []
         const quizIds = [...new Set(completions.map(c => c.quiz_id))]
         const titles = await fetchQuizTitles(quizIds)
@@ -209,7 +225,7 @@ const CabinetPage: React.FC = () => {
           book_title: titleMap.get(c.quiz_id)?.book_title ?? '',
         }))
       }).catch(() => [] as CompletedQuiz[]),
-      fetchMyPurchasedBooks(telegramId).then(async (purchases) => {
+      fetchMyPurchasedBooks(effectiveTelegramId).then(async (purchases) => {
         if (purchases.length === 0) return []
         const bookIds = [...new Set(purchases.map(p => p.book_id))]
         const books = await fetchBooksByIds(bookIds)
@@ -227,7 +243,7 @@ const CabinetPage: React.FC = () => {
       setCompletedQuizzes(quizzes)
       setPurchasedBooks(books)
     }).finally(() => setLoadingData(false))
-  }, [telegramId])
+  }, [effectiveTelegramId])
 
   // ── Open certificate modal ──────────────────────────────────────────────
   const openCertificate = useCallback((quiz: CompletedQuiz) => {
@@ -238,15 +254,15 @@ const CabinetPage: React.FC = () => {
       total: quiz.total,
       percentage: quiz.percentage,
       date: new Date(quiz.completed_at).toLocaleDateString('uz-UZ'),
-      certificateId: `SL-${quiz.quiz_id}-${telegramId}-${quiz.id}`,
+      certificateId: `SL-${quiz.quiz_id}-${effectiveTelegramId}-${quiz.id}`,
     })
     setShowCert(true)
-  }, [displayName, telegramId])
+  }, [displayName, effectiveTelegramId])
 
   const visibleCerts = expandCerts ? completedQuizzes : completedQuizzes.slice(0, 3)
   const visibleBooks = expandBooks ? purchasedBooks : purchasedBooks.slice(0, 3)
 
-  if (isLoading) {
+  if (effectiveIsLoading) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-3">
@@ -280,7 +296,7 @@ const CabinetPage: React.FC = () => {
               />
             ) : (
               <div
-                className={`w-16 h-16 rounded-full bg-gradient-to-br ${avatarColor(telegramId)} flex items-center justify-center shadow-lg`}
+                className={`w-16 h-16 rounded-full bg-gradient-to-br ${avatarColor(effectiveTelegramId)} flex items-center justify-center shadow-lg`}
               >
                 <span className="text-2xl font-black text-white">
                   {displayName.charAt(0).toUpperCase()}
@@ -307,11 +323,11 @@ const CabinetPage: React.FC = () => {
               <div
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[11px] font-semibold shadow-sm`}
               >
-                <span>{getLevelEmoji(level)}</span>
-                <span>{getLevelTitle(level)}</span>
+                <span>{getLevelEmoji(effectiveLevel)}</span>
+                <span>{getLevelTitle(effectiveLevel)}</span>
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                ⚡ {totalXP.toLocaleString()} XP
+                ⚡ {effectiveTotalXP.toLocaleString()} XP
               </span>
             </div>
           </div>
@@ -320,9 +336,9 @@ const CabinetPage: React.FC = () => {
         {/* XP progress bar */}
         <div className="mt-4">
           <div className="flex justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1.5 px-0.5">
-            <span>Lv.{level}</span>
+            <span>Lv.{effectiveLevel}</span>
             <span>{xpInLevel} / {xpForLevel} XP</span>
-            <span>Lv.{level + 1}</span>
+            <span>Lv.{effectiveLevel + 1}</span>
           </div>
           <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
             <motion.div
@@ -339,9 +355,9 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.05}>
         <div className="flex divide-x divide-gray-100 dark:divide-gray-700/50">
           <StatPill emoji="⏱" value={`${focusHours}h`} label="Diqqat" />
-          <StatPill emoji="📝" value={quizzesCompleted} label="Testlar" />
-          <StatPill emoji="⚡" value={totalXP.toLocaleString()} label="XP" />
-          <StatPill emoji="🏅" value={level} label="Daraja" />
+          <StatPill emoji="📝" value={isWeb ? completedQuizzes.length : effectiveQuizCount} label="Testlar" />
+          <StatPill emoji="⚡" value={effectiveTotalXP.toLocaleString()} label="XP" />
+          <StatPill emoji="🏅" value={effectiveLevel} label="Daraja" />
         </div>
       </Section>
 
@@ -526,13 +542,13 @@ const CabinetPage: React.FC = () => {
 
       {/* ═══ Badges / Yutuqlar Section ═══ */}
       {(() => {
-        const earned = LEVEL_TITLES.filter(b => level >= b.level)
-        const locked = LEVEL_TITLES.filter(b => level < b.level)
+        const earned = LEVEL_TITLES.filter(b => effectiveLevel >= b.level)
+        const locked = LEVEL_TITLES.filter(b => effectiveLevel < b.level)
         const nextBadge = locked[0]
         const xpForNext = nextBadge ? xpNeededForLevel(nextBadge.level) : 0
-        const xpLeft = Math.max(0, xpForNext - totalXP)
+        const xpLeft = Math.max(0, xpForNext - effectiveTotalXP)
         const progressToNext = nextBadge
-          ? Math.min(1, (totalXP - xpNeededForLevel(nextBadge.level - 1)) / Math.max(1, xpForNext - xpNeededForLevel(nextBadge.level - 1)))
+          ? Math.min(1, (effectiveTotalXP - xpNeededForLevel(nextBadge.level - 1)) / Math.max(1, xpForNext - xpNeededForLevel(nextBadge.level - 1)))
           : 1
 
         return (

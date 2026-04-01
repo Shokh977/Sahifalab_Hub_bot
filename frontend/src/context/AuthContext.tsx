@@ -32,6 +32,9 @@ export interface AuthUser {
   role: 'student' | 'teacher' | 'admin'
   /** 'active' | 'suspended' | 'pending' */
   status: 'active' | 'suspended' | 'pending'
+  /** Gamification — filled from /api/auth/me */
+  level?: number
+  total_xp?: number
 }
 
 /** Data received from the Telegram Login Widget callback */
@@ -98,6 +101,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           photo_url: res.data.photo_url,
           role: res.data.role ?? 'student',
           status: res.data.status ?? 'active',
+          level: res.data.level ?? 1,
+          total_xp: res.data.total_xp ?? 0,
         })
       })
       .catch(() => {
@@ -128,6 +133,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       photo_url,
       role: role ?? 'student',
       status: status_account ?? 'active',
+      level: data.level ?? 1,
+      total_xp: data.total_xp ?? 0,
     })
   }, [])
 
