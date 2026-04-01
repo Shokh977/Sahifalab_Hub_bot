@@ -636,6 +636,8 @@ class TelegramBotHandler:
                     return
 
                 # Claim the code — write telegram_id and user info
+                # NOTE: user.photo_url is a PhotoSize object, not a URL string.
+                # Pass None here; photo_url is filled in later via /getFile if needed.
                 patch = await client.patch(
                     f"{SUPABASE_URL}/rest/v1/auth_codes",
                     params={"code": f"eq.{code}"},
@@ -643,7 +645,7 @@ class TelegramBotHandler:
                         "telegram_id": user.id,
                         "first_name": user.first_name,
                         "username": user.username,
-                        "photo_url": user.photo_url,
+                        "photo_url": None,
                     },
                     headers=headers,
                 )
