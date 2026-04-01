@@ -10,7 +10,7 @@ import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { supabase, isSupabaseConfigured, fetchDashboardStats, fetchTop5Students } from '../lib/supabase'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
 import apiService from '../services/apiService'
@@ -177,34 +177,12 @@ const TeacherDashboardPage: React.FC = () => {
       return
     }
     try {
-      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-
-      const [countRes, activeRes, allRes, top5Res] = await Promise.all([
-        // total students
-        supabase.from('profiles').select('*', { count: 'exact', head: true }),
-        // active in last 24 h
-        supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('app_online_at', yesterday),
-        // all XP + quiz counts for avg/total
-        supabase.from('profiles').select('total_xp, quizzes_completed'),
-        // top 5 by XP
-        supabase
-          .from('profiles')
-          .select('telegram_id, first_name, username, total_xp, level, quizzes_completed, app_online_at')
-          .order('total_xp', { ascending: false })
-          .limit(5),
+      const [statsData, top5Data] = await Promise.all([
+        fetchDashboardStats(),
+        fetchTop5Students(),
       ])
-
-      const rows   = (allRes.data ?? []) as { total_xp: number; quizzes_completed: number }[]
-      const avgXP  = rows.length ? Math.round(rows.reduce((s, r) => s + (r.total_xp || 0), 0) / rows.length) : 0
-      const totalQ = rows.reduce((s, r) => s + (r.quizzes_completed || 0), 0)
-
-      setStats({
-        totalStudents: countRes.count ?? 0,
-        activeToday:   activeRes.count ?? 0,
-        avgXP,
-        totalQuizzes:  totalQ,
-      })
-      setTop5((top5Res.data ?? []) as TopStudent[])
+      setStats(statsData)
+      setTop5(top5Data as TopStudent[])
     } catch (err) {
       console.error('[TeacherDashboard] stats fetch error', err)
     } finally {
