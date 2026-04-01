@@ -1,62 +1,110 @@
 /**
- * TeacherApplyPage — "O'qituvchi bo'lish" registration page.
+ * TeacherApplyPage — Multi-field teacher application form.
  *
  * Flow:
  *  1. Student visits /become-teacher
- *  2. Reads benefits & requirements
- *  3. Clicks "Ariza yuborish" → POST /api/auth/apply-teacher
- *  4. Backend sets role='teacher', status='pending'
+ *  2. Fills in: specialization, experience_years, bio, course_idea, motivation
+ *  3. Submits → POST /api/auth/apply-teacher with form data
+ *  4. Backend sets role='teacher', status='pending', stores in teacher_profiles
  *  5. Page shows success / pending confirmation
- *
- * If already pending or already a teacher, shows the appropriate state.
  */
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
-// ── Benefits data ─────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
+
+interface FormData {
+  specialization:   string
+  experience_years: string
+  bio:              string
+  course_idea:      string
+  motivation:       string
+}
+
+type State = 'form' | 'loading' | 'success' | 'already_pending' | 'already_teacher' | 'error'
+
+// ── Benefits ──────────────────────────────────────────────────────────────────
 
 const BENEFITS = [
-  { icon: '🎓', title: 'O\'z kurslaringizni yarating', desc: 'Video darslar, testlar va materiallar bilan to\'liq kurs tuzing' },
+  { icon: '🎓', title: "O'z kurslaringizni yarating", desc: 'Video darslar, testlar va materiallar bilan to\'liq kurs tuzing' },
   { icon: '💰', title: 'Daromad oling', desc: 'Har bir to\'lov uchun komisyon foizini hisobingizga oling' },
-  { icon: '📊', title: 'Analitika paneli', desc: 'O\'quvchilar progressi, ko\'rishlar va daromad statistikasini kuzating' },
-  { icon: '🏆', title: 'O\'qituvchi badji', desc: 'Profilingizda maxsus "Teacher" badge ko\'rinadi' },
+  { icon: '📊', title: 'Analitika paneli', desc: "O'quvchilar progressi va daromad statistikasini kuzating" },
+  { icon: '🏆', title: "O'qituvchi badji", desc: 'Profilingizda maxsus "Teacher" badge ko\'rinadi' },
 ]
 
-const REQUIREMENTS = [
-  '📚 O\'z sohangizda chuqur bilimga ega bo\'lish',
-  '🎤 O\'zbek tilida tushuntirib bera olish',
-  '✅ Kamida bitta to\'liq kurs tayyorlash niyati',
-  '📱 Telegram akkauntingiz faol bo\'lishi',
-]
+// ── Field ─────────────────────────────────────────────────────────────────────
+
+interface FieldProps {
+  label:       string
+  required?:   boolean
+  children:    React.ReactNode
+  hint?:       string
+}
+
+const Field: React.FC<FieldProps> = ({ label, required, children, hint }) => (
+  <div className="space-y-1.5">
+    <label className="block text-sm font-semibold text-gray-800 dark:text-gray-200">
+      {label}
+      {required && <span className="text-red-500 ml-1">*</span>}
+    </label>
+    {children}
+    {hint && <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">{hint}</p>}
+  </div>
+)
+
+const inputCls = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sahifa-400/50 focus:border-sahifa-400 transition-all"
 
 // ── Page ─────────────────────────────────────────────────────────────────────
-
-type State = 'idle' | 'loading' | 'success' | 'already_pending' | 'already_teacher' | 'error'
 
 const TeacherApplyPage: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  // If already teacher/pending detect on mount from AuthContext
+  // Pre-detect state from AuthContext
   const initialState: State =
-    user?.role === 'admin'         ? 'already_teacher' :
-    user?.role === 'teacher' && user.status === 'active'  ? 'already_teacher' :
-    user?.role === 'teacher' && user.status === 'pending' ? 'already_pending' :
-    'idle'
+    user?.role === 'admin'                                      ? 'already_teacher' :
+    user?.role === 'teacher' && user.status === 'active'       ? 'already_teacher' :
+    user?.role === 'teacher' && user.status === 'pending'      ? 'already_pending' :
+    'form'
 
-  const [state, setState] = useState<State>(initialState)
+  const [state, setState]     = useState<State>(initialState)
   const [errorMsg, setErrorMsg] = useState('')
+  const [form, setForm]       = useState<FormData>({
+    specialization:   '',
+    experience_years: '',
+    bio:              '',
+    course_idea:      '',
+    motivation:       '',
+  })
 
-  const handleApply = async () => {
-    if (state !== 'idle') return
+  const updateField = (k: keyof FormData) => (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => setForm(prev => ({ ...prev, [k]: e.target.value }))
+
+  const isFormValid = () =>
+    form.specialization.trim() &&
+    form.experience_years.trim() &&
+    form.bio.trim().length >= 20 &&
+    form.course_idea.trim().length >= 20 &&
+    form.motivation.trim().length >= 20
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!isFormValid()) return
     setState('loading')
     setErrorMsg('')
     try {
-      const res = await apiService.applyTeacher()
+      const res = await apiService.applyTeacher({
+        specialization:   form.specialization.trim(),
+        experience_years: parseInt(form.experience_years, 10),
+        bio:              form.bio.trim(),
+        course_idea:      form.course_idea.trim(),
+        motivation:       form.motivation.trim(),
+      })
       const data = res.data
       if (data.already_applied) {
         setState(data.status === 'active' ? 'already_teacher' : 'already_pending')
@@ -66,11 +114,11 @@ const TeacherApplyPage: React.FC = () => {
     } catch (err: any) {
       const detail = err?.response?.data?.detail || err?.message || 'Xatolik yuz berdi'
       setErrorMsg(String(detail))
-      setState('error')
+      setState('form')
     }
   }
 
-  // ── Success / already-pending state ────────────────────────────────────────
+  // ── Success / already-pending ──────────────────────────────────────────────
   if (state === 'success' || state === 'already_pending') {
     return (
       <PageWrapper>
@@ -81,9 +129,7 @@ const TeacherApplyPage: React.FC = () => {
         >
           <div className="text-7xl select-none">⏳</div>
           <div>
-            <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
-              Ariza yuborildi!
-            </h1>
+            <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Ariza yuborildi!</h1>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
               Arizangiz admin tomonidan ko'rib chiqilmoqda.
               Tasdiqlangandan so'ng sizga xabar beriladi va
@@ -92,7 +138,7 @@ const TeacherApplyPage: React.FC = () => {
           </div>
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-sm text-amber-700 dark:text-amber-300 text-left space-y-1">
             <p className="font-semibold">📋 Navbatdagi qadamlar:</p>
-            <p>1. Admin arizangizni tasdiqlaydi</p>
+            <p>1. Admin arizangizni ko'rib chiqadi</p>
             <p>2. Sizning rolingiz "Teacher" ga o'zgaradi</p>
             <p>3. Yangi kirish paytida o'qituvchi paneli ochiladi</p>
           </div>
@@ -128,9 +174,7 @@ const TeacherApplyPage: React.FC = () => {
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
             Siz allaqachon o'qituvchisiz!
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            O'qituvchi panelingizga o'ting.
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">O'qituvchi panelingizga o'ting.</p>
           <Link
             to="/teacher"
             className="inline-block px-8 py-3 bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold rounded-2xl text-sm transition-colors"
@@ -149,16 +193,14 @@ const TeacherApplyPage: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-8"
+        className="text-center mb-6"
       >
         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 text-3xl shadow-lg mb-4">
           🎓
         </div>
-        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
-          O'qituvchi bo'lish
-        </h1>
+        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">O'qituvchi bo'lish</h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto leading-relaxed">
-          SAHIFALAB platformasida o'z kurslaringizni yarating va o'quvchilarga ilm bering.
+          Arizangizni to'ldiring — admin ko'rib chiqib, tasdiqlaydi.
           {user?.first_name && ` Assalomu alaykum, ${user.first_name}!`}
         </p>
       </motion.div>
@@ -167,105 +209,150 @@ const TeacherApplyPage: React.FC = () => {
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.05 }}
-        className="mb-6"
+        transition={{ delay: 0.04 }}
+        className="grid grid-cols-2 gap-2 mb-6"
       >
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-          ✨ O'qituvchi sifatida nima olasiz?
-        </h2>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {BENEFITS.map(b => (
-            <div
-              key={b.title}
-              className="flex items-start gap-3 p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700"
-            >
-              <span className="text-2xl shrink-0">{b.icon}</span>
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{b.title}</p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{b.desc}</p>
-              </div>
+        {BENEFITS.map(b => (
+          <div key={b.title} className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+            <span className="text-xl shrink-0">{b.icon}</span>
+            <div>
+              <p className="text-xs font-semibold text-gray-900 dark:text-white leading-tight">{b.title}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{b.desc}</p>
             </div>
-          ))}
-        </div>
+          </div>
+        ))}
       </motion.div>
 
-      {/* Requirements */}
-      <motion.div
+      {/* Application form */}
+      <motion.form
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="mb-6 bg-sahifa-50 dark:bg-sahifa-900/20 border border-sahifa-200 dark:border-sahifa-800 rounded-2xl p-4"
+        transition={{ delay: 0.08 }}
+        onSubmit={handleSubmit}
+        className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 mb-5"
       >
-        <h2 className="text-sm font-semibold text-sahifa-700 dark:text-sahifa-300 mb-2">
-          📋 Talablar
-        </h2>
-        <ul className="space-y-1.5">
-          {REQUIREMENTS.map(r => (
-            <li key={r} className="text-xs text-sahifa-700 dark:text-sahifa-300 leading-relaxed">{r}</li>
-          ))}
-        </ul>
-      </motion.div>
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white">📋 Ariza shakli</h2>
 
-      {/* Process steps */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-        className="mb-8"
-      >
-        <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-          🔄 Jarayon
-        </h2>
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-8 h-8 rounded-full bg-sahifa-500 text-white flex items-center justify-center font-bold text-sm">1</div>
-            <span className="text-center leading-tight">Ariza<br/>yuboring</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 flex items-center justify-center font-bold text-sm">2</div>
-            <span className="text-center leading-tight">Admin<br/>ko'radi</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200 dark:bg-slate-700" />
-          <div className="flex flex-col items-center gap-1">
-            <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 flex items-center justify-center font-bold text-sm">3</div>
-            <span className="text-center leading-tight">Panel<br/>ochiladi</span>
-          </div>
-        </div>
-      </motion.div>
+        {/* Specialization */}
+        <Field label="Mutaxassislik" required hint="Masalan: Frontend dasturlash, Matematika, Ingliz tili...">
+          <input
+            type="text"
+            value={form.specialization}
+            onChange={updateField('specialization')}
+            placeholder="Siz nima o'qitasiz?"
+            maxLength={120}
+            required
+            className={inputCls}
+          />
+        </Field>
 
-      {/* Error */}
-      {state === 'error' && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="mb-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300"
+        {/* Experience */}
+        <Field label="Tajriba (yillar)" required hint="0 — endi boshlayman, 1–3 yil, 5+ yil...">
+          <select
+            value={form.experience_years}
+            onChange={updateField('experience_years')}
+            required
+            className={inputCls}
+          >
+            <option value="" disabled>Tajribangizni tanlang</option>
+            <option value="0">Endigina boshlayman (0 yil)</option>
+            <option value="1">1 yil</option>
+            <option value="2">2 yil</option>
+            <option value="3">3 yil</option>
+            <option value="5">5 yil</option>
+            <option value="7">7+ yil</option>
+            <option value="10">10+ yil</option>
+          </select>
+        </Field>
+
+        {/* Bio */}
+        <Field
+          label="O'zingiz haqingizda"
+          required
+          hint="Kamida 20 ta belgi. Kim ekansiz, nima bilan shug'ullanasiz?"
         >
-          ❌ {errorMsg}
-        </motion.div>
-      )}
+          <textarea
+            value={form.bio}
+            onChange={updateField('bio')}
+            placeholder="Men ... bo'lib, ... yildan beri ... bilan shug'ullanaman..."
+            rows={3}
+            minLength={20}
+            maxLength={500}
+            required
+            className={`${inputCls} resize-none`}
+          />
+          <p className="text-[10px] text-gray-400 text-right">{form.bio.length}/500</p>
+        </Field>
 
-      {/* CTA */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="space-y-3"
-      >
+        {/* Course idea */}
+        <Field
+          label="Qanday kurs yaratmoqchisiz?"
+          required
+          hint="Kursning mavzusi, kimlar uchun mo'ljallangan, qanday natija beradi?"
+        >
+          <textarea
+            value={form.course_idea}
+            onChange={updateField('course_idea')}
+            placeholder="Men ... kursini yaratmoqchiman. Bu kurs ... uchun bo'lib, ..."
+            rows={4}
+            minLength={20}
+            maxLength={1000}
+            required
+            className={`${inputCls} resize-none`}
+          />
+          <p className="text-[10px] text-gray-400 text-right">{form.course_idea.length}/1000</p>
+        </Field>
+
+        {/* Motivation */}
+        <Field
+          label="Nima uchun o'qituvchi bo'lmoqchisiz?"
+          required
+          hint="Motivatsiyangiz va maqsadingizni yozing (kamida 20 ta belgi)."
+        >
+          <textarea
+            value={form.motivation}
+            onChange={updateField('motivation')}
+            placeholder="Men o'qituvchi bo'lmoqchiman, chunki..."
+            rows={4}
+            minLength={20}
+            maxLength={1000}
+            required
+            className={`${inputCls} resize-none`}
+          />
+          <p className="text-[10px] text-gray-400 text-right">{form.motivation.length}/1000</p>
+        </Field>
+
+        {/* Error */}
+        <AnimatePresence>
+          {errorMsg && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300"
+            >
+              ❌ {errorMsg}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Submit */}
         <button
-          onClick={handleApply}
-          disabled={state === 'loading'}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-base shadow-lg disabled:opacity-60 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+          type="submit"
+          disabled={state === 'loading' || !isFormValid()}
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
         >
-          {state === 'loading' ? '⏳ Yuklanmoqda...' : '🎓 Ariza yuborish'}
+          {state === 'loading' ? '⏳ Yuborilmoqda...' : '🎓 Ariza yuborish'}
         </button>
-        <button
-          onClick={() => navigate(-1)}
-          className="w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-        >
-          ← Ortga
-        </button>
-      </motion.div>
+      </motion.form>
+
+      {/* Back */}
+      <button
+        onClick={() => navigate(-1)}
+        className="w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+      >
+        ← Ortga
+      </button>
     </PageWrapper>
   )
 }

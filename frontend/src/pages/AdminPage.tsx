@@ -73,13 +73,20 @@ interface AdminQuiz {
 type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users'
 
 interface TeacherRequest {
-  telegram_id: number
-  first_name: string | null
-  username: string | null
-  photo_url: string | null
-  total_xp: number
-  level: number
-  created_at: string
+  telegram_id:      number
+  first_name:       string | null
+  username:         string | null
+  photo_url:        string | null
+  total_xp:         number
+  level:            number
+  created_at:       string
+  // Application form fields (from teacher_profiles)
+  specialization:   string | null
+  experience_years: number | null
+  bio:              string | null
+  course_idea:      string | null
+  motivation:       string | null
+  applied_at:       string | null
 }
 
 // ─── Platform analytics types (Step 15) ──────────────────────────────────────
@@ -2008,6 +2015,7 @@ const AdminPage: React.FC = () => {
                     key={req.telegram_id}
                     className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm"
                   >
+                    {/* Header: avatar + name + badge */}
                     <div className="flex items-center gap-3 mb-3">
                       {req.photo_url ? (
                         <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
@@ -2029,6 +2037,42 @@ const AdminPage: React.FC = () => {
                         ⏳ Pending
                       </span>
                     </div>
+
+                    {/* Application details */}
+                    {(req.specialization || req.course_idea || req.motivation || req.bio) && (
+                      <div className="mb-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                        {req.specialization && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mutaxassislik</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
+                              {req.specialization}
+                              {req.experience_years != null && (
+                                <span className="ml-1 text-gray-400">· {req.experience_years} yil tajriba</span>
+                              )}
+                            </p>
+                          </div>
+                        )}
+                        {req.bio && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">O'zi haqida</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.bio}</p>
+                          </div>
+                        )}
+                        {req.course_idea && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Kurs g'oyasi</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.course_idea}</p>
+                          </div>
+                        )}
+                        {req.motivation && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Motivatsiya</p>
+                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.motivation}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <button
                         onClick={() => handleApproveTeacher(req.telegram_id)}

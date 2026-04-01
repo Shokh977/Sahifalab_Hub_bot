@@ -352,9 +352,15 @@ class ApiService {
 
   // ─── Teacher application ───────────────────────────────────────────────────
 
-  /** Current user applies to become a teacher (sets role=teacher, status=pending) */
-  async applyTeacher() {
-    return this.axiosInstance.post('/api/auth/apply-teacher')
+  /** Current user applies to become a teacher — sends full application form */
+  async applyTeacher(data: {
+    specialization: string
+    experience_years: number
+    bio: string
+    course_idea: string
+    motivation: string
+  }) {
+    return this.axiosInstance.post('/api/auth/apply-teacher', data)
   }
 
   /** Admin: list pending teacher applications */
@@ -385,6 +391,22 @@ class ApiService {
   /** Current user: update profile photo URL */
   async updateMyPhoto(photoUrl: string) {
     return this.axiosInstance.patch('/api/auth/me/photo', { photo_url: photoUrl })
+  }
+
+  // ─── Email auth ───────────────────────────────────────────────────────────
+
+  /** Register a new account with email + password */
+  async emailRegister(firstName: string, email: string, password: string) {
+    return this.axiosInstance.post('/api/auth/email-register', {
+      first_name: firstName,
+      email,
+      password,
+    })
+  }
+
+  /** Login with email + password */
+  async emailLogin(email: string, password: string) {
+    return this.axiosInstance.post('/api/auth/email-login', { email, password })
   }
 
   // ─── Teacher profile ──────────────────────────────────────────────────────

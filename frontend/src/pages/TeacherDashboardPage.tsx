@@ -1,40 +1,21 @@
 /**
- * TeacherDashboardPage — real data wired via Supabase direct reads.
+ * TeacherDashboardPage — teacher-scoped data only.
  *
- * Stats:  total students · active today · avg XP · total quiz completions
- * Table:  profiles (anon SELECT enabled via RLS)
- * Top-5:  mini-leaderboard by total_xp
+ * Stats come from GET /api/teacher/analytics which scopes all data
+ * to this teacher's courses and enrolled students.
+ * Global platform stats (all users, all quizzes) are NOT shown here.
  */
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
-import { supabase, isSupabaseConfigured, fetchDashboardStats, fetchTop5Students } from '../lib/supabase'
-import { getLevelTitle } from '../utils/levelTitles'
-import { isUserOnline } from '../utils/onlineStatus'
 import apiService from '../services/apiService'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const ADMIN_IDS = [807466591]
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-interface DashStats {
-  totalStudents: number
-  activeToday:   number
-  avgXP:         number
-  totalQuizzes:  number
-}
-
-interface TopStudent {
-  telegram_id:       number
-  first_name:        string
-  username:          string | null
-  total_xp:          number
-  level:             number
-  quizzes_completed: number
-  app_online_at:     string | null
-}
 
 interface TeacherProfile {
   bio:              string
@@ -148,53 +129,6 @@ const ActionButton: React.FC<ActionButtonProps> = ({
   return <div>{inner}</div>
 }
 
-// ── Top student row ───────────────────────────────────────────────────────────
-
-const TopStudentRow: React.FC<{ student: TopStudent; rank: number }> = ({ student, rank }) => {
-  const online  = isUserOnline(student.app_online_at)
-  const title   = getLevelTitle(student.level)
-  const medals  = ['🥇', '🥈', '🥉']
-  const medal   = rank <= 3 ? medals[rank - 1] : null
-
-  return (
-    <div className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-      {/* rank */}
-      <div className="w-7 text-center shrink-0">
-        {medal
-          ? <span className="text-lg">{medal}</span>
-          : <span className="text-xs font-bold text-gray-500 dark:text-gray-400">#{rank}</span>
-        }
-      </div>
-      {/* avatar */}
-      <div className="relative shrink-0">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-sm">
-          {(student.first_name || '?').charAt(0).toUpperCase()}
-        </div>
-        {online && (
-          <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-green-500 border-2 border-white dark:border-slate-800" />
-        )}
-      </div>
-      {/* name + title */}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-          {student.first_name}
-          {student.username && (
-            <span className="text-[11px] text-gray-400 dark:text-gray-500 ml-1">@{student.username}</span>
-          )}
-        </p>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">
-          {title} · Lv {student.level} · 🧩 {student.quizzes_completed} quiz
-        </p>
-      </div>
-      {/* XP */}
-      <div className="text-right shrink-0">
-        <p className="text-sm font-bold text-sahifa-600 dark:text-sahifa-400">{student.total_xp.toLocaleString()}</p>
-        <p className="text-[10px] text-gray-400 dark:text-gray-500">XP</p>
-      </div>
-    </div>
-  )
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const TeacherDashboardPage: React.FC = () => {
@@ -202,40 +136,12 @@ const TeacherDashboardPage: React.FC = () => {
 
   const isAdmin = !!(user?.id && ADMIN_IDS.includes(user.id))
 
-  const [stats, setStats] = useState<DashStats | null>(null)
-  const [statsLoading, setStatsLoading] = useState(true)
-  const [top5, setTop5] = useState<TopStudent[]>([])
-  const [top5Loading, setTop5Loading] = useState(true)
   const [teacherProfile, setTeacherProfile] = useState<TeacherProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(true)
   const [myCourses, setMyCourses] = useState<MyCourse[]>([])
   const [coursesLoading, setCoursesLoading] = useState(true)
   const [analytics, setAnalytics] = useState<TeacherAnalytics | null>(null)
   const [analyticsLoading, setAnalyticsLoading] = useState(true)
-
-  // ── Fetch stats from Supabase ────────────────────────────────────────────
-  const fetchStats = useCallback(async () => {
-    if (!isSupabaseConfigured) {
-      setStatsLoading(false)
-      setTop5Loading(false)
-      return
-    }
-    try {
-      const [statsData, top5Data] = await Promise.all([
-        fetchDashboardStats(),
-        fetchTop5Students(),
-      ])
-      setStats(statsData)
-      setTop5(top5Data as TopStudent[])
-    } catch (err) {
-      console.error('[TeacherDashboard] stats fetch error', err)
-    } finally {
-      setStatsLoading(false)
-      setTop5Loading(false)
-    }
-  }, [])
-
-  useEffect(() => { fetchStats() }, [fetchStats])
 
   useEffect(() => {
     apiService.getTeacherProfile()
@@ -258,35 +164,35 @@ const TeacherDashboardPage: React.FC = () => {
       .finally(() => setAnalyticsLoading(false))
   }, [])
 
-  // ── Stat card definitions ────────────────────────────────────────────────
+  // ── Stat cards — teacher-scoped from analytics ───────────────────────────
   const statCards: StatCardProps[] = [
     {
-      icon: '👥', label: "Jami o'quvchilar",
-      value: stats?.totalStudents ?? 0,
-      sub: statsLoading ? 'Yuklanmoqda...' : 'profiles jadvalidan',
+      icon: '👥', label: "Mening talabalarim",
+      value: analytics?.total_students ?? 0,
+      sub: analyticsLoading ? 'Yuklanmoqda...' : 'kurslarimga yozilganlar',
       color: 'from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/30',
-      loading: statsLoading,
+      loading: analyticsLoading,
     },
     {
-      icon: '🟢', label: 'Bugun faol',
-      value: stats?.activeToday ?? 0,
-      sub: statsLoading ? 'Yuklanmoqda...' : 'so\'ngi 24 soat',
+      icon: '📚', label: 'Kurslarim',
+      value: `${analytics?.published_courses ?? 0} / ${analytics?.courses_count ?? 0}`,
+      sub: analyticsLoading ? 'Yuklanmoqda...' : 'chop etilgan / jami',
       color: 'from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/30',
-      loading: statsLoading,
+      loading: analyticsLoading,
     },
     {
-      icon: '⭐', label: "O'rtacha XP",
-      value: stats ? stats.avgXP.toLocaleString() : 0,
-      sub: statsLoading ? 'Yuklanmoqda...' : 'barcha foydalanuvchilar',
+      icon: '⭐', label: "To'lovli kurslar",
+      value: analytics?.paid_courses ?? 0,
+      sub: analyticsLoading ? 'Yuklanmoqda...' : `${analytics?.completed_orders ?? 0} to'lov`,
       color: 'from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/30',
-      loading: statsLoading,
+      loading: analyticsLoading,
     },
     {
-      icon: '🧩', label: "Jami quiz",
-      value: stats?.totalQuizzes ?? 0,
-      sub: statsLoading ? 'Yuklanmoqda...' : 'barcha bajarilganlar',
+      icon: '💸', label: 'Taxminiy daromad',
+      value: `${((analytics?.estimated_revenue_uzs ?? 0) / 1000).toFixed(0)}K`,
+      sub: analyticsLoading ? 'Yuklanmoqda...' : `${analytics?.gross_stars ?? 0} Stars`,
       color: 'from-sahifa-50 to-sahifa-100 dark:from-sahifa-900/20 dark:to-sahifa-900/30',
-      loading: statsLoading,
+      loading: analyticsLoading,
     },
   ]
 
@@ -377,18 +283,7 @@ const TeacherDashboardPage: React.FC = () => {
         </motion.div>
       )}
 
-      {/* Supabase not configured warning */}
-      {!isSupabaseConfigured && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="mb-4 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300"
-        >
-          ⚠️ Supabase sozlanmagan — statistika yuklanmadi.
-        </motion.div>
-      )}
-
-      {/* Stats grid */}
+      {/* Stats grid — teacher-scoped */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
@@ -637,43 +532,6 @@ const TeacherDashboardPage: React.FC = () => {
                   )}
                 </div>
               </Link>
-            ))}
-          </div>
-        )}
-      </motion.div>
-
-      {/* Top 5 students */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.15 }}
-      >
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-            Top-5 o'quvchilar
-          </h2>
-          <Link
-            to="/leaderboard"
-            className="text-[11px] text-sahifa-500 dark:text-sahifa-400 font-medium hover:underline"
-          >
-            Barchasini ko'rish →
-          </Link>
-        </div>
-
-        {top5Loading ? (
-          <div className="space-y-2">
-            {[1, 2, 3, 4, 5].map(i => (
-              <div key={i} className="h-14 rounded-xl bg-slate-100 dark:bg-slate-800 animate-pulse" />
-            ))}
-          </div>
-        ) : top5.length === 0 ? (
-          <div className="text-center py-8 text-sm text-gray-400 dark:text-gray-500">
-            {isSupabaseConfigured ? 'Hali foydalanuvchilar yo\'q' : 'Supabase ulanmagan'}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {top5.map((s, i) => (
-              <TopStudentRow key={s.telegram_id} student={s} rank={i + 1} />
             ))}
           </div>
         )}

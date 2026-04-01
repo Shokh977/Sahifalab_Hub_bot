@@ -6,7 +6,8 @@ import secrets
 import hashlib
 from datetime import datetime, UTC, timedelta
 import httpx
-from pydantic import BaseModel, HttpUrl
+import bcrypt
+from pydantic import BaseModel, HttpUrl, EmailStr
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
 
@@ -477,6 +478,14 @@ async def verify_code(code: str):
 
 # ── Teacher application flow ──────────────────────────────────────────────────
 
+class ApplyTeacherRequest(BaseModel):
+    specialization:   str
+    experience_years: int
+    bio:              str
+    course_idea:      str   # What course they plan to create
+    motivation:       str   # Why they want to teach
+
+
 async def _resolve_telegram_id(authorization: Optional[str]) -> int:
     """Decode Bearer JWT → telegram_id, raising 401 on failure."""
     if not authorization:
@@ -510,9 +519,13 @@ async def _resolve_admin_id(authorization: Optional[str]) -> int:
 
 
 @router.post("/apply-teacher")
-async def apply_teacher(authorization: Optional[str] = Header(None)):
+async def apply_teacher(
+    body: ApplyTeacherRequest,
+    authorization: Optional[str] = Header(None),
+):
     """
     Current user applies to become a teacher.
+    Stores application form data in teacher_profiles.
     Sets profiles.role = 'teacher', profiles.status = 'pending'.
     Idempotent — returns current status if already applied.
     """
@@ -543,7 +556,8 @@ async def apply_teacher(authorization: Optional[str] = Header(None)):
 
     # Set role=teacher, status=pending
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with httpx.AsyncClient(timeout=15) as client:
+            # Update profile role/status
             res = await client.patch(
                 f"{SUPABASE_URL}/rest/v1/profiles",
                 params={"telegram_id": f"eq.{telegram_id}"},
@@ -552,6 +566,38 @@ async def apply_teacher(authorization: Optional[str] = Header(None)):
             )
             if res.status_code not in (200, 204):
                 raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+
+            # Check if teacher_profile row already exists
+            chk = await client.get(
+                f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "telegram_id"},
+                headers=_supabase_headers(),
+            )
+            exists = isinstance(chk.json(), list) and len(chk.json()) > 0
+
+            # Upsert teacher_profiles with application data
+            profile_payload = {
+                "telegram_id":      telegram_id,
+                "specialization":   body.specialization,
+                "experience_years": body.experience_years,
+                "bio":              body.bio,
+                "course_idea":      body.course_idea,
+                "motivation":       body.motivation,
+                "applied_at":       datetime.now(UTC).isoformat(),
+            }
+            if exists:
+                await client.patch(
+                    f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                    params={"telegram_id": f"eq.{telegram_id}"},
+                    json={k: v for k, v in profile_payload.items() if k != "telegram_id"},
+                    headers=_supabase_headers(),
+                )
+            else:
+                await client.post(
+                    f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                    json=profile_payload,
+                    headers=_supabase_headers(),
+                )
     except HTTPException:
         raise
     except Exception as e:
@@ -564,26 +610,60 @@ async def apply_teacher(authorization: Optional[str] = Header(None)):
 async def list_teacher_requests(authorization: Optional[str] = Header(None)):
     """
     Admin: list all pending teacher applications.
-    Returns profiles where role='teacher' AND status='pending'.
+    Returns profiles joined with teacher_profiles application data.
     """
     _ensure_supabase()
     await _resolve_admin_id(authorization)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
+            # Fetch pending teacher profiles
             res = await client.get(
                 f"{SUPABASE_URL}/rest/v1/profiles",
                 params={
-                    "role": "eq.teacher",
+                    "role":   "eq.teacher",
                     "status": "eq.pending",
                     "select": "telegram_id,first_name,username,photo_url,total_xp,level,created_at",
-                    "order": "created_at.asc",
+                    "order":  "created_at.asc",
                 },
                 headers=_supabase_headers(),
             )
             if res.status_code != 200:
                 raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
-            return res.json() or []
+
+            profiles = res.json() or []
+            if not profiles:
+                return []
+
+            # Fetch teacher_profiles application data for these users
+            tg_ids = [str(p["telegram_id"]) for p in profiles]
+            tp_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                params={
+                    "telegram_id": f"in.({','.join(tg_ids)})",
+                    "select": "telegram_id,specialization,experience_years,bio,course_idea,motivation,applied_at",
+                },
+                headers=_supabase_headers(),
+            )
+            tp_map = {}
+            if tp_res.status_code == 200:
+                for row in (tp_res.json() or []):
+                    tp_map[row["telegram_id"]] = row
+
+            # Merge application data into profiles
+            result = []
+            for p in profiles:
+                tp = tp_map.get(p["telegram_id"], {})
+                result.append({
+                    **p,
+                    "specialization":   tp.get("specialization"),
+                    "experience_years": tp.get("experience_years"),
+                    "bio":              tp.get("bio"),
+                    "course_idea":      tp.get("course_idea"),
+                    "motivation":       tp.get("motivation"),
+                    "applied_at":       tp.get("applied_at"),
+                })
+            return result
     except HTTPException:
         raise
     except Exception as e:
@@ -737,4 +817,163 @@ async def set_user_role(
         "telegram_id": target_telegram_id,
         "role": body.role,
         "status": body.status,
+    }
+
+# ── Email auth ────────────────────────────────────────────────────────────────
+
+def _email_to_internal_id(email: str) -> int:
+    """
+    Convert email to a stable negative integer ID that coexists with
+    Telegram positive IDs and Google negative IDs in the schema.
+    Uses a different prefix (200_000_000) from Google (100_000_000).
+    """
+    digest = hashlib.sha256(email.lower().encode("utf-8")).hexdigest()
+    compact = int(digest[:15], 16) % 700_000_000
+    return -(200_000_000 + compact)
+
+
+class EmailRegisterRequest(BaseModel):
+    first_name: str
+    email:      EmailStr
+    password:   str
+
+
+class EmailLoginRequest(BaseModel):
+    email:    EmailStr
+    password: str
+
+
+@router.post("/email-register")
+async def email_register(body: EmailRegisterRequest):
+    """
+    Register a new account with email + password.
+    Returns a JWT on success.
+    """
+    _ensure_supabase()
+
+    if len(body.password) < 6:
+        raise HTTPException(status_code=400, detail="Parol kamida 6 ta belgidan iborat bo'lishi kerak")
+
+    email_lower = body.email.lower()
+
+    # Check if email already exists
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            chk = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"email": f"eq.{email_lower}", "select": "telegram_id"},
+                headers=_supabase_headers(),
+            )
+            existing = chk.json() if chk.status_code == 200 else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    if existing:
+        raise HTTPException(status_code=400, detail="Bu email allaqachon ro'yxatdan o'tgan")
+
+    # Hash password
+    password_hash = bcrypt.hashpw(body.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+    # Derive stable internal ID from email
+    internal_id = _email_to_internal_id(email_lower)
+
+    # Create profile
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                json={
+                    "telegram_id":    internal_id,
+                    "first_name":     body.first_name.strip(),
+                    "email":          email_lower,
+                    "password_hash":  password_hash,
+                    "role":           "student",
+                    "status":         "active",
+                    "app_created_at": datetime.now(UTC).isoformat(),
+                    "app_last_login": datetime.now(UTC).isoformat(),
+                },
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 201):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    token_data = create_access_token(internal_id)
+    return {
+        "status": "ok",
+        "telegram_id": internal_id,
+        "first_name": body.first_name.strip(),
+        "email": email_lower,
+        "username": None,
+        "photo_url": None,
+        "role": "student",
+        "status_account": "active",
+        **token_data,
+    }
+
+
+@router.post("/email-login")
+async def email_login(body: EmailLoginRequest):
+    """
+    Login with email + password.
+    Returns a JWT on success.
+    """
+    _ensure_supabase()
+
+    email_lower = body.email.lower()
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={
+                    "email":  f"eq.{email_lower}",
+                    "select": "telegram_id,first_name,username,photo_url,password_hash,role,status",
+                },
+                headers=_supabase_headers(),
+            )
+            rows = res.json() if res.status_code == 200 else []
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+    if not rows:
+        raise HTTPException(status_code=401, detail="Email yoki parol noto'g'ri")
+
+    row = rows[0]
+    stored_hash = row.get("password_hash")
+    if not stored_hash:
+        raise HTTPException(status_code=401, detail="Bu akkaunt parol bilan ro'yxatdan o'tmagan")
+
+    if not bcrypt.checkpw(body.password.encode("utf-8"), stored_hash.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Email yoki parol noto'g'ri")
+
+    if row.get("status") == "suspended":
+        raise HTTPException(status_code=403, detail="Akkauntingiz bloklangan")
+
+    # Update last login
+    telegram_id = row["telegram_id"]
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}"},
+                json={"app_last_login": datetime.now(UTC).isoformat()},
+                headers=_supabase_headers(),
+            )
+    except Exception:
+        pass
+
+    token_data = create_access_token(telegram_id)
+    return {
+        "status": "ok",
+        "telegram_id": telegram_id,
+        "first_name":  row.get("first_name", ""),
+        "username":    row.get("username"),
+        "photo_url":   row.get("photo_url"),
+        "role":        row.get("role", "student"),
+        "status_account": row.get("status", "active"),
+        **token_data,
     }
