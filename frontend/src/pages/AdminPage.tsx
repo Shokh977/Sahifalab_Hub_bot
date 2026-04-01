@@ -70,7 +70,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses'
 
 interface TeacherRequest {
   telegram_id:      number
@@ -285,6 +285,35 @@ const AdminPage: React.FC = () => {
   const [soundUploading, setSoundUploading] = useState(false)
   const [soundMsg, setSoundMsg] = useState('')
 
+  // Admin Courses (Step 20)
+  interface AdminCourse {
+    id: number
+    title: string
+    description: string
+    thumbnail_url: string
+    teacher_id: number
+    teacher_name: string
+    teacher_username: string | null
+    category_name: string
+    category_icon: string
+    is_published: boolean
+    is_paid: boolean
+    price: number
+    level: string
+    language: string
+    enrolled_count: number
+    rating: number
+    total_lessons: number
+    total_duration_minutes: number
+    created_at: string
+  }
+  const [adminCourses, setAdminCourses] = useState<AdminCourse[]>([])
+  const [adminCoursesLoading, setAdminCoursesLoading] = useState(false)
+  const [adminCoursesError, setAdminCoursesError] = useState('')
+  const [courseToggleId, setCourseToggleId] = useState<number | null>(null)
+  const [courseDeleteId, setCourseDeleteId] = useState<number | null>(null)
+  const [coursesMsg, setCoursesMsg] = useState('')
+
   // ── Auto-login from Telegram WebApp ────────────────────────────────────
   useEffect(() => {
     if (tgUser?.id && ADMIN_TELEGRAM_IDS.includes(tgUser.id) && !adminId) {
@@ -464,6 +493,59 @@ const AdminPage: React.FC = () => {
     }
   }, [adminId])
 
+  // ── Admin Courses loader (Step 20) ─────────────────────────────────────────
+  const loadAdminCourses = useCallback(async () => {
+    if (!adminId) return
+    setAdminCoursesLoading(true)
+    setAdminCoursesError('')
+    setCoursesMsg('')
+    try {
+      const res = await apiService.getAdminCourses(adminId)
+      setAdminCourses(res.data ?? [])
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Kurslar yuklanmadi'
+      setAdminCoursesError(String(detail))
+    } finally {
+      setAdminCoursesLoading(false)
+    }
+  }, [adminId])
+
+  const handleToggleCoursePublish = async (courseId: number) => {
+    if (!adminId) return
+    setCourseToggleId(courseId)
+    setCoursesMsg('')
+    try {
+      const res = await apiService.adminToggleCoursePublish(courseId, adminId)
+      const { is_published } = res.data
+      setAdminCourses(prev =>
+        prev.map(c => c.id === courseId ? { ...c, is_published } : c)
+      )
+      setCoursesMsg(`✅ Kurs ${is_published ? 'chop etildi' : 'qoralamaga olindi'}`)
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
+      setCoursesMsg(`❌ ${detail}`)
+    } finally {
+      setCourseToggleId(null)
+    }
+  }
+
+  const handleAdminDeleteCourse = async (courseId: number, title: string) => {
+    if (!adminId) return
+    if (!window.confirm(`"${title}" kursini o'chirasizmi? Bu amalni qaytarib bo'lmaydi.`)) return
+    setCourseDeleteId(courseId)
+    setCoursesMsg('')
+    try {
+      await apiService.adminDeleteCourse(courseId, adminId)
+      setAdminCourses(prev => prev.filter(c => c.id !== courseId))
+      setCoursesMsg('✅ Kurs o\'chirildi')
+    } catch (err: any) {
+      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
+      setCoursesMsg(`❌ ${detail}`)
+    } finally {
+      setCourseDeleteId(null)
+    }
+  }
+
   const searchUsers = useCallback(async (q?: string) => {
     if (!adminId) return
     setUserSearchLoading(true)
@@ -540,7 +622,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'teachers') loadTeacherRequests()
     if (activeTab === 'analytics') loadPlatformAnalytics()
     if (activeTab === 'users') searchUsers()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers])
+    if (activeTab === 'courses') loadAdminCourses()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -969,6 +1052,7 @@ const AdminPage: React.FC = () => {
             { id: 'teachers', label: '🎓 O\'qituvchilar' },
             { id: 'analytics', label: '📈 Analitika' },
             { id: 'users', label: '👤 Foydalanuvchilar' },
+            { id: 'courses', label: '🎬 Kurslar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -2360,6 +2444,182 @@ const AdminPage: React.FC = () => {
                 )
               })}
             </div>
+          </div>
+        )}
+
+        {/* ── Courses Tab (Step 20) ──────────────────────────────────────── */}
+        {activeTab === 'courses' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">
+                🎬 Barcha kurslar
+              </h2>
+              <button
+                onClick={loadAdminCourses}
+                disabled={adminCoursesLoading}
+                className="text-xs font-semibold px-3 py-1.5 rounded-xl bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-700 dark:text-sahifa-300 hover:bg-sahifa-200 dark:hover:bg-sahifa-900/60 disabled:opacity-50 transition-colors"
+              >
+                {adminCoursesLoading ? 'Yuklanmoqda…' : '🔄 Yangilash'}
+              </button>
+            </div>
+
+            {/* Summary strip */}
+            {!adminCoursesLoading && adminCourses.length > 0 && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded-xl p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-center">
+                  <p className="text-lg font-bold text-sahifa-600 dark:text-sahifa-400">{adminCourses.length}</p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Jami kurs</p>
+                </div>
+                <div className="rounded-xl p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-center">
+                  <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
+                    {adminCourses.filter(c => c.is_published).length}
+                  </p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Chop etilgan</p>
+                </div>
+                <div className="rounded-xl p-3 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 text-center">
+                  <p className="text-lg font-bold text-amber-600 dark:text-amber-400">
+                    {adminCourses.filter(c => !c.is_published).length}
+                  </p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">Qoralama</p>
+                </div>
+              </div>
+            )}
+
+            {/* Status message */}
+            {coursesMsg && (
+              <div className={`text-sm px-3 py-2 rounded-xl ${
+                coursesMsg.startsWith('✅')
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+              }`}>
+                {coursesMsg}
+              </div>
+            )}
+
+            {/* Error */}
+            {adminCoursesError && (
+              <div className="text-sm text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-xl">
+                ❌ {adminCoursesError}
+              </div>
+            )}
+
+            {/* Loading skeletons */}
+            {adminCoursesLoading && (
+              <div className="space-y-3">
+                {[1, 2, 3, 4].map(i => (
+                  <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {/* Empty state */}
+            {!adminCoursesLoading && !adminCoursesError && adminCourses.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
+                <span className="text-4xl">🎬</span>
+                <p className="text-sm">Hali kurs yo'q</p>
+              </div>
+            )}
+
+            {/* Course cards */}
+            {!adminCoursesLoading && adminCourses.map(course => {
+              const isToggling = courseToggleId === course.id
+              const isDeleting = courseDeleteId === course.id
+              const isBusy = isToggling || isDeleting
+
+              return (
+                <div
+                  key={course.id}
+                  className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden"
+                >
+                  {/* Top row: thumbnail + info */}
+                  <div className="flex items-start gap-3 p-3">
+                    {/* Thumbnail */}
+                    <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-sahifa-50 dark:bg-sahifa-900/20 flex items-center justify-center">
+                      {course.thumbnail_url ? (
+                        <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-2xl">{course.category_icon}</span>
+                      )}
+                    </div>
+
+                    {/* Main info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white leading-tight line-clamp-2">
+                        {course.title}
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
+                        👤 {course.teacher_name}
+                        {course.teacher_username && (
+                          <span className="ml-1 text-gray-400">@{course.teacher_username}</span>
+                        )}
+                      </p>
+                      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                        {course.category_icon} {course.category_name || '—'}
+                        {' · '}
+                        {course.level === 'beginner' ? '🟢 Boshlang\'ich'
+                          : course.level === 'intermediate' ? '🟡 O\'rta'
+                          : course.level === 'advanced' ? '🔴 Yuqori'
+                          : course.level}
+                      </p>
+                    </div>
+
+                    {/* Right: status badge */}
+                    <div className="shrink-0 flex flex-col items-end gap-1">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                        course.is_published
+                          ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                          : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
+                      }`}>
+                        {course.is_published ? '✅ Chop' : '⏳ Qoralama'}
+                      </span>
+                      {course.is_paid && (
+                        <span className="text-[10px] font-semibold text-sahifa-600 dark:text-sahifa-400">
+                          💰 {course.price.toLocaleString()} so'm
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Stats row */}
+                  <div className="px-3 pb-2 flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
+                    <span>👥 {course.enrolled_count} talaba</span>
+                    <span>📹 {course.total_lessons} dars</span>
+                    {course.rating > 0 && (
+                      <span>⭐ {course.rating.toFixed(1)}</span>
+                    )}
+                    <span className="ml-auto text-[10px] text-gray-300 dark:text-gray-600">
+                      #{course.id}
+                    </span>
+                  </div>
+
+                  {/* Action buttons */}
+                  <div className="flex gap-2 px-3 pb-3">
+                    <button
+                      onClick={() => handleToggleCoursePublish(course.id)}
+                      disabled={isBusy}
+                      className={`flex-1 py-2 rounded-xl text-xs font-semibold transition-colors disabled:opacity-50 ${
+                        course.is_published
+                          ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40'
+                          : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40'
+                      }`}
+                    >
+                      {isToggling
+                        ? '⏳ Kutilmoqda…'
+                        : course.is_published
+                          ? '🔒 Qoralamaga olish'
+                          : '🚀 Chop etish'}
+                    </button>
+                    <button
+                      onClick={() => handleAdminDeleteCourse(course.id, course.title)}
+                      disabled={isBusy}
+                      className="px-3 py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 transition-colors"
+                    >
+                      {isDeleting ? '⏳' : '🗑️'}
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 

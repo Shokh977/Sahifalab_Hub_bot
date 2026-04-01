@@ -528,6 +528,27 @@ class ApiService {
     return this.axiosInstance.post(`/api/courses/${courseId}/rate`, { rating, review })
   }
 
+  // ─── Admin: Courses management (Step 20) ─────────────────────────────────
+
+  /** Admin: list ALL courses (published + draft) with teacher info */
+  async getAdminCourses(telegramId: number) {
+    return this.axiosInstance.get('/api/admin/courses', { params: { telegram_id: telegramId } })
+  }
+
+  /** Admin: toggle is_published for any course */
+  async adminToggleCoursePublish(courseId: number, telegramId: number) {
+    return this.axiosInstance.patch(`/api/admin/courses/${courseId}/publish`, null, {
+      params: { telegram_id: telegramId },
+    })
+  }
+
+  /** Admin: delete any course */
+  async adminDeleteCourse(courseId: number, telegramId: number) {
+    return this.axiosInstance.delete(`/api/admin/courses/${courseId}`, {
+      params: { telegram_id: telegramId },
+    })
+  }
+
   // ─── Enrollments ─────────────────────────────────────────────────────────
 
   /** Student: check if current user is enrolled in a course */

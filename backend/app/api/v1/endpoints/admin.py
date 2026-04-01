@@ -632,3 +632,135 @@ async def get_platform_analytics(
         "teacher_leaderboard": teacher_leaderboard,
         "recent_orders": completed_orders[:20],
     }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin Courses Management (Step 20)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/courses")
+async def admin_list_courses(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """
+    Admin: list ALL courses (published + draft) with teacher name,
+    category info, enrolled_count, rating, total_lessons.
+    """
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        courses_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={
+                "select": (
+                    "id,teacher_id,title,description,thumbnail_url,"
+                    "is_published,is_paid,price,level,language,"
+                    "enrolled_count,rating,total_lessons,total_duration_minutes,"
+                    "created_at,"
+                    "course_categories(name,icon)"
+                ),
+                "order": "created_at.desc",
+            },
+            headers=_supabase_headers(),
+        )
+        profiles_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params={"select": "telegram_id,first_name,username"},
+            headers=_supabase_headers(),
+        )
+
+    courses: list[dict] = courses_res.json() if courses_res.status_code == 200 else []
+    profiles: list[dict] = profiles_res.json() if profiles_res.status_code == 200 else []
+
+    profile_map: dict[int, dict] = {
+        int(p["telegram_id"]): p for p in profiles if p.get("telegram_id")
+    }
+
+    result = []
+    for c in courses:
+        tid = int(c.get("teacher_id") or 0)
+        prof = profile_map.get(tid, {})
+        cat = c.get("course_categories") or {}
+        result.append({
+            "id": c.get("id"),
+            "title": c.get("title") or "",
+            "description": c.get("description") or "",
+            "thumbnail_url": c.get("thumbnail_url") or "",
+            "teacher_id": tid,
+            "teacher_name": prof.get("first_name") or f"Teacher {tid}",
+            "teacher_username": prof.get("username"),
+            "category_name": cat.get("name") or "",
+            "category_icon": cat.get("icon") or "📚",
+            "is_published": bool(c.get("is_published")),
+            "is_paid": bool(c.get("is_paid")),
+            "price": float(c.get("price") or 0),
+            "level": c.get("level") or "beginner",
+            "language": c.get("language") or "uz",
+            "enrolled_count": int(c.get("enrolled_count") or 0),
+            "rating": float(c.get("rating") or 0),
+            "total_lessons": int(c.get("total_lessons") or 0),
+            "total_duration_minutes": int(c.get("total_duration_minutes") or 0),
+            "created_at": c.get("created_at") or "",
+        })
+
+    return result
+
+
+@router.patch("/courses/{course_id}/publish")
+async def admin_toggle_course_publish(
+    course_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Admin: toggle is_published for any course."""
+    _ensure_supabase()
+
+    # Fetch current status
+    async with httpx.AsyncClient(timeout=10) as client:
+        chk = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}", "select": "id,is_published"},
+            headers=_supabase_headers(),
+        )
+    rows = chk.json() if chk.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Course not found")
+
+    new_status = not bool(rows[0].get("is_published"))
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}"},
+            json={"is_published": new_status},
+            headers=_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail=f"Failed to update course: {res.text}")
+
+    return {"ok": True, "course_id": course_id, "is_published": new_status}
+
+
+@router.delete("/courses/{course_id}")
+async def admin_delete_course(
+    course_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Admin: delete any course."""
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.delete(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}"},
+            headers=_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail=f"Failed to delete course: {res.text}")
+
+    return {"ok": True, "deleted_id": course_id}
