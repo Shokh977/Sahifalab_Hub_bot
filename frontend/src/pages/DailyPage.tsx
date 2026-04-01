@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
+import { useAuth } from '../context/AuthContext'
 import PageWrapper from '../components/PageWrapper'
 
 type DailyState = {
@@ -26,9 +27,10 @@ function tashkentDateKey(daysAgo = 0): string {
 const DailyPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useTelegramWebApp()
+  const { user: authUser } = useAuth()
   const { focusSeconds, quizzesCompleted } = useProgressStore()
 
-  const userKey = String(user?.id ?? 'guest')
+  const userKey = String(user?.id ?? authUser?.id ?? 'guest')
   const dateKey = tashkentDateKey(0)
 
   const stateStorageKey = `daily_state_${userKey}_${dateKey}`

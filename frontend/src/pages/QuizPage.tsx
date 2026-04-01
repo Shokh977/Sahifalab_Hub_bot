@@ -11,6 +11,7 @@ import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import PageWrapper from '../components/PageWrapper'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import { useProgressStore } from '../context/progressStore'
+import { useAuth } from '../context/AuthContext'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -433,7 +434,8 @@ type View = 'list' | 'loading' | 'quiz' | 'verifying' | 'results'
 
 export const QuizPage: React.FC = () => {
   const { user } = useTelegramWebApp()
-  const { addQuizXP } = useProgressStore()
+  const { addQuizXP, telegramId } = useProgressStore()
+  const { user: authUser } = useAuth()
   const [view, setView] = useState<View>('list')
   const [quizzes, setQuizzes] = useState<QuizSummary[]>([])
   const [listLoading, setListLoading] = useState(true)
@@ -441,7 +443,7 @@ export const QuizPage: React.FC = () => {
   const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const userName = user?.first_name || 'Foydalanuvchi'
+  const userName = user?.first_name ?? authUser?.first_name ?? 'Foydalanuvchi'
 
   // Fetch quiz list
   useEffect(() => {
@@ -487,7 +489,7 @@ export const QuizPage: React.FC = () => {
     try {
       const r = await apiService.verifyQuiz(
         activeQuiz.id,
-        user?.id ?? 0,
+        user?.id ?? telegramId ?? authUser?.id ?? 0,
         userName,
         answers,
       )
@@ -501,7 +503,7 @@ export const QuizPage: React.FC = () => {
       setError("Natijani tekshirib bo'lmadi. Qayta urinib ko'ring.")
       setView('quiz')
     }
-  }, [activeQuiz, user, userName, addQuizXP])
+  }, [activeQuiz, user, userName, addQuizXP, telegramId, authUser])
 
   const handleExit = useCallback(() => {
     setActiveQuiz(null)
