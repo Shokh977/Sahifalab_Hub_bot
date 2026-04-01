@@ -69,10 +69,11 @@ const LessonRow: React.FC<{
   lesson: Lesson
   index: number
   isOwner: boolean
+  isEnrolled: boolean
   isExpanded: boolean
   onToggle: () => void
-}> = ({ lesson, index, isOwner, isExpanded, onToggle }) => {
-  const unlocked = lesson.is_free || isOwner
+}> = ({ lesson, index, isOwner, isEnrolled, isExpanded, onToggle }) => {
+  const unlocked = lesson.is_free || isOwner || isEnrolled
   return (
     <div>
       <motion.div
@@ -177,6 +178,8 @@ const CourseDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true)
   const [error, setError]     = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
+  const [isEnrolled, setIsEnrolled] = useState(false)
+  const [enrollLoading, setEnrollLoading] = useState(false)
 
   const courseId = parseInt(id ?? '0', 10)
   const isOwner  = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -188,13 +191,63 @@ const CourseDetailPage: React.FC = () => {
       apiService.getCourse(courseId),
       apiService.getLessons(courseId),
     ])
-      .then(([courseRes, lessonsRes]) => {
+      .then(async ([courseRes, lessonsRes]) => {
         setCourse(courseRes.data)
         setLessons(lessonsRes.data ?? [])
+
+        if (user && user.id !== courseRes.data?.teacher_id && user.role !== 'admin') {
+          try {
+            const enrollmentRes = await apiService.checkEnrollment(courseId)
+            setIsEnrolled(!!enrollmentRes.data?.enrolled)
+          } catch {
+            setIsEnrolled(false)
+          }
+        } else {
+          setIsEnrolled(false)
+        }
       })
       .catch(() => setError("Kurs yuklanmadi. Iltimos, qayta urinib ko'ring."))
       .finally(() => setLoading(false))
-  }, [courseId])
+  }, [courseId, user])
+
+  const handleEnroll = async () => {
+    if (!course || isOwner || isEnrolled || enrollLoading) return
+    setEnrollLoading(true)
+    try {
+      await apiService.enrollCourse(course.id)
+      setIsEnrolled(true)
+      setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
+    } finally {
+      setEnrollLoading(false)
+    }
+  }
+
+  const handleToggleLesson = async (lesson: Lesson) => {
+    const unlocked = lesson.is_free || isOwner || isEnrolled
+    if (!unlocked) return
+
+    const opening = expandedId !== lesson.id
+    setExpandedId(prev => prev === lesson.id ? null : lesson.id)
+
+    if (!opening) return
+
+    try {
+      const res = await apiService.getLesson(lesson.id)
+      const detail = res.data
+      setLessons(prev => prev.map(l => (
+        l.id === lesson.id
+          ? {
+              ...l,
+              video_url: detail?.video_url ?? '',
+              video_source: detail?.video_source ?? l.video_source,
+              description: detail?.description ?? l.description,
+            }
+          : l
+      )))
+    } catch {
+      // API service already shows toast
+    }
+  }
 
   if (loading) {
     return (
@@ -316,17 +369,35 @@ const CourseDetailPage: React.FC = () => {
         >
           {course.is_paid ? (
             <button
-              onClick={() => {/* enrollment + payment — Step 11 */}}
-              className="w-full py-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-semibold text-sm transition-colors shadow"
+              onClick={handleEnroll}
+              disabled={isEnrolled || enrollLoading}
+              className={`w-full py-3 rounded-xl text-white font-semibold text-sm transition-colors shadow ${
+                isEnrolled
+                  ? 'bg-emerald-500 cursor-default'
+                  : 'bg-amber-500 hover:bg-amber-600'
+              }`}
             >
-              💳 {course.price.toLocaleString()} so'mga xarid qilish
+              {isEnrolled
+                ? '✅ Siz yozilgansiz'
+                : enrollLoading
+                  ? '⏳ Tekshirilmoqda...'
+                  : `💳 ${course.price.toLocaleString()} so'mga xarid qilish`}
             </button>
           ) : (
             <button
-              onClick={() => {/* free enrollment — Step 11 */}}
-              className="w-full py-3 rounded-xl bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold text-sm transition-colors shadow"
+              onClick={handleEnroll}
+              disabled={isEnrolled || enrollLoading}
+              className={`w-full py-3 rounded-xl text-white font-semibold text-sm transition-colors shadow ${
+                isEnrolled
+                  ? 'bg-emerald-500 cursor-default'
+                  : 'bg-sahifa-500 hover:bg-sahifa-600'
+              }`}
             >
-              🎁 Bepul yozilish
+              {isEnrolled
+                ? '✅ Siz yozilgansiz'
+                : enrollLoading
+                  ? '⏳ Yozilmoqda...'
+                  : '🎁 Bepul yozilish'}
             </button>
           )}
           <p className="text-center text-[11px] text-gray-400 dark:text-gray-500 mt-2">
@@ -378,8 +449,9 @@ const CourseDetailPage: React.FC = () => {
                 lesson={lesson}
                 index={i}
                 isOwner={isOwner}
+                isEnrolled={isEnrolled}
                 isExpanded={expandedId === lesson.id}
-                onToggle={() => setExpandedId(prev => prev === lesson.id ? null : lesson.id)}
+                onToggle={() => handleToggleLesson(lesson)}
               />
             ))}
           </div>

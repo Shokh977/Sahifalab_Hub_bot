@@ -469,6 +469,28 @@ class ApiService {
     return this.axiosInstance.delete(`/api/courses/${courseId}`)
   }
 
+  // ─── Enrollments ─────────────────────────────────────────────────────────
+
+  /** Student: check if current user is enrolled in a course */
+  async checkEnrollment(courseId: number) {
+    return this.axiosInstance.get('/api/enrollments/check', { params: { course_id: courseId } })
+  }
+
+  /** Student: enroll in a course (free courses for now) */
+  async enrollCourse(courseId: number) {
+    return this.axiosInstance.post('/api/enrollments/enroll', { course_id: courseId })
+  }
+
+  /** Student: unenroll from a course */
+  async unenrollCourse(courseId: number) {
+    return this.axiosInstance.delete('/api/enrollments/enroll', { params: { course_id: courseId } })
+  }
+
+  /** Student: list my enrollments */
+  async getMyEnrollments() {
+    return this.axiosInstance.get('/api/enrollments/mine')
+  }
+
   // ─── Lessons ──────────────────────────────────────────────────────────────
 
   /** Public: list all lessons for a course */

@@ -85,6 +85,25 @@ async def _assert_course_owner(course_id: int, caller_id: int):
         raise HTTPException(status_code=403, detail="Not your course")
 
 
+async def _is_enrolled(course_id: int, student_id: int) -> bool:
+    """Return True if the student has an active enrollment in the course."""
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id": f"eq.{course_id}",
+                "student_id": f"eq.{student_id}",
+                "is_active": "eq.true",
+                "select": "id",
+                "limit": "1",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    return len(rows) > 0
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class LessonCreate(BaseModel):
@@ -160,7 +179,7 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
     lesson = rows[0]
 
     # Hide video_url only for Bunny-hosted paid lessons (YouTube URLs are already public)
-    # Enrollment gating added in Step 11
+    # Step 11: enrolled students (or owner/admin) can view paid Bunny URLs
     is_bunny = lesson.get("video_source", "bunny") == "bunny"
     if not lesson.get("is_free") and is_bunny:
         caller_id: Optional[int] = None
@@ -169,8 +188,16 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
                 caller_id = await _resolve_caller(authorization)
             except HTTPException:
                 pass
+
         if caller_id is None:
             lesson = {**lesson, "video_url": ""}
+        else:
+            teacher_id = await _get_course_teacher(lesson["course_id"])
+            is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
+            if not is_owner_or_admin:
+                enrolled = await _is_enrolled(lesson["course_id"], caller_id)
+                if not enrolled:
+                    lesson = {**lesson, "video_url": ""}
 
     return lesson
 
