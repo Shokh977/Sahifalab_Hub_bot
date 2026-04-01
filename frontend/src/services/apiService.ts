@@ -366,6 +366,27 @@ class ApiService {
   async rejectTeacher(telegramId: number) {
     return this.axiosInstance.post(`/api/auth/admin/reject-teacher/${telegramId}`)
   }
+
+  // ─── Teacher profile ──────────────────────────────────────────────────────
+
+  /** Fetch (or auto-create) own teacher_profiles row. Requires teacher/admin JWT. */
+  async getTeacherProfile() {
+    return this.axiosInstance.get('/api/teacher/profile')
+  }
+
+  /** Update own teacher profile (bio, specialization, social_links). */
+  async updateTeacherProfile(data: {
+    bio?: string
+    specialization?: string
+    social_links?: Record<string, string>
+  }) {
+    return this.axiosInstance.put('/api/teacher/profile', data)
+  }
+
+  /** Public: fetch any teacher's profile by telegram_id. */
+  async getPublicTeacherProfile(telegramId: number) {
+    return this.axiosInstance.get(`/api/teacher/profile/${telegramId}`)
+  }
 }
 
 export default new ApiService()
