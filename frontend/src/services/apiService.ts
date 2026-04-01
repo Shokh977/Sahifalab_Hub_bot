@@ -463,6 +463,53 @@ class ApiService {
   async deleteCourse(courseId: number) {
     return this.axiosInstance.delete(`/api/courses/${courseId}`)
   }
+
+  // ─── Lessons ──────────────────────────────────────────────────────────────
+
+  /** Public: list all lessons for a course */
+  async getLessons(courseId: number) {
+    return this.axiosInstance.get('/api/lessons', { params: { course_id: courseId } })
+  }
+
+  /** Get single lesson (video_url hidden for paid unless enrolled) */
+  async getLesson(lessonId: number) {
+    return this.axiosInstance.get(`/api/lessons/${lessonId}`)
+  }
+
+  /** Teacher: create a lesson */
+  async createLesson(data: {
+    course_id:        number
+    title:            string
+    description?:     string
+    video_url?:       string
+    duration_minutes?: number
+    order_index?:     number
+    is_free?:         boolean
+  }) {
+    return this.axiosInstance.post('/api/lessons', data)
+  }
+
+  /** Teacher: update a lesson */
+  async updateLesson(lessonId: number, data: {
+    title?:            string
+    description?:      string
+    video_url?:        string
+    duration_minutes?: number
+    order_index?:      number
+    is_free?:          boolean
+  }) {
+    return this.axiosInstance.patch(`/api/lessons/${lessonId}`, data)
+  }
+
+  /** Teacher: delete a lesson */
+  async deleteLesson(lessonId: number) {
+    return this.axiosInstance.delete(`/api/lessons/${lessonId}`)
+  }
+
+  /** Teacher: bulk reorder lessons */
+  async reorderLessons(lessons: { id: number; order_index: number }[]) {
+    return this.axiosInstance.patch('/api/lessons/reorder', { lessons })
+  }
 }
 
 export default new ApiService()

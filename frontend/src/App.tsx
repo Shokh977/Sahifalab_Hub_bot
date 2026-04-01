@@ -30,6 +30,8 @@ import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import TeacherApplyPage from './pages/TeacherApplyPage'
 import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
 import CoursesPage from './pages/CoursesPage'
+import CourseDetailPage from './pages/CourseDetailPage'
+import CourseCreatePage from './pages/CourseCreatePage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 
@@ -191,12 +193,14 @@ const AppRoutes: React.FC = () => (
       <Route path="/daily" element={<DailyPage />} />
       <Route path="/plans" element={<PlansPage />} />
       <Route path="/courses" element={<CoursesPage />} />
-      <Route path="/courses/:id" element={<CoursesPage />} />
+      <Route path="/courses/:id" element={<CourseDetailPage />} />
 
       {/* Teacher & Admin role-gated routes */}
       <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
         <Route path="/teacher" element={<TeacherDashboardPage />} />
         <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
+        <Route path="/courses/create" element={<CourseCreatePage />} />
+        <Route path="/courses/:id/edit" element={<CourseCreatePage />} />
       </Route>
 
       {/* Teacher application — any authenticated user */}
