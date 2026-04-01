@@ -28,6 +28,10 @@ export interface AuthUser {
   last_name?: string
   username?: string
   photo_url?: string
+  /** 'student' | 'teacher' | 'admin' */
+  role: 'student' | 'teacher' | 'admin'
+  /** 'active' | 'suspended' | 'pending' */
+  status: 'active' | 'suspended' | 'pending'
 }
 
 /** Data received from the Telegram Login Widget callback */
@@ -90,6 +94,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           first_name: res.data.first_name,
           username: res.data.username,
           photo_url: res.data.photo_url,
+          role: res.data.role ?? 'student',
+          status: res.data.status ?? 'active',
         })
       })
       .catch(() => {
@@ -102,10 +108,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Web: login via Telegram Login Widget ──────────────────────────────────
   const loginWithTelegram = useCallback(async (data: TelegramWidgetData) => {
     const res = await axios.post(`${API_BASE}/api/auth/telegram`, data)
-    const { access_token, telegram_id, first_name, username, photo_url } = res.data
+    const { access_token, telegram_id, first_name, username, photo_url, role, status } = res.data
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)
-    setWebUser({ id: telegram_id, first_name, username, photo_url })
+    setWebUser({ id: telegram_id, first_name, username, photo_url, role: role ?? 'student', status: status ?? 'active' })
   }, [])
 
   // ── Logout ─────────────────────────────────────────────────────────────────
@@ -126,6 +132,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           last_name: tgUser.last_name,
           username: tgUser.username,
           photo_url: tgUser.photo_url,
+          role: 'student',   // enriched from DB later if needed
+          status: 'active',
         }
       : null
     : webUser

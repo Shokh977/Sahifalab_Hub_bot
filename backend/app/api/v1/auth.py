@@ -92,13 +92,29 @@ async def telegram_login(data: TelegramAuthData):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update user: {e}")
 
-    # 4. Generate JWT token
+    # 4. Fetch the profile row so we can return role + status
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{data.id}", "select": "role,status,photo_url"},
+                headers=_supabase_headers(),
+            )
+            profile_row = (res.json() or [{}])[0] if res.status_code == 200 else {}
+    except Exception:
+        profile_row = {}
+
+    # 5. Generate JWT token
     token_data = create_access_token(data.id)
 
     return {
         "success": True,
         "telegram_id": data.id,
         "first_name": data.first_name,
+        "username": data.username,
+        "photo_url": data.photo_url or profile_row.get("photo_url"),
+        "role": profile_row.get("role", "student"),
+        "status": profile_row.get("status", "active"),
         **token_data,
     }
 
@@ -137,8 +153,10 @@ async def get_current_user(authorization: str = Header(None)):
             "first_name": user.get("first_name"),
             "username": user.get("username"),
             "photo_url": user.get("photo_url"),
+            "role": user.get("role", "student"),
+            "status": user.get("status", "active"),
             "level": user.get("level", 1),
-            "xp": user.get("xp", 0),
+            "total_xp": user.get("total_xp", 0),
         }
     except HTTPException:
         raise
