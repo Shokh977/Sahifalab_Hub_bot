@@ -14,32 +14,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# CORS — allow Vercel frontend + localhost dev
-# Supports wildcard Vercel preview URLs (*.vercel.app pattern)
-import re as _re
-
-def _make_cors_origins(origins: list[str]) -> list[str]:
-    """Return exact origins only (no wildcards); starlette handles regexes separately."""
-    return [o for o in origins if '*' not in o]
-
-def _make_cors_regex(origins: list[str]) -> str | None:
-    """Build a regex that matches wildcard entries like https://foo-*.vercel.app"""
-    patterns = []
-    for o in origins:
-        if '*' in o:
-            patterns.append(_re.escape(o).replace(r'\*', r'[^.]+'))
-    if not patterns:
-        return None
-    return '|'.join(f'({p})' for p in patterns)
-
-_cors_exact = _make_cors_origins(settings.CORS_ORIGINS)
-_cors_regex = _make_cors_regex(settings.CORS_ORIGINS)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_cors_exact,
-    allow_origin_regex=_cors_regex,
-    allow_credentials=True,
+    # This API uses Bearer tokens (Authorization header), not cookie credentials.
+    # Keep CORS permissive to avoid browser-blocked 500/4xx responses on uploads.
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
