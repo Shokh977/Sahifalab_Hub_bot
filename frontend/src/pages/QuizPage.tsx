@@ -474,26 +474,10 @@ export const QuizPage: React.FC = () => {
 
   const userName = user?.first_name ?? authUser?.first_name ?? 'Foydalanuvchi'
 
-  // Fetch quiz list
+  // Fetch quiz list (supabase.ts handles localStorage caching with 24h TTL)
   useEffect(() => {
-    // Check cache first
-    const cached = sessionStorage.getItem('quizzes_cache')
-    const cacheTime = sessionStorage.getItem('quizzes_cache_time')
-    const now = Date.now()
-    
-    // Use cache if less than 5 minutes old
-    if (cached && cacheTime && now - parseInt(cacheTime) < 5 * 60 * 1000) {
-      setQuizzes(JSON.parse(cached))
-      setListLoading(false)
-      return
-    }
-
     fetchQuizzes()
-      .then(data => {
-        setQuizzes(data)
-        sessionStorage.setItem('quizzes_cache', JSON.stringify(data))
-        sessionStorage.setItem('quizzes_cache_time', Date.now().toString())
-      })
+      .then(data => { setQuizzes(data) })
       .catch(() => {})
       .finally(() => setListLoading(false))
   }, [])

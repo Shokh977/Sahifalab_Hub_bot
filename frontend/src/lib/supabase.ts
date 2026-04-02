@@ -4,38 +4,59 @@ const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  as string
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 // ═══════════════════════════════════════════════════════════════════════════
-// IN-MEMORY TTL CACHE — reduces Supabase egress by avoiding repeat fetches
-// for the same data within the same browser session.
+// TWO-LEVEL TTL CACHE — drastically reduces Supabase egress.
 //
-// Default TTL per category:
-//   static content (books, quizzes, resources, sounds) → 10 minutes
-//   user-specific data (completions, purchases, ratings) → 2 minutes
-//   leaderboard / profiles → 3 minutes
+// L1: in-memory Map  — instant, survives the current JS session only.
+// L2: localStorage   — survives page reloads and app re-opens (Telegram).
+//
+// TTL per category:
+//   static content (books, quizzes, resources, sounds) → 24 hours
+//     (these change rarely; admins can call invalidateCache() after edits)
+//   live data (leaderboard, profiles)                  → 10 minutes
+//   user-specific (completions, purchases, ratings)    → 5 minutes
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface CacheEntry<T> { data: T; expiresAt: number }
 const _cache = new Map<string, CacheEntry<unknown>>()
+const LS_PREFIX = 'sc:'  // short prefix keeps localStorage keys small
 
 async function cached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>): Promise<T> {
   const now = Date.now()
-  const hit = _cache.get(key)
-  if (hit && hit.expiresAt > now) {
-    console.debug(`[SupaCache] HIT  ${key}`)
-    return hit.data as T
-  }
+
+  // ── L1: in-memory ───────────────────────────────────────────────────────
+  const l1 = _cache.get(key)
+  if (l1 && l1.expiresAt > now) return l1.data as T
+
+  // ── L2: localStorage ────────────────────────────────────────────────────
+  try {
+    const raw = localStorage.getItem(LS_PREFIX + key)
+    if (raw) {
+      const entry = JSON.parse(raw) as CacheEntry<T>
+      if (entry.expiresAt > now) {
+        _cache.set(key, entry)      // repopulate L1
+        return entry.data
+      }
+    }
+  } catch { /* localStorage unavailable (e.g. private mode) — ignore */ }
+
+  // ── Miss: fetch from Supabase ────────────────────────────────────────────
   const data = await fetcher()
-  _cache.set(key, { data, expiresAt: now + ttlMs })
-  console.debug(`[SupaCache] MISS ${key} — cached for ${ttlMs / 1000}s`)
+  const entry: CacheEntry<T> = { data, expiresAt: now + ttlMs }
+  _cache.set(key, entry)
+  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(entry)) } catch { /* quota full */ }
   return data
 }
 
-/** Invalidate one cache key (call after writes that mutate cached data). */
-export function invalidateCache(key: string) { _cache.delete(key) }
+/** Invalidate one cache key in both layers (call after admin writes). */
+export function invalidateCache(key: string) {
+  _cache.delete(key)
+  try { localStorage.removeItem(LS_PREFIX + key) } catch { /* ignore */ }
+}
 
 const TTL = {
-  STATIC:  10 * 60 * 1000,  // 10 min — quizzes, books, resources, sounds
-  LIVE:     3 * 60 * 1000,  //  3 min — leaderboard, profiles
-  PERSONAL: 2 * 60 * 1000,  //  2 min — user completions, purchases, ratings
+  STATIC:  24 * 60 * 60 * 1000,  // 24 h — quizzes, books, resources, sounds
+  LIVE:    10 * 60 * 1000,        // 10 min — leaderboard, profiles
+  PERSONAL: 5 * 60 * 1000,        //  5 min — user completions, purchases, ratings
 }
 
 /** True only when both env vars are present and not placeholder values */
