@@ -8,7 +8,7 @@
  * Mobile / Telegram:
  *   Stacked: video at top → tab bar (Curriculum | Overview | Reviews)
  */
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -276,7 +276,7 @@ const CourseDetailPage: React.FC = () => {
   }, [courseId, user])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
-  const handleSelectLesson = async (lesson: Lesson) => {
+  const handleSelectLesson = useCallback(async (lesson: Lesson) => {
     const unlocked = lesson.is_free || isOwner || isEnrolled
     if (!unlocked) return
     setActiveLesson(lesson)
@@ -294,9 +294,9 @@ const CourseDetailPage: React.FC = () => {
           .catch(() => {})
       }
     } catch { /* toast */ }
-  }
+  }, [isOwner, isEnrolled])
 
-  const handleSubmitRating = async (stars: number) => {
+  const handleSubmitRating = useCallback(async (stars: number) => {
     if (!stars || ratingLoading) return
     setRatingLoading(true)
     try {
@@ -312,9 +312,9 @@ const CourseDetailPage: React.FC = () => {
       })
     } catch { /* toast */ }
     setRatingLoading(false)
-  }
+  }, [ratingLoading, courseId, myReview])
 
-  const handleEnroll = async () => {
+  const handleEnroll = useCallback(async () => {
     if (!course || isOwner || isEnrolled || enrollLoading) return
     setEnrollLoading(true)
     try {
@@ -339,9 +339,9 @@ const CourseDetailPage: React.FC = () => {
         }
       })
     } finally { setEnrollLoading(false) }
-  }
+  }, [course, isOwner, isEnrolled, enrollLoading, isTelegram, webApp])
 
-  const handleOpenCertificate = () => {
+  const handleOpenCertificate = useCallback(() => {
     if (!course || completedIds.size !== lessons.length || lessons.length === 0) return
     setCertData({
       userName: user?.first_name || user?.username || 'Talaba',
@@ -351,14 +351,14 @@ const CourseDetailPage: React.FC = () => {
       certificateId: `CRS-${course.id}-${user?.id ?? 'UNKNOWN'}`,
     })
     setShowCert(true)
-  }
+  }, [course, completedIds, lessons, user])
 
-  const handleMarkLessonCompleted = (lessonId?: number) => {
+  const handleMarkLessonCompleted = useCallback((lessonId?: number) => {
     if (!lessonId || !isEnrolled) return
     apiService.completeLesson(lessonId)
       .then(() => setCompletedIds(prev => new Set([...prev, lessonId])))
       .catch(() => {})
-  }
+  }, [isEnrolled])
 
   // ── Loading / error screens ───────────────────────────────────────────────
   if (loading) return (
@@ -385,7 +385,7 @@ const CourseDetailPage: React.FC = () => {
 
   // ── Sub-components (defined after guard so `course` is always defined) ─────
 
-  const EnrollCTA = () => (
+  const enrollCtaJsx = useMemo(() => (
     <div className="space-y-3">
       {course.is_paid && (
         <div className="flex items-baseline gap-2">
@@ -436,9 +436,9 @@ const CourseDetailPage: React.FC = () => {
         </div>
       )}
     </div>
-  )
+  ), [course, isOwner, isEnrolled, enrollLoading, isTelegram, freeLessons, completedIds, progressPct, lessons, handleEnroll, handleOpenCertificate])
 
-  const MetaRow = () => (
+  const metaRowJsx = useMemo(() => (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
       {course.categories && <span className="inline-flex items-center gap-1"><TagIcon className="h-3.5 w-3.5" />{course.categories.name}</span>}
       <span>{levelLabel(course.level)}</span>
@@ -448,18 +448,19 @@ const CourseDetailPage: React.FC = () => {
       {course.enrolled_count > 0 && <span className="inline-flex items-center gap-1"><UsersIcon className="h-3.5 w-3.5" />{course.enrolled_count} talaba</span>}
       {course.rating > 0 && <span className="inline-flex items-center gap-1"><StarIcon className="h-3.5 w-3.5 text-amber-400" />{course.rating.toFixed(1)}</span>}
     </div>
-  )
+  ), [course])
 
   // RatingWidget is defined outside this component (above) for stable ref — see fix comment there
+  const handleLeaveStar = useCallback(() => setHoverStar(0), [])
   const ratingWidgetProps: RatingWidgetProps = {
     myRating, myReview, hoverStar, ratingLoading,
     onReviewChange: setMyReview,
     onHoverStar:    setHoverStar,
-    onLeaveStar:    () => setHoverStar(0),
+    onLeaveStar:    handleLeaveStar,
     onSubmit:       handleSubmitRating,
   }
 
-  const ReviewsList = () => (
+  const reviewsListJsx = useMemo(() => (
     <div>
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 inline-flex items-center gap-1.5">
         <StarIcon className="h-4 w-4 text-amber-400" /> Sharhlar
@@ -489,9 +490,9 @@ const CourseDetailPage: React.FC = () => {
         </div>
       )}
     </div>
-  )
+  ), [reviewsLoading, reviews])
 
-  const LessonSidebarList = () => (
+  const lessonSidebarListJsx = useMemo(() => (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -537,7 +538,7 @@ const CourseDetailPage: React.FC = () => {
         </div>
       )}
     </div>
-  )
+  ), [lessons, isOwner, course, activeLesson, completedIds, expandedLessons, isEnrolled, handleSelectLesson])
 
   // ── JSX ───────────────────────────────────────────────────────────────────
   return (
@@ -713,7 +714,7 @@ const CourseDetailPage: React.FC = () => {
 
             {/* MOBILE: enroll CTA */}
             <div className="lg:hidden mb-4 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
-              <EnrollCTA />
+              {enrollCtaJsx}
             </div>
 
             {/* MOBILE: tab bar */}
@@ -737,12 +738,12 @@ const CourseDetailPage: React.FC = () => {
               <AnimatePresence mode="wait">
                 {mobileTab === 'curriculum' && (
                   <motion.div key="curr" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <LessonSidebarList />
+                    {lessonSidebarListJsx}
                   </motion.div>
                 )}
                 {mobileTab === 'overview' && (
                   <motion.div key="over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    <MetaRow />
+                    {metaRowJsx}
                     {course.description && activeLesson && (
                       <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{course.description}</p>
                     )}
@@ -752,7 +753,7 @@ const CourseDetailPage: React.FC = () => {
                 {mobileTab === 'reviews' && (
                   <motion.div key="rev" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
                     {user && <RatingWidget {...ratingWidgetProps} />}
-                    <ReviewsList />
+                    {reviewsListJsx}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -762,13 +763,13 @@ const CourseDetailPage: React.FC = () => {
             <div className="hidden lg:block space-y-6 mt-2">
               <div>
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Kurs haqida</h3>
-                <MetaRow />
+                {metaRowJsx}
                 {course.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 leading-relaxed">{course.description}</p>
                 )}
               </div>
               {user && <RatingWidget {...ratingWidgetProps} />}
-              <ReviewsList />
+              {reviewsListJsx}
             </div>
           </div>
         </div>
@@ -776,10 +777,10 @@ const CourseDetailPage: React.FC = () => {
         {/* RIGHT COLUMN: sticky modules (desktop only) */}
         <div className="hidden lg:flex flex-col w-[360px] xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-slate-700 lg:sticky lg:top-4 lg:max-h-[calc(100vh-1rem)] lg:overflow-y-auto bg-white dark:bg-slate-900">
           <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
-            <EnrollCTA />
+            {enrollCtaJsx}
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <LessonSidebarList />
+            {lessonSidebarListJsx}
           </div>
         </div>
 
