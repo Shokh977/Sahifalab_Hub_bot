@@ -19,7 +19,8 @@
  */
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { XMarkIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
+import { XMarkIcon, ArrowPathIcon, CursorArrowRaysIcon, DevicePhoneMobileIcon, ShieldCheckIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import { StarIcon } from '@heroicons/react/24/solid'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { usePlatform } from '../hooks/usePlatform'
 import apiService from '../services/apiService'
@@ -219,7 +220,8 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
             {/* Error */}
             {error && (
-              <div className="mx-5 mb-3 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
+              <div className="mx-5 mb-3 flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
+                <ExclamationCircleIcon className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
                 <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
               </div>
             )}
@@ -239,7 +241,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                   {loading === 'telegram_stars' ? (
                     <ArrowPathIcon className="h-5 w-5 animate-spin" />
                   ) : (
-                    <span className="text-lg">⭐</span>
+                    <StarIcon className="h-5 w-5 text-white" />
                   )}
                   <span className="flex-1 text-left">Telegram Stars</span>
                   <span className="text-xs opacity-90">≈ {starsPrice} Stars</span>
@@ -258,7 +260,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 {loading === 'click' ? (
                   <ArrowPathIcon className="h-5 w-5 animate-spin" />
                 ) : (
-                  <span className="text-lg">🟢</span>
+                  <CursorArrowRaysIcon className="h-5 w-5" />
                 )}
                 <span className="flex-1 text-left">Click</span>
                 <span className="text-xs opacity-90">{priceUzs.toLocaleString('uz-UZ')} so'm</span>
@@ -276,14 +278,15 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
                 {loading === 'payme' ? (
                   <ArrowPathIcon className="h-5 w-5 animate-spin" />
                 ) : (
-                  <span className="text-lg">💙</span>
+                  <DevicePhoneMobileIcon className="h-5 w-5" />
                 )}
                 <span className="flex-1 text-left">Payme</span>
                 <span className="text-xs opacity-90">{priceUzs.toLocaleString('uz-UZ')} so'm</span>
               </button>
 
               {/* Info */}
-              <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 pt-1">
+              <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 pt-1 flex items-center justify-center gap-1">
+                <ShieldCheckIcon className="h-3 w-3" />
                 To'lov xavfsiz. Pullik kontent darhol ochiladi.
               </p>
             </div>
