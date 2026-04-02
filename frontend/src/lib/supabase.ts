@@ -3,6 +3,9 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  as string
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
+/** FastAPI backend base URL — used for high-traffic public reads to avoid Supabase egress */
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || '').replace(/\/$/, '')
+
 // ═══════════════════════════════════════════════════════════════════════════
 // TWO-LEVEL TTL CACHE — drastically reduces Supabase egress.
 //
@@ -39,12 +42,25 @@ async function cached<T>(key: string, ttlMs: number, fetcher: () => Promise<T>):
     }
   } catch { /* localStorage unavailable (e.g. private mode) — ignore */ }
 
-  // ── Miss: fetch from Supabase ────────────────────────────────────────────
-  const data = await fetcher()
-  const entry: CacheEntry<T> = { data, expiresAt: now + ttlMs }
-  _cache.set(key, entry)
-  try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(entry)) } catch { /* quota full */ }
-  return data
+  // ── Miss: fetch from network ──────────────────────────────────────────────
+  try {
+    const data = await fetcher()
+    const entry: CacheEntry<T> = { data, expiresAt: now + ttlMs }
+    _cache.set(key, entry)
+    try { localStorage.setItem(LS_PREFIX + key, JSON.stringify(entry)) } catch { /* quota full */ }
+    return data
+  } catch (err) {
+    // Network/402 failure — serve stale localStorage data rather than crashing
+    try {
+      const raw = localStorage.getItem(LS_PREFIX + key)
+      if (raw) {
+        const stale = JSON.parse(raw) as CacheEntry<T>
+        console.warn(`[SupaCache] STALE fallback for "${key}" (fetch failed):`, err)
+        return stale.data
+      }
+    } catch { /* ignore */ }
+    throw err  // nothing in cache at all — re-throw so callers can show an error
+  }
 }
 
 /** Invalidate one cache key in both layers (call after admin writes). */
@@ -87,91 +103,56 @@ export const supabase = createClient(
 // the Vercel backend (~3-5s cold start). Writes still go through backend.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Fetch all quizzes (list view — no questions) */
+/** Fetch all quizzes — routed through FastAPI backend (direct Postgres, no Supabase egress) */
 export async function fetchQuizzes() {
   return cached('quizzes', TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('quiz')
-      .select('id, title, book_title, total_questions, difficulty, category, created_at')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/quizzes?limit=100`)
+    if (!res.ok) throw new Error(`quizzes fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
 /**
  * Fetch a single quiz with its questions.
  * SECURITY: correct_answer is deliberately excluded — scoring is server-side only.
+ * Routed through FastAPI backend (direct Postgres, no Supabase egress).
  */
 export async function fetchQuiz(quizId: number) {
   return cached(`quiz:${quizId}`, TTL.STATIC, async () => {
-  const [quizRes, questionsRes] = await Promise.all([
-    supabase
-      .from('quiz')
-      .select('id, title, book_title, description, difficulty, category, total_questions')
-      .eq('id', quizId)
-      .single(),
-    supabase
-      .from('quiz_question')
-      .select('id, question, options, explanation, "order"')
-      .eq('quiz_id', quizId)
-      .order('order', { ascending: true }),
-  ])
-  if (quizRes.error) throw quizRes.error
-  if (questionsRes.error) throw questionsRes.error
-
-  const questions = (questionsRes.data ?? []).map((q: any) => ({
-    id: q.id,
-    question: q.question,
-    options: typeof q.options === 'string' ? JSON.parse(q.options) : (q.options ?? []),
-    explanation: q.explanation,
-    // correct_answer deliberately NOT included
-  }))
-
-  return { ...quizRes.data, questions }
-  }) // end cached
+    const res = await fetch(`${API_BASE}/api/quizzes/${quizId}`)
+    if (!res.ok) throw new Error(`quiz fetch failed: ${res.status}`)
+    return res.json()
+  })
 }
 
-/** Fetch all books */
+/** Fetch all books — routed through FastAPI backend */
 export async function fetchBooks() {
   return cached('books', TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('book')
-      .select('id, title, author, description, price, is_paid, file_url, thumbnail_url, category, downloads, rating, is_available, created_at')
-      .eq('is_available', true)
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/books`)
+    if (!res.ok) throw new Error(`books fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
-/** Fetch a single book by ID */
+/** Fetch a single book by ID — routed through FastAPI backend */
 export async function fetchBook(bookId: number) {
   return cached(`book:${bookId}`, TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('book')
-      .select('id, title, author, description, price, is_paid, file_url, thumbnail_url, category, downloads, rating, is_available')
-      .eq('id', bookId)
-      .single()
-    if (error) throw error
-    return data
+    const res = await fetch(`${API_BASE}/api/books/${bookId}`)
+    if (!res.ok) throw new Error(`book fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
-/** Fetch random active hero content */
+/** Fetch random active hero content — routed through FastAPI backend */
 export async function fetchHeroContent() {
-  // Cache the full list; pick randomly client-side each call (no extra egress)
   const data = await cached('hero_content', TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('hero_content')
-      .select('id, title, subtitle, description, image_url, cta_text, cta_link, is_active')
-      .eq('is_active', true)
-      .limit(10)
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/hero/all`)
+    if (!res.ok) throw new Error(`hero fetch failed: ${res.status}`)
+    const items = await res.json()
+    return (items as any[]).filter((i: any) => i.is_active)
   })
   if (!data || data.length === 0) return null
-  const item = data[Math.floor(Math.random() * data.length)]
+  const item = (data as any[])[Math.floor(Math.random() * data.length)]
   return {
     ...item,
     text: item.title || item.description || '',
@@ -180,28 +161,21 @@ export async function fetchHeroContent() {
   }
 }
 
-/** Fetch all resources */
+/** Fetch all resources — routed through FastAPI backend */
 export async function fetchResources() {
   return cached('resources', TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('resource')
-      .select('id, title, description, url, resource_type, category, thumbnail_url')
-      .order('created_at', { ascending: false })
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/resources`)
+    if (!res.ok) throw new Error(`resources fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
-/** Fetch active ambient sounds */
+/** Fetch active ambient sounds — routed through FastAPI backend */
 export async function fetchAmbientSounds() {
   return cached('ambient_sounds', TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('ambient_sound')
-      .select('id, name, emoji, url, display_order, is_active')
-      .eq('is_active', true)
-      .order('display_order', { ascending: true })
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/audio/ambient-sounds`)
+    if (!res.ok) throw new Error(`ambient sounds fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
