@@ -595,23 +595,29 @@ class ApiService {
   // ─── Unified Payments (Click/Payme/Stars for any item) ────────────────────
 
   /** Initialize payment for any item type via the unified /pay/init endpoint */
-  async initPayment(itemType: 'book' | 'course', itemId: number, provider: 'telegram_stars' | 'click' | 'payme', returnUrl = '') {
+  async initPayment(itemType: 'book' | 'course', itemId: number, provider: 'telegram_stars' | 'click' | 'payme', returnUrl = '', userId?: number) {
     return this.axiosInstance.post('/api/pay/init', {
       item_type: itemType,
       item_id: itemId,
       provider,
       return_url: returnUrl,
+      ...(userId ? { user_id: userId } : {}),
     })
   }
 
   /** Confirm payment after openInvoice callback returns 'paid' */
-  async confirmUnifiedPayment(orderId: string) {
-    return this.axiosInstance.post('/api/pay/confirm', { order_id: orderId })
+  async confirmUnifiedPayment(orderId: string, userId?: number) {
+    return this.axiosInstance.post('/api/pay/confirm', {
+      order_id: orderId,
+      ...(userId ? { user_id: userId } : {}),
+    })
   }
 
   /** Poll payment status */
-  async getPaymentStatus(orderId: string) {
-    return this.axiosInstance.get(`/api/pay/${orderId}`)
+  async getPaymentStatus(orderId: string, userId?: number) {
+    return this.axiosInstance.get(`/api/pay/${orderId}`, {
+      params: userId ? { user_id: userId } : undefined,
+    })
   }
 
   // ─── Lessons ──────────────────────────────────────────────────────────────

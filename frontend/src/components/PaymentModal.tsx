@@ -35,13 +35,14 @@ interface PaymentModalProps {
   itemId: number
   itemTitle: string
   priceUzs: number
+  userId?: number  // Telegram user ID — required in Telegram mode (no JWT)
 }
 
 const STARS_RATE = 250
 
 const PaymentModal: React.FC<PaymentModalProps> = ({
   open, onClose, onSuccess,
-  itemType, itemId, itemTitle, priceUzs,
+  itemType, itemId, itemTitle, priceUzs, userId,
 }) => {
   const { webApp } = useTelegramWebApp()
   const { isTelegram } = usePlatform()
@@ -82,7 +83,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         return
       }
       try {
-        const res = await apiService.getPaymentStatus(orderId)
+        const res = await apiService.getPaymentStatus(orderId, userId)
         if (res.data?.status === 'completed') {
           if (pollingRef.current) clearInterval(pollingRef.current)
           pollingRef.current = null
@@ -94,7 +95,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         // Keep polling
       }
     }, 5000)
-  }, [onSuccess, onClose])
+  }, [onSuccess, onClose, userId])
 
   const handlePay = useCallback(async (provider: PaymentProvider) => {
     setError('')
@@ -104,6 +105,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       const res = await apiService.initPayment(
         itemType, itemId, provider,
         window.location.href, // return_url
+        userId,
       )
 
       const { order_id, invoice_url, checkout_url } = res.data || {}
@@ -118,7 +120,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         webApp.openInvoice(invoice_url, async (status: string) => {
           if (status === 'paid') {
             try {
-              await apiService.confirmUnifiedPayment(order_id)
+              await apiService.confirmUnifiedPayment(order_id, userId)
             } catch { /* webhook will handle */ }
             onSuccess()
             onClose()
@@ -151,7 +153,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
       setError(msg || "Xatolik yuz berdi")
       setLoading(null)
     }
-  }, [itemType, itemId, isTelegram, webApp, startPolling, onSuccess, onClose])
+  }, [itemType, itemId, isTelegram, webApp, startPolling, onSuccess, onClose, userId])
 
   const starsPrice = Math.max(1, Math.round(priceUzs / STARS_RATE))
 

@@ -35,24 +35,28 @@ class InitPaymentRequest(BaseModel):
     item_id: int
     provider: Literal["telegram_stars", "click", "payme"]
     return_url: Optional[str] = ""
+    user_id: Optional[int] = None   # Telegram Mini App: pass tg user id directly
 
 
 class ConfirmPaymentRequest(BaseModel):
     order_id: str
+    user_id: Optional[int] = None   # Telegram Mini App fallback
 
 
 # ── Auth helper ──────────────────────────────────────────────────────────────
 
-async def _resolve_caller(authorization: Optional[str]) -> int:
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0] != "Bearer":
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-    tid = decode_token(parts[1])
-    if tid is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return tid
+async def _resolve_caller(authorization: Optional[str], user_id_fallback: Optional[int] = None) -> int:
+    """Resolve caller ID from Bearer JWT or direct user_id (Telegram Mini App mode)."""
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0] == "Bearer":
+            tid = decode_token(parts[1])
+            if tid is not None:
+                return tid
+    # Telegram Mini App mode: no JWT stored, trust the passed user_id
+    if user_id_fallback and user_id_fallback > 0:
+        return user_id_fallback
+    raise HTTPException(status_code=401, detail="Missing authorization header")
 
 
 # ── Item info helper ─────────────────────────────────────────────────────────
@@ -110,7 +114,7 @@ async def init_payment(body: InitPaymentRequest, authorization: Optional[str] = 
       - checkout_url  → direct Click/Payme URL (for non-Telegram users)
       - order_id      → for status polling + confirmation
     """
-    caller_id = await _resolve_caller(authorization)
+    caller_id = await _resolve_caller(authorization, body.user_id)
     item = await _get_item_info(body.item_type, body.item_id)
 
     if not item["is_paid"] or item["price"] <= 0:
@@ -182,7 +186,7 @@ async def confirm_payment(body: ConfirmPaymentRequest, authorization: Optional[s
     Called by frontend when Telegram openInvoice callback returns "paid".
     Marks payment completed and unlocks content.
     """
-    caller_id = await _resolve_caller(authorization)
+    caller_id = await _resolve_caller(authorization, body.user_id)
     payment = await ps.get_payment_by_order_id(body.order_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
@@ -208,9 +212,9 @@ async def confirm_payment(body: ConfirmPaymentRequest, authorization: Optional[s
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/{order_id}")
-async def get_payment_status(order_id: str, authorization: Optional[str] = Header(None)):
+async def get_payment_status(order_id: str, authorization: Optional[str] = Header(None), user_id: Optional[int] = None):
     """Check payment status. Caller must own the payment or be admin."""
-    caller_id = await _resolve_caller(authorization)
+    caller_id = await _resolve_caller(authorization, user_id)
     payment = await ps.get_payment_by_order_id(order_id)
     if not payment:
         raise HTTPException(status_code=404, detail="Payment not found")
