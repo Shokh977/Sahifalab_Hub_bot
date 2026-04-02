@@ -423,26 +423,15 @@ async def rate_course(
     body: CourseRateBody,
     authorization: Optional[str] = Header(None),
 ):
-    """Enrolled student: submit or update a 1–5 star rating + optional text review."""
+    """Authenticated user: submit or update a 1–5 star rating + optional text review."""
     caller_id = await _resolve_teacher_id(authorization)
     if not 1 <= body.rating <= 5:
         raise HTTPException(status_code=400, detail="Rating must be between 1 and 5")
 
     _ensure_supabase()
 
-    # Only enrolled students (or course owner / admin) may rate
+    # Ensure course exists
     async with httpx.AsyncClient(timeout=10) as client:
-        enroll_res = await client.get(
-            f"{SUPABASE_URL}/rest/v1/course_enrollments",
-            params={
-                "course_id": f"eq.{course_id}",
-                "student_id": f"eq.{caller_id}",
-                "is_active": "eq.true",
-                "select": "id",
-                "limit": "1",
-            },
-            headers=_supabase_headers(),
-        )
         course_res = await client.get(
             f"{SUPABASE_URL}/rest/v1/courses",
             params={"id": f"eq.{course_id}", "select": "teacher_id"},
@@ -452,12 +441,6 @@ async def rate_course(
     course_rows = course_res.json() if course_res.status_code == 200 else []
     if not course_rows:
         raise HTTPException(status_code=404, detail="Course not found")
-    teacher_id = course_rows[0]["teacher_id"]
-
-    enrolled = bool((enroll_res.json() if enroll_res.status_code == 200 else []))
-    is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
-    if not enrolled and not is_owner_or_admin:
-        raise HTTPException(status_code=403, detail="Only enrolled students can rate this course")
 
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(

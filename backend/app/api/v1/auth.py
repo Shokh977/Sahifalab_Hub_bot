@@ -1,15 +1,19 @@
 from fastapi import APIRouter, HTTPException, Header
+from fastapi import UploadFile, File
 from typing import Optional
 import os
 import logging
 import secrets
 import hashlib
+import uuid
 from datetime import datetime, UTC, timedelta
 import httpx
 import bcrypt
 from pydantic import BaseModel, HttpUrl, EmailStr
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
+from pathlib import Path
+from app.core.config import settings
 
 from app.services.auth_service import (
     TelegramAuthData,
@@ -37,6 +41,11 @@ class PhotoUpdateRequest(BaseModel):
     photo_url: HttpUrl
 
 
+class ProfileUpdateRequest(BaseModel):
+    first_name: Optional[str] = None
+    username: Optional[str] = None
+
+
 def _google_sub_to_internal_id(sub: str) -> int:
     """
     Convert Google `sub` to a stable negative integer so it can coexist with
@@ -62,6 +71,20 @@ def _ensure_supabase():
             status_code=503,
             detail="Supabase is not configured (SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY missing)",
         )
+
+
+def _require_bearer_and_decode(authorization: Optional[str]) -> int:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+
+    telegram_id = decode_token(parts[1])
+    if not telegram_id:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    return telegram_id
 
 
 @router.post("/telegram")
@@ -285,16 +308,7 @@ async def google_sign_in(body: GoogleSignInRequest):
 async def update_my_photo(body: PhotoUpdateRequest, authorization: str = Header(None)):
     """Update current user's profile photo URL."""
     _ensure_supabase()
-
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0] != "Bearer":
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
-
-    telegram_id = decode_token(parts[1])
-    if not telegram_id:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    telegram_id = _require_bearer_and_decode(authorization)
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -312,6 +326,113 @@ async def update_my_photo(body: PhotoUpdateRequest, authorization: str = Header(
         raise HTTPException(status_code=500, detail=f"Failed to update photo: {e}")
 
     return {"ok": True, "photo_url": str(body.photo_url)}
+
+
+@router.patch("/me")
+async def update_my_profile(body: ProfileUpdateRequest, authorization: str = Header(None)):
+    """Update current user's editable profile fields (first_name, username)."""
+    _ensure_supabase()
+    telegram_id = _require_bearer_and_decode(authorization)
+
+    payload = {}
+    if body.first_name is not None:
+        payload["first_name"] = body.first_name.strip()
+    if body.username is not None:
+        payload["username"] = (body.username.strip() or None)
+
+    if not payload:
+        return {"ok": True}
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}"},
+                json=payload,
+                headers=_supabase_headers(),
+            )
+            if res.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update profile: {e}")
+
+    return {"ok": True, **payload}
+
+
+@router.post("/me/photo/upload")
+async def upload_my_photo(file: UploadFile = File(...), authorization: str = Header(None)):
+    """Upload current user's avatar image to Bunny CDN and save photo_url in profile."""
+    _ensure_supabase()
+    telegram_id = _require_bearer_and_decode(authorization)
+
+    allowed_image_mime = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+    if file.content_type not in allowed_image_mime:
+        raise HTTPException(status_code=415, detail="Faqat JPG, PNG, WEBP, GIF ruxsat etiladi")
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Rasm hajmi 10MB dan kichik bo'lishi kerak")
+
+    if not settings.BUNNY_STORAGE_ZONE or not settings.BUNNY_API_KEY or not settings.BUNNY_CDN_HOSTNAME:
+        raise HTTPException(status_code=503, detail="Bunny CDN sozlanmagan")
+
+    region_host = {
+        "de": "storage.bunnycdn.com",
+        "ny": "ny.storage.bunnycdn.com",
+        "la": "la.storage.bunnycdn.com",
+        "sg": "sg.storage.bunnycdn.com",
+        "syd": "syd.storage.bunnycdn.com",
+        "br": "br.storage.bunnycdn.com",
+        "jh": "jh.storage.bunnycdn.com",
+    }
+    host = region_host.get(settings.BUNNY_STORAGE_REGION or "de", "storage.bunnycdn.com")
+
+    ext = Path(file.filename or "avatar").suffix.lower()
+    if not ext:
+        ext = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/webp": ".webp",
+            "image/gif": ".gif",
+        }.get(file.content_type or "", ".jpg")
+
+    remote_path = f"uploads/users/{telegram_id}/avatar_{uuid.uuid4().hex}{ext}"
+    put_url = f"https://{host}/{settings.BUNNY_STORAGE_ZONE}/{remote_path}"
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        put_res = await client.put(
+            put_url,
+            content=file_bytes,
+            headers={
+                "AccessKey": settings.BUNNY_API_KEY,
+                "Content-Type": file.content_type or "application/octet-stream",
+                "Content-Length": str(len(file_bytes)),
+            },
+        )
+
+    if put_res.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail=f"Bunny upload error: {put_res.text[:200]}")
+
+    public_url = f"https://{settings.BUNNY_CDN_HOSTNAME.rstrip('/')}/{remote_path}"
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            patch_res = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}"},
+                json={"photo_url": public_url},
+                headers=_supabase_headers(),
+            )
+            if patch_res.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=500, detail=f"Supabase error: {patch_res.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update avatar URL: {e}")
+
+    return {"ok": True, "photo_url": public_url, "remote_path": remote_path}
 
 
 @router.post("/logout")

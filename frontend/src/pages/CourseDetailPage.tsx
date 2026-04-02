@@ -254,6 +254,13 @@ const CourseDetailPage: React.FC = () => {
     setShowCert(true)
   }
 
+  const handleMarkLessonCompleted = (lessonId?: number) => {
+    if (!lessonId || !isEnrolled) return
+    apiService.completeLesson(lessonId)
+      .then(() => setCompletedIds(prev => new Set([...prev, lessonId])))
+      .catch(() => {})
+  }
+
   // ── Loading / error screens ───────────────────────────────────────────────
   if (loading) return (
     <PageWrapper>
@@ -310,16 +317,17 @@ const CourseDetailPage: React.FC = () => {
       )}
       {(isEnrolled || isOwner) && lessons.length > 0 && (
         <div>
-          <div className="flex items-center justify-between text-xs mb-1.5">
-            <span className="font-medium text-gray-700 dark:text-gray-300">Progress</span>
-            <span className="font-bold text-sahifa-600 dark:text-sahifa-400">{completedIds.size}/{lessons.length} ({progressPct}%)</span>
+          <div className="flex items-center justify-between text-[11px] mb-2">
+            <span className="font-semibold text-gray-600 dark:text-gray-300">Progress</span>
+            <span className="font-bold text-sahifa-600 dark:text-sahifa-400">{progressPct}%</span>
           </div>
-          <div className="h-2 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+          <div className="h-2 rounded-full bg-slate-100 dark:bg-slate-700/70 overflow-hidden border border-slate-200 dark:border-slate-700">
             <motion.div
-              className={progressPct === 100 ? 'h-full rounded-full bg-gradient-to-r from-emerald-400 to-green-500' : 'h-full rounded-full bg-gradient-to-r from-sahifa-400 to-sahifa-600'}
+              className={progressPct === 100 ? 'h-full rounded-full bg-emerald-500' : 'h-full rounded-full bg-sahifa-500'}
               initial={{ width: 0 }} animate={{ width: `${progressPct}%` }} transition={{ duration: 0.7 }}
             />
           </div>
+          <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">{completedIds.size}/{lessons.length} dars tugatilgan</p>
           {progressPct === 100 && (
             <button onClick={handleOpenCertificate}
               className="mt-2 w-full py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 transition-all inline-flex items-center justify-center gap-1">
@@ -343,7 +351,7 @@ const CourseDetailPage: React.FC = () => {
     </div>
   )
 
-  const RatingWidget = () => isEnrolled ? (
+  const RatingWidget = () => user ? (
     <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
       <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
         {myRating ? `Sizning bahoyingiz: ${myRating} ★` : 'Kursni baholang:'}
@@ -488,13 +496,13 @@ const CourseDetailPage: React.FC = () => {
       </div>
 
       {/* ── Two-column layout ─────────────────────────────────────────────── */}
-      <div className="-mx-4 sm:-mx-5 lg:-mx-8 flex flex-col lg:flex-row">
+      <div className="-mx-4 sm:-mx-5 lg:-mx-8 flex flex-col lg:flex-row bg-white dark:bg-slate-900">
 
         {/* LEFT COLUMN: video + info */}
         <div className="flex-1 min-w-0">
 
-          {/* Sticky video */}
-          <div className="sticky top-0 z-20 bg-black w-full">
+          {/* Video (not sticky) */}
+          <div className="bg-black w-full">
             {activeLesson?.video_url ? (
               <div className="aspect-video">
                 <VideoPlayer
@@ -527,12 +535,33 @@ const CourseDetailPage: React.FC = () => {
               <div className="mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
                 <div className="flex items-start justify-between gap-2">
                   <h2 className="text-base font-bold text-gray-900 dark:text-white leading-snug">{activeLesson.title}</h2>
-                  {completedIds.has(activeLesson.id) && (
+                  {completedIds.has(activeLesson.id) ? (
                     <span className="shrink-0 inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
                       <CheckCircleIcon className="h-4 w-4" /> Tugatildi
                     </span>
-                  )}
+                  ) : isEnrolled ? (
+                    <button
+                      onClick={() => handleMarkLessonCompleted(activeLesson.id)}
+                      className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-sahifa-50 hover:bg-sahifa-100 dark:bg-sahifa-900/30 dark:hover:bg-sahifa-900/50 text-sahifa-700 dark:text-sahifa-300 border border-sahifa-200 dark:border-sahifa-700 transition-colors"
+                    >
+                      <CheckCircleIcon className="h-3.5 w-3.5" /> Tugatildi deb belgilash
+                    </button>
+                  ) : null}
                 </div>
+                {(isEnrolled || isOwner) && lessons.length > 0 && (
+                  <div className="mt-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50/70 dark:bg-slate-800/40 p-3">
+                    <div className="flex items-center justify-between text-[11px] mb-1.5">
+                      <span className="font-medium text-gray-600 dark:text-gray-300">Kurs progress</span>
+                      <span className="font-semibold text-gray-800 dark:text-gray-200">{progressPct}%</span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                      <motion.div
+                        className={progressPct === 100 ? 'h-full rounded-full bg-emerald-500' : 'h-full rounded-full bg-sahifa-500'}
+                        initial={{ width: 0 }} animate={{ width: `${progressPct}%` }} transition={{ duration: 0.5 }}
+                      />
+                    </div>
+                  </div>
+                )}
                 {activeLesson.duration_minutes > 0 && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-flex items-center gap-1">
                     <ClockIcon className="h-3.5 w-3.5" /> {activeLesson.duration_minutes} daqiqa
@@ -613,9 +642,9 @@ const CourseDetailPage: React.FC = () => {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: sticky sidebar (desktop only) */}
-        <div className="hidden lg:flex flex-col w-[360px] xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-slate-700 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto">
-          <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
+        {/* RIGHT COLUMN: sticky modules (desktop only) */}
+        <div className="hidden lg:flex flex-col w-[360px] xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-slate-700 lg:sticky lg:top-4 lg:max-h-[calc(100vh-1rem)] lg:overflow-y-auto bg-white dark:bg-slate-900">
+          <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
             <EnrollCTA />
           </div>
           <div className="flex-1 overflow-y-auto p-4">

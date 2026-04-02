@@ -26,6 +26,7 @@ import {
   InformationCircleIcon,
   LightBulbIcon,
   LinkIcon,
+  PencilSquareIcon,
   SparklesIcon,
   TrophyIcon,
 } from '@heroicons/react/24/outline'
@@ -228,22 +229,46 @@ const CabinetPage: React.FC = () => {
 
   const [photoError, setPhotoError] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
+  const [profileSaving, setProfileSaving] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
+  const [editFirstName, setEditFirstName] = useState('')
+  const [editUsername, setEditUsername] = useState('')
   const rawPhotoUrl = isWeb ? authUser?.photo_url : tgUser?.photo_url
   const photoUrl = (!photoError && rawPhotoUrl) ? rawPhotoUrl : null
 
-  const handlePhotoUpdate = useCallback(async () => {
-    const next = window.prompt('Yangi profil rasmi URL manzilini kiriting:', rawPhotoUrl || '')
-    if (!next) return
+  useEffect(() => {
+    setEditFirstName(effectiveFirstName || '')
+    setEditUsername(effectiveUsername || '')
+  }, [effectiveFirstName, effectiveUsername])
+
+  const handlePhotoFileUpload = useCallback(async (file: File | null) => {
+    if (!file) return
     try {
       setPhotoSaving(true)
-      await apiService.updateMyPhoto(next.trim())
+      await apiService.uploadMyPhotoFile(file)
       window.location.reload()
     } catch {
-      alert('Profil rasmi yangilanmadi. URL ni tekshirib qayta urinib ko\'ring.')
+      alert('Rasm yuklanmadi. Bunny sozlamalarini tekshiring va qayta urinib ko\'ring.')
     } finally {
       setPhotoSaving(false)
     }
-  }, [rawPhotoUrl])
+  }, [])
+
+  const handleSaveProfile = useCallback(async () => {
+    if (!isWeb) return
+    try {
+      setProfileSaving(true)
+      await apiService.updateMyProfile({
+        first_name: editFirstName.trim(),
+        username: editUsername.trim() || null,
+      })
+      window.location.reload()
+    } catch {
+      alert('Profil ma\'lumotlari saqlanmadi. Qayta urinib ko\'ring.')
+    } finally {
+      setProfileSaving(false)
+    }
+  }, [isWeb, editFirstName, editUsername])
 
   // Certificate & books state
   const [completedQuizzes, setCompletedQuizzes] = useState<CompletedQuiz[]>([])
@@ -444,17 +469,62 @@ const CabinetPage: React.FC = () => {
                 {effectiveTotalXP.toLocaleString()} XP
               </span>
               {isWeb && (
-                <button
-                  onClick={handlePhotoUpdate}
-                  disabled={photoSaving}
-                  className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1"
-                >
-                  {photoSaving ? <ArrowPathIcon className="h-3 w-3 animate-spin" /> : <SparklesIcon className="h-3 w-3" />} Rasm
-                </button>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1 cursor-pointer">
+                    {photoSaving ? <ArrowPathIcon className="h-3 w-3 animate-spin" /> : <SparklesIcon className="h-3 w-3" />} Rasm
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => handlePhotoFileUpload(e.target.files?.[0] ?? null)}
+                      disabled={photoSaving}
+                    />
+                  </label>
+                  <button
+                    onClick={() => setEditOpen(prev => !prev)}
+                    className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1"
+                  >
+                    <PencilSquareIcon className="h-3 w-3" /> Ism
+                  </button>
+                </div>
               )}
             </div>
           </div>
         </div>
+
+        {isWeb && editOpen && (
+          <div className="mt-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/40 p-3 space-y-2">
+            <div className="grid sm:grid-cols-2 gap-2">
+              <input
+                value={editFirstName}
+                onChange={(e) => setEditFirstName(e.target.value)}
+                placeholder="Ismingiz"
+                className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
+              />
+              <input
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value.replace(/^@+/, ''))}
+                placeholder="username"
+                className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setEditOpen(false)}
+                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+              >
+                Bekor qilish
+              </button>
+              <button
+                onClick={handleSaveProfile}
+                disabled={profileSaving}
+                className="px-3 py-1.5 text-xs rounded-lg bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                {profileSaving && <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />} Saqlash
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* XP progress bar */}
         <div className="mt-4">
@@ -757,7 +827,7 @@ const CabinetPage: React.FC = () => {
         <MenuRow
           icon={TrophyIcon}
           label="Liderlar Jadvali"
-          sublabel="Top 10 o'quvchilar"
+          sublabel="Top 100 o'quvchilar"
           onClick={() => navigate('/leaderboard')}
         />
         <MenuRow

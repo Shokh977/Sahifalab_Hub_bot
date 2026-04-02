@@ -382,6 +382,20 @@ class ApiService {
     return this.axiosInstance.patch('/api/auth/me/photo', { photo_url: photoUrl })
   }
 
+  /** Current user: update editable profile fields */
+  async updateMyProfile(data: { first_name?: string; username?: string | null }) {
+    return this.axiosInstance.patch('/api/auth/me', data)
+  }
+
+  /** Current user: upload avatar image to Bunny and set photo_url */
+  async uploadMyPhotoFile(file: File) {
+    const form = new FormData()
+    form.append('file', file)
+    return this.axiosInstance.post('/api/auth/me/photo/upload', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    })
+  }
+
   // ─── Email auth ───────────────────────────────────────────────────────────
 
   /** Register a new account with email + password */

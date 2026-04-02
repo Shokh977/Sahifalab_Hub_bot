@@ -1,8 +1,8 @@
 /**
  * LeaderboardPage — SAHIFALAB Hub
  *
- * Top 10 users by total_xp fetched directly from Supabase.
- * If the current user is not in the top 10, their rank is shown at the bottom.
+ * Top 100 users by total_xp fetched directly from Supabase.
+ * If the current user is not in the top 100, their rank is shown at the bottom.
  */
 
 import React, { useEffect, useState, useCallback } from 'react'
@@ -20,6 +20,7 @@ interface LeaderRow {
   telegram_id:       number
   first_name:        string
   username:          string | null
+  photo_url:         string | null
   total_xp:          number
   focus_seconds:     number
   level:             number
@@ -61,6 +62,7 @@ const LeaderRow: React.FC<{
   isSelf:    boolean
   animDelay: number
 }> = ({ row, rank, isSelf, animDelay }) => {
+  const [imgError, setImgError] = useState(false)
   const online = isUserOnline(row.app_online_at)
   const skin = getProfileSkin({
     level: row.level,
@@ -87,14 +89,24 @@ const LeaderRow: React.FC<{
 
       {/* Avatar + unlocked skin */}
       <div className="flex-shrink-0 relative">
-        <div
-          className={`w-9 h-9 rounded-xl bg-gradient-to-br ${levelGrad(row.level)} flex items-center justify-center shadow-sm ${skin.borderClass}`}
-          title={`${skin.emoji} ${skin.name}`}
-        >
-          <span className="text-white text-sm font-black">
-            {(row.first_name || '?').charAt(0).toUpperCase()}
-          </span>
-        </div>
+        {row.photo_url && !imgError ? (
+          <img
+            src={row.photo_url}
+            alt={row.first_name || 'User'}
+            onError={() => setImgError(true)}
+            className={`w-9 h-9 rounded-xl object-cover shadow-sm ${skin.borderClass}`}
+            title={`${skin.emoji} ${skin.name}`}
+          />
+        ) : (
+          <div
+            className={`w-9 h-9 rounded-xl bg-gradient-to-br ${levelGrad(row.level)} flex items-center justify-center shadow-sm ${skin.borderClass}`}
+            title={`${skin.emoji} ${skin.name}`}
+          >
+            <span className="text-white text-sm font-black">
+              {(row.first_name || '?').charAt(0).toUpperCase()}
+            </span>
+          </div>
+        )}
         <div className="absolute -bottom-0.5 -right-0.5 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-100 dark:border-gray-700">
           {skin.emoji}
         </div>
@@ -140,7 +152,7 @@ const LeaderboardPage: React.FC = () => {
   // progressStore.telegramId is set after init(); authUser.id is available immediately
   const selfId: number | null = telegramId ?? authUser?.id ?? null
 
-  const [top10,     setTop10]     = useState<LeaderRow[]>([])
+  const [topUsers,  setTopUsers]  = useState<LeaderRow[]>([])
   const [selfRank,  setSelfRank]  = useState<number | null>(null)
   const [selfRow,   setSelfRow]   = useState<LeaderRow | null>(null)
   const [loading,   setLoading]   = useState(true)
@@ -156,24 +168,24 @@ const LeaderboardPage: React.FC = () => {
     setLoading(true)
     setError(null)
     try {
-      // Top 10
+      // Top 100
       const { data: top, error: topErr } = await supabase
         .from('profiles')
-        .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
+        .select('telegram_id, first_name, username, photo_url, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
         .order('total_xp', { ascending: false })
-        .limit(10)
+        .limit(100)
 
       if (topErr) throw topErr
-      setTop10(top ?? [])
+      setTopUsers(top ?? [])
 
-      // Check if current user is in top 10
+      // Check if current user is in top 100
       const inTop = (top ?? []).some((r) => r.telegram_id === selfId)
 
       if (!inTop && selfId) {
         // Fetch user's own row
         const { data: me } = await supabase
           .from('profiles')
-          .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
+          .select('telegram_id, first_name, username, photo_url, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
           .eq('telegram_id', selfId)
           .single()
 
@@ -326,7 +338,7 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
       )}
 
       {/* Top 10 list */}
-      {!loading && !error && top10.length === 0 && (
+      {!loading && !error && topUsers.length === 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center border border-gray-100 dark:border-gray-700">
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             Hali hech kim ro'yxatga kirmagan.
@@ -335,9 +347,9 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
         </div>
       )}
 
-      {top10.length > 0 && (
+      {topUsers.length > 0 && (
         <div className="space-y-2">
-          {top10.map((row, i) => (
+          {topUsers.map((row, i) => (
             <LeaderRow
               key={row.telegram_id}
               row={row}
@@ -349,7 +361,7 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
         </div>
       )}
 
-      {/* Current user outside top 10 */}
+      {/* Current user outside top 100 */}
       {selfRow && selfRank && (
         <>
           <div className="flex items-center gap-2 my-2">
