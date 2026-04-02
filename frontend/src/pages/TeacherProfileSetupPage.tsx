@@ -10,6 +10,16 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import {
+  ArrowLeftIcon,
+  ArrowPathIcon,
+  BanknotesIcon,
+  CheckCircleIcon,
+  ExclamationCircleIcon,
+  PencilSquareIcon,
+  UsersIcon,
+  VideoCameraIcon,
+} from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
@@ -141,7 +151,7 @@ const TeacherProfileSetupPage: React.FC = () => {
     return (
       <PageWrapper>
         <div className="flex items-center justify-center py-20">
-          <div className="text-4xl animate-pulse">📝</div>
+          <PencilSquareIcon className="h-10 w-10 text-slate-400 animate-pulse" />
         </div>
       </PageWrapper>
     )
@@ -156,8 +166,8 @@ const TeacherProfileSetupPage: React.FC = () => {
         className="mb-6"
       >
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-xl shadow">
-            📝
+          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center shadow">
+            <PencilSquareIcon className="h-5 w-5 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -172,7 +182,7 @@ const TeacherProfileSetupPage: React.FC = () => {
         {/* Progress indicator */}
         {!form.profile_complete && (
           <div className="mt-3 p-3 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/20 border border-sahifa-200 dark:border-sahifa-800 text-xs text-sahifa-700 dark:text-sahifa-300">
-            👋 Profilingizni to'ldirib o'qituvchi sifatida faoliyatni boshlang.
+            Profilingizni to'ldirib o'qituvchi sifatida faoliyatni boshlang.
             Bio va mutaxassislik majburiy — qolganlar ixtiyoriy.
           </div>
         )}
@@ -186,12 +196,12 @@ const TeacherProfileSetupPage: React.FC = () => {
         className="mb-5 grid grid-cols-3 gap-3"
       >
         {[
-          { label: "Talabalar",  value: form.total_students, icon: '👥' },
-          { label: "Kurslar",    value: form.total_courses,  icon: '📚' },
-          { label: "Komisyon",   value: `${Math.round(form.commission_rate * 100)}%`, icon: '💰' },
+          { label: "Talabalar",  value: form.total_students, icon: UsersIcon },
+          { label: "Kurslar",    value: form.total_courses,  icon: VideoCameraIcon },
+          { label: "Komisyon",   value: `${Math.round(form.commission_rate * 100)}%`, icon: BanknotesIcon },
         ].map(s => (
           <div key={s.label} className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-3 text-center">
-            <p className="text-base">{s.icon}</p>
+            <s.icon className="h-5 w-5 mx-auto text-sahifa-500" />
             <p className="text-lg font-bold text-gray-900 dark:text-white mt-0.5">{s.value}</p>
             <p className="text-[10px] text-gray-400 dark:text-gray-500">{s.label}</p>
           </div>
@@ -253,7 +263,7 @@ const TeacherProfileSetupPage: React.FC = () => {
             Ijtimoiy havolalar (ixtiyoriy)
           </p>
           <div className="space-y-3">
-            <Field label="🌐 Veb-sayt">
+            <Field label="Veb-sayt">
               <input
                 type="url"
                 value={form.website_url}
@@ -262,7 +272,7 @@ const TeacherProfileSetupPage: React.FC = () => {
                 className={inputCls}
               />
             </Field>
-            <Field label="▶️ YouTube">
+            <Field label="YouTube">
               <input
                 type="url"
                 value={form.youtube_url}
@@ -271,7 +281,7 @@ const TeacherProfileSetupPage: React.FC = () => {
                 className={inputCls}
               />
             </Field>
-            <Field label="✈️ Telegram kanal" hint="@username shaklida">
+            <Field label="Telegram kanal" hint="@username shaklida">
               <input
                 type="text"
                 value={form.telegram_channel}
@@ -291,7 +301,7 @@ const TeacherProfileSetupPage: React.FC = () => {
           animate={{ opacity: 1 }}
           className="mt-4 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300"
         >
-          ❌ {error}
+          <span className="inline-flex items-center gap-1"><ExclamationCircleIcon className="h-4 w-4" /> {error}</span>
         </motion.div>
       )}
 
@@ -302,7 +312,7 @@ const TeacherProfileSetupPage: React.FC = () => {
           animate={{ opacity: 1 }}
           className="mt-4 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-sm text-green-700 dark:text-green-300 text-center"
         >
-          ✅ Profil saqlandi! Panelga yo'naltirilmoqda...
+          <span className="inline-flex items-center gap-1"><CheckCircleIcon className="h-4 w-4" /> Profil saqlandi! Panelga yo'naltirilmoqda...</span>
         </motion.div>
       )}
 
@@ -316,15 +326,15 @@ const TeacherProfileSetupPage: React.FC = () => {
         <button
           onClick={handleSave}
           disabled={status === 'saving' || status === 'saved'}
-          className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-sm shadow disabled:opacity-60 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+          className="flex-1 py-3.5 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-sm shadow disabled:opacity-60 disabled:cursor-not-allowed transition-all active:scale-[0.98] inline-flex items-center justify-center gap-1"
         >
-          {status === 'saving' ? '💾 Saqlanmoqda...' : status === 'saved' ? '✅ Saqlandi!' : '💾 Saqlash'}
+          {status === 'saving' ? <><ArrowPathIcon className="h-4 w-4 animate-spin" /> Saqlanmoqda...</> : status === 'saved' ? <><CheckCircleIcon className="h-4 w-4" /> Saqlandi!</> : <><PencilSquareIcon className="h-4 w-4" /> Saqlash</>}
         </button>
         <button
           onClick={() => navigate('/teacher')}
-          className="px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition"
+          className="px-4 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 transition inline-flex items-center gap-1"
         >
-          ← Orqaga
+          <ArrowLeftIcon className="h-4 w-4" /> Orqaga
         </button>
       </motion.div>
     </PageWrapper>

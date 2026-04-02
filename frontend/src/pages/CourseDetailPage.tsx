@@ -11,6 +11,26 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import {
+  AcademicCapIcon,
+  ArrowLeftIcon,
+  ArrowPathIcon,
+  ArrowRightIcon,
+  BanknotesIcon,
+  CheckCircleIcon,
+  ChartBarIcon,
+  ClockIcon,
+  ExclamationCircleIcon,
+  GlobeAltIcon,
+  LockClosedIcon,
+  PauseIcon,
+  PencilSquareIcon,
+  PlayIcon,
+  StarIcon,
+  TagIcon,
+  UsersIcon,
+  VideoCameraIcon,
+} from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import VideoPlayer from '../components/VideoPlayer'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
@@ -73,9 +93,9 @@ function formatDuration(minutes: number) {
 
 function levelLabel(level: string) {
   const map: Record<string, string> = {
-    beginner:     "🌱 Boshlang'ich",
-    intermediate: '📈 O\'rta',
-    advanced:     '🚀 Yuqori',
+    beginner:     "Boshlang'ich",
+    intermediate: 'O\'rta',
+    advanced:     'Yuqori',
   }
   return map[level] ?? level
 }
@@ -116,7 +136,13 @@ const LessonRow: React.FC<{
               ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-700 dark:text-sahifa-300'
               : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
         }`}>
-          {isCompleted ? '✅' : unlocked ? (isExpanded ? '⏸' : '▶') : '🔒'}
+          {isCompleted ? (
+            <CheckCircleIcon className="h-4 w-4" />
+          ) : unlocked ? (
+            isExpanded ? <PauseIcon className="h-4 w-4" /> : <PlayIcon className="h-4 w-4" />
+          ) : (
+            <LockClosedIcon className="h-4 w-4" />
+          )}
         </div>
 
         {/* Info */}
@@ -128,8 +154,8 @@ const LessonRow: React.FC<{
           </p>
           <div className="flex items-center gap-2 mt-0.5">
             {lesson.duration_minutes > 0 && (
-              <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                ⏱ {lesson.duration_minutes} daq
+              <span className="text-[11px] text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+                <ClockIcon className="h-3.5 w-3.5" /> {lesson.duration_minutes} daq
               </span>
             )}
             {lesson.is_free && (
@@ -138,8 +164,8 @@ const LessonRow: React.FC<{
               </span>
             )}
             {lesson.video_source === 'youtube' && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold">
-                📺 YouTube
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold inline-flex items-center gap-1">
+                <VideoCameraIcon className="h-3 w-3" /> YouTube
               </span>
             )}
           </div>
@@ -152,7 +178,7 @@ const LessonRow: React.FC<{
             onClick={e => e.stopPropagation()}
             className="text-[11px] text-slate-400 hover:text-sahifa-500 shrink-0 px-1"
           >
-            ✏️
+            <PencilSquareIcon className="h-4 w-4" />
           </Link>
         )}
       </motion.div>
@@ -401,10 +427,10 @@ const CourseDetailPage: React.FC = () => {
     return (
       <PageWrapper>
         <div className="text-center py-16 space-y-3">
-          <p className="text-5xl">😕</p>
+          <ExclamationCircleIcon className="h-12 w-12 mx-auto text-slate-400" />
           <p className="text-sm text-gray-500 dark:text-gray-400">{error || 'Kurs topilmadi'}</p>
-          <button onClick={() => navigate('/courses')} className="text-xs text-sahifa-500 font-medium hover:underline">
-            ← Kurslarga qaytish
+          <button onClick={() => navigate('/courses')} className="text-xs text-sahifa-500 font-medium hover:underline inline-flex items-center gap-1">
+            <ArrowLeftIcon className="h-3.5 w-3.5" /> Kurslarga qaytish
           </button>
         </div>
       </PageWrapper>
@@ -424,7 +450,7 @@ const CourseDetailPage: React.FC = () => {
             <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <span className="text-8xl opacity-20">{course.categories?.icon ?? '🎓'}</span>
+              <AcademicCapIcon className="h-20 w-20 opacity-30 text-white" />
             </div>
           )}
           {/* Gradient overlay */}
@@ -435,33 +461,33 @@ const CourseDetailPage: React.FC = () => {
             onClick={() => navigate('/courses')}
             className="absolute top-4 left-4 w-9 h-9 rounded-xl bg-black/40 backdrop-blur-sm text-white flex items-center justify-center hover:bg-black/60 transition-colors"
           >
-            ←
+            <ArrowLeftIcon className="h-5 w-5" />
           </button>
 
           {/* Owner edit shortcut */}
           {isOwner && (
             <Link
               to={`/courses/${course.id}/edit`}
-              className="absolute top-4 right-4 px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-sm text-white text-xs font-semibold hover:bg-black/60 transition-colors"
+              className="absolute top-4 right-4 px-3 py-1.5 rounded-xl bg-black/40 backdrop-blur-sm text-white text-xs font-semibold hover:bg-black/60 transition-colors inline-flex items-center gap-1"
             >
-              ✏️ Tahrirlash
+              <PencilSquareIcon className="h-3.5 w-3.5" /> Tahrirlash
             </Link>
           )}
 
           {/* Badges */}
           <div className="absolute bottom-4 left-4 flex gap-2">
             {course.is_paid ? (
-              <span className="px-2.5 py-1 rounded-full bg-amber-500 text-white text-xs font-bold shadow">
-                💰 {course.price.toLocaleString()} so'm
+              <span className="px-2.5 py-1 rounded-full bg-amber-500 text-white text-xs font-bold shadow inline-flex items-center gap-1">
+                <BanknotesIcon className="h-3.5 w-3.5" /> {course.price.toLocaleString()} so'm
               </span>
             ) : (
               <span className="px-2.5 py-1 rounded-full bg-emerald-500 text-white text-xs font-bold shadow">
-                🎁 Bepul
+                Bepul
               </span>
             )}
             {!course.is_published && (
               <span className="px-2.5 py-1 rounded-full bg-amber-500/80 text-white text-xs font-bold shadow">
-                ⏳ Qoralama
+                Qoralama
               </span>
             )}
           </div>
@@ -477,14 +503,14 @@ const CourseDetailPage: React.FC = () => {
         {/* Meta row */}
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400 mb-3">
           {course.categories && (
-            <span>{course.categories.icon} {course.categories.name}</span>
+            <span className="inline-flex items-center gap-1"><TagIcon className="h-3.5 w-3.5" /> {course.categories.name}</span>
           )}
           <span>{levelLabel(course.level)}</span>
-          <span>🌐 {course.language.toUpperCase()}</span>
-          {course.total_lessons > 0 && <span>📹 {course.total_lessons} dars</span>}
-          {totalDur && <span>⏱ {totalDur}</span>}
-          {course.enrolled_count > 0 && <span>👥 {course.enrolled_count} talaba</span>}
-          {course.rating > 0 && <span>⭐ {course.rating.toFixed(1)}</span>}
+          <span className="inline-flex items-center gap-1"><GlobeAltIcon className="h-3.5 w-3.5" /> {course.language.toUpperCase()}</span>
+          {course.total_lessons > 0 && <span className="inline-flex items-center gap-1"><VideoCameraIcon className="h-3.5 w-3.5" /> {course.total_lessons} dars</span>}
+          {totalDur && <span className="inline-flex items-center gap-1"><ClockIcon className="h-3.5 w-3.5" /> {totalDur}</span>}
+          {course.enrolled_count > 0 && <span className="inline-flex items-center gap-1"><UsersIcon className="h-3.5 w-3.5" /> {course.enrolled_count} talaba</span>}
+          {course.rating > 0 && <span className="inline-flex items-center gap-1"><StarIcon className="h-3.5 w-3.5" /> {course.rating.toFixed(1)}</span>}
         </div>
 
         {/* Description */}
@@ -514,12 +540,12 @@ const CourseDetailPage: React.FC = () => {
               }`}
             >
               {isEnrolled
-                ? '✅ Siz yozilgansiz'
+                ? 'Siz yozilgansiz'
                 : enrollLoading
-                  ? '⏳ Tekshirilmoqda...'
+                  ? 'Tekshirilmoqda...'
                   : isTelegram
-                    ? `⭐ ${course.price.toLocaleString()} so'mga xarid qilish`
-                    : '📱 Telegram ichida to\'lash'}
+                    ? `${course.price.toLocaleString()} so'mga xarid qilish`
+                    : 'Telegram ichida to\'lash'}
             </button>
           ) : (
             <button
@@ -532,10 +558,10 @@ const CourseDetailPage: React.FC = () => {
               }`}
             >
               {isEnrolled
-                ? '✅ Siz yozilgansiz'
+                ? 'Siz yozilgansiz'
                 : enrollLoading
-                  ? '⏳ Yozilmoqda...'
-                  : '🎁 Bepul yozilish'}
+                  ? 'Yozilmoqda...'
+                  : 'Bepul yozilish'}
             </button>
           )}
           <p className="text-center text-[11px] text-gray-400 dark:text-gray-500 mt-2">
@@ -568,7 +594,7 @@ const CourseDetailPage: React.FC = () => {
         {isEnrolled && lessons.length > 0 && (
           <div className="mb-4 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-1.5">
-              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">📈 Kurs bo'yicha progress</span>
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 inline-flex items-center gap-1"><ChartBarIcon className="h-3.5 w-3.5" /> Kurs bo'yicha progress</span>
               <span className="text-xs font-bold text-sahifa-600 dark:text-sahifa-400">
                 {completedIds.size}/{lessons.length} ({lessons.length > 0 ? Math.round((completedIds.size / lessons.length) * 100) : 0}%)
               </span>
@@ -583,12 +609,12 @@ const CourseDetailPage: React.FC = () => {
             </div>
             {completedIds.size === lessons.length && completedIds.size > 0 && (
               <div className="mt-2 space-y-2">
-                <p className="text-xs text-emerald-500 font-semibold text-center">🎉 Siz kursni tugatdingiz!</p>
+                <p className="text-xs text-emerald-500 font-semibold text-center">Siz kursni tugatdingiz!</p>
                 <button
                   onClick={handleOpenCertificate}
-                  className="w-full py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 transition-all"
+                  className="w-full py-2 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 transition-all inline-flex items-center justify-center gap-1"
                 >
-                  🎓 Kurs sertifikatini yuklab olish
+                  <AcademicCapIcon className="h-4 w-4" /> Kurs sertifikatini yuklab olish
                 </button>
               </div>
             )}
@@ -597,16 +623,16 @@ const CourseDetailPage: React.FC = () => {
 
         {lessons.length === 0 ? (
           <div className="text-center py-10 space-y-2 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl">
-            <span className="text-4xl">🎬</span>
+            <VideoCameraIcon className="h-10 w-10 mx-auto text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">
               {isOwner ? 'Hali dars qo\'shilmagan' : 'Darslar tez orada qo\'shiladi'}
             </p>
             {isOwner && (
               <Link
                 to={`/courses/${course.id}/lessons/add`}
-                className="text-xs text-sahifa-500 font-medium hover:underline"
+                className="text-xs text-sahifa-500 font-medium hover:underline inline-flex items-center gap-1"
               >
-                Birinchi darsni qo'shing →
+                Birinchi darsni qo'shing <ArrowRightIcon className="h-3.5 w-3.5" />
               </Link>
             )}
           </div>
@@ -636,7 +662,7 @@ const CourseDetailPage: React.FC = () => {
         className="mt-6"
       >
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
-          ⭐ Baholash va sharhlar
+          <span className="inline-flex items-center gap-1"><StarIcon className="h-4 w-4" /> Baholash va sharhlar</span>
         </h2>
 
         {/* Star widget — enrolled only */}
@@ -659,7 +685,7 @@ const CourseDetailPage: React.FC = () => {
                   ★
                 </button>
               ))}
-              {ratingLoading && <span className="text-xs text-gray-400 ml-2 self-center">⏳</span>}
+              {ratingLoading && <ArrowPathIcon className="h-4 w-4 text-gray-400 ml-2 self-center animate-spin" />}
             </div>
             {/* Optional review text */}
             <textarea
@@ -675,7 +701,7 @@ const CourseDetailPage: React.FC = () => {
                 disabled={ratingLoading}
                 className="mt-2 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 disabled:opacity-50"
               >
-                💾 Saqlash
+                Saqlash
               </button>
             )}
           </div>
@@ -683,7 +709,7 @@ const CourseDetailPage: React.FC = () => {
 
         {/* Reviews list */}
         {reviewsLoading ? (
-          <div className="text-center py-4"><span className="text-2xl animate-pulse">⏳</span></div>
+          <div className="text-center py-4"><ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" /></div>
         ) : reviews.length === 0 ? (
           <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-4">
             Hali sharh yo'q. Birinchi bo'lib fikr bildiring!

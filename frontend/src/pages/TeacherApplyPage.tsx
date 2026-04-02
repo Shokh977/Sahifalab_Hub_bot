@@ -11,6 +11,17 @@
 import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import {
+  AcademicCapIcon,
+  ArrowLeftIcon,
+  ArrowPathIcon,
+  ArrowRightIcon,
+  BanknotesIcon,
+  ExclamationCircleIcon,
+  HomeIcon,
+  PresentationChartLineIcon,
+  TrophyIcon,
+} from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
@@ -30,10 +41,10 @@ type State = 'form' | 'loading' | 'success' | 'already_pending' | 'already_teach
 // ── Benefits ──────────────────────────────────────────────────────────────────
 
 const BENEFITS = [
-  { icon: '🎓', title: "O'z kurslaringizni yarating", desc: 'Video darslar, testlar va materiallar bilan to\'liq kurs tuzing' },
-  { icon: '💰', title: 'Daromad oling', desc: 'Har bir to\'lov uchun komisyon foizini hisobingizga oling' },
-  { icon: '📊', title: 'Analitika paneli', desc: "O'quvchilar progressi va daromad statistikasini kuzating" },
-  { icon: '🏆', title: "O'qituvchi badji", desc: 'Profilingizda maxsus "Teacher" badge ko\'rinadi' },
+  { icon: AcademicCapIcon, title: "O'z kurslaringizni yarating", desc: 'Video darslar, testlar va materiallar bilan to\'liq kurs tuzing' },
+  { icon: BanknotesIcon, title: 'Daromad oling', desc: 'Har bir to\'lov uchun komisyon foizini hisobingizga oling' },
+  { icon: PresentationChartLineIcon, title: 'Analitika paneli', desc: "O'quvchilar progressi va daromad statistikasini kuzating" },
+  { icon: TrophyIcon, title: "O'qituvchi badji", desc: 'Profilingizda maxsus "Teacher" badge ko\'rinadi' },
 ]
 
 // ── Field ─────────────────────────────────────────────────────────────────────
@@ -127,7 +138,7 @@ const TeacherApplyPage: React.FC = () => {
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-md mx-auto text-center py-10 space-y-5"
         >
-          <div className="text-7xl select-none">⏳</div>
+          <ArrowPathIcon className="h-16 w-16 mx-auto text-amber-500" />
           <div>
             <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">Ariza yuborildi!</h1>
             <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 leading-relaxed">
@@ -137,7 +148,7 @@ const TeacherApplyPage: React.FC = () => {
             </p>
           </div>
           <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-sm text-amber-700 dark:text-amber-300 text-left space-y-1">
-            <p className="font-semibold">📋 Navbatdagi qadamlar:</p>
+            <p className="font-semibold">Navbatdagi qadamlar:</p>
             <p>1. Admin arizangizni ko'rib chiqadi</p>
             <p>2. Sizning rolingiz "Teacher" ga o'zgaradi</p>
             <p>3. Yangi kirish paytida o'qituvchi paneli ochiladi</p>
@@ -145,15 +156,15 @@ const TeacherApplyPage: React.FC = () => {
           <div className="flex gap-3">
             <button
               onClick={() => navigate('/')}
-              className="flex-1 py-3 rounded-2xl bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold text-sm transition-colors"
+              className="flex-1 py-3 rounded-2xl bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold text-sm transition-colors inline-flex items-center justify-center gap-1"
             >
-              🏠 Bosh sahifaga
+              <HomeIcon className="h-4 w-4" /> Bosh sahifaga
             </button>
             <button
               onClick={() => window.location.reload()}
-              className="flex-1 py-3 rounded-2xl border border-sahifa-300 dark:border-sahifa-700 text-sahifa-600 dark:text-sahifa-400 font-semibold text-sm hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors"
+              className="flex-1 py-3 rounded-2xl border border-sahifa-300 dark:border-sahifa-700 text-sahifa-600 dark:text-sahifa-400 font-semibold text-sm hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors inline-flex items-center justify-center gap-1"
             >
-              🔄 Yangilash
+              <ArrowPathIcon className="h-4 w-4" /> Yangilash
             </button>
           </div>
         </motion.div>
@@ -170,16 +181,16 @@ const TeacherApplyPage: React.FC = () => {
           animate={{ opacity: 1, scale: 1 }}
           className="max-w-md mx-auto text-center py-10 space-y-5"
         >
-          <div className="text-7xl select-none">🎓</div>
+          <AcademicCapIcon className="h-16 w-16 mx-auto text-sahifa-500" />
           <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">
             Siz allaqachon o'qituvchisiz!
           </h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">O'qituvchi panelingizga o'ting.</p>
           <Link
             to="/teacher"
-            className="inline-block px-8 py-3 bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold rounded-2xl text-sm transition-colors"
+            className="inline-flex items-center gap-1 px-8 py-3 bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold rounded-2xl text-sm transition-colors"
           >
-            O'qituvchi paneli →
+            O'qituvchi paneli <ArrowRightIcon className="h-4 w-4" />
           </Link>
         </motion.div>
       </PageWrapper>
@@ -195,8 +206,8 @@ const TeacherApplyPage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         className="text-center mb-6"
       >
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 text-3xl shadow-lg mb-4">
-          🎓
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 shadow-lg mb-4">
+          <AcademicCapIcon className="h-8 w-8 text-white" />
         </div>
         <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">O'qituvchi bo'lish</h1>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto leading-relaxed">
@@ -214,7 +225,7 @@ const TeacherApplyPage: React.FC = () => {
       >
         {BENEFITS.map(b => (
           <div key={b.title} className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-            <span className="text-xl shrink-0">{b.icon}</span>
+            <b.icon className="h-5 w-5 shrink-0 text-sahifa-500" />
             <div>
               <p className="text-xs font-semibold text-gray-900 dark:text-white leading-tight">{b.title}</p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{b.desc}</p>
@@ -231,7 +242,7 @@ const TeacherApplyPage: React.FC = () => {
         onSubmit={handleSubmit}
         className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 mb-5"
       >
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white">📋 Ariza shakli</h2>
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Ariza shakli</h2>
 
         {/* Specialization */}
         <Field label="Mutaxassislik" required hint="Masalan: Frontend dasturlash, Matematika, Ingliz tili...">
@@ -331,7 +342,7 @@ const TeacherApplyPage: React.FC = () => {
               exit={{ opacity: 0 }}
               className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300"
             >
-              ❌ {errorMsg}
+              <span className="inline-flex items-center gap-1"><ExclamationCircleIcon className="h-4 w-4" /> {errorMsg}</span>
             </motion.div>
           )}
         </AnimatePresence>
@@ -340,18 +351,18 @@ const TeacherApplyPage: React.FC = () => {
         <button
           type="submit"
           disabled={state === 'loading' || !isFormValid()}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98]"
+          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] inline-flex items-center justify-center gap-1"
         >
-          {state === 'loading' ? '⏳ Yuborilmoqda...' : '🎓 Ariza yuborish'}
+          {state === 'loading' ? <><ArrowPathIcon className="h-5 w-5 animate-spin" /> Yuborilmoqda...</> : <><AcademicCapIcon className="h-5 w-5" /> Ariza yuborish</>}
         </button>
       </motion.form>
 
       {/* Back */}
       <button
         onClick={() => navigate(-1)}
-        className="w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        className="w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center gap-1"
       >
-        ← Ortga
+        <ArrowLeftIcon className="h-4 w-4" /> Ortga
       </button>
     </PageWrapper>
   )

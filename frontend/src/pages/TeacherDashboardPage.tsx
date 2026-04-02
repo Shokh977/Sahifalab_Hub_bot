@@ -8,6 +8,21 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import {
+  AcademicCapIcon,
+  ArrowRightIcon,
+  BanknotesIcon,
+  ChartBarIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  PencilSquareIcon,
+  SparklesIcon,
+  StarIcon,
+  TrophyIcon,
+  UsersIcon,
+  VideoCameraIcon,
+  WrenchScrewdriverIcon,
+} from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
@@ -71,7 +86,7 @@ interface TeacherAnalytics {
 // ── Stat card ─────────────────────────────────────────────────────────────────
 
 interface StatCardProps {
-  icon:     string
+  icon:     React.ComponentType<React.SVGProps<SVGSVGElement>>
   label:    string
   value:    string | number
   sub?:     string
@@ -79,9 +94,9 @@ interface StatCardProps {
   loading?: boolean
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color, loading }) => (
+const StatCard: React.FC<StatCardProps> = ({ icon: Icon, label, value, sub, color, loading }) => (
   <div className={`rounded-2xl p-4 space-y-1 bg-gradient-to-br ${color}`}>
-    <div className="text-2xl">{icon}</div>
+    <Icon className="h-6 w-6 text-sahifa-600 dark:text-sahifa-300" />
     {loading ? (
       <div className="h-8 w-12 rounded-lg bg-black/10 animate-pulse" />
     ) : (
@@ -95,7 +110,7 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, sub, color, loa
 // ── Quick action button ───────────────────────────────────────────────────────
 
 interface ActionButtonProps {
-  icon: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   label: string
   description: string
   to?: string
@@ -104,7 +119,7 @@ interface ActionButtonProps {
 }
 
 const ActionButton: React.FC<ActionButtonProps> = ({
-  icon, label, description, to, onClick, disabled,
+  icon: Icon, label, description, to, onClick, disabled,
 }) => {
   const baseClass = 'flex items-start gap-4 p-4 rounded-2xl border transition-all'
   const enabledClass = 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-sahifa-400 dark:hover:border-sahifa-500 hover:shadow-md cursor-pointer'
@@ -113,13 +128,13 @@ const ActionButton: React.FC<ActionButtonProps> = ({
 
   const inner = (
     <div className={innerClass}>
-      <span className="text-3xl shrink-0 mt-0.5">{icon}</span>
+      <Icon className="h-7 w-7 shrink-0 mt-0.5 text-sahifa-500" />
       <div className="min-w-0">
         <p className="font-semibold text-gray-900 dark:text-white text-sm">{label}</p>
         <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mt-0.5">{description}</p>
       </div>
       {!disabled && (
-        <span className="ml-auto text-sahifa-500 shrink-0 mt-1 text-sm">{'→'}</span>
+        <ArrowRightIcon className="ml-auto h-4 w-4 text-sahifa-500 shrink-0 mt-1" />
       )}
     </div>
   )
@@ -167,28 +182,28 @@ const TeacherDashboardPage: React.FC = () => {
   // ── Stat cards — teacher-scoped from analytics ───────────────────────────
   const statCards: StatCardProps[] = [
     {
-      icon: '👥', label: "Mening talabalarim",
+      icon: UsersIcon, label: "Mening talabalarim",
       value: analytics?.total_students ?? 0,
       sub: analyticsLoading ? 'Yuklanmoqda...' : 'kurslarimga yozilganlar',
       color: 'from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/30',
       loading: analyticsLoading,
     },
     {
-      icon: '📚', label: 'Kurslarim',
+      icon: VideoCameraIcon, label: 'Kurslarim',
       value: `${analytics?.published_courses ?? 0} / ${analytics?.courses_count ?? 0}`,
       sub: analyticsLoading ? 'Yuklanmoqda...' : 'chop etilgan / jami',
       color: 'from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/30',
       loading: analyticsLoading,
     },
     {
-      icon: '⭐', label: "To'lovli kurslar",
+      icon: StarIcon, label: "To'lovli kurslar",
       value: analytics?.paid_courses ?? 0,
       sub: analyticsLoading ? 'Yuklanmoqda...' : `${analytics?.completed_orders ?? 0} to'lov`,
       color: 'from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/30',
       loading: analyticsLoading,
     },
     {
-      icon: '💸', label: 'Taxminiy daromad',
+      icon: BanknotesIcon, label: 'Taxminiy daromad',
       value: `${((analytics?.estimated_revenue_uzs ?? 0) / 1000).toFixed(0)}K`,
       sub: analyticsLoading ? 'Yuklanmoqda...' : `${analytics?.gross_stars ?? 0} Stars`,
       color: 'from-sahifa-50 to-sahifa-100 dark:from-sahifa-900/20 dark:to-sahifa-900/30',
@@ -206,8 +221,8 @@ const TeacherDashboardPage: React.FC = () => {
         className="mb-6"
       >
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-2xl shadow-lg">
-            🎓
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center shadow-lg">
+            <AcademicCapIcon className="h-6 w-6 text-white" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">
@@ -218,7 +233,7 @@ const TeacherDashboardPage: React.FC = () => {
             </p>
           </div>
           <span className="ml-auto text-xs font-semibold px-3 py-1 rounded-full bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-700 dark:text-sahifa-300 border border-sahifa-200 dark:border-sahifa-800">
-            🎓 Teacher
+            Teacher
           </span>
         </div>
       </motion.div>
@@ -234,7 +249,7 @@ const TeacherDashboardPage: React.FC = () => {
           {!teacherProfile?.profile_complete ? (
             /* Incomplete profile prompt */
             <div className="flex items-start gap-3 p-4 rounded-2xl bg-sahifa-50 dark:bg-sahifa-900/20 border border-sahifa-200 dark:border-sahifa-800">
-              <span className="text-2xl shrink-0 mt-0.5">⚠️</span>
+              <ExclamationTriangleIcon className="h-6 w-6 shrink-0 mt-0.5 text-amber-500" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-sahifa-700 dark:text-sahifa-300">
                   Profilingizni to'ldiring
@@ -245,9 +260,9 @@ const TeacherDashboardPage: React.FC = () => {
               </div>
               <Link
                 to="/teacher/setup"
-                className="shrink-0 px-3 py-1.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-xs font-semibold rounded-xl transition-colors"
+                className="shrink-0 px-3 py-1.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-xs font-semibold rounded-xl transition-colors inline-flex items-center gap-1"
               >
-                To'ldirish →
+                To'ldirish <ArrowRightIcon className="h-3.5 w-3.5" />
               </Link>
             </div>
           ) : (
@@ -276,7 +291,7 @@ const TeacherDashboardPage: React.FC = () => {
                 to="/teacher/setup"
                 className="shrink-0 ml-1 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-600 text-[11px] text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
               >
-                ✏️
+                <PencilSquareIcon className="h-4 w-4" />
               </Link>
             </div>
           )}
@@ -305,7 +320,7 @@ const TeacherDashboardPage: React.FC = () => {
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <StatCard
-            icon="⭐"
+            icon={StarIcon}
             label="Jami Stars"
             value={analytics?.gross_stars?.toLocaleString() ?? 0}
             sub={analyticsLoading ? 'Yuklanmoqda...' : `To'lovlar: ${analytics?.completed_orders ?? 0}`}
@@ -313,7 +328,7 @@ const TeacherDashboardPage: React.FC = () => {
             loading={analyticsLoading}
           />
           <StatCard
-            icon="💸"
+            icon={BanknotesIcon}
             label="Taxminiy daromad"
             value={`${(analytics?.estimated_revenue_uzs ?? 0).toLocaleString()} so'm`}
             sub="1 Star ≈ 250 so'm"
@@ -321,7 +336,7 @@ const TeacherDashboardPage: React.FC = () => {
             loading={analyticsLoading}
           />
           <StatCard
-            icon="🎯"
+            icon={SparklesIcon}
             label="Pullik kurslar"
             value={`${analytics?.paid_courses ?? 0} / ${analytics?.courses_count ?? 0}`}
             sub={`Talabalar: ${analytics?.total_students ?? 0}`}
@@ -364,8 +379,10 @@ const TeacherDashboardPage: React.FC = () => {
                     {row.completion_rate.toFixed(1)}%
                   </span>
                 </div>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                  👥 {row.enrolled_students} · 📹 {row.lesson_count} · ✅ {row.completed_lessons}
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2">
+                  <span className="inline-flex items-center gap-1"><UsersIcon className="h-3.5 w-3.5" /> {row.enrolled_students}</span>
+                  <span className="inline-flex items-center gap-1"><VideoCameraIcon className="h-3.5 w-3.5" /> {row.lesson_count}</span>
+                  <span className="inline-flex items-center gap-1"><CheckCircleIcon className="h-3.5 w-3.5" /> {row.completed_lessons}</span>
                 </p>
               </div>
             ))}
@@ -406,7 +423,7 @@ const TeacherDashboardPage: React.FC = () => {
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">Lv {s.level} · {s.total_xp.toLocaleString()} XP</p>
                 </div>
                 <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                  ✅ {s.completed_lessons}
+                  {s.completed_lessons}
                 </span>
               </div>
             ))}
@@ -426,33 +443,33 @@ const TeacherDashboardPage: React.FC = () => {
         </h2>
         <div className="space-y-2.5">
           <ActionButton
-            icon="🏆"
+            icon={TrophyIcon}
             label="Reyting jadvaliga o'tish"
             description="Barcha o'quvchilarning XP va darajalarini ko'ring"
             to="/leaderboard"
           />
           <ActionButton
-            icon="📚"
+            icon={VideoCameraIcon}
             label="Kitoblar ro'yxati"
             description="Talabalar qanday kitoblar o'qiyotganini ko'ring"
             to="/kitoblar"
           />
           {isAdmin && (
             <ActionButton
-              icon="🛠"
+              icon={WrenchScrewdriverIcon}
               label="Admin paneli"
               description="Quizlar, kitoblar va tizim sozlamalarini boshqaring"
               to="/admin"
             />
           )}
           <ActionButton
-            icon="➕"
+            icon={AcademicCapIcon}
             label="Yangi kurs yaratish"
             description="Video darslar, testlar va materiallar bilan kurs tuzing"
             to="/courses/create"
           />
           <ActionButton
-            icon="📊"
+            icon={ChartBarIcon}
             label="Analitika"
             description="Daromad va pullik kurs statistikasi yuqorida ko'rsatilgan"
             disabled
@@ -485,13 +502,13 @@ const TeacherDashboardPage: React.FC = () => {
           </div>
         ) : myCourses.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-8 rounded-2xl border-2 border-dashed border-slate-200 dark:border-slate-700">
-            <span className="text-3xl">🎬</span>
+            <VideoCameraIcon className="h-8 w-8 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kurs yo'q</p>
             <Link
               to="/courses/create"
-              className="text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+              className="text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Birinchi kursni yarating →
+              Birinchi kursni yarating <ArrowRightIcon className="h-3.5 w-3.5" />
             </Link>
           </div>
         ) : (
@@ -507,7 +524,7 @@ const TeacherDashboardPage: React.FC = () => {
                   {course.thumbnail_url ? (
                     <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-xl">{course.categories?.icon ?? '📚'}</span>
+                    <VideoCameraIcon className="h-5 w-5 text-sahifa-500" />
                   )}
                 </div>
                 {/* Info */}
@@ -515,7 +532,7 @@ const TeacherDashboardPage: React.FC = () => {
                   <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{course.title}</p>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400">
                     {course.categories?.name} · {course.total_lessons} dars
-                    {course.enrolled_count > 0 && ` · 👥 ${course.enrolled_count}`}
+                    {course.enrolled_count > 0 && ` · ${course.enrolled_count}`}
                   </p>
                 </div>
                 {/* Status */}
@@ -525,7 +542,7 @@ const TeacherDashboardPage: React.FC = () => {
                       ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
                       : 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300'
                   }`}>
-                    {course.is_published ? '✅ Chop' : '⏳ Qoralama'}
+                    {course.is_published ? 'Chop' : 'Qoralama'}
                   </span>
                   {course.is_paid && (
                     <p className="text-[10px] text-gray-400 dark:text-gray-500">{course.price.toLocaleString()} so'm</p>

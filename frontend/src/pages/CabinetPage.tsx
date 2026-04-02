@@ -14,6 +14,22 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
+  AcademicCapIcon,
+  ArrowDownTrayIcon,
+  ArrowPathIcon,
+  ArrowRightIcon,
+  BookOpenIcon,
+  ChartBarIcon,
+  ChevronRightIcon,
+  ClockIcon,
+  FireIcon,
+  InformationCircleIcon,
+  LightBulbIcon,
+  LinkIcon,
+  SparklesIcon,
+  TrophyIcon,
+} from '@heroicons/react/24/outline'
+import {
   useProgressStore,
   levelProgress,
   levelBounds,
@@ -22,7 +38,7 @@ import {
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { usePlatform } from '../hooks/usePlatform'
 import { useAuth } from '../context/AuthContext'
-import { LEVEL_TITLES, getLevelTitle, getLevelDescription, getLevelEmoji } from '../utils/levelTitles'
+import { LEVEL_TITLES, getLevelTitle, getLevelDescription } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import PageWrapper from '../components/PageWrapper'
 import apiService from '../services/apiService'
@@ -114,17 +130,17 @@ function levelGradient(level: number): string {
 
 // ── Menu row component ────────────────────────────────────────────────────────
 const MenuRow: React.FC<{
-  icon: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   label: string
   sublabel?: string
   value?: string
   onClick?: () => void
-}> = ({ icon, label, sublabel, value, onClick }) => (
+}> = ({ icon: Icon, label, sublabel, value, onClick }) => (
   <button
     onClick={onClick}
     className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
   >
-    <span className="text-xl w-8 text-center flex-shrink-0">{icon}</span>
+    <Icon className="h-5 w-5 text-sahifa-500 flex-shrink-0" />
     <div className="flex-1 min-w-0">
       <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{label}</p>
       {sublabel && (
@@ -134,9 +150,7 @@ const MenuRow: React.FC<{
     {value && (
       <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">{value}</span>
     )}
-    <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-    </svg>
+    <ChevronRightIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
   </button>
 )
 
@@ -157,12 +171,12 @@ const Section: React.FC<{
 
 // ── Stat pill ─────────────────────────────────────────────────────────────────
 const StatPill: React.FC<{
-  emoji: string
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   value: string | number
   label: string
-}> = ({ emoji, value, label }) => (
+}> = ({ icon: Icon, value, label }) => (
   <div className="flex-1 text-center py-3">
-    <p className="text-lg font-bold text-gray-900 dark:text-white">{emoji} {value}</p>
+    <p className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-1"><Icon className="h-4 w-4" /> {value}</p>
     <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide">{label}</p>
   </div>
 )
@@ -366,7 +380,7 @@ const CabinetPage: React.FC = () => {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-3">
-          <div className="text-4xl animate-spin">⏳</div>
+          <ArrowPathIcon className="h-10 w-10 mx-auto text-slate-400 animate-spin" />
           <p className="text-gray-500 dark:text-gray-400 text-sm">Yuklanmoqda…</p>
         </div>
       </div>
@@ -423,19 +437,19 @@ const CabinetPage: React.FC = () => {
               <div
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[11px] font-semibold shadow-sm`}
               >
-                <span>{getLevelEmoji(effectiveLevel)}</span>
+                <TrophyIcon className="h-3.5 w-3.5" />
                 <span>{getLevelTitle(effectiveLevel)}</span>
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                ⚡ {effectiveTotalXP.toLocaleString()} XP
+                {effectiveTotalXP.toLocaleString()} XP
               </span>
               {isWeb && (
                 <button
                   onClick={handlePhotoUpdate}
                   disabled={photoSaving}
-                  className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors"
+                  className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1"
                 >
-                  {photoSaving ? '⏳' : '🖼️ Rasm'}
+                  {photoSaving ? <ArrowPathIcon className="h-3 w-3 animate-spin" /> : <SparklesIcon className="h-3 w-3" />} Rasm
                 </button>
               )}
             </div>
@@ -463,10 +477,10 @@ const CabinetPage: React.FC = () => {
       {/* ═══ Stats Row ═══ */}
       <Section delay={0.05}>
         <div className="flex divide-x divide-gray-100 dark:divide-gray-700/50">
-          <StatPill emoji="⏱" value={`${focusHours}h`} label="Diqqat" />
-          <StatPill emoji="📝" value={isWeb ? completedQuizzes.length : effectiveQuizCount} label="Testlar" />
-          <StatPill emoji="⚡" value={effectiveTotalXP.toLocaleString()} label="XP" />
-          <StatPill emoji="🏅" value={effectiveLevel} label="Daraja" />
+          <StatPill icon={ClockIcon} value={`${focusHours}h`} label="Diqqat" />
+          <StatPill icon={ChartBarIcon} value={isWeb ? completedQuizzes.length : effectiveQuizCount} label="Testlar" />
+          <StatPill icon={SparklesIcon} value={effectiveTotalXP.toLocaleString()} label="XP" />
+          <StatPill icon={TrophyIcon} value={effectiveLevel} label="Daraja" />
         </div>
       </Section>
 
@@ -474,7 +488,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.08}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🎒</span>
+            <AcademicCapIcon className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Mening Kurslarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -484,18 +498,18 @@ const CabinetPage: React.FC = () => {
 
         {loadingCourses ? (
           <div className="px-4 py-6 text-center">
-            <div className="text-2xl animate-pulse">⏳</div>
+            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : enrolledCourses.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <p className="text-3xl mb-2">🎒</p>
+            <AcademicCapIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kursga yozilmagansiz</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">O'rganishni boshlash uchun kurs tanlang</p>
             <button
               onClick={() => navigate('/courses')}
-              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Kurslarga o'tish →
+              Kurslarga o'tish <ArrowRightIcon className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
@@ -516,7 +530,7 @@ const CabinetPage: React.FC = () => {
                     <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center">
-                      <span className="text-xl">🎓</span>
+                      <AcademicCapIcon className="h-5 w-5 text-white" />
                     </div>
                   )}
                 </div>
@@ -534,7 +548,7 @@ const CabinetPage: React.FC = () => {
                     <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">
                       {course.completed_lessons}/{course.total_lessons} dars •{' '}
                       {isDone ? (
-                        <span className="text-emerald-500 font-semibold">✅ Yakunlandi</span>
+                        <span className="text-emerald-500 font-semibold">Yakunlandi</span>
                       ) : (
                         <span>{pct}% bajarildi</span>
                       )}
@@ -542,9 +556,7 @@ const CabinetPage: React.FC = () => {
                   </div>
                 </div>
 
-                <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRightIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
               </button>
             )
           })
@@ -555,7 +567,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.1}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🎓</span>
+            <AcademicCapIcon className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Sertifikatlarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -565,18 +577,18 @@ const CabinetPage: React.FC = () => {
 
         {loadingData ? (
           <div className="px-4 py-6 text-center">
-            <div className="text-2xl animate-pulse">⏳</div>
+            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : completedQuizzes.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <p className="text-3xl mb-2">📜</p>
+            <TrophyIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali sertifikat yo'q</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Quizlardan 80%+ oling va sertifikat qozing!</p>
             <button
               onClick={() => navigate('/quiz')}
-              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Quizlarga o'tish →
+              Quizlarga o'tish <ArrowRightIcon className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
@@ -588,7 +600,7 @@ const CabinetPage: React.FC = () => {
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
               >
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 flex items-center justify-center flex-shrink-0">
-                  <span className="text-lg">🏆</span>
+                  <TrophyIcon className="h-5 w-5 text-amber-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -598,7 +610,7 @@ const CabinetPage: React.FC = () => {
                     {quiz.score}/{quiz.total} ({quiz.percentage}%) • {new Date(quiz.completed_at).toLocaleDateString('uz-UZ')}
                   </p>
                 </div>
-                <span className="text-xs font-medium text-sahifa-500">Yuklab olish</span>
+                <span className="text-xs font-medium text-sahifa-500 inline-flex items-center gap-1"><ArrowDownTrayIcon className="h-3.5 w-3.5" /> Yuklab olish</span>
               </button>
             ))}
             {completedQuizzes.length > 3 && (
@@ -617,7 +629,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.12}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🎖️</span>
+            <AcademicCapIcon className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Kurs sertifikatlarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -627,11 +639,11 @@ const CabinetPage: React.FC = () => {
 
         {loadingCourseCerts ? (
           <div className="px-4 py-6 text-center">
-            <div className="text-2xl animate-pulse">⏳</div>
+            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : courseCerts.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <p className="text-3xl mb-2">🎓</p>
+            <AcademicCapIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kurs sertifikati yo'q</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Kurslarni 100% yakunlang va sertifikat oling</p>
           </div>
@@ -643,7 +655,7 @@ const CabinetPage: React.FC = () => {
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
             >
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-200 dark:from-indigo-900/30 dark:to-violet-800/30 flex items-center justify-center flex-shrink-0">
-                <span className="text-lg">🎓</span>
+                <AcademicCapIcon className="h-5 w-5 text-indigo-600" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -653,7 +665,7 @@ const CabinetPage: React.FC = () => {
                   {cert.completed_lessons}/{cert.total_lessons} dars • {new Date(cert.issued_at).toLocaleDateString('uz-UZ')}
                 </p>
               </div>
-              <span className="text-xs font-medium text-sahifa-500">Yuklab olish</span>
+              <span className="text-xs font-medium text-sahifa-500 inline-flex items-center gap-1"><ArrowDownTrayIcon className="h-3.5 w-3.5" /> Yuklab olish</span>
             </button>
           ))
         )}
@@ -663,7 +675,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.15}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="text-lg">📚</span>
+            <BookOpenIcon className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Xarid qilgan kitoblarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -673,18 +685,18 @@ const CabinetPage: React.FC = () => {
 
         {loadingData ? (
           <div className="px-4 py-6 text-center">
-            <div className="text-2xl animate-pulse">⏳</div>
+            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : purchasedBooks.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <p className="text-3xl mb-2">🛒</p>
+            <BookOpenIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kitob sotib olinmagan</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Premium kitoblarni sotib oling</p>
             <button
               onClick={() => navigate('/kitoblar')}
-              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600"
+              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Kitoblarga o'tish →
+              Kitoblarga o'tish <ArrowRightIcon className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
@@ -705,7 +717,7 @@ const CabinetPage: React.FC = () => {
                     />
                   ) : (
                     <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
-                      <span className="text-lg">📕</span>
+                      <BookOpenIcon className="h-5 w-5 text-white" />
                     </div>
                   )}
                 </div>
@@ -723,11 +735,9 @@ const CabinetPage: React.FC = () => {
                   )}
                 </div>
                 {book.file_url && (
-                  <span className="text-xs font-medium text-emerald-500">📥</span>
+                  <span className="text-xs font-medium text-emerald-500"><ArrowDownTrayIcon className="h-4 w-4" /></span>
                 )}
-                <svg className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+                <ChevronRightIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
               </button>
             ))}
             {purchasedBooks.length > 3 && (
@@ -745,37 +755,37 @@ const CabinetPage: React.FC = () => {
       {/* ═══ Navigation Menu ═══ */}
       <Section delay={0.2}>
         <MenuRow
-          icon="🏆"
+          icon={TrophyIcon}
           label="Liderlar Jadvali"
           sublabel="Top 10 o'quvchilar"
           onClick={() => navigate('/leaderboard')}
         />
         <MenuRow
-          icon="📝"
+          icon={ChartBarIcon}
           label="Testlar"
           sublabel="Bilimingizni sinab ko'ring"
           onClick={() => navigate('/quiz')}
         />
         <MenuRow
-          icon="📚"
+          icon={BookOpenIcon}
           label="Kitoblar"
           sublabel="Bepul va Premium kitoblar"
           onClick={() => navigate('/kitoblar')}
         />
         <MenuRow
-          icon="🎯"
+          icon={ClockIcon}
           label="O'qish sessiyasi"
           sublabel="Fokus timer + ambient sounds"
           onClick={() => navigate('/study')}
         />
         <MenuRow
-          icon="🤖"
+          icon={SparklesIcon}
           label="SahifaLab AI"
           sublabel="Savolingiz bormi? Yozing!"
           onClick={() => navigate('/ai-companion')}
         />
         <MenuRow
-          icon="🎓"
+          icon={AcademicCapIcon}
           label="Kurslar"
           sublabel="Barcha kurslarni ko'rish"
           onClick={() => navigate('/courses')}
@@ -787,7 +797,7 @@ const CabinetPage: React.FC = () => {
         <Section delay={0.25}>
           {(authUser.role === 'teacher' && authUser.status === 'active') && (
             <MenuRow
-              icon="📊"
+              icon={ChartBarIcon}
               label="O'qituvchi paneli"
               sublabel="Kurslarim, talabalar, daromad"
               onClick={() => navigate('/teacher')}
@@ -795,7 +805,7 @@ const CabinetPage: React.FC = () => {
           )}
           {(authUser.role === 'teacher' && authUser.status === 'pending') && (
             <div className="flex items-center gap-3 px-4 py-3.5">
-              <span className="text-xl w-8 text-center">⏳</span>
+              <ArrowPathIcon className="h-5 w-5 text-amber-500 animate-spin" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white">Ariza ko'rib chiqilmoqda</p>
                 <p className="text-xs text-amber-600 dark:text-amber-400">Admin tasdiqlashini kuting</p>
@@ -804,7 +814,7 @@ const CabinetPage: React.FC = () => {
           )}
           {authUser.role === 'student' && (
             <MenuRow
-              icon="🎓"
+              icon={AcademicCapIcon}
               label="O'qituvchi bo'lish"
               sublabel="O'z kurslaringizni yarating va pul ishlang"
               onClick={() => navigate('/become-teacher')}
@@ -812,7 +822,7 @@ const CabinetPage: React.FC = () => {
           )}
           {authUser.role === 'admin' && (
             <MenuRow
-              icon="🛠"
+              icon={SparklesIcon}
               label="Admin paneli"
               sublabel="Platforma boshqaruvi"
               onClick={() => navigate('/admin')}
@@ -842,10 +852,10 @@ const CabinetPage: React.FC = () => {
                 transition={{ duration: 0.3, delay: 0.25 }}
                 className="mx-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/40 rounded-2xl p-4"
               >
-                <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3">🎯 Keyingi yutuq</p>
+                <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3 inline-flex items-center gap-1"><LightBulbIcon className="h-3.5 w-3.5" /> Keyingi yutuq</p>
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-white/80 dark:bg-gray-800/60 border-2 border-blue-200 dark:border-blue-700 flex items-center justify-center shadow-sm">
-                    <span className="text-2xl">{getLevelEmoji(nextBadge.level)}</span>
+                    <TrophyIcon className="h-7 w-7 text-blue-500" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -876,7 +886,7 @@ const CabinetPage: React.FC = () => {
             <Section delay={0.3}>
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-lg">🏅</span>
+                  <TrophyIcon className="h-5 w-5 text-sahifa-500" />
                   <h2 className="text-sm font-bold text-gray-900 dark:text-white">Yutuqlar</h2>
                 </div>
                 <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -887,14 +897,14 @@ const CabinetPage: React.FC = () => {
               {/* Earned badges */}
               {earned.length > 0 && (
                 <div className="px-4 py-3">
-                  <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">✅ Ochildi</p>
+                  <p className="text-[11px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider mb-2">Ochildi</p>
                   <div className="grid grid-cols-4 gap-2">
                     {earned.map((b) => (
                       <div
                         key={b.level}
                         className="rounded-xl p-2 text-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30"
                       >
-                        <div className="text-xl leading-none">{getLevelEmoji(b.level)}</div>
+                        <div className="text-xl leading-none"><TrophyIcon className="h-5 w-5 mx-auto text-emerald-600" /></div>
                         <p className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 mt-1 truncate">{b.title}</p>
                         <p className="text-[8px] text-emerald-600/60 dark:text-emerald-400/50">Lv.{b.level}</p>
                       </div>
@@ -906,7 +916,7 @@ const CabinetPage: React.FC = () => {
               {/* Locked badges */}
               {locked.length > 0 && (
                 <div className="px-4 py-3">
-                  <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">🔒 Yopiq ({locked.length})</p>
+                  <p className="text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Yopiq ({locked.length})</p>
                   <div className="space-y-1.5">
                     {locked.slice(0, 5).map((b) => {
                       const reqXP = xpNeededForLevel(b.level)
@@ -917,7 +927,7 @@ const CabinetPage: React.FC = () => {
                           className="flex items-center gap-3 rounded-xl p-2.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/40"
                         >
                           <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-                            <span className="text-base opacity-40 grayscale">{getLevelEmoji(b.level)}</span>
+                            <TrophyIcon className="h-4 w-4 opacity-40" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
@@ -946,7 +956,7 @@ const CabinetPage: React.FC = () => {
               {/* Empty state */}
               {earned.length === 0 && (
                 <div className="px-4 py-6 text-center">
-                  <p className="text-3xl mb-2">🌱</p>
+                  <SparklesIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
                   <p className="text-sm text-gray-500 dark:text-gray-400">Quizlar yechib, fokus sessiya boshlab yutuqlar oching!</p>
                 </div>
               )}
@@ -958,25 +968,25 @@ const CabinetPage: React.FC = () => {
       {/* ═══ More Items ═══ */}
       <Section delay={0.3}>
         <MenuRow
-          icon="🔗"
+          icon={LinkIcon}
           label="Resurslar"
           sublabel="Foydali linklar va videolar"
           onClick={() => navigate('/resources')}
         />
         <MenuRow
-          icon="🔥"
+          icon={FireIcon}
           label="Kunlik vazifalar"
           sublabel="Daily streak va missiyalar"
           onClick={() => navigate('/daily')}
         />
         <MenuRow
-          icon="🗓️"
+          icon={ClockIcon}
           label="O'qish rejasi"
           sublabel="7/14/30 kunlik yo'l xaritasi"
           onClick={() => navigate('/plans')}
         />
         <MenuRow
-          icon="ℹ️"
+          icon={InformationCircleIcon}
           label="Haqimizda"
           sublabel="Bizning hikoyamiz va missiyamiz"
           onClick={() => navigate('/about')}
@@ -991,11 +1001,11 @@ const CabinetPage: React.FC = () => {
         className="mx-4 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3"
       >
         <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
-          📌 <strong>Daraja qanday oshadi?</strong> Yangi quizlardan olingan XP va fokus vaqtidan.
+          <strong>Daraja qanday oshadi?</strong> Yangi quizlardan olingan XP va fokus vaqtidan.
           <br />
-          🛡️ <strong>XP farming o'chirilgan:</strong> bir xil quizni qayta ishlash orqali XP olinmaydi.
+          <strong>XP farming o'chirilgan:</strong> bir xil quizni qayta ishlash orqali XP olinmaydi.
           <br />
-          🎓 <strong>Sertifikat:</strong> Quiz natijasi 80%+ bo'lsa, sertifikat yuklab olinadi.
+          <strong>Sertifikat:</strong> Quiz natijasi 80%+ bo'lsa, sertifikat yuklab olinadi.
         </p>
       </motion.div>
 
