@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { FireIcon, CheckCircleIcon, ClockIcon, TrophyIcon } from '@heroicons/react/24/solid'
 import { useNavigate } from 'react-router-dom'
 import { useProgressStore, formatFocusTime } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
@@ -130,7 +131,7 @@ const DailyPage: React.FC = () => {
         className="rounded-3xl p-5 bg-gradient-to-br from-rose-50 to-orange-50 dark:from-slate-800 dark:to-slate-900 border border-rose-100 dark:border-slate-700"
       >
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-extrabold text-gray-900 dark:text-white">🔥 Daily Missiya</h1>
+          <h1 className="text-xl font-extrabold text-gray-900 dark:text-white inline-flex items-center gap-2"><FireIcon className="w-5 h-5" />Daily Missiya</h1>
           <span className="text-xs px-2 py-1 rounded-full bg-white/70 dark:bg-slate-700 text-gray-600 dark:text-gray-200">
             {dateKey}
           </span>
@@ -163,7 +164,7 @@ const DailyPage: React.FC = () => {
               Bugun: {formatFocusTime(focusToday)} / {formatFocusTime(DAILY_FOCUS_SECONDS)}
             </p>
           </div>
-          <span className={`text-xl ${focusDone ? 'text-green-500' : 'text-gray-400'}`}>{focusDone ? '✅' : '⏳'}</span>
+          <span className={`text-xl ${focusDone ? 'text-green-500' : 'text-gray-400'}`}>{focusDone ? <CheckCircleIcon className="w-5 h-5" /> : <ClockIcon className="w-5 h-5" />}</span>
         </div>
         <button
           onClick={() => navigate('/study')}
@@ -186,7 +187,7 @@ const DailyPage: React.FC = () => {
               Bugun: {quizToday} / {DAILY_QUIZ_COUNT}
             </p>
           </div>
-          <span className={`text-xl ${quizDone ? 'text-green-500' : 'text-gray-400'}`}>{quizDone ? '✅' : '⏳'}</span>
+          <span className={`text-xl ${quizDone ? 'text-green-500' : 'text-gray-400'}`}>{quizDone ? <CheckCircleIcon className="w-5 h-5" /> : <ClockIcon className="w-5 h-5" />}</span>
         </div>
         <button
           onClick={() => navigate('/quiz')}
@@ -209,7 +210,7 @@ const DailyPage: React.FC = () => {
               Bugun nimani o'rgandingiz? 1 gap yozing.
             </p>
           </div>
-          <span className={`text-xl ${reflectionDone ? 'text-green-500' : 'text-gray-400'}`}>{reflectionDone ? '✅' : '⏳'}</span>
+          <span className={`text-xl ${reflectionDone ? 'text-green-500' : 'text-gray-400'}`}>{reflectionDone ? <CheckCircleIcon className="w-5 h-5" /> : <ClockIcon className="w-5 h-5" />}</span>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-2">
@@ -234,7 +235,7 @@ const DailyPage: React.FC = () => {
         transition={{ delay: 0.2 }}
         className="rounded-2xl p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-100 dark:border-amber-800/30"
       >
-        <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">🏅 Joriy streak: {streak} kun</p>
+        <p className="text-sm font-semibold text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><TrophyIcon className="w-4 h-4" />Joriy streak: {streak} kun</p>
         <p className="text-xs text-amber-700/80 dark:text-amber-300/80 mt-1">
           Har kuni 3/3 vazifa bilan muntazamlikni ushlab turing.
         </p>

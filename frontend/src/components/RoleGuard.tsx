@@ -18,6 +18,7 @@
  */
 import React from 'react'
 import { Link, Navigate, Outlet } from 'react-router-dom'
+import { BookOpenIcon, ClockIcon, HomeIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
 interface RoleGuardProps {
@@ -32,7 +33,7 @@ const RoleGuard: React.FC<RoleGuardProps> = ({ roles }) => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] dark:bg-slate-950">
-        <div className="text-5xl animate-pulse select-none">📚</div>
+        <BookOpenIcon className="w-12 h-12 text-sahifa-500 animate-pulse" />
       </div>
     )
   }
@@ -51,7 +52,7 @@ const RoleGuard: React.FC<RoleGuardProps> = ({ roles }) => {
   ) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 bg-[#FAFAFA] dark:bg-slate-950">
-        <div className="text-7xl select-none animate-bounce">⏳</div>
+        <ClockIcon className="w-16 h-16 text-amber-500 animate-pulse" />
         <div className="text-center space-y-2 max-w-sm">
           <h1 className="text-xl font-extrabold text-gray-900 dark:text-white">
             Ariza ko'rib chiqilmoqda
@@ -63,15 +64,15 @@ const RoleGuard: React.FC<RoleGuardProps> = ({ roles }) => {
           </p>
         </div>
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-4 text-sm text-amber-700 dark:text-amber-300 text-left max-w-sm w-full space-y-1">
-          <p className="font-semibold">📋 Holat: Kutilmoqda</p>
+          <p className="font-semibold">Holat: Kutilmoqda</p>
           <p>Foydalanuvchi: <span className="font-mono">{user.first_name}</span></p>
           {user.username && <p>Username: <span className="font-mono">@{user.username}</span></p>}
         </div>
         <Link
           to="/"
-          className="px-6 py-2.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-sm font-semibold rounded-xl transition-colors"
+          className="px-6 py-2.5 bg-sahifa-500 hover:bg-sahifa-600 text-white text-sm font-semibold rounded-xl transition-colors inline-flex items-center gap-2"
         >
-          🏠 Bosh sahifaga qaytish
+          <HomeIcon className="w-4 h-4" /> Bosh sahifaga qaytish
         </Link>
       </div>
     )

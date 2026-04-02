@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useThemeStore } from '../context/themeStore'
-import { Moon, SunMedium } from 'lucide-react'
+import { MoonIcon, SunIcon } from '@heroicons/react/24/outline'
 
 const ThemeToggle: React.FC = () => {
   const { theme, toggle } = useThemeStore()
@@ -54,7 +54,7 @@ const ThemeToggle: React.FC = () => {
               transition={{ duration: 0.3, ease: 'easeOut' }}
               className="flex items-center justify-center"
             >
-              <Moon className="w-[18px] h-[18px]" strokeWidth={1.9} />
+              <MoonIcon className="w-[18px] h-[18px]" />
             </motion.span>
           ) : (
             <motion.span
@@ -65,7 +65,7 @@ const ThemeToggle: React.FC = () => {
               transition={{ duration: 0.3, ease: 'easeOut' }}
               className="flex items-center justify-center"
             >
-              <SunMedium className="w-[18px] h-[18px]" strokeWidth={1.9} />
+              <SunIcon className="w-[18px] h-[18px]" />
             </motion.span>
           )}
         </AnimatePresence>

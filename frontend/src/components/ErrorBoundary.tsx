@@ -1,4 +1,12 @@
 import React, { ReactNode, ErrorInfo, useState, useCallback } from 'react'
+import {
+  ArrowPathIcon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  InformationCircleIcon,
+  XCircleIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline'
 
 interface ToastMessage {
   id: string
@@ -71,24 +79,25 @@ const Toast: React.FC<{
   }
 
   const icons = {
-    success: '✅',
-    error: '❌',
-    info: 'ℹ️',
-    warning: '⚠️',
+    success: CheckCircleIcon,
+    error: XCircleIcon,
+    info: InformationCircleIcon,
+    warning: ExclamationTriangleIcon,
   }
+  const Icon = icons[toast.type]
 
   return (
     <div
       className={`${styles[toast.type]} px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 animate-slideIn`}
       role="alert"
     >
-      <span className="text-lg">{icons[toast.type]}</span>
+      <Icon className="w-5 h-5" />
       <span className="flex-1 text-sm font-medium">{toast.message}</span>
       <button
         onClick={() => onRemove(toast.id)}
-        className="text-lg font-bold hover:opacity-75 transition-opacity"
+        className="hover:opacity-75 transition-opacity"
       >
-        ✕
+        <XMarkIcon className="w-5 h-5" />
       </button>
     </div>
   )
@@ -124,7 +133,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
       return (
         <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
           <div className="max-w-md w-full text-center space-y-4">
-            <div className="text-6xl">⚠️</div>
+            <div className="mx-auto w-16 h-16 rounded-2xl bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center">
+              <ExclamationTriangleIcon className="w-9 h-9" />
+            </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
               Oops! Something went wrong
             </h1>
@@ -135,13 +146,15 @@ export class ErrorBoundary extends React.Component<Props, State> {
               onClick={() => window.location.reload()}
               className="w-full py-3 rounded-xl font-semibold bg-blue-600 text-white hover:bg-blue-700 transition-colors"
             >
-              🔄 Refresh Page
+              <span className="inline-flex items-center gap-2 justify-center">
+                <ArrowPathIcon className="w-5 h-5" /> Refresh Page
+              </span>
             </button>
             <button
               onClick={() => window.history.back()}
               className="w-full py-2 rounded-xl font-semibold bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors"
             >
-              ← Go Back
+              Go Back
             </button>
           </div>
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { VideoCameraIcon, AcademicCapIcon, LinkIcon, ArrowTopRightOnSquareIcon, InboxIcon } from '@heroicons/react/24/outline'
 import { fetchResources } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 
@@ -102,11 +103,11 @@ export const ResourcesPage: React.FC = () => {
   const getTypeIcon = (type: string) => {
     switch (type) {
       case 'youtube':
-        return '📺'
+        return <VideoCameraIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
       case 'course':
-        return '🎓'
+        return <AcademicCapIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
       default:
-        return '🔗'
+        return <LinkIcon className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
     }
   }
 
@@ -125,7 +126,7 @@ export const ResourcesPage: React.FC = () => {
     <PageWrapper className="space-y-5">
       {/* Header */}
       <div className="rounded-3xl bg-gradient-to-br from-emerald-500 to-teal-600 p-5 text-white shadow-md">
-        <h1 className="text-2xl font-bold">🔗 Foydali Linklar</h1>
+        <h1 className="text-2xl font-bold inline-flex items-center gap-2"><LinkIcon className="w-6 h-6" />Foydali Linklar</h1>
         <p className="text-sm text-emerald-50 mt-1">
           SAHIFALAB rasmiy sahifalari va foydali manbalar
         </p>
@@ -159,7 +160,7 @@ export const ResourcesPage: React.FC = () => {
         </div>
       ) : filteredResources.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center border border-gray-100 dark:border-gray-700">
-          <div className="text-4xl mb-2">📭</div>
+          <div className="flex justify-center mb-2"><InboxIcon className="w-10 h-10 text-gray-400" /></div>
           <p className="text-gray-600 dark:text-gray-400">Hozircha linklar topilmadi</p>
         </div>
       ) : (
@@ -198,7 +199,7 @@ export const ResourcesPage: React.FC = () => {
 
                 {/* Arrow */}
                 <div className="flex items-center text-emerald-600 dark:text-emerald-400 group-hover:translate-x-0.5 transition-transform">
-                  ↗
+                  <ArrowTopRightOnSquareIcon className="w-4 h-4" />
                 </div>
               </div>
             </a>

@@ -9,6 +9,7 @@
  */
 import React from 'react'
 import { Navigate, Outlet } from 'react-router-dom'
+import { BookOpenIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
 
@@ -23,7 +24,7 @@ const AuthGuard: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FAFAFA] dark:bg-slate-950">
-        <div className="text-5xl animate-pulse select-none">📚</div>
+        <BookOpenIcon className="w-12 h-12 text-sahifa-500 animate-pulse" />
       </div>
     )
   }

@@ -9,6 +9,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import QRCode from 'qrcode'
+import { ArrowDownTrayIcon, TrophyIcon, XMarkIcon } from '@heroicons/react/24/outline'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface CertificateData {
@@ -388,12 +389,12 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">🏆 Sertifikat</h2>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><TrophyIcon className="w-5 h-5 text-sahifa-500" /> Sertifikat</h2>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
-            ✕
+            <XMarkIcon className="w-5 h-5" />
           </button>
         </div>
 
@@ -401,7 +402,7 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
         <div className="relative rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-[#fafafa] aspect-[4/5]">
           {rendering && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-3xl animate-spin">⏳</div>
+              <ArrowDownTrayIcon className="w-8 h-8 animate-pulse text-gray-400" />
             </div>
           )}
           <canvas
@@ -425,9 +426,9 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
           <button
             onClick={handleDownload}
             disabled={rendering || !dataUrl}
-            className="py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 disabled:opacity-50 shadow-md transition-all active:scale-95"
+            className="py-3 rounded-xl font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-95 disabled:opacity-50 shadow-md transition-all active:scale-95 inline-flex items-center justify-center gap-2"
           >
-            ⬇️ Yuklab olish
+            <ArrowDownTrayIcon className="w-5 h-5" /> Yuklab olish
           </button>
         </div>
       </div>

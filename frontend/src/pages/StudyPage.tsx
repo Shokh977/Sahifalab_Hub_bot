@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { AcademicCapIcon, PauseIcon, PlayIcon, ArrowPathIcon, ForwardIcon, SpeakerXMarkIcon, ExclamationCircleIcon, SpeakerWaveIcon, LightBulbIcon, Battery100Icon, MusicalNoteIcon } from '@heroicons/react/24/outline'
 import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
 import { fetchAmbientSounds } from '../lib/supabase'
@@ -194,11 +195,11 @@ export const StudyWithMe: React.FC = () => {
     <PageWrapper className="space-y-5">
       {/* Header */}
       <div className="text-center space-y-1">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-          🎯 Study With Sahifalab
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white inline-flex items-center gap-2">
+          <AcademicCapIcon className="w-7 h-7" /> Study With Sahifalab
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          {timer.isBreak ? "Dam olish vaqti — biroz nafas ol ☕" : "Diqqatni jamla — sen uddalaysan! 💪"}
+          {timer.isBreak ? "Dam olish vaqti — biroz nafas ol" : "Diqqatni jamla — sen uddalaysan"}
         </p>
       </div>
 
@@ -229,7 +230,7 @@ export const StudyWithMe: React.FC = () => {
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
                   : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
               }`}>
-                {timer.isBreak ? '☕ Dam olish' : '🎯 Fokus'}
+                {timer.isBreak ? 'Dam olish' : 'Fokus'}
               </div>
             </div>
           </div>
@@ -282,29 +283,29 @@ export const StudyWithMe: React.FC = () => {
               : 'bg-blue-500 hover:bg-blue-600'
           }`}
         >
-          {timer.isRunning ? '⏸ Pauza' : '▶️ Boshlash'}
+          <span className="inline-flex items-center gap-1 justify-center">{timer.isRunning ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}{timer.isRunning ? 'Pauza' : 'Boshlash'}</span>
         </button>
         <button
           onClick={() => timer.reset()}
           className="px-4 py-3 rounded-xl font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
         >
-          🔄
+          <ArrowPathIcon className="w-5 h-5" />
         </button>
         <button
           onClick={timer.skip}
           className="px-4 py-3 rounded-xl font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
         >
-          ⏭
+          <ForwardIcon className="w-5 h-5" />
         </button>
       </div>
 
       {/* Ambient Sounds */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
         <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900 dark:text-white text-sm">🎵 Ambient tovushlar</h3>
+          <h3 className="font-semibold text-gray-900 dark:text-white text-sm inline-flex items-center gap-1"><MusicalNoteIcon className="w-4 h-4" />Ambient tovushlar</h3>
           {sound.isPlaying && (
             <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full animate-pulse">
-              ♪ Ijro etilmoqda
+              Ijro etilmoqda
             </span>
           )}
         </div>
@@ -330,7 +331,7 @@ export const StudyWithMe: React.FC = () => {
                   : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
               }`}
             >
-              <div className="text-2xl">🔇</div>
+              <div className="flex justify-center"><SpeakerXMarkIcon className="w-6 h-6" /></div>
               <div className="text-xs mt-1">Jimjitlik</div>
             </button>
 
@@ -347,9 +348,9 @@ export const StudyWithMe: React.FC = () => {
                 }`}
               >
                 {resolvingId === s.id ? (
-                  <div className="text-2xl animate-spin">⏳</div>
+                  <div className="text-2xl animate-spin">...</div>
                 ) : (
-                  <div className="text-2xl">{s.emoji}</div>
+                  <div className="flex justify-center"><MusicalNoteIcon className="w-6 h-6" /></div>
                 )}
                 <div className="text-xs mt-1">{s.name}</div>
               </button>
@@ -361,7 +362,7 @@ export const StudyWithMe: React.FC = () => {
         {sound.error && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 space-y-1">
             <p className="text-xs font-semibold text-red-800 dark:text-red-300">
-              ❌ {sound.error}
+              <span className="inline-flex items-center gap-1"><ExclamationCircleIcon className="w-4 h-4" />{sound.error}</span>
             </p>
             {sound.error.includes('SRC_NOT_SUPPORTED') && (
               <p className="text-xs text-red-700 dark:text-red-400">
@@ -379,7 +380,7 @@ export const StudyWithMe: React.FC = () => {
         {/* Volume Control */}
         {sound.isPlaying && (
           <div className="flex items-center gap-3 pt-1">
-            <span className="text-sm">🔈</span>
+            <span className="text-sm"><SpeakerWaveIcon className="w-4 h-4" /></span>
             <input
               type="range"
               min={0}
@@ -389,7 +390,7 @@ export const StudyWithMe: React.FC = () => {
               onChange={(e) => sound.changeVolume(parseFloat(e.target.value))}
               className="flex-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
             />
-            <span className="text-sm">🔊</span>
+            <span className="text-sm"><SpeakerWaveIcon className="w-4 h-4" /></span>
             <span className="text-xs text-gray-500 dark:text-gray-400 w-8 text-right">
               {Math.round(sound.volume * 100)}%
             </span>
@@ -400,7 +401,7 @@ export const StudyWithMe: React.FC = () => {
       {/* Background playback info */}
       <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3">
         <p className="text-xs text-emerald-800 dark:text-emerald-300">
-          🔋 <strong>Fon rejimi:</strong> Taymer va tovushlar telefon qulflanganda ham ishlaydi.
+          <span className="inline-flex items-center gap-1"><Battery100Icon className="w-4 h-4" /><strong>Fon rejimi:</strong></span> Taymer va tovushlar telefon qulflanganda ham ishlaydi.
           Ilovadan chiqmang — fonga o'tkazing.
         </p>
       </div>
@@ -408,7 +409,7 @@ export const StudyWithMe: React.FC = () => {
       {/* Tips */}
       <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
         <p className="text-xs text-yellow-900 dark:text-yellow-200">
-          💡 <strong>Maslahat:</strong> Pomodoro usuli — 25 daqiqa fokus + 5 daqiqa dam olish.
+          <span className="inline-flex items-center gap-1"><LightBulbIcon className="w-4 h-4" /><strong>Maslahat:</strong></span> Pomodoro usuli — 25 daqiqa fokus + 5 daqiqa dam olish.
           Har 4 sessiyadan so'ng uzunroq dam oling!
         </p>
       </div>

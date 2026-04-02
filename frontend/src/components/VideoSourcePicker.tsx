@@ -13,6 +13,7 @@
  */
 import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { VideoCameraIcon, CloudArrowUpIcon, LightBulbIcon } from '@heroicons/react/24/outline'
 import VideoUploadWidget from './VideoUploadWidget'
 
 type Source = 'youtube' | 'bunny' | 'none'
@@ -104,10 +105,16 @@ const VideoSourcePicker: React.FC<Props> = ({
       {/* Tab row */}
       <div className="flex gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800/60">
         <Tab active={source === 'youtube'} onClick={() => handleSourceTab('youtube')}>
-          📺 YouTube (bepul)
+          <span className="inline-flex items-center gap-1.5">
+            <VideoCameraIcon className="w-4 h-4" />
+            YouTube (bepul)
+          </span>
         </Tab>
         <Tab active={source === 'bunny'} onClick={() => handleSourceTab('bunny')}>
-          🐇 Bunny.net (pullik)
+          <span className="inline-flex items-center gap-1.5">
+            <CloudArrowUpIcon className="w-4 h-4" />
+            Bunny.net (pullik)
+          </span>
         </Tab>
       </div>
 
@@ -136,7 +143,10 @@ const VideoSourcePicker: React.FC<Props> = ({
                 <p className="text-[11px] text-red-500">{ytError}</p>
               )}
               <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                💡 YouTube studioda videoni <strong>Unlisted (Cheklangan)</strong> qilib yuklang — faqat havola orqali ko'rinadi.
+                <span className="inline-flex items-center gap-1">
+                  <LightBulbIcon className="w-3.5 h-3.5" />
+                  YouTube studioda videoni <strong>Unlisted (Cheklangan)</strong> qilib yuklang — faqat havola orqali ko'rinadi.
+                </span>
               </p>
             </div>
 
@@ -170,7 +180,7 @@ const VideoSourcePicker: React.FC<Props> = ({
               disabled={disabled}
             />
             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">
-              🔒 Bunny.net CDN — faqat to'lov qilgan talabalar ko'radi.
+              Bunny.net CDN — faqat to'lov qilgan talabalar ko'radi.
             </p>
           </motion.div>
         )}

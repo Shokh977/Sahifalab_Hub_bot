@@ -14,6 +14,7 @@
  *   locked?      — show locked overlay instead of player
  */
 import React, { useState } from 'react'
+import { ExclamationTriangleIcon, FilmIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import { toEmbedUrl } from './VideoSourcePicker'
 
 type VideoSource = 'youtube' | 'bunny' | 'none'
@@ -42,7 +43,7 @@ const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) 
     return (
       <Shell>
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-900/90 text-white">
-          <span className="text-5xl">🔒</span>
+          <LockClosedIcon className="w-12 h-12" />
           <p className="text-sm font-semibold">{title ?? 'Bu dars pullik'}</p>
           <p className="text-xs text-slate-400">Kursga yoziling yoki xarid qiling</p>
         </div>
@@ -55,7 +56,7 @@ const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) 
     return (
       <Shell>
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-400">
-          <span className="text-4xl">🎬</span>
+          <FilmIcon className="w-10 h-10" />
           <p className="text-xs">Video hali yuklanmagan</p>
         </div>
       </Shell>
@@ -69,7 +70,9 @@ const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) 
       return (
         <Shell>
           <div className="absolute inset-0 flex items-center justify-center bg-slate-100 dark:bg-slate-800 text-slate-400 text-xs">
-            ⚠️ Noto'g'ri YouTube havolasi
+            <span className="inline-flex items-center gap-2">
+              <ExclamationTriangleIcon className="w-4 h-4" /> Noto'g'ri YouTube havolasi
+            </span>
           </div>
         </Shell>
       )
@@ -93,7 +96,7 @@ const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) 
       return (
         <Shell>
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 text-slate-400">
-            <span className="text-3xl">⚠️</span>
+            <ExclamationTriangleIcon className="w-8 h-8" />
             <p className="text-xs">Video yuklanmadi</p>
             <button
               className="text-xs text-sahifa-400 underline"

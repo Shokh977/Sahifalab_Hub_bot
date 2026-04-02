@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { BookOpenIcon, ArchiveBoxXMarkIcon } from '@heroicons/react/24/outline'
 import { fetchBooks } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 
@@ -69,7 +70,7 @@ export const KitoblarPage: React.FC = () => {
     <PageWrapper className="space-y-5">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📚 Kitoblar</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><BookOpenIcon className="w-7 h-7" />Kitoblar</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           Bepul va pullik PDF kitoblar
         </p>
@@ -79,8 +80,8 @@ export const KitoblarPage: React.FC = () => {
       <div className="flex gap-2">
         {[
           { id: 'all',  label: 'Hammasi' },
-          { id: 'free', label: '🆓 Bepul' },
-          { id: 'paid', label: '💳 Pullik' },
+          { id: 'free', label: 'Bepul' },
+          { id: 'paid', label: 'Pullik' },
         ].map(f => (
           <button
             key={f.id}
@@ -121,7 +122,7 @@ export const KitoblarPage: React.FC = () => {
       {/* Empty state */}
       {!loading && !error && filtered.length === 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm">
-          <div className="text-4xl mb-3">📭</div>
+          <div className="flex justify-center mb-3"><ArchiveBoxXMarkIcon className="w-10 h-10 text-gray-400" /></div>
           <p className="text-gray-500 dark:text-gray-400 text-sm">Kitoblar topilmadi</p>
         </div>
       )}
@@ -148,7 +149,7 @@ export const KitoblarPage: React.FC = () => {
                     />
                   ) : (
                     <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
-                      <span className="text-5xl">📕</span>
+                      <BookOpenIcon className="w-12 h-12 text-white/80" />
                     </div>
                   )}
                   {/* Badge */}
@@ -182,7 +183,7 @@ export const KitoblarPage: React.FC = () => {
               onClick={() => setDisplayLimit(displayLimit + 12)}
               className="w-full py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
             >
-              📚 Yana ko'rsating ({filtered.length - displayLimit} qolgan)
+              Yana ko'rsating ({filtered.length - displayLimit} qolgan)
             </button>
           )}
         </>

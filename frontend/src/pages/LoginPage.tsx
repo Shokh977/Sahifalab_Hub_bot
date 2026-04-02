@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import axios from 'axios'
+import { PaperAirplaneIcon, EnvelopeIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ArrowPathIcon, ExclamationTriangleIcon, ArrowRightOnRectangleIcon, UserPlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
@@ -155,9 +156,9 @@ const LoginPage: React.FC = () => {
 
   // ── Tab bar ──────────────────────────────────────────────────────────────
   const tabs: Array<{ id: AuthTab; icon: string; label: string }> = [
-    { id: 'telegram', icon: '✈️', label: 'Telegram' },
-    { id: 'google',   icon: '🔵', label: 'Google' },
-    { id: 'email',    icon: '✉️', label: 'Email' },
+    { id: 'telegram', icon: 'telegram', label: 'Telegram' },
+    { id: 'google',   icon: 'google', label: 'Google' },
+    { id: 'email',    icon: 'email', label: 'Email' },
   ]
 
   const inputCls = "w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sahifa-400/50 focus:border-sahifa-400 transition-all"
@@ -173,7 +174,7 @@ const LoginPage: React.FC = () => {
             <p className="text-xs text-gray-400 dark:text-gray-500 tracking-wide">Bilim va Diqqat Ekotizimi</p>
           </div>
 
-          <div className="text-center text-5xl select-none">📚</div>
+          <div className="text-center flex justify-center"><EnvelopeIcon className="w-10 h-10 text-sahifa-500" /></div>
 
           {/* Tab bar */}
           <div className="flex rounded-2xl bg-slate-100 dark:bg-slate-700/50 p-1 gap-1">
@@ -187,7 +188,11 @@ const LoginPage: React.FC = () => {
                     : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                 }`}
               >
-                <span>{t.icon}</span>
+                <span>
+                  {t.icon === 'telegram' && <PaperAirplaneIcon className="w-4 h-4" />}
+                  {t.icon === 'google' && <MagnifyingGlassIcon className="w-4 h-4" />}
+                  {t.icon === 'email' && <EnvelopeIcon className="w-4 h-4" />}
+                </span>
                 <span>{t.label}</span>
               </button>
             ))}
@@ -232,7 +237,7 @@ const LoginPage: React.FC = () => {
                     Botdan javob kutilmoqda…
                   </div>
                   <ol className="space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
-                    {['Yuqoridagi tugmani bosing', 'Telegram ilovasida Start bosing', 'Sahifa avtomatik yangilanadi ✅'].map((step, i) => (
+                    {['Yuqoridagi tugmani bosing', 'Telegram ilovasida Start bosing', 'Sahifa avtomatik yangilanadi'].map((step, i) => (
                       <li key={i} className="flex items-center gap-2">
                         <span className="w-5 h-5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-600 dark:text-sahifa-400 text-[10px] font-bold flex items-center justify-center shrink-0">{i+1}</span>
                         {step}
@@ -244,7 +249,7 @@ const LoginPage: React.FC = () => {
 
               {tgState === 'success' && (
                 <div className="space-y-3 text-center">
-                  <div className="text-5xl">✅</div>
+                  <div className="flex justify-center"><CheckCircleIcon className="w-12 h-12 text-green-600" /></div>
                   <p className="font-semibold text-green-600 dark:text-green-400">Muvaffaqiyatli kirildi!</p>
                   <p className="text-sm text-gray-400 animate-pulse">Yo'naltirilmoqda…</p>
                 </div>
@@ -252,13 +257,13 @@ const LoginPage: React.FC = () => {
 
               {(tgState === 'expired' || tgState === 'error') && (
                 <div className="space-y-4 text-center">
-                  <div className="text-4xl">{tgState === 'expired' ? '⏰' : '❌'}</div>
+                  <div className="flex justify-center">{tgState === 'expired' ? <ClockIcon className="w-10 h-10 text-amber-500" /> : <XCircleIcon className="w-10 h-10 text-red-500" />}</div>
                   <p className="font-semibold text-gray-900 dark:text-white">
                     {tgState === 'expired' ? 'Kod muddati tugadi' : 'Xatolik yuz berdi'}
                   </p>
                   {tgError && <p className="text-sm text-gray-500 dark:text-gray-400">{tgError}</p>}
                   <button onClick={requestCode} className="w-full bg-sahifa-600 hover:bg-sahifa-700 text-white font-semibold py-3 rounded-2xl transition-colors">
-                    🔄 Qayta urinish
+                    <span className="inline-flex items-center gap-1"><ArrowPathIcon className="w-4 h-4" />Qayta urinish</span>
                   </button>
                 </div>
               )}
@@ -281,7 +286,7 @@ const LoginPage: React.FC = () => {
                 </div>
               ) : (
                 <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-700 dark:text-amber-300 text-center">
-                  ⚠️ Google kirish hali sozlanmagan.<br />
+                  <span className="inline-flex items-center gap-1"><ExclamationTriangleIcon className="w-4 h-4" />Google kirish hali sozlanmagan.</span><br />
                   <span className="text-gray-500 dark:text-gray-400">Telegram yoki Email orqali kiring.</span>
                 </div>
               )}
@@ -302,7 +307,7 @@ const LoginPage: React.FC = () => {
                       : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
-                  🔑 Kirish
+                  <span className="inline-flex items-center gap-1 justify-center"><ArrowRightOnRectangleIcon className="w-4 h-4" />Kirish</span>
                 </button>
                 <button
                   type="button"
@@ -313,7 +318,7 @@ const LoginPage: React.FC = () => {
                       : 'text-gray-500 dark:text-gray-400'
                   }`}
                 >
-                  ✨ Ro'yxatdan o'tish
+                  <span className="inline-flex items-center gap-1 justify-center"><UserPlusIcon className="w-4 h-4" />Ro'yxatdan o'tish</span>
                 </button>
               </div>
 
@@ -348,7 +353,7 @@ const LoginPage: React.FC = () => {
                 />
 
                 {emailError && (
-                  <p className="text-xs text-red-600 dark:text-red-400 text-center">❌ {emailError}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 text-center inline-flex items-center gap-1 justify-center"><XCircleIcon className="w-4 h-4" />{emailError}</p>
                 )}
 
                 <button
@@ -357,8 +362,8 @@ const LoginPage: React.FC = () => {
                   className="w-full py-3.5 rounded-2xl bg-sahifa-600 hover:bg-sahifa-700 text-white font-semibold text-sm shadow-md disabled:opacity-60 transition-all"
                 >
                   {emailLoading
-                    ? '⏳ Yuklanmoqda...'
-                    : emailMode === 'login' ? '→ Kirish' : "✨ Ro'yxatdan o'tish"}
+                    ? 'Yuklanmoqda...'
+                    : emailMode === 'login' ? 'Kirish' : "Ro'yxatdan o'tish"}
                 </button>
               </form>
             </div>

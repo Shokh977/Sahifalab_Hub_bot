@@ -3,26 +3,24 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import {
-  BookOpen,
-  Bot,
-  CalendarDays,
-  Crown,
-  FolderKanban,
-  LayoutDashboard,
-  LibraryBig,
-  Link2,
-  LucideIcon,
-  Shield,
-  Sparkles,
-  Target,
-  Trophy,
-} from 'lucide-react'
+  BookOpenIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  CpuChipIcon,
+  FireIcon,
+  LinkIcon,
+  RectangleStackIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  Squares2X2Icon,
+  TrophyIcon,
+} from '@heroicons/react/24/outline'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
 interface MenuItem {
   id: string
-  icon: LucideIcon
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   iconImage?: string   /* optional image URL to replace emoji */
   title: string
   titleUz: string
@@ -33,7 +31,7 @@ interface MenuItem {
 const MENU_ITEMS: MenuItem[] = [
   {
     id: 'study',
-    icon: Target,
+    icon: ClockIcon,
     title: "Study",
     titleUz: "O'qish",
     description: 'Focus timer + ambient sounds',
@@ -41,7 +39,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'quiz',
-    icon: FolderKanban,
+    icon: RectangleStackIcon,
     title: 'Quiz',
     titleUz: 'Test',
     description: 'Kitoblar asosida testlar',
@@ -49,7 +47,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'kitoblar',
-    icon: LibraryBig,
+    icon: BookOpenIcon,
     title: 'Kitoblar',
     titleUz: 'Kitoblar',
     description: 'Free & Paid PDFs',
@@ -57,7 +55,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'foydaliLinklar',
-    icon: Link2,
+    icon: LinkIcon,
     title: 'Linklar',
     titleUz: 'Resurslar',
     description: 'Resurslar & Videolar',
@@ -65,7 +63,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'about',
-    icon: Sparkles,
+    icon: SparklesIcon,
     title: 'Haqimizda',
     titleUz: 'Haqimizda',
     description: "Bizning hikoyamiz va missiyamiz",
@@ -73,7 +71,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'cabinet',
-    icon: LayoutDashboard,
+    icon: Squares2X2Icon,
     title: 'Kabinet',
     titleUz: 'Kabinet',
     description: 'XP, Daraja va Yutuqlar',
@@ -81,7 +79,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'leaderboard',
-    icon: Trophy,
+    icon: TrophyIcon,
     title: 'Reyting',
     titleUz: 'Reyting',
     description: "Top 10 o'quvchilar",
@@ -89,7 +87,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'bookSummarizer',
-    icon: Bot,
+    icon: CpuChipIcon,
     iconImage: '/sahifalab.jpg',
     title: 'SahifaLab AI',
     titleUz: 'SahifaLab AI',
@@ -98,7 +96,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'daily',
-    icon: Crown,
+    icon: FireIcon,
     title: 'Daily',
     titleUz: 'Kunlik',
     description: 'Bugungi vazifalar va streak',
@@ -106,7 +104,7 @@ const MENU_ITEMS: MenuItem[] = [
   },
   {
     id: 'plans',
-    icon: CalendarDays,
+    icon: CalendarDaysIcon,
     title: 'Plans',
     titleUz: 'Rejalar',
     description: '7/14/30 kunlik yoʻl xaritasi',
@@ -159,10 +157,10 @@ const MenuCard: React.FC<CardProps> = ({ item, onClick }) => (
         {item.iconImage ? (
           <img src={item.iconImage} alt={item.title} className="w-full h-full object-cover rounded-xl" />
         ) : (
-            <item.icon className="w-[18px] h-[18px]" strokeWidth={1.9} />
+            <item.icon className="w-[18px] h-[18px]" />
         )}
         </div>
-        <BookOpen className="w-4 h-4 text-gray-200 dark:text-gray-700 group-hover:text-sahifa-400 transition-colors" strokeWidth={1.8} />
+          <BookOpenIcon className="w-4 h-4 text-gray-200 dark:text-gray-700 group-hover:text-sahifa-400 transition-colors" />
       </div>
 
       <div>
@@ -206,7 +204,7 @@ export const MenuGrid: React.FC = () => {
           onClick={() => navigate('/admin')}
           className="col-span-2 sm:col-span-3 xl:col-span-4 mt-1 flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200/70 dark:border-[#2A2A2A] text-gray-500 dark:text-gray-400 hover:text-sahifa-500 transition-colors text-xs font-medium"
         >
-          <Shield className="w-4 h-4" strokeWidth={1.8} />
+          <ShieldCheckIcon className="w-4 h-4" />
           <span>Admin Panel</span>
         </motion.button>
       )}

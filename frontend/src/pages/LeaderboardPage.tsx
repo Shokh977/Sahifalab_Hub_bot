@@ -110,9 +110,9 @@ const LeaderRow: React.FC<{
         {isSelf && <span className="ml-1 text-[10px] font-medium opacity-70">(siz)</span>}
       </p>
       <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
-        ⏱ {formatFocusTime(row.focus_seconds)}
+        Fokus: {formatFocusTime(row.focus_seconds)}
         &nbsp;·&nbsp;
-        📝 {row.quizzes_completed} test
+        Test: {row.quizzes_completed}
         &nbsp;·&nbsp;
         {skin.emoji} {skin.name}
       </p>
@@ -226,7 +226,7 @@ const LeaderboardPage: React.FC = () => {
         className="text-center space-y-1"
       >
         <h1 className="text-2xl font-black text-gray-900 dark:text-white">
-          🏆 Liderlar Jadvali
+          Liderlar Jadvali
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Eng ko'p XP to'plagan o'quvchilar
@@ -236,9 +236,9 @@ const LeaderboardPage: React.FC = () => {
       {/* Info: anti-farming + skins */}
       <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-2xl p-3">
         <p className="text-xs text-indigo-800 dark:text-indigo-300 leading-relaxed">
-          🛡️ <strong>Halol reyting:</strong> bir xil quizni qayta ishlash orqali XP farm qilib bo'lmaydi.
+          <strong>Halol reyting:</strong> bir xil quizni qayta ishlash orqali XP farm qilib bo'lmaydi.
           <br />
-          🎨 <strong>Skin tizimi:</strong> daraja, XP, quiz soni va fokus vaqti oshgani sari avatar atrofidagi skinlar ochiladi.
+          <strong>Skin tizimi:</strong> daraja, XP, quiz soni va fokus vaqti oshgani sari avatar atrofidagi skinlar ochiladi.
         </p>
       </div>
 
@@ -252,14 +252,14 @@ const LeaderboardPage: React.FC = () => {
           disabled={loading}
           className="text-xs text-blue-500 dark:text-blue-400 font-semibold disabled:opacity-50 active:scale-95 transition-transform"
         >
-          {loading ? '⏳ Yuklanmoqda…' : '🔄 Yangilash'}
+          {loading ? 'Yuklanmoqda…' : 'Yangilash'}
         </button>
       </div>
 
       {/* Error — not configured */}
       {error === '__not_configured__' && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-bold text-amber-900 dark:text-amber-300">⚙️ Supabase sozlanmagan</p>
+          <p className="text-sm font-bold text-amber-900 dark:text-amber-300">Supabase sozlanmagan</p>
           <p className="text-xs text-amber-800 dark:text-amber-400 leading-relaxed">
             Liderlar jadvalini ko'rsatish uchun quyidagi sozlamalarni Vercel-ga qo'shing:
           </p>
@@ -276,7 +276,7 @@ const LeaderboardPage: React.FC = () => {
       {/* Error — table missing (SQL schema not run) */}
       {error === '__no_table__' && (
         <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-bold text-orange-900 dark:text-orange-300">🗄️ Jadval yaratilmagan</p>
+          <p className="text-sm font-bold text-orange-900 dark:text-orange-300">Jadval yaratilmagan</p>
           <p className="text-xs text-orange-800 dark:text-orange-400 leading-relaxed">
             <strong>1-qadam:</strong> Supabase saytiga kiring →{' '}
             <strong>SQL Editor → New Query</strong>
@@ -306,7 +306,7 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
             onClick={fetchLeaderboard}
             className="w-full py-2 rounded-xl bg-orange-500 text-white text-xs font-bold active:scale-95 transition-transform"
           >
-            ✅ SQL ishga tushirdim — Qayta urinib ko'rish
+            SQL ishga tushirdim — Qayta urinib ko'rish
           </button>
         </div>
       )}
@@ -314,7 +314,7 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
       {/* Error — generic */}
       {error && error !== '__not_configured__' && error !== '__no_table__' && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 space-y-2">
-          <p className="text-sm font-bold text-red-800 dark:text-red-300">❌ Xato yuz berdi</p>
+          <p className="text-sm font-bold text-red-800 dark:text-red-300">Xato yuz berdi</p>
           <p className="text-xs text-red-700 dark:text-red-400 font-mono break-all">{error}</p>
           <button
             onClick={fetchLeaderboard}
@@ -328,7 +328,6 @@ CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) 
       {/* Top 10 list */}
       {!loading && !error && top10.length === 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center border border-gray-100 dark:border-gray-700">
-          <p className="text-4xl mb-3">🌱</p>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             Hali hech kim ro'yxatga kirmagan.
             <br />Birinchi bo'ling!

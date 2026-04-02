@@ -10,25 +10,23 @@ import React, { useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  BookOpen,
-  Bot,
-  CalendarDays,
-  Clock3,
-  Flame,
-  FolderKanban,
-  GraduationCap,
-  Home,
-  LayoutDashboard,
-  LibraryBig,
-  Link2,
-  LogOut,
-  LucideIcon,
-  Menu,
-  Shield,
-  Sparkles,
-  Trophy,
-  X,
-} from 'lucide-react'
+  AcademicCapIcon,
+  ArrowLeftOnRectangleIcon,
+  Bars3Icon,
+  BookOpenIcon,
+  CalendarDaysIcon,
+  ClockIcon,
+  CpuChipIcon,
+  FireIcon,
+  HomeIcon,
+  LinkIcon,
+  RectangleStackIcon,
+  ShieldCheckIcon,
+  SparklesIcon,
+  Squares2X2Icon,
+  TrophyIcon,
+  XMarkIcon,
+} from '@heroicons/react/24/outline'
 import ThemeToggle from './ThemeToggle'
 import GlobalProgressBar from './GlobalProgressBar'
 import { useAuth } from '../context/AuthContext'
@@ -44,7 +42,7 @@ const LogoutButton: React.FC = () => {
       title="Chiqish"
       className="w-8 h-8 flex items-center justify-center rounded-xl text-slate-400 hover:text-sahifa-500 hover:bg-sahifa-50 dark:hover:bg-[#202020] transition-colors flex-shrink-0"
     >
-      <LogOut className="w-4 h-4" strokeWidth={1.9} />
+      <ArrowLeftOnRectangleIcon className="w-4 h-4" />
     </button>
   )
 }
@@ -52,36 +50,36 @@ const LogoutButton: React.FC = () => {
 // ── Navigation definitions ────────────────────────────────────────────────────
 
 interface NavItem {
-  icon: LucideIcon
+  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
   label: string
   path: string
 }
 
 const NAV_MAIN: NavItem[] = [
-  { icon: Home, label: 'Bosh sahifa', path: '/' },
-  { icon: GraduationCap, label: 'Kurslar', path: '/courses' },
-  { icon: Clock3, label: "O'qish", path: '/study' },
-  { icon: FolderKanban, label: 'Test', path: '/quiz' },
-  { icon: LibraryBig, label: 'Kitoblar', path: '/kitoblar' },
-  { icon: Link2, label: 'Resurslar', path: '/resources' },
-  { icon: Bot, label: 'SAHIFALAB AI', path: '/ai-companion' },
-  { icon: Flame, label: 'Kunlik', path: '/daily' },
-  { icon: CalendarDays, label: 'Rejalar', path: '/plans' },
+  { icon: HomeIcon, label: 'Bosh sahifa', path: '/' },
+  { icon: AcademicCapIcon, label: 'Kurslar', path: '/courses' },
+  { icon: ClockIcon, label: "O'qish", path: '/study' },
+  { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
+  { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
+  { icon: LinkIcon, label: 'Resurslar', path: '/resources' },
+  { icon: CpuChipIcon, label: 'SAHIFALAB AI', path: '/ai-companion' },
+  { icon: FireIcon, label: 'Kunlik', path: '/daily' },
+  { icon: CalendarDaysIcon, label: 'Rejalar', path: '/plans' },
 ]
 
 const NAV_SECONDARY: NavItem[] = [
-  { icon: LayoutDashboard, label: 'Kabinet', path: '/cabinet' },
-  { icon: Trophy, label: 'Reyting', path: '/leaderboard' },
-  { icon: Sparkles, label: 'Haqimizda', path: '/about' },
+  { icon: Squares2X2Icon, label: 'Kabinet', path: '/cabinet' },
+  { icon: TrophyIcon, label: 'Reyting', path: '/leaderboard' },
+  { icon: SparklesIcon, label: 'Haqimizda', path: '/about' },
 ]
 
 // Shown in the mobile bottom tab bar (max 5 items for readability)
 const BOTTOM_NAV: NavItem[] = [
-  { icon: Home, label: 'Home', path: '/' },
-  { icon: LibraryBig, label: 'Kitoblar', path: '/kitoblar' },
-  { icon: Clock3, label: "O'qish", path: '/study' },
-  { icon: FolderKanban, label: 'Test', path: '/quiz' },
-  { icon: LayoutDashboard, label: 'Kabinet', path: '/cabinet' },
+  { icon: HomeIcon, label: 'Home', path: '/' },
+  { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
+  { icon: ClockIcon, label: "O'qish", path: '/study' },
+  { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
+  { icon: Squares2X2Icon, label: 'Kabinet', path: '/cabinet' },
 ]
 
 // ── Sidebar Nav Item ──────────────────────────────────────────────────────────
@@ -104,7 +102,7 @@ const SidebarNavItem: React.FC<NavItem & { active: boolean; onClick?: () => void
     `}
   >
     <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${active ? 'bg-sahifa-500 text-white' : 'bg-gray-50 dark:bg-[#141414] text-gray-500 dark:text-gray-400 group-hover:text-sahifa-500'}`}>
-      <Icon className="w-[18px] h-[18px]" strokeWidth={1.9} />
+      <Icon className="w-[18px] h-[18px]" />
     </span>
     <span className="truncate">{label}</span>
     {active && (
@@ -139,7 +137,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
       <div className="px-4 pt-6 pb-4">
         <Link to="/" onClick={onNavClick} className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-2xl bg-sahifa-500 text-white flex items-center justify-center shadow-[0_10px_24px_rgba(255,106,42,0.2)]">
-            <BookOpen className="w-5 h-5" strokeWidth={2} />
+            <BookOpenIcon className="w-5 h-5" />
           </div>
           <div>
             <span className="block text-xl font-extrabold tracking-[-0.03em] text-gray-900 dark:text-white">
@@ -198,7 +196,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
               </div>
             ) : (
               <SidebarNavItem
-                icon={GraduationCap}
+                icon={AcademicCapIcon}
                 label="O'qituvchi paneli"
                 path="/teacher"
                 active={isActive('/teacher')}
@@ -217,7 +215,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
               </p>
             </div>
             <SidebarNavItem
-              icon={GraduationCap}
+              icon={AcademicCapIcon}
               label="O'qituvchi bo'lish"
               path="/become-teacher"
               active={isActive('/become-teacher')}
@@ -235,7 +233,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
               </p>
             </div>
             <SidebarNavItem
-              icon={Shield}
+              icon={ShieldCheckIcon}
               label="Admin panel"
               path="/admin"
               active={isActive('/admin')}
@@ -322,7 +320,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   className="w-9 h-9 flex items-center justify-center rounded-2xl text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-[#1A1A1A] transition-colors text-sm"
                   aria-label="Yopish"
                 >
-                  <X className="w-4 h-4" strokeWidth={2} />
+                  <XMarkIcon className="w-4 h-4" />
                 </button>
               </div>
 
@@ -342,12 +340,12 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#1A1A1A] transition-colors"
             aria-label="Menyu"
           >
-            <Menu className="w-5 h-5" strokeWidth={1.9} />
+            <Bars3Icon className="w-5 h-5" />
           </button>
 
           <Link to="/" className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-xl bg-sahifa-500 text-white flex items-center justify-center">
-              <BookOpen className="w-4 h-4" strokeWidth={2} />
+              <BookOpenIcon className="w-4 h-4" />
             </div>
             <span className="text-base font-bold tracking-[-0.02em] text-gray-900 dark:text-white">
               SAHIFALAB
@@ -383,7 +381,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
                   }
                 `}
               >
-                <Icon className="w-[18px] h-[18px] leading-none" strokeWidth={1.9} />
+                <Icon className="w-[18px] h-[18px] leading-none" />
                 <span className="text-[10px] leading-tight">{item.label}</span>
               </Link>
             )

@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { motion } from 'framer-motion'
+import { CpuChipIcon } from '@heroicons/react/24/outline'
 import apiService from '../services/apiService'
 import PageWrapper from '../components/PageWrapper'
 
@@ -65,7 +66,7 @@ const BookSummarizerPage: React.FC = () => {
             </div>
           )}
           <div>
-            <h1 className="text-lg font-black text-gray-900 dark:text-white">🤖 SahifaLab AI</h1>
+            <h1 className="text-lg font-black text-gray-900 dark:text-white inline-flex items-center gap-2"><CpuChipIcon className="w-5 h-5" />SahifaLab AI</h1>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">Book Summarizer</p>
           </div>
         </div>
@@ -127,7 +128,7 @@ const BookSummarizerPage: React.FC = () => {
           disabled={loading}
           className="w-full rounded-2xl py-3 bg-sahifa-500 hover:bg-sahifa-600 disabled:opacity-60 text-white text-sm font-bold transition-colors"
         >
-          {loading ? 'Tahlil qilinmoqda...' : '🧠 Qisqa mazmun chiqarish'}
+          {loading ? 'Tahlil qilinmoqda...' : 'Qisqa mazmun chiqarish'}
         </button>
       </motion.form>
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { BookOpen, Sparkles } from 'lucide-react'
+import { BookOpenIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
@@ -60,7 +60,7 @@ const HomePage: React.FC = () => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-2xl bg-sahifa-500 text-white flex items-center justify-center shadow-[0_10px_24px_rgba(255,106,42,0.18)]">
-                  <BookOpen className="w-5 h-5" strokeWidth={2} />
+                  <BookOpenIcon className="w-5 h-5" />
                 </div>
                 <div>
                   <h1 className="text-2xl font-extrabold tracking-[-0.03em] text-gray-900 dark:text-white">
@@ -82,7 +82,7 @@ const HomePage: React.FC = () => {
           >
             <div className="speech-bubble px-4 py-3">
               <div className="flex items-center gap-2 mb-2 text-sahifa-500">
-                <Sparkles className="w-4 h-4" strokeWidth={1.9} />
+                <SparklesIcon className="w-4 h-4" />
                 <span className="text-[11px] font-semibold uppercase tracking-[0.18em]">Dashboard</span>
               </div>
               <p className="text-sm text-gray-900 dark:text-gray-100 leading-relaxed font-medium">
@@ -168,7 +168,7 @@ const NotFoundPage: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 bg-[#FAFAFA] dark:bg-slate-950">
       <div className="w-20 h-20 rounded-[28px] bg-sahifa-500/10 text-sahifa-500 flex items-center justify-center">
-        <BookOpen className="w-9 h-9" strokeWidth={1.8} />
+        <BookOpenIcon className="w-9 h-9" />
       </div>
       <div className="text-center space-y-1">
         <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">404</h1>

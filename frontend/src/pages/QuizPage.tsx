@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { XMarkIcon, DocumentTextIcon, BookOpenIcon, TrophyIcon, ArrowPathIcon, InformationCircleIcon, ExclamationCircleIcon, AcademicCapIcon } from '@heroicons/react/24/outline'
 import apiService from '@services/apiService'
 import { fetchQuizzes, fetchQuiz } from '../lib/supabase'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
@@ -52,12 +53,12 @@ interface VerifyResult {
 const OPTION_LABELS = ['A', 'B', 'C', 'D']
 
 const CORRECT_MSGS = [
-  "To'g'ri! 🎉", "Zo'r! 🌟", "Barakalla! 💪",
-  "Mukammal! ✨", "Ajoyib! 🔥",
+  "To'g'ri!", "Zo'r!", "Barakalla!",
+  "Mukammal!", "Ajoyib!",
 ]
 const WRONG_MSGS = [
-  "Xato, ammo o'rgandik! 💡", "Keyingi safar! 📚",
-  "Harakat davom etsin! 🚀", "Bilim orqali yutamiz! 🎯",
+  "Xato, ammo o'rgandik!", "Keyingi safar!",
+  "Harakat davom etsin!", "Bilim orqali yutamiz!",
 ]
 
 const rand = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)]
@@ -91,7 +92,7 @@ const QuizList: React.FC<{
   return (
     <div className="space-y-4">
       <div className="text-center space-y-1 mb-2">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">📝 Viktorina</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-white inline-flex items-center gap-2"><DocumentTextIcon className="w-7 h-7" />Viktorina</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Bilimingizni sinab ko'ring va sertifikat qozoning!
         </p>
@@ -105,7 +106,7 @@ const QuizList: React.FC<{
         </div>
       ) : quizzes.length === 0 ? (
         <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
-          <p className="text-4xl mb-3">📚</p>
+          <div className="flex justify-center mb-3"><BookOpenIcon className="w-10 h-10 text-gray-400" /></div>
         <p className="text-gray-500 dark:text-gray-400 text-sm">Hali viktorina qo'shilmagan</p>
       </div>
     ) : (
@@ -119,11 +120,11 @@ const QuizList: React.FC<{
             >
               <div className="flex items-start gap-3">
                 <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-xl shrink-0">
-                  📝
+                  <DocumentTextIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{quiz.title}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">📕 {quiz.book_title}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{quiz.book_title}</p>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
                       {quiz.total_questions} savol
@@ -139,13 +140,13 @@ const QuizList: React.FC<{
           ))}
         </div>
 
-        {/* Load more button */}
+              Ro'yxatga
         {displayLimit < quizzes.length && (
           <button
             onClick={() => setDisplayLimit(displayLimit + 10)}
             className="w-full py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
           >
-            📚 Yana ko'rsating ({quizzes.length - displayLimit} qolgan)
+            Yana ko'rsating ({quizzes.length - displayLimit} qolgan)
           </button>
         )}
       </>
@@ -154,7 +155,7 @@ const QuizList: React.FC<{
     {/* Certificate teaser */}
     <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3">
       <p className="text-xs text-amber-800 dark:text-amber-300">
-        🏆 <strong>80% va undan yuqori</strong> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
+        <span className="inline-flex items-center gap-1"><TrophyIcon className="w-4 h-4" /><strong>80% va undan yuqori</strong></span> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
         Instagram Stories uchun tayyorlangan PNG formatida yuklab oling.
       </p>
     </div>
@@ -162,7 +163,7 @@ const QuizList: React.FC<{
     {/* XP + Daraja + Anti-farming info */}
     <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-3">
       <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-        ℹ️ <strong>XP qoidasi:</strong> XP olish uchun kamida <strong>80%</strong> to'g'ri javob kerak.
+        <span className="inline-flex items-center gap-1"><InformationCircleIcon className="w-4 h-4" /><strong>XP qoidasi:</strong></span> XP olish uchun kamida <strong>80%</strong> to'g'ri javob kerak.
         Bir xil viktorinadan XP faqat <strong>bir marta</strong> beriladi. O'ta olmaguningizcha qayta urinishingiz mumkin!
       </p>
     </div>
@@ -196,7 +197,7 @@ const QuizStep: React.FC<{
     setPhase('revealing')
 
     // We don't know the correct answer (stripped by backend), so show neutral feedback
-    const positiveMessages = ['Yaxshi! 💪', 'Davom eting! 🚀', 'Zo\'r! ✨', 'Olg\'a! 🔥']
+    const positiveMessages = ['Yaxshi!', 'Davom eting!', 'Zo\'r!', 'Olg\'a!']
     setFeedback(rand(positiveMessages))
 
     timerRef.current = setTimeout(() => {
@@ -223,7 +224,7 @@ const QuizStep: React.FC<{
           onClick={onExit}
           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1"
         >
-          ✕
+          <XMarkIcon className="w-5 h-5" />
         </button>
         <div className="flex-1">
           <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
@@ -307,11 +308,11 @@ const QuizResults: React.FC<{
   const { percentage, score, total, certificate_eligible } = result
 
   const getMessage = () => {
-    if (percentage >= 100) return { emoji: '🏆', text: 'Mukammal! 100% to\'g\'ri!', color: 'text-amber-600' }
-    if (percentage >= 80)  return { emoji: '🌟', text: 'Zo\'r natija! Sertifikat qozondingiz!', color: 'text-blue-600' }
-    if (percentage >= 60)  return { emoji: '👍', text: 'Yaxshi! Yana ozgina harakat!', color: 'text-green-600' }
-    if (percentage >= 40)  return { emoji: '📚', text: 'Yana o\'qib kelingiz!', color: 'text-orange-500' }
-    return { emoji: '💪', text: 'Harakat qiling — uddalaysiz!', color: 'text-gray-600' }
+    if (percentage >= 100) return { text: 'Mukammal! 100% to\'g\'ri!', color: 'text-amber-600' }
+    if (percentage >= 80)  return { text: 'Zo\'r natija! Sertifikat qozondingiz!', color: 'text-blue-600' }
+    if (percentage >= 60)  return { text: 'Yaxshi! Yana ozgina harakat!', color: 'text-green-600' }
+    if (percentage >= 40)  return { text: 'Yana o\'qib kelingiz!', color: 'text-orange-500' }
+    return { text: 'Harakat qiling — uddalaysiz!', color: 'text-gray-600' }
   }
 
   const msg = getMessage()
@@ -332,7 +333,7 @@ const QuizResults: React.FC<{
       <div className="space-y-4">
         {/* Header */}
         <div className="text-center space-y-1">
-          <p className="text-4xl">{msg.emoji}</p>
+          <div className="flex justify-center"><AcademicCapIcon className="w-10 h-10 text-gray-500" /></div>
           <h2 className={`text-lg font-bold ${msg.color}`}>{msg.text}</h2>
         </div>
 
@@ -340,7 +341,7 @@ const QuizResults: React.FC<{
         {result.is_first_attempt && result.percentage >= 80 && (
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl p-3">
             <p className="text-xs text-green-700 dark:text-green-300 text-center">
-              <span className="font-semibold">🎉 Tabriklaymiz!</span> XP qo'lga kiritildi!
+              <span className="font-semibold">Tabriklaymiz!</span> XP qo'lga kiritildi!
             </p>
           </div>
         )}
@@ -354,7 +355,7 @@ const QuizResults: React.FC<{
         {!result.is_first_attempt && !result.already_passed && result.percentage < 80 && (
           <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-xl p-3">
             <p className="text-xs text-orange-700 dark:text-orange-300 text-center">
-              <span className="font-semibold">💪 XP uchun 80% kerak.</span> Qayta urinib ko'ring!
+              <span className="font-semibold">XP uchun 80% kerak.</span> Qayta urinib ko'ring!
             </p>
           </div>
         )}
@@ -385,13 +386,13 @@ const QuizResults: React.FC<{
         {certificate_eligible && (
           <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border-2 border-amber-300 dark:border-amber-700 rounded-2xl p-4 text-center space-y-3">
             <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
-              🎓 Tabriklaymiz! Sertifikat qozondingiz
+              Tabriklaymiz! Sertifikat qozondingiz
             </p>
             <button
               onClick={() => setShowCert(true)}
               className="w-full py-3 rounded-xl font-bold text-white bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-600 hover:to-yellow-500 shadow-md transition-all active:scale-95"
             >
-              🏆 Sertifikatni ko'rish
+              Sertifikatni ko'rish
             </button>
           </div>
         )}
@@ -402,7 +403,7 @@ const QuizResults: React.FC<{
             onClick={onRetry}
             className="py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
           >
-            🔄 Qayta urinish
+            <span className="inline-flex items-center gap-1 justify-center"><ArrowPathIcon className="w-4 h-4" />Qayta urinish</span>
           </button>
           <button
             onClick={onExit}
@@ -538,7 +539,7 @@ export const QuizPage: React.FC = () => {
       {/* Error banner */}
       {error && (
         <div className="mb-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3">
-          <p className="text-xs text-red-700 dark:text-red-300">❌ {error}</p>
+          <p className="text-xs text-red-700 dark:text-red-300 inline-flex items-center gap-1"><ExclamationCircleIcon className="w-4 h-4" />{error}</p>
         </div>
       )}
 

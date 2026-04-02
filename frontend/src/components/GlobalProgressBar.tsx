@@ -13,7 +13,7 @@
 import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Award, ChevronRight, Clock3 } from 'lucide-react'
+import { ChevronRightIcon, ClockIcon, TrophyIcon } from '@heroicons/react/24/outline'
 import {
   useProgressStore,
   levelBounds,
@@ -90,7 +90,7 @@ const GlobalProgressBar: React.FC = () => {
             <div
               className={`w-10 h-10 rounded-2xl bg-gradient-to-br ${grad} flex items-center justify-center shadow-sm`}
             >
-              <Award className="w-4 h-4 text-white" strokeWidth={2} />
+              <TrophyIcon className="w-4 h-4 text-white" />
             </div>
           )}
           {photoUrl && (
@@ -126,13 +126,13 @@ const GlobalProgressBar: React.FC = () => {
 
         {/* ── Focus clock ───────────────────────────────────────────────── */}
         <div className="hidden sm:flex flex-shrink-0 items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 rounded-2xl px-3 py-2 bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200/70 dark:border-[#2A2A2A]">
-          <Clock3 className="w-3.5 h-3.5" strokeWidth={1.9} />
+          <ClockIcon className="w-3.5 h-3.5" />
           <span className="font-mono font-semibold tabular-nums text-sahifa-500/80 dark:text-sahifa-400/80">
             {formatFocusTime(focusSeconds)}
           </span>
         </div>
 
-        <ChevronRight className="w-4 h-4 text-gray-300 dark:text-gray-600" strokeWidth={2} />
+        <ChevronRightIcon className="w-4 h-4 text-gray-300 dark:text-gray-600" />
 
         {/* ── Syncing indicator ─────────────────────────────────────────── */}
         {isSyncing && (

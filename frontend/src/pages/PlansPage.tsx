@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
+import { CalendarDaysIcon, ArrowRightIcon } from '@heroicons/react/24/solid'
 import { useNavigate } from 'react-router-dom'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
@@ -146,7 +147,7 @@ const PlansPage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         className="rounded-3xl p-5 bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-slate-800 dark:to-slate-900 border border-teal-100 dark:border-slate-700"
       >
-        <h1 className="text-xl font-extrabold text-gray-900 dark:text-white">🗓️ Reading Plans</h1>
+        <h1 className="text-xl font-extrabold text-gray-900 dark:text-white inline-flex items-center gap-2"><CalendarDaysIcon className="w-5 h-5" />Reading Plans</h1>
         <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
           O‘zingizga mos reja tanlang va har kuni kichik qadam bilan oldinga yuring.
         </p>
@@ -168,7 +169,7 @@ const PlansPage: React.FC = () => {
                   <p className="font-bold text-gray-900 dark:text-white">{preset.title}</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{preset.subtitle}</p>
                 </div>
-                <span className="text-lg">➡️</span>
+                <span className="text-lg"><ArrowRightIcon className="w-5 h-5 text-gray-400" /></span>
               </div>
             </motion.button>
           ))}
@@ -225,7 +226,7 @@ const PlansPage: React.FC = () => {
           >
             <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
               {analytics.isCompleted
-                ? '🎉 Reja yakunlandi! Keyingi bosqichga o‘ting.'
+                ? 'Reja yakunlandi! Keyingi bosqichga o‘ting.'
                 : `Qolgan kunlar: ${analytics.remainingDays}`}
             </p>
             <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80 mt-1">

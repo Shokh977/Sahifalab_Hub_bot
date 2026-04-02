@@ -11,6 +11,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { AcademicCapIcon, MagnifyingGlassIcon, XMarkIcon, VideoCameraIcon, UsersIcon, BookOpenIcon, GlobeAltIcon } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import apiService from '../services/apiService'
 
@@ -45,10 +46,10 @@ interface Course {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const LEVELS = [
-  { value: '',             label: 'Barchasi',     emoji: '🌐' },
-  { value: 'beginner',     label: "Boshlang'ich",  emoji: '🌱' },
-  { value: 'intermediate', label: "O'rta",         emoji: '📈' },
-  { value: 'advanced',     label: 'Yuqori',        emoji: '🚀' },
+  { value: '',             label: 'Barchasi' },
+  { value: 'beginner',     label: "Boshlang'ich" },
+  { value: 'intermediate', label: "O'rta" },
+  { value: 'advanced',     label: 'Yuqori' },
 ]
 
 const PAGE_SIZE = 12
@@ -86,7 +87,7 @@ const CourseCard: React.FC<{ course: Course; index: number }> = ({ course, index
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <span className="text-5xl opacity-30">{cat?.icon ?? '📚'}</span>
+                <BookOpenIcon className="w-12 h-12 opacity-30" />
               </div>
             )}
             {/* Price badge */}
@@ -122,7 +123,7 @@ const CourseCard: React.FC<{ course: Course; index: number }> = ({ course, index
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                 {course.total_lessons > 0 && (
-                  <span>📹 {course.total_lessons} dars</span>
+                  <span className="inline-flex items-center gap-1"><VideoCameraIcon className="w-3.5 h-3.5" />{course.total_lessons} dars</span>
                 )}
                 {course.total_duration_minutes > 0 && (
                   <span>⏱ {formatDuration(course.total_duration_minutes)}</span>
@@ -133,7 +134,7 @@ const CourseCard: React.FC<{ course: Course; index: number }> = ({ course, index
                   <span>⭐ {course.rating.toFixed(1)}</span>
                 )}
                 {course.enrolled_count > 0 && (
-                  <span>👥 {course.enrolled_count}</span>
+                  <span className="inline-flex items-center gap-1"><UsersIcon className="w-3.5 h-3.5" />{course.enrolled_count}</span>
                 )}
               </div>
             </div>
@@ -235,7 +236,7 @@ const CoursesPage: React.FC = () => {
       >
         <div className="flex items-center gap-3 mb-1">
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-xl shadow">
-            🎓
+            <AcademicCapIcon className="w-6 h-6 text-white" />
           </div>
           <div>
             <h1 className="text-lg font-bold text-gray-900 dark:text-white">Kurslar</h1>
@@ -254,7 +255,7 @@ const CoursesPage: React.FC = () => {
         className="mb-4"
       >
         <div className="relative">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm"><MagnifyingGlassIcon className="w-4 h-4" /></span>
           <input
             type="text"
             value={search}
@@ -267,7 +268,7 @@ const CoursesPage: React.FC = () => {
               onClick={() => setSearch('')}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 text-xs"
             >
-              ✕
+              <XMarkIcon className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -296,7 +297,7 @@ const CoursesPage: React.FC = () => {
                   : 'bg-slate-100 dark:bg-slate-800 text-gray-600 dark:text-gray-400 hover:bg-slate-200 dark:hover:bg-slate-700'
               }`}
             >
-              🌐 Barchasi
+              <span className="inline-flex items-center gap-1"><GlobeAltIcon className="w-3.5 h-3.5" />Barchasi</span>
             </button>
             {categories.map(cat => (
               <button
@@ -332,7 +333,7 @@ const CoursesPage: React.FC = () => {
                 : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
             }`}
           >
-            {l.emoji} {l.label}
+            {l.label}
           </button>
         ))}
       </motion.div>
@@ -348,7 +349,7 @@ const CoursesPage: React.FC = () => {
           animate={{ opacity: 1 }}
           className="text-center py-16 space-y-3"
         >
-          <p className="text-5xl">🔭</p>
+          <div className="flex justify-center"><BookOpenIcon className="w-12 h-12 text-gray-400" /></div>
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Kurs topilmadi</p>
           <p className="text-xs text-gray-400 dark:text-gray-500">
             {search ? `"${search}" bo'yicha natija yo'q` : 'Bu bo\'limda hali kurslar mavjud emas'}

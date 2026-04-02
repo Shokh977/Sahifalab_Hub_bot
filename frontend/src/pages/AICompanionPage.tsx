@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { CheckCircleIcon, ExclamationTriangleIcon, PaperAirplaneIcon, LightBulbIcon } from '@heroicons/react/24/solid'
 import { geminiChat } from '../services/geminiService'
 
 interface Message {
@@ -108,7 +109,7 @@ const AICompanionPage: React.FC = () => {
           )}
           <div>
             <h1 className="font-bold text-gray-900 dark:text-white">SahifaLab AI</h1>
-            <p className="text-xs text-green-600 dark:text-green-400 font-medium">🟢 Tayyorman</p>
+            <p className="text-xs text-green-600 dark:text-green-400 font-medium inline-flex items-center gap-1"><CheckCircleIcon className="w-3.5 h-3.5" />Tayyorman</p>
           </div>
         </div>
       </motion.div>
@@ -172,7 +173,7 @@ const AICompanionPage: React.FC = () => {
             animate={{ opacity: 1 }}
             className="text-xs text-red-600 dark:text-red-400 px-4 py-2 bg-red-50 dark:bg-red-900/20 rounded-lg"
           >
-            ⚠️ {error}
+            <span className="inline-flex items-center gap-1"><ExclamationTriangleIcon className="w-3.5 h-3.5" />{error}</span>
           </motion.div>
         )}
 
@@ -197,11 +198,11 @@ const AICompanionPage: React.FC = () => {
             disabled={loading || !inputValue.trim()}
             className="px-4 py-3 bg-sahifa-500 hover:bg-sahifa-600 disabled:bg-gray-300 dark:disabled:bg-gray-700 text-white rounded-2xl font-semibold transition-colors disabled:cursor-not-allowed"
           >
-            ➤
+            <PaperAirplaneIcon className="w-4 h-4" />
           </motion.button>
         </form>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 px-4">
-          💡 Masalan: "Abdulla Qahhor kim?"
+          <span className="inline-flex items-center gap-1"><LightBulbIcon className="w-3.5 h-3.5" />Masalan: "Abdulla Qahhor kim?"</span>
         </p>
       </div>
     </div>

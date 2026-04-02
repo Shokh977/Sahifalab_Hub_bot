@@ -12,6 +12,7 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { ArrowLeftIcon, CheckCircleIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import VideoSourcePicker from '../components/VideoSourcePicker'
 import apiService from '../services/apiService'
@@ -149,7 +150,7 @@ const LessonCreatePage: React.FC = () => {
           onClick={() => navigate(`/courses/${cId}`)}
           className="w-9 h-9 rounded-xl border border-slate-200 dark:border-slate-700 flex items-center justify-center text-slate-500 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
         >
-          ←
+          <ArrowLeftIcon className="w-4 h-4" />
         </button>
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-white">
@@ -257,7 +258,7 @@ const LessonCreatePage: React.FC = () => {
           {/* Error */}
           {errorMsg && (
             <div className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-xs text-red-700 dark:text-red-300">
-              ⚠️ {errorMsg}
+              <span className="inline-flex items-center gap-1"><ExclamationTriangleIcon className="w-4 h-4" /> {errorMsg}</span>
             </div>
           )}
 
@@ -267,9 +268,9 @@ const LessonCreatePage: React.FC = () => {
             disabled={status === 'saving' || status === 'saved'}
             className="w-full py-3 rounded-xl bg-sahifa-500 hover:bg-sahifa-600 disabled:opacity-60 text-white font-semibold text-sm transition-colors shadow"
           >
-            {status === 'saving' && '⏳ Saqlanmoqda...'}
-            {status === 'saved'  && '✅ Saqlandi!'}
-            {(status === 'idle' || status === 'error') && (isEdit ? '💾 Saqlash' : "➕ Dars qo'shish")}
+            {status === 'saving' && 'Saqlanmoqda...'}
+            {status === 'saved'  && <span className="inline-flex items-center gap-1 justify-center"><CheckCircleIcon className="w-4 h-4" /> Saqlandi!</span>}
+            {(status === 'idle' || status === 'error') && (isEdit ? 'Saqlash' : "Dars qo'shish")}
           </button>
 
         </motion.form>

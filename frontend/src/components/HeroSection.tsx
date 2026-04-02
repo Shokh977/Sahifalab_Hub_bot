@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { fetchHeroContent } from '../lib/supabase'
-import { Megaphone, Quote } from 'lucide-react'
+import { MegaphoneIcon, ChatBubbleBottomCenterTextIcon } from '@heroicons/react/24/outline'
 
 interface Quote {
   id: number
@@ -80,7 +80,7 @@ export const HeroSection: React.FC = () => {
       <div className="relative p-6 space-y-5">
         <div className="flex items-center gap-2.5">
           <div className="w-10 h-10 rounded-2xl bg-sahifa-500/10 text-sahifa-600 dark:text-sahifa-400 flex items-center justify-center">
-            {isAnnouncement ? <Megaphone className="w-[18px] h-[18px]" strokeWidth={1.9} /> : <Quote className="w-[18px] h-[18px]" strokeWidth={1.9} />}
+            {isAnnouncement ? <MegaphoneIcon className="w-[18px] h-[18px]" /> : <ChatBubbleBottomCenterTextIcon className="w-[18px] h-[18px]" />}
           </div>
           <p className="text-[11px] uppercase tracking-[0.22em] text-gray-500 dark:text-gray-400 font-semibold">
             {isAnnouncement ? 'E\'lon' : 'Kun iqtibosi'}

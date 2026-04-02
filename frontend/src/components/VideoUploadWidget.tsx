@@ -13,6 +13,7 @@
  */
 import React, { useCallback, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowUpTrayIcon, ExclamationTriangleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'https://sahifalab-hub-bot-hsgt.vercel.app/api'
@@ -164,7 +165,7 @@ const VideoUploadWidget: React.FC<Props> = ({
             exit={{ opacity: 0 }}
             className="flex items-center gap-3 p-3 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20"
           >
-            <span className="text-2xl">🎬</span>
+            <FilmIcon className="w-7 h-7 text-emerald-600 dark:text-emerald-400" />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-300 truncate">
                 {fileName || 'Video yuklandi'}
@@ -193,7 +194,7 @@ const VideoUploadWidget: React.FC<Props> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-600 dark:text-gray-400 truncate max-w-[200px]">
-                ⏫ {fileName}
+                <span className="inline-flex items-center gap-1.5"><ArrowUpTrayIcon className="w-4 h-4" /> {fileName}</span>
               </span>
               <span className="text-xs font-bold text-sahifa-500">{progress}%</span>
             </div>
@@ -236,7 +237,9 @@ const VideoUploadWidget: React.FC<Props> = ({
               }
             `}
           >
-            <span className="text-3xl">{state === 'error' ? '⚠️' : '📹'}</span>
+            {state === 'error'
+              ? <ExclamationTriangleIcon className="w-8 h-8 text-red-500" />
+              : <FilmIcon className="w-8 h-8 text-slate-500" />}
             <div>
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
                 {isDragging ? 'Tashlang!' : 'Video yuklash'}
@@ -260,7 +263,7 @@ const VideoUploadWidget: React.FC<Props> = ({
 
       {/* Error message */}
       {errorMsg && state === 'error' && (
-        <p className="text-[11px] text-red-600 dark:text-red-400 px-1">⚠️ {errorMsg}</p>
+        <p className="text-[11px] text-red-600 dark:text-red-400 px-1 inline-flex items-center gap-1.5"><ExclamationTriangleIcon className="w-3.5 h-3.5" /> {errorMsg}</p>
       )}
     </div>
   )

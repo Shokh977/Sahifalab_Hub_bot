@@ -12,6 +12,7 @@ import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
+import { ArrowDownTrayIcon, ArrowLeftIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -117,10 +118,10 @@ const BookDetailPage: React.FC = () => {
       const res = await apiService.rateBook(book.id, effectiveUserId, stars)
       setMyRating(stars)
       setBook(prev => prev ? { ...prev, rating: res.data.average } : prev)
-      setRatingMsg('✅ Baholandi!')
+      setRatingMsg('Baholandi!')
       setTimeout(() => setRatingMsg(''), 2000)
     } catch {
-      setRatingMsg('❌ Xato yuz berdi')
+      setRatingMsg('Xato yuz berdi')
     } finally {
       setRatingLoading(false)
     }
@@ -133,15 +134,15 @@ const BookDetailPage: React.FC = () => {
     try {
       const res = await apiService.downloadBook(book.id)
       const url: string = res.data?.download_url
-      if (!url) { setDlMsg('❌ Fayl manzili topilmadi'); return }
+      if (!url) { setDlMsg('Fayl manzili topilmadi'); return }
       if (window.Telegram?.WebApp?.openLink) {
         window.Telegram.WebApp.openLink(url)
       } else {
         window.location.href = url
       }
-      setDlMsg('✅ Yuklab olish boshlandi!')
+      setDlMsg('Yuklab olish boshlandi!')
     } catch {
-      setDlMsg('❌ Yuklab bo\'lmadi. Keyinroq urinib ko\'ring.')
+      setDlMsg('Yuklab bo\'lmadi. Keyinroq urinib ko\'ring.')
     } finally {
       setDownloading(false)
     }
@@ -170,10 +171,10 @@ const BookDetailPage: React.FC = () => {
     return (
       <PageWrapper>
         <button onClick={() => navigate(-1)} className="text-sahifa-600 dark:text-sahifa-400 text-sm mb-4 flex items-center gap-1">
-          ← Orqaga
+          <ArrowLeftIcon className="w-4 h-4" /> Orqaga
         </button>
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 rounded-2xl p-6 text-center">
-          <div className="text-4xl mb-2">📭</div>
+          <div className="flex justify-center mb-2"><ExclamationCircleIcon className="w-10 h-10" /></div>
           <p>{error || 'Kitob topilmadi'}</p>
         </div>
       </PageWrapper>
@@ -189,7 +190,7 @@ const BookDetailPage: React.FC = () => {
         onClick={() => navigate(-1)}
         className="flex items-center gap-1 text-sm text-sahifa-600 dark:text-sahifa-400 font-medium mb-4"
       >
-        ← Kitoblar
+        <ArrowLeftIcon className="w-4 h-4" /> Kitoblar
       </button>
 
       <div className="bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-md">
@@ -266,7 +267,7 @@ const BookDetailPage: React.FC = () => {
               )}
             </div>
             {ratingMsg && (
-              <p className={`text-xs font-medium ${ratingMsg.startsWith('✅') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+              <p className={`text-xs font-medium ${ratingMsg.startsWith('Baholandi') ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                 {ratingMsg}
               </p>
             )}
@@ -282,7 +283,7 @@ const BookDetailPage: React.FC = () => {
           {/* Download message */}
           {dlMsg && (
             <div className={`text-sm px-4 py-2.5 rounded-xl font-medium ${
-              dlMsg.startsWith('✅')
+              dlMsg.startsWith('Yuklab olish')
                 ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
                 : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
             }`}>
@@ -298,14 +299,14 @@ const BookDetailPage: React.FC = () => {
               /* Already purchased → show download */
               <div className="space-y-2">
                 <div className="text-center text-xs text-green-600 dark:text-green-400 font-medium bg-green-50 dark:bg-green-900/20 rounded-xl py-2">
-                  ✅ Siz bu kitobni sotib olgansiz
+                  Siz bu kitobni sotib olgansiz
                 </div>
                 <button
                   onClick={handleDownload}
                   disabled={downloading || !book.file_url}
                   className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
                 >
-                  {downloading ? <Spinner /> : <>📥 Yuklab olish</>}
+                  {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
                 </button>
               </div>
             ) : (
@@ -320,7 +321,7 @@ const BookDetailPage: React.FC = () => {
                 disabled={downloading || !book.file_url}
                 className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
               >
-                {downloading ? <Spinner /> : <>📥 Yuklab olish</>}
+                {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
               </button>
               {!book.file_url && (
                 <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-2">
