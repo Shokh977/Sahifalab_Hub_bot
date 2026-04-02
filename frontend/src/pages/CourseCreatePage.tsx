@@ -1,12 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   AcademicCapIcon,
   ArrowDownTrayIcon,
   ArrowLeftIcon,
   ArrowPathIcon,
+  ArrowsUpDownIcon,
   Bars3Icon,
+  BookOpenIcon,
   CheckCircleIcon,
   ChevronRightIcon,
   CloudArrowUpIcon,
@@ -17,10 +19,9 @@ import {
   ExclamationTriangleIcon,
   FilmIcon,
   GlobeAltIcon,
-  HashtagIcon,
-  InformationCircleIcon,
   LanguageIcon,
   ListBulletIcon,
+  LockClosedIcon,
   LockOpenIcon,
   PencilSquareIcon,
   PhotoIcon,
@@ -29,9 +30,12 @@ import {
   QuestionMarkCircleIcon,
   SparklesIcon,
   TrashIcon,
+  XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import VideoSourcePicker from '../components/VideoSourcePicker'
+import FileUploadWidget from '../components/FileUploadWidget'
+import QuizBuilder, { QuizQuestion, createQuestion } from '../components/QuizBuilder'
 import apiService from '../services/apiService'
 
 interface Category {
@@ -72,6 +76,7 @@ type BuilderLesson = {
   material_url: string
   material_name: string
   quiz_question_count: number
+  quiz_questions: QuizQuestion[]
 }
 
 type BuilderSection = {
@@ -133,7 +138,8 @@ const createLesson = (type: LessonType = 'video'): BuilderLesson => ({
   video_url: '',
   material_url: '',
   material_name: '',
-  quiz_question_count: type === 'quiz' ? 5 : 0,
+  quiz_question_count: type === 'quiz' ? 0 : 0,
+  quiz_questions: type === 'quiz' ? [createQuestion()] : [],
 })
 
 const createSection = (): BuilderSection => ({
@@ -164,14 +170,14 @@ const getLessonSyncLabel = (lesson: BuilderLesson) => {
   if (lesson.status === 'synced') return 'Sync qilingan'
   if (lesson.type === 'video') return lesson.video_url ? 'Tayyor' : 'Video kutilmoqda'
   if (lesson.type === 'material') return lesson.material_url ? 'Material tayyor' : 'Material draft'
-  return lesson.quiz_question_count > 0 ? 'Quiz draft' : 'Savollar kutilmoqda'
+  return lesson.quiz_questions.length > 0 ? `${lesson.quiz_questions.length} savol` : 'Savollar kutilmoqda'
 }
 
 const isLessonReady = (lesson: BuilderLesson) => {
   if (!lesson.title.trim()) return false
   if (lesson.type === 'video') return !!lesson.video_url.trim()
   if (lesson.type === 'material') return !!lesson.material_url.trim() || !!lesson.material_name.trim()
-  return lesson.quiz_question_count > 0
+  return lesson.quiz_questions.length > 0 && lesson.quiz_questions.every(q => q.text.trim() && q.options.filter(o => o.text.trim()).length >= 2 && q.options.some(o => o.is_correct && o.text.trim()))
 }
 
 const readDraft = (key: string): DraftPayload | null => {
@@ -223,39 +229,7 @@ const Field: React.FC<{
   </div>
 )
 
-const StepPill: React.FC<{
-  active: boolean
-  completed: boolean
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
-  title: string
-  description: string
-  onClick: () => void
-}> = ({ active, completed, icon: Icon, title, description, onClick }) => (
-  <button type="button" onClick={onClick} className={`w-full rounded-2xl border px-4 py-3 text-left transition ${active ? 'border-[#F26722]/30 bg-[#F26722]/10 text-slate-900 dark:text-white' : 'border-slate-200 dark:border-slate-800 bg-white/75 dark:bg-slate-900/60 text-slate-600 dark:text-slate-300 hover:border-[#F26722]/20'}`}>
-    <div className="flex items-start gap-3">
-      <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${active ? 'bg-[#F26722] text-white' : completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 dark:bg-slate-800'}`}>
-        {completed && !active ? <CheckCircleIcon className="h-5 w-5" /> : <Icon className="h-5 w-5" />}
-      </div>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold">{title}</p>
-        <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{description}</p>
-      </div>
-    </div>
-  </button>
-)
 
-const MetricCard: React.FC<{
-  icon: React.ComponentType<React.SVGProps<SVGSVGElement>>
-  label: string
-  value: string
-  tone?: string
-}> = ({ icon: Icon, label, value, tone = 'from-orange-500/10 to-amber-500/10' }) => (
-  <div className={`rounded-3xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br ${tone} p-4`}>
-    <Icon className="h-5 w-5 text-[#F26722]" />
-    <p className="mt-4 text-2xl font-bold text-slate-900 dark:text-white">{value}</p>
-    <p className="mt-1 text-xs uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">{label}</p>
-  </div>
-)
 
 const CourseCreatePage: React.FC = () => {
   const { id } = useParams<{ id?: string }>()
@@ -320,8 +294,8 @@ const CourseCreatePage: React.FC = () => {
               backendId: lesson.id,
               title: lesson.title ?? '',
               description: lesson.description ?? '',
-              type: 'video',
-              status: 'synced',
+              type: 'video' as LessonType,
+              status: 'synced' as LessonStatus,
               is_free: !!lesson.is_free,
               duration_minutes: lesson.duration_minutes ?? 0,
               video_source: (lesson.video_source ?? 'bunny') as 'youtube' | 'bunny' | 'none',
@@ -329,6 +303,7 @@ const CourseCreatePage: React.FC = () => {
               material_url: '',
               material_name: '',
               quiz_question_count: 0,
+              quiz_questions: [] as QuizQuestion[],
             })),
           }]
 
@@ -591,404 +566,650 @@ const CourseCreatePage: React.FC = () => {
     }
   }
 
+  /* ── Mobile sidebar toggle ───────────────────────────────────────── */
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false)
+  const [mobileEditorOpen, setMobileEditorOpen] = useState(false)
+
   if (status === 'booting') {
     return (
       <PageWrapper className="space-y-5">
-        <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-          <div className="space-y-3">{[1,2,3,4].map(item => <div key={item} className="h-20 animate-pulse rounded-3xl bg-slate-100 dark:bg-slate-900" />)}</div>
-          <div className="space-y-4">{[1,2,3].map(item => <div key={item} className="h-40 animate-pulse rounded-[28px] bg-slate-100 dark:bg-slate-900" />)}</div>
+        <div className="space-y-4">
+          <div className="h-16 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />
+          <div className="grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+            <div className="space-y-3">{[1,2,3,4].map(item => <div key={item} className="h-16 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />)}</div>
+            <div className="space-y-4">{[1,2,3].map(item => <div key={item} className="h-32 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-900" />)}</div>
+          </div>
         </div>
       </PageWrapper>
     )
   }
 
   return (
-    <PageWrapper className="space-y-5" topPadding="py-5">
-      <div className="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)_320px]">
-        <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start xl:top-6">
-          <div className={`${cardCls} overflow-hidden`}>
-            <div className="border-b border-slate-200/80 px-5 py-4 dark:border-slate-800">
-              <button type="button" onClick={() => navigate(-1)} className="mb-4 inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500 transition hover:text-slate-900 dark:text-slate-400 dark:hover:text-white">
-                <ArrowLeftIcon className="h-4 w-4" /> Ortga
+    <PageWrapper className="space-y-0" topPadding="py-0">
+      {/* ═══════════════════════════════════════════════════════════════════
+          TOP BAR — sticky, shows course title, status, and action buttons
+         ═══════════════════════════════════════════════════════════════════ */}
+      <div className="sticky top-0 z-30 -mx-4 sm:-mx-5 lg:-mx-8 border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-950/80 backdrop-blur-xl">
+        <div className="mx-auto max-w-[1200px] px-4 sm:px-5 lg:px-8">
+          <div className="flex items-center gap-3 py-3">
+            <button type="button" onClick={() => navigate(-1)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800">
+              <ArrowLeftIcon className="h-4 w-4" />
+            </button>
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-sm font-bold text-slate-900 dark:text-white sm:text-base">{form.title || (isEdit ? 'Kurs tahrirlash' : 'Yangi kurs')}</h1>
+              <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${status === 'saved' ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' : status === 'error' ? 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'}`}>
+                  {status === 'saved' ? '✓ Saqlangan' : status === 'error' ? '⚠ Xatolik' : status === 'saving' ? '↻ Saqlanmoqda' : 'Draft'}
+                </span>
+                {lastSavedAt && <span className="hidden sm:inline">· {new Date(lastSavedAt).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}</span>}
+              </div>
+            </div>
+            {/* Mobile step toggle */}
+            <button type="button" onClick={() => setMobileSidebarOpen(v => !v)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 lg:hidden dark:border-slate-700">
+              <Bars3Icon className="h-4 w-4" />
+            </button>
+            <div className="hidden gap-2 sm:flex">
+              <button type="button" onClick={() => saveCourse(false)} disabled={status === 'saving'} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:border-[#F26722]/30 hover:text-[#F26722] disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                {status === 'saving' ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <ArrowDownTrayIcon className="h-3.5 w-3.5" />} Draft
               </button>
-              <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#F26722] to-[#FFB347] text-white shadow-lg"><AcademicCapIcon className="h-6 w-6" /></div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#F26722]">Course studio</p>
-                  <h1 className="text-lg font-bold text-slate-900 dark:text-white">{isEdit ? 'Kurs builder' : 'Yangi kurs yaratish'}</h1>
-                </div>
-              </div>
-              <p className="mt-4 text-sm leading-relaxed text-slate-500 dark:text-slate-400">Udemy uslubidagi, ammo yanada zamonaviy studio: modul, dars, narx, preview va publish oqimi bitta joyda.</p>
-            </div>
-            <div className="space-y-3 p-4">
-              {STEP_ITEMS.map(item => <StepPill key={item.id} active={step === item.id} completed={stepCompletion[item.id]} icon={item.icon} title={item.title} description={item.description} onClick={() => setStep(item.id)} />)}
+              <button type="button" onClick={() => saveCourse(true)} disabled={status === 'saving'} className="inline-flex items-center gap-2 rounded-xl bg-[#F26722] px-3.5 py-2 text-xs font-semibold text-white shadow-lg shadow-[#F26722]/20 transition hover:bg-[#E05A17] disabled:opacity-60">
+                {status === 'saving' ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <SparklesIcon className="h-3.5 w-3.5" />} Publish
+              </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          <div className={`${cardCls} p-4`}>
-            <div className="grid grid-cols-2 gap-3">
-              <MetricCard icon={ListBulletIcon} label="Modullar" value={String(sections.length)} />
-              <MetricCard icon={PlayCircleIcon} label="Darslar" value={String(totalLessons)} tone="from-blue-500/10 to-cyan-500/10" />
-              <MetricCard icon={CheckCircleIcon} label="Tayyor" value={String(readyLessons)} tone="from-emerald-500/10 to-green-500/10" />
-              <MetricCard icon={DocumentDuplicateIcon} label="Draft-only" value={String(draftOnlyCount)} tone="from-violet-500/10 to-fuchsia-500/10" />
-            </div>
-            <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-xs leading-relaxed text-slate-500 dark:bg-slate-900/70 dark:text-slate-400">
-              <p className="inline-flex items-center gap-2 font-semibold text-slate-700 dark:text-slate-200"><InformationCircleIcon className="h-4 w-4 text-[#F26722]" /> Studio holati</p>
-              <p className="mt-2">Video darslar platformaga live sync qilinadi. PDF va quiz bloklari builder draft sifatida saqlanadi va kelajakdagi native lesson renderer uchun tayyor turadi.</p>
-              {lastSavedAt && <p className="mt-2 text-[11px] uppercase tracking-[0.16em]">Oxirgi autosave: {new Date(lastSavedAt).toLocaleString('uz-UZ')}</p>}
-            </div>
-          </div>
-        </aside>
-
-        <main className="space-y-5">
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`${cardCls} overflow-hidden`}>
-            <div className="border-b border-slate-200/80 px-5 py-5 dark:border-slate-800 sm:px-6">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F26722]">Teacher-side builder</p>
-                  <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 dark:text-white">{form.title || 'Premium kurs tajribasi yarating'}</h2>
-                  <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-500 dark:text-slate-400">Modullarni boshqaring, dars turlarini ajrating, upload holatini ko‘ring va publishdan oldin kursni aynan talaba ko‘radigan strukturada preview qiling.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => saveCourse(false)} disabled={status === 'saving'} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#F26722]/30 hover:text-[#F26722] disabled:opacity-60 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
-                    {status === 'saving' ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <ArrowDownTrayIcon className="h-4 w-4" />} Draft saqlash
-                  </button>
-                  <button type="button" onClick={() => saveCourse(true)} disabled={status === 'saving'} className="inline-flex items-center gap-2 rounded-2xl bg-[#F26722] px-4 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(242,103,34,0.28)] transition hover:bg-[#E05A17] disabled:opacity-60">
-                    {status === 'saving' ? <ArrowPathIcon className="h-4 w-4 animate-spin" /> : <SparklesIcon className="h-4 w-4" />} Publish course
-                  </button>
-                </div>
-              </div>
-
-              {(message || status === 'saved') && (
-                <div className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${status === 'error' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300'}`}>
-                  <span className="inline-flex items-center gap-2">{status === 'error' ? <ExclamationTriangleIcon className="h-4 w-4" /> : <CheckCircleIcon className="h-4 w-4" />}{message || 'Saqlandi'}</span>
-                </div>
-              )}
-            </div>
-
-            <div className="space-y-6 px-5 py-5 sm:px-6">
-              {step === 'basics' && (
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
-                  <div className="space-y-5">
-                    <Field label="Kurs sarlavhasi" icon={AcademicCapIcon} required hint="Qisqa, aniq va premium ko‘rinadigan nom yozing.">
-                      <input value={form.title} onChange={e => updateForm('title', e.target.value)} placeholder="Masalan: Modern React Course Studio" className={inputCls} maxLength={120} />
-                    </Field>
-                    <Field label="Tavsif" icon={DocumentTextIcon} required hint="Talabalar nimani o‘rganadi, kimlar uchun va natija qanday bo‘ladi — shuni yozing.">
-                      <textarea value={form.description} onChange={e => updateForm('description', e.target.value)} rows={7} placeholder="Kurs yakunida talabalar real loyiha yig‘a oladi, o‘z portfolio-sini boyitadi va zamonaviy stack bilan ishlashni o‘rganadi..." className={`${inputCls} resize-none`} />
-                    </Field>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Kategoriya" icon={ListBulletIcon} required>
-                        <select value={form.category_id} onChange={e => updateForm('category_id', e.target.value)} className={inputCls}>
-                          <option value="">Kategoriya tanlang</option>
-                          {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
-                        </select>
-                      </Field>
-                      <Field label="Muqova rasmi" icon={PhotoIcon} required hint="Bunny CDN yoki boshqa public image URL dan foydalaning.">
-                        <input type="url" value={form.thumbnail_url} onChange={e => updateForm('thumbnail_url', e.target.value)} placeholder="https://cdn.bunny.net/..." className={inputCls} />
-                      </Field>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[26px] border border-dashed border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/50">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">Live cover preview</p>
-                    <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-                      <div className="aspect-[4/3] bg-gradient-to-br from-[#F26722] via-[#FF8A4C] to-[#2B2B2B]">
-                        {form.thumbnail_url ? <img src={form.thumbnail_url} alt={form.title || 'Preview'} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-white/85"><PhotoIcon className="h-16 w-16" /></div>}
-                      </div>
-                      <div className="space-y-3 p-4">
-                        <div>
-                          <p className="text-xs uppercase tracking-[0.18em] text-[#F26722]">Course card</p>
-                          <h3 className="mt-2 text-lg font-semibold text-slate-900 dark:text-white">{form.title || 'Kurs nomi bu yerda ko‘rinadi'}</h3>
-                        </div>
-                        <p className="line-clamp-3 text-sm leading-relaxed text-slate-500 dark:text-slate-400">{form.description || 'Qisqa tavsif kiriting — preview shu yerda yangilanadi.'}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {step === 'curriculum' && (
-                <div className="space-y-5">
-                  <div className="flex flex-col gap-3 rounded-[26px] border border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-900/40 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Section-based builder</p>
-                      <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">Modullarni drag & drop bilan tartiblang, har bir modul ichida video, PDF va quiz bloklari yarating.</p>
-                    </div>
-                    <button type="button" onClick={addSection} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-[#F26722] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#E05A17]"><PlusIcon className="h-4 w-4" /> Modul qo‘shish</button>
-                  </div>
-
-                  <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <div className="space-y-4">
-                      {sections.map((section, sectionIndex) => (
-                        <div key={section.id} draggable onDragStart={() => setDragItem({ type: 'section', sectionId: section.id })} onDragOver={e => e.preventDefault()} onDrop={() => { if (dragItem?.type === 'section') moveSection(dragItem.sectionId, section.id); if (dragItem?.type === 'lesson' && dragItem.lessonId) moveLesson(dragItem.sectionId, dragItem.lessonId, section.id); setDragItem(null) }} className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-950/70">
-                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                            <div className="flex min-w-0 flex-1 items-start gap-3">
-                              <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100 text-slate-500 dark:bg-slate-900 dark:text-slate-400"><Bars3Icon className="h-5 w-5" /></div>
-                              <div className="min-w-0 flex-1 space-y-3">
-                                <input value={section.title} onChange={e => updateSection(section.id, { title: e.target.value })} className="w-full border-0 bg-transparent px-0 text-lg font-semibold text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" placeholder={`Modul ${sectionIndex + 1}`} />
-                                <textarea value={section.description} onChange={e => updateSection(section.id, { description: e.target.value })} rows={2} className="w-full resize-none rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 outline-none transition focus:border-[#F26722] dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300" placeholder="Modul uchun qisqa intro yozing" />
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2 sm:justify-end">
-                              <button type="button" onClick={() => duplicateSection(section.id)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#F26722]/30 hover:text-[#F26722] dark:border-slate-800 dark:text-slate-300"><DocumentDuplicateIcon className="h-4 w-4" /> Duplicate</button>
-                              <button type="button" onClick={() => removeSection(section.id)} className="inline-flex items-center gap-2 rounded-2xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-900/10"><TrashIcon className="h-4 w-4" /> O‘chirish</button>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            {(['video', 'material', 'quiz'] as LessonType[]).map(type => {
-                              const meta = getLessonTypeMeta(type)
-                              const Icon = meta.icon
-                              return <button key={type} type="button" onClick={() => addLesson(section.id, type)} className="inline-flex items-center gap-2 rounded-2xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 transition hover:border-[#F26722]/30 hover:bg-[#F26722]/5 dark:border-slate-800 dark:text-slate-200"><Icon className="h-4 w-4" /> {meta.label}</button>
-                            })}
-                          </div>
-
-                          <div className="mt-4 space-y-3">
-                            {section.lessons.length === 0 ? (
-                              <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-6 text-center text-sm text-slate-500 dark:border-slate-800 dark:text-slate-400">Hali lesson yo‘q. Yuqoridagi tugmalardan biri bilan boshlang.</div>
-                            ) : section.lessons.map(lesson => {
-                              const meta = getLessonTypeMeta(lesson.type)
-                              const Icon = meta.icon
-                              const active = selectedLesson?.lessonId === lesson.id
-                              return (
-                                <button key={lesson.id} type="button" draggable onDragStart={() => setDragItem({ type: 'lesson', sectionId: section.id, lessonId: lesson.id })} onDragOver={e => e.preventDefault()} onDrop={() => { if (dragItem?.type === 'lesson' && dragItem.lessonId) moveLesson(dragItem.sectionId, dragItem.lessonId, section.id, lesson.id); setDragItem(null) }} onClick={() => setSelectedLesson({ sectionId: section.id, lessonId: lesson.id })} className={`w-full rounded-2xl border px-4 py-3 text-left transition ${active ? 'border-[#F26722]/40 bg-[#F26722]/5 shadow-sm' : 'border-slate-200 bg-slate-50/70 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900/50 dark:hover:border-slate-700'}`}>
-                                  <div className="flex items-start gap-3">
-                                    <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl ${meta.badge}`}><Icon className="h-5 w-5" /></div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex flex-wrap items-center gap-2">
-                                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{lesson.title || meta.label}</p>
-                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${meta.badge}`}>{meta.label}</span>
-                                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{getLessonSyncLabel(lesson)}</span>
-                                      </div>
-                                      <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{lesson.description || 'Lesson description yoki media maʼlumotlari shu yerda ko‘rinadi.'}</p>
-                                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-slate-500 dark:text-slate-400">
-                                        {lesson.type === 'video' && <span className="inline-flex items-center gap-1"><FilmIcon className="h-3.5 w-3.5" /> {lesson.video_source === 'youtube' ? 'YouTube' : 'Bunny.net'}</span>}
-                                        {lesson.type === 'material' && <span className="inline-flex items-center gap-1"><DocumentTextIcon className="h-3.5 w-3.5" /> {lesson.material_name || 'Material file'}</span>}
-                                        {lesson.type === 'quiz' && <span className="inline-flex items-center gap-1"><QuestionMarkCircleIcon className="h-3.5 w-3.5" /> {lesson.quiz_question_count} savol</span>}
-                                        <span className="inline-flex items-center gap-1"><LockOpenIcon className="h-3.5 w-3.5" /> {lesson.is_free ? 'Preview ochiq' : 'Faqat enrolled'}</span>
-                                      </div>
-                                    </div>
-                                    <ChevronRightIcon className="h-4 w-4 flex-shrink-0 text-slate-400" />
-                                  </div>
-                                </button>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="rounded-[28px] border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-900/40 xl:sticky xl:top-6 xl:self-start">
-                      {lessonLookup ? (
-                        <div className="space-y-4">
-                          <div>
-                            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#F26722]">Lesson editor</p>
-                            <h3 className="mt-2 text-lg font-bold text-slate-900 dark:text-white">{lessonLookup.lesson.title || 'Lesson sozlamalari'}</h3>
-                          </div>
-                          <div className="grid grid-cols-3 gap-2">
-                            {(['video', 'material', 'quiz'] as LessonType[]).map(type => {
-                              const meta = getLessonTypeMeta(type)
-                              const Icon = meta.icon
-                              const active = lessonLookup.lesson.type === type
-                              return <button key={type} type="button" onClick={() => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { type, video_source: type === 'video' ? (lessonLookup.lesson.video_source === 'none' ? 'youtube' : lessonLookup.lesson.video_source) : 'none', status: 'draft' })} className={`rounded-2xl border px-3 py-3 text-xs font-semibold transition ${active ? 'border-[#F26722]/30 bg-[#F26722]/10 text-[#F26722]' : 'border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300'}`}><Icon className="mx-auto mb-1 h-4 w-4" />{meta.label}</button>
-                            })}
-                          </div>
-
-                          <Field label="Lesson sarlavhasi" required>
-                            <input value={lessonLookup.lesson.title} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { title: e.target.value })} className={inputCls} placeholder="Masalan: Hook architecture deep dive" />
-                          </Field>
-                          <Field label="Qisqa tavsif">
-                            <textarea value={lessonLookup.lesson.description} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { description: e.target.value })} rows={4} className={`${inputCls} resize-none`} placeholder="Lesson ichida nimalar bo‘lishini tushuntiring" />
-                          </Field>
-
-                          {lessonLookup.lesson.type === 'video' && (
-                            <>
-                              <Field label="Video source" icon={CloudArrowUpIcon} hint={form.is_paid ? 'Pullik kurslar uchun Bunny.net tavsiya etiladi.' : 'Bepul kurslar uchun YouTube unlisted varianti qulay.'}>
-                                <VideoSourcePicker
-                                  courseId={courseId}
-                                  source={lessonLookup.lesson.video_source}
-                                  videoUrl={lessonLookup.lesson.video_url}
-                                  onSourceChange={source => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_source: source, video_url: '', status: 'draft' })}
-                                  onVideoChange={(url, durationSeconds) => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_url: url, duration_minutes: durationSeconds > 0 ? Math.ceil(durationSeconds / 60) : lessonLookup.lesson.duration_minutes, status: url ? 'ready' : 'draft' })}
-                                  disabled={status === 'saving'}
-                                />
-                              </Field>
-                              <div className="grid gap-4 sm:grid-cols-2">
-                                <Field label="Davomiylik (daq.)" icon={FilmIcon}><input type="number" min={0} value={lessonLookup.lesson.duration_minutes} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { duration_minutes: Number(e.target.value) || 0 })} className={inputCls} /></Field>
-                                <Field label="Ko‘rinish turi" icon={LockOpenIcon}>
-                                  <button type="button" onClick={() => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { is_free: !lessonLookup.lesson.is_free })} className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm font-medium transition ${lessonLookup.lesson.is_free ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200'}`}>
-                                    <span>{lessonLookup.lesson.is_free ? 'Preview ochiq' : 'Faqat enrolled'}</span>
-                                    <div className={`h-6 w-11 rounded-full transition ${lessonLookup.lesson.is_free ? 'bg-[#F26722]' : 'bg-slate-300 dark:bg-slate-700'}`}><div className={`mt-0.5 h-5 w-5 rounded-full bg-white shadow transition ${lessonLookup.lesson.is_free ? 'translate-x-[22px]' : 'translate-x-0.5'}`} /></div>
-                                  </button>
-                                </Field>
-                              </div>
-                            </>
-                          )}
-
-                          {lessonLookup.lesson.type === 'material' && (
-                            <>
-                              <Field label="Material nomi" icon={DocumentTextIcon} hint="Masalan: PDF workbook, cheat sheet yoki project files."><input value={lessonLookup.lesson.material_name} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { material_name: e.target.value, status: e.target.value || lessonLookup.lesson.material_url ? 'ready' : 'draft' })} className={inputCls} placeholder="React Performance Workbook.pdf" /></Field>
-                              <Field label="Material URL" icon={CloudArrowUpIcon} hint="Bunny.net, Supabase yoki public CDN havolasini ulang."><input value={lessonLookup.lesson.material_url} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { material_url: e.target.value, status: e.target.value || lessonLookup.lesson.material_name ? 'ready' : 'draft' })} className={inputCls} placeholder="https://.../workbook.pdf" /></Field>
-                              <div className="rounded-2xl border border-violet-200 bg-violet-50/80 p-4 text-xs leading-relaxed text-violet-700 dark:border-violet-900/60 dark:bg-violet-900/20 dark:text-violet-300">Material lessonlar hozircha studio draft sifatida preview qilinadi. Student-facing renderer ulanganida shu data bilan ishlaydi.</div>
-                            </>
-                          )}
-
-                          {lessonLookup.lesson.type === 'quiz' && (
-                            <>
-                              <Field label="Savollar soni" icon={QuestionMarkCircleIcon} hint="Builder preview uchun minimal quiz info."><input type="number" min={0} value={lessonLookup.lesson.quiz_question_count} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { quiz_question_count: Number(e.target.value) || 0, status: Number(e.target.value) > 0 ? 'ready' : 'draft' })} className={inputCls} /></Field>
-                              <div className="rounded-2xl border border-amber-200 bg-amber-50/80 p-4 text-xs leading-relaxed text-amber-700 dark:border-amber-900/60 dark:bg-amber-900/20 dark:text-amber-300">Quiz blocklar course studio ichida modellashtiriladi. Backend quiz endpointiga ulanadigan keyingi iteratsiya uchun struktura tayyor.</div>
-                            </>
-                          )}
-
-                          <button type="button" onClick={() => removeLesson(lessonLookup.section.id, lessonLookup.lesson.id)} className="inline-flex items-center gap-2 rounded-2xl border border-red-200 px-4 py-3 text-sm font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-900/10"><TrashIcon className="h-4 w-4" /> Lessonni o‘chirish</button>
-                        </div>
-                      ) : (
-                        <div className="flex min-h-[240px] flex-col items-center justify-center text-center">
-                          <PlayCircleIcon className="h-12 w-12 text-slate-300 dark:text-slate-700" />
-                          <p className="mt-4 text-sm font-semibold text-slate-900 dark:text-white">Lesson tanlang</p>
-                          <p className="mt-2 max-w-xs text-xs leading-relaxed text-slate-500 dark:text-slate-400">Chap tarafdan biror lesson kartasini tanlasangiz, shu yerda to‘liq editor ochiladi.</p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {step === 'settings' && (
-                <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                  <div className="space-y-5">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Field label="Til" icon={LanguageIcon}><select value={form.language} onChange={e => updateForm('language', e.target.value)} className={inputCls}>{LANGUAGES.map(language => <option key={language.value} value={language.value}>{language.label}</option>)}</select></Field>
-                      <Field label="Daraja" icon={GlobeAltIcon}><select value={form.level} onChange={e => updateForm('level', e.target.value)} className={inputCls}>{LEVELS.map(level => <option key={level.value} value={level.value}>{level.label}</option>)}</select></Field>
-                    </div>
-
-                    <div className={`${cardCls} p-5`}>
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <p className="text-sm font-semibold text-slate-900 dark:text-white">Monetization</p>
-                          <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">Free kurslar YouTube video bilan ochiq preview bera oladi. Paid kurslar uchun Bunny.net tavsiya etiladi.</p>
-                        </div>
-                        <button type="button" onClick={() => updateForm('is_paid', !form.is_paid)} className={`relative h-7 w-12 rounded-full transition ${form.is_paid ? 'bg-[#F26722]' : 'bg-slate-300 dark:bg-slate-700'}`}><span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow transition ${form.is_paid ? 'left-6' : 'left-1'}`} /></button>
-                      </div>
-                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        <Field label="Narx" icon={CurrencyDollarIcon} hint={form.is_paid ? 'So‘m ko‘rinishida kiriting.' : 'Bepul kurs uchun 0 bo‘lib qoladi.'}><input type="number" value={form.price} onChange={e => updateForm('price', e.target.value)} disabled={!form.is_paid} className={`${inputCls} ${!form.is_paid ? 'opacity-60' : ''}`} min={0} step={1000} /></Field>
-                        <Field label="Publish status" icon={SparklesIcon}><button type="button" onClick={() => updateForm('is_published', !form.is_published)} className={`flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-sm font-semibold transition ${form.is_published ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200'}`}><span>{form.is_published ? 'Publish tayyor' : 'Draft holatda'}</span><CheckCircleIcon className="h-4 w-4" /></button></Field>
-                      </div>
-                    </div>
-
-                    <Field label="Teglar" icon={HashtagIcon} hint="UI/UX, React, Design System kabi search-friendly teglar qo‘shing.">
-                      <div className="rounded-[26px] border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
-                        <div className="flex flex-wrap gap-2">
-                          {form.tags.map(tag => <span key={tag} className="inline-flex items-center gap-2 rounded-full bg-[#F26722]/10 px-3 py-1.5 text-xs font-semibold text-[#F26722]">#{tag}<button type="button" onClick={() => updateForm('tags', form.tags.filter(item => item !== tag))}><TrashIcon className="h-3.5 w-3.5" /></button></span>)}
-                        </div>
-                        <div className="mt-3 flex gap-2">
-                          <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTagAdd() } }} className="flex-1 border-0 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" placeholder="Yangi teg yozing va Enter bosing" />
-                          <button type="button" onClick={handleTagAdd} className="inline-flex items-center gap-2 rounded-2xl bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-200"><PlusIcon className="h-4 w-4" /> Qo‘shish</button>
-                        </div>
-                      </div>
-                    </Field>
-                  </div>
-
-                  <div className="space-y-4 rounded-[28px] border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-900/40">
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F26722]">Strategic notes</p>
-                    <div className="space-y-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
-                      <p className="flex gap-2"><CloudArrowUpIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#F26722]" /> Video upload status video editor ichida ko‘rinadi va sync paytida backend lessonlarga yoziladi.</p>
-                      <p className="flex gap-2"><DocumentTextIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#F26722]" /> Material va quiz bloklari builder draft sifatida saqlanadi — native mobile flow uchun tayyor data modeli sifatida ishlaydi.</p>
-                      <p className="flex gap-2"><EyeIcon className="mt-0.5 h-4 w-4 flex-shrink-0 text-[#F26722]" /> Preview step orqali publishdan oldin to‘liq tuzilmani tekshirib chiqing.</p>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {step === 'preview' && (
-                <div className="space-y-5">
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                    <MetricCard icon={AcademicCapIcon} label="Course status" value={form.is_published ? 'Published' : 'Draft'} />
-                    <MetricCard icon={FilmIcon} label="Video lessons" value={String(sections.reduce((sum, section) => sum + section.lessons.filter(lesson => lesson.type === 'video').length, 0))} tone="from-blue-500/10 to-cyan-500/10" />
-                    <MetricCard icon={DocumentTextIcon} label="Materials" value={String(sections.reduce((sum, section) => sum + section.lessons.filter(lesson => lesson.type === 'material').length, 0))} tone="from-violet-500/10 to-fuchsia-500/10" />
-                    <MetricCard icon={QuestionMarkCircleIcon} label="Quizzes" value={String(sections.reduce((sum, section) => sum + section.lessons.filter(lesson => lesson.type === 'quiz').length, 0))} tone="from-amber-500/10 to-yellow-500/10" />
-                  </div>
-
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
-                    <div className="space-y-4">
-                      {sections.map((section, index) => (
-                        <div key={section.id} className="rounded-[28px] border border-slate-200 bg-white p-5 dark:border-slate-800 dark:bg-slate-950/70">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[#F26722]/10 text-[#F26722] font-semibold">{index + 1}</div>
-                            <div>
-                              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{section.title || `Modul ${index + 1}`}</h3>
-                              <p className="text-sm text-slate-500 dark:text-slate-400">{section.description || 'Qisqa modul intro kiritilmagan.'}</p>
-                            </div>
-                          </div>
-                          <div className="mt-4 space-y-3">
-                            {section.lessons.map((lesson, lessonIndex) => {
-                              const meta = getLessonTypeMeta(lesson.type)
-                              const Icon = meta.icon
-                              return (
-                                <div key={lesson.id} className="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-900/50">
-                                  <div className={`flex h-10 w-10 items-center justify-center rounded-2xl ${meta.badge}`}><Icon className="h-5 w-5" /></div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="text-sm font-semibold text-slate-900 dark:text-white">{lessonIndex + 1}. {lesson.title || meta.label}</p>
-                                      <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${meta.badge}`}>{meta.label}</span>
-                                      <span className="rounded-full bg-slate-200 px-2.5 py-1 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{getLessonSyncLabel(lesson)}</span>
-                                    </div>
-                                    <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{lesson.description || 'No lesson description yet.'}</p>
-                                  </div>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="space-y-4 rounded-[28px] border border-slate-200 bg-slate-50/80 p-5 dark:border-slate-800 dark:bg-slate-900/40 xl:sticky xl:top-6 xl:self-start">
-                      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F26722]">Validation</p>
-                      {publishErrors.length === 0 ? (
-                        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-900/20 dark:text-emerald-300"><p className="inline-flex items-center gap-2 font-semibold"><CheckCircleIcon className="h-4 w-4" /> Publish uchun tayyor</p><p className="mt-2 text-xs leading-relaxed">Asosiy maydonlar to‘ldirilgan. Endi kursni draft yoki publish rejimida saqlashingiz mumkin.</p></div>
-                      ) : (
-                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-sm text-red-700 dark:border-red-900/60 dark:bg-red-900/20 dark:text-red-300"><p className="inline-flex items-center gap-2 font-semibold"><ExclamationTriangleIcon className="h-4 w-4" /> Tekshirish kerak</p><ul className="mt-3 space-y-2 text-xs leading-relaxed">{publishErrors.map(error => <li key={error}>• {error}</li>)}</ul></div>
-                      )}
-
-                      <div className="rounded-2xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-950">
-                        <p className="text-sm font-semibold text-slate-900 dark:text-white">Preview snapshot</p>
-                        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800">
-                          <div className="aspect-[16/9] bg-gradient-to-br from-[#F26722] via-[#FF9F67] to-[#1E293B]">{form.thumbnail_url ? <img src={form.thumbnail_url} alt={form.title || 'Course'} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-white/80"><PhotoIcon className="h-16 w-16" /></div>}</div>
-                          <div className="space-y-3 p-4">
-                            <div className="flex flex-wrap gap-2"><span className="rounded-full bg-[#F26722]/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#F26722]">{form.is_paid ? 'Paid course' : 'Free course'}</span><span className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:bg-slate-800 dark:text-slate-400">{form.language.toUpperCase()}</span></div>
-                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{form.title || 'Course title'}</h3>
-                            <p className="text-sm leading-relaxed text-slate-500 dark:text-slate-400">{form.description || 'Course description preview'}</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
+      {/* Status message */}
+      <AnimatePresence>
+        {message && (status === 'error' || status === 'saved') && (
+          <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden pt-3">
+            <div className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm ${status === 'error' ? 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-900/20 dark:text-red-300' : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-900/20 dark:text-emerald-300'}`}>
+              {status === 'error' ? <ExclamationTriangleIcon className="h-4 w-4 flex-shrink-0" /> : <CheckCircleIcon className="h-4 w-4 flex-shrink-0" />}
+              <span className="flex-1">{message}</span>
+              <button type="button" onClick={() => { setMessage(''); setStatus('ready') }} className="flex-shrink-0"><XMarkIcon className="h-4 w-4" /></button>
             </div>
           </motion.div>
-        </main>
+        )}
+      </AnimatePresence>
 
-        <aside className="hidden xl:block xl:sticky xl:top-6 xl:self-start">
-          <div className={`${cardCls} overflow-hidden`}>
-            <div className="border-b border-slate-200/80 px-5 py-4 dark:border-slate-800">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F26722]">Student preview</p>
-              <h3 className="mt-2 text-lg font-bold text-slate-900 dark:text-white">Mini layout</h3>
-            </div>
-            <div className="p-4">
-              <div className="overflow-hidden rounded-[26px] border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-                <div className="aspect-[4/3] bg-gradient-to-br from-[#F26722] via-[#FF8A4C] to-[#1E293B]">{form.thumbnail_url ? <img src={form.thumbnail_url} alt={form.title || 'Preview'} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-white/80"><PhotoIcon className="h-16 w-16" /></div>}</div>
-                <div className="space-y-3 p-4">
-                  <div className="flex flex-wrap gap-2">{(form.tags.length ? form.tags.slice(0, 3) : ['education', 'course']).map(tag => <span key={tag} className="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:bg-slate-800 dark:text-slate-400">#{tag}</span>)}</div>
-                  <h4 className="text-base font-semibold text-slate-900 dark:text-white">{form.title || 'Kurs preview'}</h4>
-                  <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400"><span>{sections.length} modul</span><span>{totalLessons} lesson</span></div>
-                  <button type="button" onClick={() => setStep('preview')} className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#F26722] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#E05A17]"><EyeIcon className="h-4 w-4" /> Full preview</button>
+      {/* Mobile save buttons */}
+      <div className="flex gap-2 pt-3 sm:hidden">
+        <button type="button" onClick={() => saveCourse(false)} disabled={status === 'saving'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white py-2.5 text-xs font-semibold text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+          <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Draft saqlash
+        </button>
+        <button type="button" onClick={() => saveCourse(true)} disabled={status === 'saving'} className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-[#F26722] py-2.5 text-xs font-semibold text-white shadow-lg shadow-[#F26722]/20 disabled:opacity-60">
+          <SparklesIcon className="h-3.5 w-3.5" /> Publish
+        </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════════
+          MAIN LAYOUT — sidebar + content + optional preview
+         ═══════════════════════════════════════════════════════════════════ */}
+      <div className="grid gap-5 pt-5 pb-8 lg:grid-cols-[260px_minmax(0,1fr)] xl:grid-cols-[260px_minmax(0,1fr)_300px]">
+
+        {/* ── LEFT SIDEBAR — steps + metrics ── */}
+        <aside className={`${mobileSidebarOpen ? 'block' : 'hidden'} lg:block space-y-4 lg:sticky lg:top-16 lg:self-start`}>
+          {/* Step navigation */}
+          <nav className="space-y-2">
+            {STEP_ITEMS.map((item) => {
+              const Icon = item.icon
+              const active = step === item.id
+              const completed = stepCompletion[item.id]
+              return (
+                <button key={item.id} type="button" onClick={() => { setStep(item.id); setMobileSidebarOpen(false) }} className={`group flex w-full items-center gap-3 rounded-2xl px-3.5 py-3 text-left transition ${active ? 'bg-[#F26722]/8 dark:bg-[#F26722]/10' : 'hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}>
+                  <div className={`flex h-9 w-9 items-center justify-center rounded-xl text-sm font-bold transition ${active ? 'bg-[#F26722] text-white shadow-lg shadow-[#F26722]/25' : completed ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400 group-hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-500'}`}>
+                    {completed && !active ? <CheckCircleIcon className="h-4 w-4" /> : <Icon className="h-4 w-4" />}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className={`text-sm font-semibold ${active ? 'text-[#F26722]' : 'text-slate-700 dark:text-slate-200'}`}>{item.title}</p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500">{item.description}</p>
+                  </div>
+                  {active && <div className="h-5 w-1 rounded-full bg-[#F26722]" />}
+                </button>
+              )
+            })}
+          </nav>
+
+          {/* Metrics */}
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-900/40">
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { icon: ListBulletIcon, label: 'Modullar', value: sections.length, color: 'text-[#F26722]' },
+                { icon: PlayCircleIcon, label: 'Darslar', value: totalLessons, color: 'text-blue-500' },
+                { icon: CheckCircleIcon, label: 'Tayyor', value: readyLessons, color: 'text-emerald-500' },
+                { icon: DocumentDuplicateIcon, label: 'Draft', value: draftOnlyCount, color: 'text-violet-500' },
+              ].map(m => (
+                <div key={m.label} className="rounded-xl bg-white p-2.5 dark:bg-slate-950/70">
+                  <m.icon className={`h-4 w-4 ${m.color}`} />
+                  <p className="mt-1.5 text-lg font-bold text-slate-900 dark:text-white">{m.value}</p>
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">{m.label}</p>
                 </div>
-              </div>
+              ))}
             </div>
           </div>
         </aside>
+
+        {/* ── MAIN CONTENT ── */}
+        <main className="min-w-0 space-y-5">
+
+          {/* ────────────────────────────────────────────────────────────────
+              STEP 1: BASICS
+             ──────────────────────────────────────────────────────────────── */}
+          {step === 'basics' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+              {/* Course title — hero input */}
+              <div className={`${cardCls} overflow-hidden`}>
+                <div className="bg-gradient-to-r from-[#F26722]/5 to-transparent px-5 py-4 dark:from-[#F26722]/10">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#F26722]">Kurs ma'lumotlari</p>
+                </div>
+                <div className="space-y-5 p-5">
+                  <Field label="Kurs sarlavhasi" icon={AcademicCapIcon} required hint="Qisqa, aniq va professional ko'rinadigan nom.">
+                    <input value={form.title} onChange={e => updateForm('title', e.target.value)} placeholder="Masalan: Python — noldan professional darajaga" className={inputCls} maxLength={120} />
+                  </Field>
+                  <Field label="Tavsif" icon={DocumentTextIcon} required hint="Talabalar nimani o'rganadi, kimlar uchun va natija qanday bo'ladi.">
+                    <textarea value={form.description} onChange={e => updateForm('description', e.target.value)} rows={5} placeholder="Kurs yakunida talabalar real loyiha yig'a oladi, o'z portfolio-sini boyitadi va zamonaviy stack bilan ishlashni o'rganadi..." className={`${inputCls} resize-none`} />
+                    <div className="flex justify-end">
+                      <span className={`text-[11px] ${form.description.length >= 40 ? 'text-emerald-500' : 'text-slate-400'}`}>{form.description.length} / 40+</span>
+                    </div>
+                  </Field>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Kategoriya" icon={ListBulletIcon} required>
+                      <select value={form.category_id} onChange={e => updateForm('category_id', e.target.value)} className={inputCls}>
+                        <option value="">Kategoriya tanlang</option>
+                        {categories.map(category => <option key={category.id} value={category.id}>{category.name}</option>)}
+                      </select>
+                    </Field>
+                    <Field label="Daraja" icon={GlobeAltIcon}>
+                      <select value={form.level} onChange={e => updateForm('level', e.target.value)} className={inputCls}>
+                        {LEVELS.map(level => <option key={level.value} value={level.value}>{level.label}</option>)}
+                      </select>
+                    </Field>
+                  </div>
+                </div>
+              </div>
+
+              {/* Thumbnail upload */}
+              <div className={`${cardCls} overflow-hidden`}>
+                <div className="bg-gradient-to-r from-violet-500/5 to-transparent px-5 py-4 dark:from-violet-500/10">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-600 dark:text-violet-400">Muqova rasmi</p>
+                </div>
+                <div className="p-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-3">
+                      <FileUploadWidget
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        courseId={courseId}
+                        folder="thumbnails"
+                        onUploaded={(url) => updateForm('thumbnail_url', url)}
+                        existingUrl={form.thumbnail_url}
+                        existingName={form.thumbnail_url ? 'course-thumbnail' : undefined}
+                        variant="image"
+                        label="Muqova rasm yuklang"
+                        hint="JPG, PNG, WebP · 16:9 nisbat tavsiya etiladi"
+                        maxSizeMB={10}
+                      />
+                      <p className="text-xs text-slate-400 dark:text-slate-500">yoki URL kiriting:</p>
+                      <input type="url" value={form.thumbnail_url} onChange={e => updateForm('thumbnail_url', e.target.value)} placeholder="https://cdn.bunny.net/..." className={inputCls} />
+                    </div>
+                    {/* Live preview */}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+                      <div className="aspect-video overflow-hidden rounded-xl bg-gradient-to-br from-[#F26722]/20 via-[#FF8A4C]/10 to-slate-100 dark:to-slate-900">
+                        {form.thumbnail_url ? <img src={form.thumbnail_url} alt={form.title || 'Preview'} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><PhotoIcon className="h-12 w-12 text-slate-300 dark:text-slate-600" /></div>}
+                      </div>
+                      <div className="mt-3 space-y-1.5">
+                        <div className="flex gap-2">
+                          <span className="rounded-full bg-[#F26722]/10 px-2 py-0.5 text-[10px] font-semibold text-[#F26722]">{form.is_paid ? 'Pullik' : 'Bepul'}</span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">{LEVELS.find(l => l.value === form.level)?.label}</span>
+                        </div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{form.title || 'Kurs nomi'}</p>
+                        <p className="line-clamp-2 text-xs text-slate-500 dark:text-slate-400">{form.description || 'Kurs tavsifi...'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Next step */}
+              <button type="button" onClick={() => setStep('curriculum')} className="inline-flex items-center gap-2 rounded-xl bg-[#F26722] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-[#F26722]/20 transition hover:bg-[#E05A17]">
+                Davom etish <ChevronRightIcon className="h-4 w-4" />
+              </button>
+            </motion.div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              STEP 2: CURRICULUM — sections & lessons
+             ──────────────────────────────────────────────────────────────── */}
+          {step === 'curriculum' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+              {/* Toolbar */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex-1">
+                  <h2 className="text-lg font-bold text-slate-900 dark:text-white">Curriculum</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{sections.length} modul · {totalLessons} dars</p>
+                </div>
+                <button type="button" onClick={addSection} className="inline-flex items-center gap-2 rounded-xl bg-[#F26722] px-3.5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-[#F26722]/20 transition hover:bg-[#E05A17]">
+                  <PlusIcon className="h-3.5 w-3.5" /> Modul qo'shish
+                </button>
+              </div>
+
+              {/* Sections */}
+              <div className="space-y-4">
+                {sections.map((section, sectionIndex) => (
+                  <div
+                    key={section.id}
+                    draggable
+                    onDragStart={() => setDragItem({ type: 'section', sectionId: section.id })}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => { if (dragItem?.type === 'section') moveSection(dragItem.sectionId, section.id); if (dragItem?.type === 'lesson' && dragItem.lessonId) moveLesson(dragItem.sectionId, dragItem.lessonId, section.id); setDragItem(null) }}
+                    className={`${cardCls} overflow-hidden transition-shadow hover:shadow-lg`}
+                  >
+                    {/* Section header */}
+                    <div className="border-b border-slate-100 dark:border-slate-800/60 px-4 py-3 sm:px-5">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1 flex h-9 w-9 cursor-grab items-center justify-center rounded-xl bg-slate-100 text-slate-400 transition hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-500 active:cursor-grabbing">
+                          <ArrowsUpDownIcon className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#F26722]/10 text-[10px] font-bold text-[#F26722]">{sectionIndex + 1}</span>
+                            <input value={section.title} onChange={e => updateSection(section.id, { title: e.target.value })} className="flex-1 border-0 bg-transparent text-sm font-bold text-slate-900 outline-none placeholder:text-slate-400 dark:text-white" placeholder={`Modul ${sectionIndex + 1}`} />
+                          </div>
+                          <textarea value={section.description} onChange={e => updateSection(section.id, { description: e.target.value })} rows={1} className="w-full resize-none border-0 bg-transparent text-xs leading-relaxed text-slate-500 outline-none placeholder:text-slate-400 dark:text-slate-400" placeholder="Modul haqida qisqa izoh..." />
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button type="button" onClick={() => duplicateSection(section.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200" title="Duplicate">
+                            <DocumentDuplicateIcon className="h-4 w-4" />
+                          </button>
+                          <button type="button" onClick={() => removeSection(section.id)} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-900/20 dark:hover:text-red-400" title="O'chirish">
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Lessons list */}
+                    <div className="p-3 sm:p-4">
+                      {section.lessons.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-slate-200 px-4 py-6 text-center dark:border-slate-700">
+                          <BookOpenIcon className="mx-auto h-7 w-7 text-slate-300 dark:text-slate-600" />
+                          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">Darslar qo'shilmagan</p>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          {section.lessons.map((lesson, lessonIndex) => {
+                            const meta = getLessonTypeMeta(lesson.type)
+                            const LessonIcon = meta.icon
+                            const active = selectedLesson?.lessonId === lesson.id
+                            const ready = isLessonReady(lesson)
+                            return (
+                              <button
+                                key={lesson.id}
+                                type="button"
+                                draggable
+                                onDragStart={(e) => { e.stopPropagation(); setDragItem({ type: 'lesson', sectionId: section.id, lessonId: lesson.id }) }}
+                                onDragOver={e => e.preventDefault()}
+                                onDrop={(e) => { e.stopPropagation(); if (dragItem?.type === 'lesson' && dragItem.lessonId) moveLesson(dragItem.sectionId, dragItem.lessonId, section.id, lesson.id); setDragItem(null) }}
+                                onClick={() => { setSelectedLesson({ sectionId: section.id, lessonId: lesson.id }); setMobileEditorOpen(true) }}
+                                className={`group flex w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition ${active ? 'border-[#F26722]/30 bg-[#F26722]/5 shadow-sm' : 'border-slate-100 bg-slate-50/50 hover:border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900/30 dark:hover:border-slate-700'}`}
+                              >
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${meta.badge}`}>
+                                  <LessonIcon className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-semibold text-slate-400">{lessonIndex + 1}.</span>
+                                    <p className="truncate text-sm font-medium text-slate-900 dark:text-white">{lesson.title || meta.label}</p>
+                                  </div>
+                                  <div className="mt-0.5 flex items-center gap-2 text-[10px]">
+                                    <span className={`rounded-full px-1.5 py-0.5 ${meta.badge}`}>{meta.label}</span>
+                                    <span className={ready ? 'text-emerald-500' : 'text-slate-400'}>{ready ? '✓ Tayyor' : getLessonSyncLabel(lesson)}</span>
+                                    {lesson.is_free && <span className="text-amber-500">👁 Preview</span>}
+                                  </div>
+                                </div>
+                                <ChevronRightIcon className="h-3.5 w-3.5 flex-shrink-0 text-slate-300 transition group-hover:text-slate-500 dark:text-slate-600" />
+                              </button>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Add lesson buttons */}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {(['video', 'material', 'quiz'] as LessonType[]).map(type => {
+                          const meta = getLessonTypeMeta(type)
+                          const Icon = meta.icon
+                          return (
+                            <button key={type} type="button" onClick={() => addLesson(section.id, type)} className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-200 px-2.5 py-1.5 text-[11px] font-semibold text-slate-500 transition hover:border-[#F26722]/30 hover:bg-[#F26722]/5 hover:text-[#F26722] dark:border-slate-700 dark:text-slate-400">
+                              <Icon className="h-3.5 w-3.5" /> {meta.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Next/Prev buttons */}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setStep('basics')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
+                  <ArrowLeftIcon className="h-3.5 w-3.5" /> Asosiy
+                </button>
+                <button type="button" onClick={() => setStep('settings')} className="inline-flex items-center gap-2 rounded-xl bg-[#F26722] px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-[#F26722]/20 transition hover:bg-[#E05A17]">
+                  Sozlamalar <ChevronRightIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              STEP 3: SETTINGS — pricing, language, tags
+             ──────────────────────────────────────────────────────────────── */}
+          {step === 'settings' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+              {/* Monetization */}
+              <div className={`${cardCls} overflow-hidden`}>
+                <div className="flex items-center justify-between bg-gradient-to-r from-amber-500/5 to-transparent px-5 py-4 dark:from-amber-500/10">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">Monetizatsiya</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Free kurslar YouTube bilan, Paid kurslar Bunny.net bilan ishlaydi.</p>
+                  </div>
+                  <button type="button" onClick={() => updateForm('is_paid', !form.is_paid)} className={`relative h-7 w-12 rounded-full transition ${form.is_paid ? 'bg-[#F26722]' : 'bg-slate-300 dark:bg-slate-700'}`}>
+                    <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all ${form.is_paid ? 'left-6' : 'left-1'}`} />
+                  </button>
+                </div>
+                <div className="grid gap-4 p-5 sm:grid-cols-2">
+                  <Field label="Narx" icon={CurrencyDollarIcon} hint={form.is_paid ? "So'm da kiriting" : 'Bepul kurs'}>
+                    <input type="number" value={form.price} onChange={e => updateForm('price', e.target.value)} disabled={!form.is_paid} className={`${inputCls} ${!form.is_paid ? 'opacity-50' : ''}`} min={0} step={1000} />
+                  </Field>
+                  <Field label="Til" icon={LanguageIcon}>
+                    <select value={form.language} onChange={e => updateForm('language', e.target.value)} className={inputCls}>
+                      {LANGUAGES.map(language => <option key={language.value} value={language.value}>{language.label}</option>)}
+                    </select>
+                  </Field>
+                </div>
+              </div>
+
+              {/* Tags */}
+              <div className={`${cardCls} overflow-hidden`}>
+                <div className="bg-gradient-to-r from-blue-500/5 to-transparent px-5 py-4 dark:from-blue-500/10">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">Teglar</p>
+                </div>
+                <div className="p-5">
+                  <div className="flex flex-wrap gap-2">
+                    {form.tags.map(tag => (
+                      <span key={tag} className="inline-flex items-center gap-1.5 rounded-full bg-[#F26722]/10 px-3 py-1.5 text-xs font-semibold text-[#F26722]">
+                        #{tag}
+                        <button type="button" onClick={() => updateForm('tags', form.tags.filter(t => t !== tag))}>
+                          <XMarkIcon className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <input value={tagInput} onChange={e => setTagInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleTagAdd() } }} className={`${inputCls} flex-1`} placeholder="Yangi teg yozing..." />
+                    <button type="button" onClick={handleTagAdd} className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-100 text-slate-600 transition hover:bg-[#F26722]/10 hover:text-[#F26722] dark:bg-slate-800 dark:text-slate-300">
+                      <PlusIcon className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Navigation */}
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setStep('curriculum')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
+                  <ArrowLeftIcon className="h-3.5 w-3.5" /> Curriculum
+                </button>
+                <button type="button" onClick={() => setStep('preview')} className="inline-flex items-center gap-2 rounded-xl bg-[#F26722] px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-[#F26722]/20 transition hover:bg-[#E05A17]">
+                  Preview <EyeIcon className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+
+          {/* ────────────────────────────────────────────────────────────────
+              STEP 4: PREVIEW — full course overview + validation
+             ──────────────────────────────────────────────────────────────── */}
+          {step === 'preview' && (
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
+              {/* Metrics row */}
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                {[
+                  { icon: AcademicCapIcon, label: 'Status', value: form.is_published ? 'Published' : 'Draft', color: 'from-[#F26722]/10 to-amber-500/10' },
+                  { icon: FilmIcon, label: 'Video', value: String(sections.reduce((s, sec) => s + sec.lessons.filter(l => l.type === 'video').length, 0)), color: 'from-blue-500/10 to-cyan-500/10' },
+                  { icon: DocumentTextIcon, label: 'Material', value: String(sections.reduce((s, sec) => s + sec.lessons.filter(l => l.type === 'material').length, 0)), color: 'from-violet-500/10 to-fuchsia-500/10' },
+                  { icon: QuestionMarkCircleIcon, label: 'Quiz', value: String(sections.reduce((s, sec) => s + sec.lessons.filter(l => l.type === 'quiz').length, 0)), color: 'from-amber-500/10 to-yellow-500/10' },
+                ].map(m => (
+                  <div key={m.label} className={`rounded-2xl border border-slate-200/80 bg-gradient-to-br ${m.color} p-3.5 dark:border-slate-800`}>
+                    <m.icon className="h-4 w-4 text-[#F26722]" />
+                    <p className="mt-2 text-xl font-bold text-slate-900 dark:text-white">{m.value}</p>
+                    <p className="text-[10px] uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">{m.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Validation card */}
+              <div className={`${cardCls} p-5`}>
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#F26722]">Publish validation</p>
+                {publishErrors.length === 0 ? (
+                  <div className="mt-3 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-900 dark:bg-emerald-900/20">
+                    <CheckCircleIcon className="mt-0.5 h-5 w-5 flex-shrink-0 text-emerald-500" />
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">Publish uchun tayyor ✓</p>
+                      <p className="mt-1 text-xs text-emerald-600 dark:text-emerald-400">Barcha majburiy maydonlar to'ldirilgan. Kursni publish qiling!</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 rounded-xl border border-red-200 bg-red-50/80 p-4 dark:border-red-900 dark:bg-red-900/20">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-300">
+                      <ExclamationTriangleIcon className="h-4 w-4" /> Tekshirish kerak ({publishErrors.length})
+                    </div>
+                    <ul className="mt-2 space-y-1.5 text-xs text-red-600 dark:text-red-400">
+                      {publishErrors.map(err => <li key={err} className="flex items-start gap-2"><span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-red-400" />{err}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {/* Course structure preview */}
+              <div className="space-y-3">
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Kurs tuzilmasi</h3>
+                {sections.map((section, sIndex) => (
+                  <div key={section.id} className={`${cardCls} overflow-hidden`}>
+                    <div className="flex items-center gap-3 border-b border-slate-100 px-4 py-3 dark:border-slate-800/60">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#F26722]/10 text-xs font-bold text-[#F26722]">{sIndex + 1}</span>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900 dark:text-white">{section.title || `Modul ${sIndex + 1}`}</p>
+                        <p className="text-[11px] text-slate-400">{section.lessons.length} dars</p>
+                      </div>
+                    </div>
+                    {section.lessons.length > 0 && (
+                      <div className="divide-y divide-slate-50 dark:divide-slate-800/40">
+                        {section.lessons.map((lesson, lIndex) => {
+                          const meta = getLessonTypeMeta(lesson.type)
+                          const LIcon = meta.icon
+                          const ready = isLessonReady(lesson)
+                          return (
+                            <div key={lesson.id} className="flex items-center gap-3 px-4 py-2.5">
+                              <div className={`flex h-7 w-7 items-center justify-center rounded-lg ${meta.badge}`}><LIcon className="h-3.5 w-3.5" /></div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate text-xs font-medium text-slate-900 dark:text-white">{lIndex + 1}. {lesson.title || meta.label}</p>
+                              </div>
+                              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${ready ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' : 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400'}`}>
+                                {ready ? '✓' : '…'}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Final action */}
+              <div className="flex flex-wrap gap-3">
+                <button type="button" onClick={() => setStep('settings')} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300">
+                  <ArrowLeftIcon className="h-3.5 w-3.5" /> Sozlamalar
+                </button>
+                <button type="button" onClick={() => saveCourse(false)} disabled={status === 'saving'} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:border-[#F26722]/30 hover:text-[#F26722] disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                  <ArrowDownTrayIcon className="h-3.5 w-3.5" /> Draft saqlash
+                </button>
+                <button type="button" onClick={() => saveCourse(true)} disabled={status === 'saving' || publishErrors.length > 0} className="inline-flex items-center gap-2 rounded-xl bg-[#F26722] px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-[#F26722]/20 transition hover:bg-[#E05A17] disabled:opacity-50">
+                  {status === 'saving' ? <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" /> : <SparklesIcon className="h-3.5 w-3.5" />} Publish course
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </main>
+
+        {/* ── RIGHT PANEL — lesson editor (desktop always, mobile overlay) ── */}
+        <aside className={`${step === 'curriculum' ? 'block' : 'hidden xl:block'}`}>
+          {/* Mobile overlay */}
+          <AnimatePresence>
+            {mobileEditorOpen && lessonLookup && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-40 bg-black/40 xl:hidden" onClick={() => setMobileEditorOpen(false)} />
+            )}
+          </AnimatePresence>
+
+          <div className={`
+            ${mobileEditorOpen && lessonLookup ? 'fixed inset-x-0 bottom-0 z-50 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl dark:bg-slate-950 xl:static xl:z-auto xl:max-h-none xl:rounded-t-none xl:shadow-none' : 'hidden xl:block'}
+            xl:sticky xl:top-16 xl:self-start
+          `}>
+            {lessonLookup ? (
+              <div className="space-y-4 p-4 xl:rounded-2xl xl:border xl:border-slate-200/80 xl:bg-slate-50/70 xl:dark:border-slate-800 xl:dark:bg-slate-900/40">
+                {/* Close on mobile */}
+                <div className="flex items-center justify-between xl:hidden">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#F26722]">Lesson editor</p>
+                  <button type="button" onClick={() => setMobileEditorOpen(false)} className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-100 dark:bg-slate-800"><XMarkIcon className="h-4 w-4" /></button>
+                </div>
+                <div className="hidden xl:block">
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[#F26722]">Lesson editor</p>
+                </div>
+
+                {/* Lesson type selector */}
+                <div className="grid grid-cols-3 gap-1.5 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+                  {(['video', 'material', 'quiz'] as LessonType[]).map(type => {
+                    const meta = getLessonTypeMeta(type)
+                    const Icon = meta.icon
+                    const active = lessonLookup.lesson.type === type
+                    return (
+                      <button key={type} type="button" onClick={() => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { type, video_source: type === 'video' ? (lessonLookup.lesson.video_source === 'none' ? 'youtube' : lessonLookup.lesson.video_source) : 'none', status: 'draft' })} className={`flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold transition ${active ? 'bg-white text-[#F26722] shadow-sm dark:bg-slate-900' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'}`}>
+                        <Icon className="h-3.5 w-3.5" /> {meta.label.split(' ')[0]}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Title & description */}
+                <Field label="Sarlavha" required>
+                  <input value={lessonLookup.lesson.title} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { title: e.target.value })} className={inputCls} placeholder="Dars sarlavhasi" />
+                </Field>
+                <Field label="Tavsif">
+                  <textarea value={lessonLookup.lesson.description} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { description: e.target.value })} rows={3} className={`${inputCls} resize-none`} placeholder="Bu darsda nimalar o'rganiladi..." />
+                </Field>
+
+                {/* ── VIDEO EDITOR ── */}
+                {lessonLookup.lesson.type === 'video' && (
+                  <>
+                    <Field label="Video" icon={CloudArrowUpIcon} hint={form.is_paid ? 'Pullik kurs — Bunny.net tavsiya etiladi' : 'Bepul kurs — YouTube qulay'}>
+                      <VideoSourcePicker
+                        courseId={courseId}
+                        source={lessonLookup.lesson.video_source}
+                        videoUrl={lessonLookup.lesson.video_url}
+                        onSourceChange={source => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_source: source, video_url: '', status: 'draft' })}
+                        onVideoChange={(url, durationSeconds) => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_url: url, duration_minutes: durationSeconds > 0 ? Math.ceil(durationSeconds / 60) : lessonLookup.lesson.duration_minutes, status: url ? 'ready' : 'draft' })}
+                        disabled={status === 'saving'}
+                      />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Davomiylik (daq.)" icon={FilmIcon}>
+                        <input type="number" min={0} value={lessonLookup.lesson.duration_minutes} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { duration_minutes: Number(e.target.value) || 0 })} className={inputCls} />
+                      </Field>
+                      <Field label="Preview" icon={lessonLookup.lesson.is_free ? LockOpenIcon : LockClosedIcon}>
+                        <button type="button" onClick={() => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { is_free: !lessonLookup.lesson.is_free })} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-xs font-semibold transition ${lessonLookup.lesson.is_free ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-900/20 dark:text-amber-300' : 'border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'}`}>
+                          <span>{lessonLookup.lesson.is_free ? 'Ochiq' : 'Yopiq'}</span>
+                          <div className={`h-5 w-9 rounded-full transition ${lessonLookup.lesson.is_free ? 'bg-[#F26722]' : 'bg-slate-300 dark:bg-slate-700'}`}><div className={`mt-0.5 h-4 w-4 rounded-full bg-white shadow transition ${lessonLookup.lesson.is_free ? 'translate-x-[18px]' : 'translate-x-0.5'}`} /></div>
+                        </button>
+                      </Field>
+                    </div>
+                  </>
+                )}
+
+                {/* ── MATERIAL EDITOR ── */}
+                {lessonLookup.lesson.type === 'material' && (
+                  <>
+                    <Field label="Material nomi" icon={DocumentTextIcon} hint="PDF, workbook yoki cheat sheet nomi">
+                      <input value={lessonLookup.lesson.material_name} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { material_name: e.target.value, status: e.target.value || lessonLookup.lesson.material_url ? 'ready' : 'draft' })} className={inputCls} placeholder="React Performance Workbook.pdf" />
+                    </Field>
+                    <Field label="Fayl yuklash" icon={CloudArrowUpIcon} hint="PDF, DOC, PPTX yoki rasm yuklang">
+                      <FileUploadWidget
+                        accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/*"
+                        courseId={courseId}
+                        folder="materials"
+                        onUploaded={(url, name) => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { material_url: url, material_name: name || lessonLookup.lesson.material_name, status: url ? 'ready' : 'draft' })}
+                        existingUrl={lessonLookup.lesson.material_url}
+                        existingName={lessonLookup.lesson.material_name}
+                        variant="document"
+                        maxSizeMB={50}
+                      />
+                    </Field>
+                    {!lessonLookup.lesson.material_url && (
+                      <Field label="yoki URL kiriting" hint="Public CDN yoki cloud havolasini ulang">
+                        <input value={lessonLookup.lesson.material_url} onChange={e => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { material_url: e.target.value, status: e.target.value ? 'ready' : 'draft' })} className={inputCls} placeholder="https://.../file.pdf" />
+                      </Field>
+                    )}
+                  </>
+                )}
+
+                {/* ── QUIZ EDITOR ── */}
+                {lessonLookup.lesson.type === 'quiz' && (
+                  <QuizBuilder
+                    questions={lessonLookup.lesson.quiz_questions}
+                    onChange={qs => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { quiz_questions: qs, quiz_question_count: qs.length, status: qs.length > 0 ? 'ready' : 'draft' })}
+                    disabled={status === 'saving'}
+                  />
+                )}
+
+                {/* Delete lesson */}
+                <button type="button" onClick={() => { removeLesson(lessonLookup.section.id, lessonLookup.lesson.id); setMobileEditorOpen(false) }} className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-red-200 py-2.5 text-xs font-semibold text-red-600 transition hover:bg-red-50 dark:border-red-900/60 dark:text-red-400 dark:hover:bg-red-900/20">
+                  <TrashIcon className="h-3.5 w-3.5" /> Darsni o'chirish
+                </button>
+              </div>
+            ) : (
+              <div className="hidden xl:flex xl:min-h-[300px] xl:flex-col xl:items-center xl:justify-center xl:rounded-2xl xl:border xl:border-slate-200/80 xl:bg-slate-50/70 xl:p-6 xl:text-center xl:dark:border-slate-800 xl:dark:bg-slate-900/40">
+                <PlayCircleIcon className="h-10 w-10 text-slate-200 dark:text-slate-700" />
+                <p className="mt-3 text-sm font-semibold text-slate-700 dark:text-slate-200">Lesson tanlang</p>
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">Chap tarafdan biror darsni bosing — editor shu yerda ochiladi.</p>
+              </div>
+            )}
+          </div>
+        </aside>
+
+        {/* ── DESKTOP-ONLY: Student preview sidebar ── */}
+        {step !== 'curriculum' && (
+          <aside className="hidden xl:block xl:sticky xl:top-16 xl:self-start">
+            <div className="rounded-2xl border border-slate-200/80 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+              <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-[#F26722]">Student preview</p>
+              <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+                <div className="aspect-video bg-gradient-to-br from-[#F26722]/20 via-[#FF8A4C]/10 to-slate-100 dark:to-slate-900">
+                  {form.thumbnail_url ? <img src={form.thumbnail_url} alt="Preview" className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center"><PhotoIcon className="h-10 w-10 text-slate-300 dark:text-slate-600" /></div>}
+                </div>
+                <div className="space-y-2 p-3">
+                  <div className="flex gap-1.5">
+                    {form.tags.slice(0, 2).map(t => <span key={t} className="rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-slate-500 dark:bg-slate-800 dark:text-slate-400">#{t}</span>)}
+                  </div>
+                  <p className="text-xs font-semibold text-slate-900 dark:text-white">{form.title || 'Kurs nomi'}</p>
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>{sections.length} modul · {totalLessons} dars</span>
+                    <span>{form.is_paid ? `${Number(form.price).toLocaleString()} so'm` : 'Bepul'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        )}
       </div>
     </PageWrapper>
   )

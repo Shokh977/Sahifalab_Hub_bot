@@ -116,18 +116,7 @@ class ApiService {
     return this.axiosInstance.get('/api/hero')
   }
 
-  // Quiz endpoints
-  async getQuizzes() {
-    return this.axiosInstance.get('/api/quizzes')
-  }
-
-  async getQuizQuestions(quizId: number) {
-    return this.axiosInstance.get(`/api/quizzes/${quizId}/questions`)
-  }
-
-  async submitQuizAnswers(quizId: number, answers: number[]) {
-    return this.axiosInstance.post(`/api/quizzes/${quizId}/submit`, { answers })
-  }
+  // (Quiz endpoints moved to unified section below)
 
   // Books endpoints
   async getBooks(skip = 0, limit = 50) {
