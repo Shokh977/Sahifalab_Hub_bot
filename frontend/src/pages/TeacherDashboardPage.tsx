@@ -441,7 +441,7 @@ const TeacherDashboardPage: React.FC = () => {
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
           Tezkor amallar
         </h2>
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 m-3 ">
           <ActionButton
             icon={TrophyIcon}
             label="Reyting jadvaliga o'tish"
