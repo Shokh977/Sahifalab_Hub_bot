@@ -8,7 +8,7 @@
  * Mobile / Telegram:
  *   Stacked: video at top → tab bar (Curriculum | Overview | Reviews)
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -360,6 +360,9 @@ const CourseDetailPage: React.FC = () => {
       .catch(() => {})
   }, [isEnrolled])
 
+  // handleLeaveStar must live before any early returns (Rules of Hooks)
+  const handleLeaveStar = useCallback(() => setHoverStar(0), [])
+
   // ── Loading / error screens ───────────────────────────────────────────────
   if (loading) return (
     <PageWrapper>
@@ -383,9 +386,9 @@ const CourseDetailPage: React.FC = () => {
     </PageWrapper>
   )
 
-  // ── Sub-components (defined after guard so `course` is always defined) ─────
+  // ── JSX variables — plain consts (not hooks), safe after early returns ────
 
-  const enrollCtaJsx = useMemo(() => (
+  const enrollCtaJsx = (
     <div className="space-y-3">
       {course.is_paid && (
         <div className="flex items-baseline gap-2">
@@ -436,9 +439,9 @@ const CourseDetailPage: React.FC = () => {
         </div>
       )}
     </div>
-  ), [course, isOwner, isEnrolled, enrollLoading, isTelegram, freeLessons, completedIds, progressPct, lessons, handleEnroll, handleOpenCertificate])
+  )
 
-  const metaRowJsx = useMemo(() => (
+  const metaRowJsx = (
     <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
       {course.categories && <span className="inline-flex items-center gap-1"><TagIcon className="h-3.5 w-3.5" />{course.categories.name}</span>}
       <span>{levelLabel(course.level)}</span>
@@ -448,10 +451,9 @@ const CourseDetailPage: React.FC = () => {
       {course.enrolled_count > 0 && <span className="inline-flex items-center gap-1"><UsersIcon className="h-3.5 w-3.5" />{course.enrolled_count} talaba</span>}
       {course.rating > 0 && <span className="inline-flex items-center gap-1"><StarIcon className="h-3.5 w-3.5 text-amber-400" />{course.rating.toFixed(1)}</span>}
     </div>
-  ), [course])
+  )
 
   // RatingWidget is defined outside this component (above) for stable ref — see fix comment there
-  const handleLeaveStar = useCallback(() => setHoverStar(0), [])
   const ratingWidgetProps: RatingWidgetProps = {
     myRating, myReview, hoverStar, ratingLoading,
     onReviewChange: setMyReview,
@@ -460,7 +462,7 @@ const CourseDetailPage: React.FC = () => {
     onSubmit:       handleSubmitRating,
   }
 
-  const reviewsListJsx = useMemo(() => (
+  const reviewsListJsx = (
     <div>
       <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 inline-flex items-center gap-1.5">
         <StarIcon className="h-4 w-4 text-amber-400" /> Sharhlar
@@ -490,9 +492,9 @@ const CourseDetailPage: React.FC = () => {
         </div>
       )}
     </div>
-  ), [reviewsLoading, reviews])
+  )
 
-  const lessonSidebarListJsx = useMemo(() => (
+  const lessonSidebarListJsx = (
     <div>
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -538,7 +540,7 @@ const CourseDetailPage: React.FC = () => {
         </div>
       )}
     </div>
-  ), [lessons, isOwner, course, activeLesson, completedIds, expandedLessons, isEnrolled, handleSelectLesson])
+  )
 
   // ── JSX ───────────────────────────────────────────────────────────────────
   return (
