@@ -629,6 +629,10 @@ class ApiService {
     duration_minutes?: number
     order_index?:     number
     is_free?:         boolean
+    lesson_type?:     string
+    section_title?:   string
+    material_url?:    string
+    material_name?:   string
   }) {
     return this.axiosInstance.post('/api/lessons', data)
   }
@@ -642,6 +646,10 @@ class ApiService {
     duration_minutes?: number
     order_index?:      number
     is_free?:          boolean
+    lesson_type?:      string
+    section_title?:    string
+    material_url?:     string
+    material_name?:    string
   }) {
     return this.axiosInstance.patch(`/api/lessons/${lessonId}`, data)
   }

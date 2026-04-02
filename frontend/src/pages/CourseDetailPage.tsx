@@ -15,7 +15,7 @@ import {
   AcademicCapIcon, ArrowLeftIcon, ArrowPathIcon, ArrowRightIcon,
   BanknotesIcon, ChartBarIcon, CheckCircleIcon, ChevronDownIcon, ClockIcon,
   DocumentTextIcon, ExclamationCircleIcon, GlobeAltIcon, LockClosedIcon,
-  PencilSquareIcon, PlayIcon, StarIcon, TagIcon,
+  PencilSquareIcon, PlayIcon, QuestionMarkCircleIcon, StarIcon, TagIcon,
   UsersIcon, VideoCameraIcon,
 } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
@@ -40,6 +40,8 @@ interface Lesson {
   id: number; title: string; description: string; video_url: string
   video_source: 'youtube' | 'bunny' | 'none'; duration_minutes: number
   order_index: number; is_free: boolean
+  lesson_type?: 'video' | 'material' | 'quiz'
+  section_title?: string
   material_url?: string; material_name?: string
 }
 
@@ -133,10 +135,11 @@ const SidebarLessonRow: React.FC<{
           isUnlocked  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500' :
                         'bg-slate-100 dark:bg-slate-800 text-slate-400',
         ].join(' ')}>
-          {isCompleted   ? <CheckCircleIcon className="h-4 w-4" /> :
-           !isUnlocked   ? <LockClosedIcon className="h-3.5 w-3.5" /> :
-           isPdf         ? <DocumentTextIcon className="h-3.5 w-3.5" /> :
-                           <PlayIcon className="h-3.5 w-3.5" />}
+          {isCompleted                                       ? <CheckCircleIcon className="h-4 w-4" /> :
+           !isUnlocked                                       ? <LockClosedIcon className="h-3.5 w-3.5" /> :
+           lesson.lesson_type === 'quiz'                     ? <QuestionMarkCircleIcon className="h-3.5 w-3.5" /> :
+           (isPdf || lesson.lesson_type === 'material')       ? <DocumentTextIcon className="h-3.5 w-3.5" /> :
+                                                               <PlayIcon className="h-3.5 w-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
           <p className={['text-xs font-medium truncate', isActive ? 'text-sahifa-700 dark:text-sahifa-300' : 'text-gray-800 dark:text-gray-200'].join(' ')}>
@@ -144,8 +147,9 @@ const SidebarLessonRow: React.FC<{
           </p>
           <div className="flex items-center gap-1.5 mt-0.5">
             {lesson.duration_minutes > 0 && <span className="text-[10px] text-gray-400">{lesson.duration_minutes} daq</span>}
-            {lesson.is_free     && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold">Bepul</span>}
-            {lesson.material_url && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold">PDF</span>}
+            {lesson.is_free          && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold">Bepul</span>}
+            {lesson.lesson_type === 'quiz' && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 font-bold">Quiz</span>}
+            {lesson.material_url     && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold">PDF</span>}
           </div>
         </div>
         {hasMeta && isUnlocked && (
@@ -217,7 +221,8 @@ const CourseDetailPage: React.FC = () => {
     first_name?: string | null; username?: string | null; photo_url?: string | null
     specialization?: string | null; bio?: string | null
   } | null>(null)
-  const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set())
+  const [expandedLessons,  setExpandedLessons]  = useState<Set<number>>(new Set())
+  const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
 
   const courseId   = parseInt(id ?? '0', 10)
   const isOwner    = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -360,8 +365,13 @@ const CourseDetailPage: React.FC = () => {
       .catch(() => {})
   }, [isEnrolled])
 
-  // handleLeaveStar must live before any early returns (Rules of Hooks)
+  // These hooks must live before any early returns (Rules of Hooks)
   const handleLeaveStar = useCallback(() => setHoverStar(0), [])
+  const toggleModule    = useCallback((key: string) => setCollapsedModules(prev => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key); else next.add(key)
+    return next
+  }), [])
 
   // ── Loading / error screens ───────────────────────────────────────────────
   if (loading) return (
@@ -494,6 +504,16 @@ const CourseDetailPage: React.FC = () => {
     </div>
   )
 
+  // Group consecutive lessons by section_title into collapsible modules
+  const modules: { title: string; lessons: Lesson[] }[] = []
+  for (const lesson of lessons) {
+    const st = lesson.section_title?.trim() || 'Darslar'
+    const last = modules[modules.length - 1]
+    if (last && last.title === st) last.lessons.push(lesson)
+    else modules.push({ title: st, lessons: [lesson] })
+  }
+  const multiModule = modules.length > 1
+
   const lessonSidebarListJsx = (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -520,23 +540,53 @@ const CourseDetailPage: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-1">
-          {lessons.map((lesson, i) => (
-            <SidebarLessonRow
-              key={lesson.id} lesson={lesson} index={i}
-              isActive={activeLesson?.id === lesson.id}
-              isCompleted={completedIds.has(lesson.id)}
-              isUnlocked={lesson.is_free || isOwner || isEnrolled}
-              isOwner={isOwner}
-              courseId={courseId}
-              isExpanded={expandedLessons.has(lesson.id)}
-              onClick={() => handleSelectLesson(lesson)}
-              onToggleExpand={() => setExpandedLessons(prev => {
-                const next = new Set(prev)
-                if (next.has(lesson.id)) next.delete(lesson.id); else next.add(lesson.id)
-                return next
-              })}
-            />
-          ))}
+          {modules.map((mod, modIdx) => {
+            const isCollapsed = collapsedModules.has(String(modIdx))
+            const modStart    = modules.slice(0, modIdx).reduce((s, m) => s + m.lessons.length, 0)
+            return (
+              <div key={modIdx}>
+                {/* Module header — only shown when there are multiple modules */}
+                {multiModule && (
+                  <button
+                    type="button"
+                    onClick={() => toggleModule(String(modIdx))}
+                    className="w-full flex items-center gap-2 px-2 py-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors"
+                  >
+                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-sahifa-500/10 text-[10px] font-bold text-sahifa-600 dark:text-sahifa-400 shrink-0">
+                      {modIdx + 1}
+                    </span>
+                    <span className="flex-1 text-left text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">
+                      {mod.title}
+                    </span>
+                    <span className="text-[10px] text-gray-400 shrink-0">{mod.lessons.length} dars</span>
+                    <ChevronDownIcon className={`h-3.5 w-3.5 text-gray-400 shrink-0 transition-transform duration-200 ${isCollapsed ? '' : 'rotate-180'}`} />
+                  </button>
+                )}
+                {/* Lesson rows */}
+                {!isCollapsed && (
+                  <div className={`space-y-1 ${multiModule ? 'mt-1 ml-1 pl-3 border-l-2 border-slate-100 dark:border-slate-700/60' : ''}`}>
+                    {mod.lessons.map((lesson, lessonIdx) => (
+                      <SidebarLessonRow
+                        key={lesson.id} lesson={lesson} index={modStart + lessonIdx}
+                        isActive={activeLesson?.id === lesson.id}
+                        isCompleted={completedIds.has(lesson.id)}
+                        isUnlocked={lesson.is_free || isOwner || isEnrolled}
+                        isOwner={isOwner}
+                        courseId={courseId}
+                        isExpanded={expandedLessons.has(lesson.id)}
+                        onClick={() => handleSelectLesson(lesson)}
+                        onToggleExpand={() => setExpandedLessons(prev => {
+                          const next = new Set(prev)
+                          if (next.has(lesson.id)) next.delete(lesson.id); else next.add(lesson.id)
+                          return next
+                        })}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

@@ -506,8 +506,11 @@ const CourseCreatePage: React.FC = () => {
         migrateDraftKey(syncedCourseId)
       }
 
-      const videoLessons = sections.flatMap(section => section.lessons.filter(lesson => lesson.type === 'video').map(lesson => ({ sectionId: section.id, lesson })))
-      const keptIds = new Set(videoLessons.map(item => item.lesson.backendId).filter(Boolean) as number[])
+      // Sync ALL lesson types (video + material + quiz) with section metadata
+      const allSectionLessons = sections.flatMap(section =>
+        section.lessons.map(lesson => ({ section, lesson }))
+      )
+      const keptIds = new Set(allSectionLessons.map(item => item.lesson.backendId).filter(Boolean) as number[])
       const deletedIds = knownBackendLessonIds.filter(existingId => !keptIds.has(existingId))
       for (const lessonId of deletedIds) await apiService.deleteLesson(lessonId)
 
@@ -515,16 +518,20 @@ const CourseCreatePage: React.FC = () => {
       const reordered: Array<{ id: number; order_index: number }> = []
       let orderIndex = 1
 
-      for (const { lesson } of videoLessons) {
+      for (const { section, lesson } of allSectionLessons) {
         const payload = {
-          course_id: syncedCourseId,
-          title: lesson.title.trim(),
-          description: lesson.description.trim(),
-          video_url: lesson.video_url,
-          video_source: lesson.video_source,
+          course_id:        syncedCourseId,
+          title:            lesson.title.trim(),
+          description:      lesson.description.trim(),
+          video_url:        lesson.type === 'video' ? lesson.video_url : '',
+          video_source:     lesson.type === 'video' ? lesson.video_source : 'none',
           duration_minutes: lesson.duration_minutes,
-          order_index: orderIndex,
-          is_free: lesson.is_free,
+          order_index:      orderIndex,
+          is_free:          lesson.is_free,
+          lesson_type:      lesson.type,
+          section_title:    section.title.trim(),
+          material_url:     lesson.material_url || '',
+          material_name:    lesson.material_name || '',
         }
 
         if (lesson.backendId) {
@@ -547,11 +554,11 @@ const CourseCreatePage: React.FC = () => {
 
       setSections(prev => prev.map(section => ({
         ...section,
-        lessons: section.lessons.map(lesson => lesson.type !== 'video' ? lesson : {
+        lessons: section.lessons.map(lesson => ({
           ...lesson,
           backendId: backendIdMap.get(lesson.id) ?? lesson.backendId,
           status: isLessonReady(lesson) ? 'synced' : 'draft',
-        }),
+        })),
       })))
       setKnownBackendLessonIds(reordered.map(item => item.id))
       setMessage(publish ? 'Kurs publish qilindi' : 'Draft saqlandi')

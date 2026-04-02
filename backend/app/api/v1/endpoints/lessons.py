@@ -127,6 +127,8 @@ class LessonCreate(BaseModel):
     is_free:          Optional[bool] = False
     material_url:     Optional[str] = ""
     material_name:    Optional[str] = ""
+    lesson_type:      Optional[str] = "video"   # 'video' | 'material' | 'quiz'
+    section_title:    Optional[str] = ""
 
 
 class LessonUpdate(BaseModel):
@@ -139,6 +141,8 @@ class LessonUpdate(BaseModel):
     is_free:          Optional[bool] = None
     material_url:     Optional[str] = None
     material_name:    Optional[str] = None
+    lesson_type:      Optional[str] = None      # 'video' | 'material' | 'quiz'
+    section_title:    Optional[str] = None
 
 
 class ReorderItem(BaseModel):
@@ -161,7 +165,7 @@ async def list_lessons(course_id: int = Query(..., description="Course ID")):
             f"{SUPABASE_URL}/rest/v1/lessons",
             params={
                 "course_id": f"eq.{course_id}",
-                "select": "id, course_id, title, description, video_source, duration_minutes, order_index, is_free, material_url, material_name, created_at",
+                "select": "id, course_id, title, description, video_source, duration_minutes, order_index, is_free, lesson_type, section_title, material_url, material_name, created_at",
                 "order": "order_index.asc",
             },
             headers=_supabase_headers(),
@@ -279,6 +283,8 @@ async def create_lesson(body: LessonCreate, authorization: Optional[str] = Heade
         "is_free":          bool(body.is_free),
         "material_url":     body.material_url or "",
         "material_name":    body.material_name or "",
+        "lesson_type":      body.lesson_type or "video",
+        "section_title":    body.section_title or "",
     }
 
     async with httpx.AsyncClient(timeout=10) as client:
