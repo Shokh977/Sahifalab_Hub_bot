@@ -2,10 +2,13 @@ import json
 import hmac
 import hashlib
 import time
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from app.db.session import get_db
+
+logger = logging.getLogger(__name__)
 from app.core.config import settings
 from app.models.models import Quiz, QuizQuestion, UserQuizCompletion
 from app.schemas.schemas import (
@@ -134,33 +137,46 @@ async def verify_quiz(
     total = len(questions)
     percentage = round(score / total * 100, 1) if total else 0.0
 
-    # Check if user has already PASSED this quiz (>= 80%)
-    existing_completion = db.query(UserQuizCompletion).filter(
-        UserQuizCompletion.telegram_id == body.telegram_id,
-        UserQuizCompletion.quiz_id == quiz_id,
-    ).first()
-
     passed = percentage >= 80
-    already_passed = existing_completion is not None
-    # XP is awarded only on the FIRST time the user scores >= 80%
-    xp_awarded = passed and not already_passed
+    already_passed = False
+    xp_awarded = False
 
-    # Record completion only when user passes for the first time
-    if xp_awarded:
-        try:
-            completion = UserQuizCompletion(
-                quiz_id=quiz_id,
-                telegram_id=body.telegram_id,
-                score=score,
-                total=total,
-                percentage=percentage,
-            )
-            db.add(completion)
-            db.commit()
-        except IntegrityError:
-            # Race condition: another request beat us to it
-            db.rollback()
-            xp_awarded = False
+    # Check + record completion (gracefully skipped if table doesn't exist yet)
+    try:
+        existing_completion = db.query(UserQuizCompletion).filter(
+            UserQuizCompletion.telegram_id == body.telegram_id,
+            UserQuizCompletion.quiz_id == quiz_id,
+        ).first()
+
+        already_passed = existing_completion is not None
+        # XP is awarded only on the FIRST time the user scores >= 80%
+        xp_awarded = passed and not already_passed
+
+        # Record completion only when user passes for the first time
+        if xp_awarded:
+            try:
+                completion = UserQuizCompletion(
+                    quiz_id=quiz_id,
+                    telegram_id=body.telegram_id,
+                    score=score,
+                    total=total,
+                    percentage=percentage,
+                )
+                db.add(completion)
+                db.commit()
+            except IntegrityError:
+                # Race condition: another request beat us to it
+                db.rollback()
+                xp_awarded = False
+
+    except (OperationalError, ProgrammingError) as exc:
+        # user_quiz_completion table hasn't been created yet — safe to ignore,
+        # scoring still works, XP deduplication is temporarily disabled.
+        db.rollback()
+        logger.warning(
+            "user_quiz_completion table missing — run migration 020. "
+            "Scoring continues without XP dedup. Error: %s", exc
+        )
 
     ts = int(time.time())
     token = _sign_result(quiz_id, body.telegram_id, score, total, ts)
