@@ -205,7 +205,7 @@ const formatFocusTime = (seconds: number): string => {
 
 const AdminPage: React.FC = () => {
   const { user: tgUser } = useTelegramWebApp()
-  const { user: authUser } = useAuth()
+  const { user: authUser, token } = useAuth()
   const [telegramId, setTelegramId] = useState('')
   const [adminId, setAdminId] = useState<number | null>(null)
   const [authError, setAuthError] = useState('')
@@ -781,126 +781,91 @@ const AdminPage: React.FC = () => {
     }
   }
 
-  // ── Book PDF upload (Supabase Storage) ────────────────────────────────────
+  // ── Book PDF upload → Bunny CDN ────────────────────────────────────────────
   const handleUploadBookPdf = async (target: 'new' | 'edit') => {
     if (!bookPdfFile) { setBookPdfMsg('❌ PDF faylni tanlang'); return }
-    const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  as string | undefined
-    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-    if (!supabaseUrl || !supabaseAnon) {
-      setBookPdfMsg('❌ Supabase env varlarini sozlang')
-      return
-    }
+    const jwt = token || localStorage.getItem('auth_token')
+    if (!jwt) { setBookPdfMsg('❌ Tizimga kirilmagan — sahifani yangilang'); return }
     setBookPdfUploading(true)
     setBookPdfMsg('⬆️ Yuklanmoqda…')
     setBookPdfPercent(0)
+    const apiBase = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/+$/, '').replace(/\/api\/?$/, '')
     try {
-      const ext      = bookPdfFile.name.split('.').pop()?.toLowerCase() || 'pdf'
-      const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
-      const endpoint = `${supabaseUrl}/storage/v1/object/books/${filename}`
+      const form = new FormData()
+      form.append('file', bookPdfFile)
+      form.append('folder', 'books')
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        xhr.open('POST', endpoint)
-        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnon}`)
-        xhr.setRequestHeader('Content-Type', bookPdfFile.type || 'application/pdf')
-        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.open('POST', `${apiBase}/api/upload/file`)
+        xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setBookPdfPercent(Math.round((e.loaded / e.total) * 100))
         }
         xhr.onload = () => {
-          if (xhr.status === 200 || xhr.status === 201) resolve()
-          else {
-            try { reject(new Error(JSON.parse(xhr.responseText)?.message || `Xato: ${xhr.status}`)) }
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const { url } = JSON.parse(xhr.responseText)
+              if (target === 'new') setNewBook(prev => ({ ...prev, file_url: url }))
+              else if (editingBook) setEditingBook(prev => prev ? { ...prev, file_url: url } : prev)
+              setBookPdfMsg('✅ Yuklandi!')
+              setBookPdfFile(null)
+              resolve()
+            } catch { reject(new Error("Server javobi noto'g'ri")) }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Xato: ${xhr.status}`)) }
             catch { reject(new Error(`Xato: ${xhr.status}`)) }
           }
         }
         xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
-        xhr.send(bookPdfFile)
+        xhr.send(form)
       })
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/books/${filename}`
-      if (target === 'new') {
-        setNewBook(prev => ({ ...prev, file_url: publicUrl }))
-      } else if (editingBook) {
-        setEditingBook(prev => prev ? { ...prev, file_url: publicUrl } : prev)
-      }
-      setBookPdfMsg(`✅ Yuklandi!`)
-      setBookPdfFile(null)
     } catch (err: any) {
-      const msg: string = err?.message || ''
-      if (msg.toLowerCase().includes('bucket') || msg.toLowerCase().includes('not found')) {
-        setBookPdfMsg('__no_bucket__')
-      } else {
-        setBookPdfMsg(`❌ ${msg || 'Xato'}`)
-      }
+      setBookPdfMsg(`❌ ${err?.message || 'Xato'}`)
     } finally {
       setBookPdfUploading(false)
     }
   }
 
-  // ── Book cover image upload (Supabase Storage) ──────────────────────────
+  // ── Book cover upload → Bunny CDN (auto-converted to WebP by backend) ──────
   const handleUploadBookCover = async (target: 'new' | 'edit') => {
     if (!bookCoverFile) { setBookCoverMsg('❌ Rasm faylini tanlang'); return }
-    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
-    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-    if (!supabaseUrl || !supabaseAnon) {
-      setBookCoverMsg('❌ Supabase env varlarini sozlang')
-      return
-    }
-
+    const jwt = token || localStorage.getItem('auth_token')
+    if (!jwt) { setBookCoverMsg('❌ Tizimga kirilmagan — sahifani yangilang'); return }
     setBookCoverUploading(true)
     setBookCoverMsg('⬆️ Muqova yuklanmoqda…')
     setBookCoverPercent(0)
-
+    const apiBase = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/+$/, '').replace(/\/api\/?$/, '')
     try {
-      const ext = bookCoverFile.name.split('.').pop()?.toLowerCase() || 'jpg'
-      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-      const endpoint = `${supabaseUrl}/storage/v1/object/book-covers/${filename}`
-
+      const form = new FormData()
+      form.append('file', bookCoverFile)
+      form.append('folder', 'book-covers')
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        xhr.open('POST', endpoint, true)
-        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnon}`)
-        xhr.setRequestHeader('Content-Type', bookCoverFile.type || 'image/jpeg')
-
+        xhr.open('POST', `${apiBase}/api/upload/file`, true)
+        xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setBookCoverPercent(Math.round((e.loaded / e.total) * 100))
         }
-
         xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) return resolve()
-          try {
-            const body = JSON.parse(xhr.responseText || '{}')
-            const msg = String(body.message || body.error || '')
-            if (/Bucket not found/i.test(msg)) {
-              const err = new Error('__no_cover_bucket__')
-              ;(err as any).code = '__no_cover_bucket__'
-              return reject(err)
-            }
-            reject(new Error(msg || `Upload failed: ${xhr.status}`))
-          } catch {
-            reject(new Error(`Upload failed: ${xhr.status}`))
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const { url } = JSON.parse(xhr.responseText)
+              if (target === 'new') setNewBook(prev => ({ ...prev, thumbnail_url: url }))
+              else if (editingBook) setEditingBook(prev => prev ? { ...prev, thumbnail_url: url } : prev)
+              setBookCoverMsg('✅ Muqova yuklandi!')
+              setBookCoverFile(null)
+              resolve()
+            } catch { reject(new Error("Server javobi noto'g'ri")) }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Upload failed: ${xhr.status}`)) }
+            catch { reject(new Error(`Upload failed: ${xhr.status}`)) }
           }
         }
-
         xhr.onerror = () => reject(new Error('Network error'))
-        xhr.send(bookCoverFile)
+        xhr.send(form)
       })
-
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/book-covers/${filename}`
-      if (target === 'new') {
-        setNewBook((prev) => ({ ...prev, thumbnail_url: publicUrl }))
-      } else if (editingBook) {
-        setEditingBook({ ...editingBook, thumbnail_url: publicUrl })
-      }
-
-      setBookCoverMsg('✅ Muqova yuklandi!')
-      setBookCoverFile(null)
     } catch (err: any) {
-      const code = (err && (err.code || err.message)) || ''
-      if (code === '__no_cover_bucket__') {
-        setBookCoverMsg('__no_cover_bucket__')
-      } else {
-        setBookCoverMsg(`❌ ${err?.message || 'Xato'}`)
-      }
+      setBookCoverMsg(`❌ ${err?.message || 'Xato'}`)
     } finally {
       setBookCoverUploading(false)
     }
@@ -911,47 +876,39 @@ const AdminPage: React.FC = () => {
     if (!adminId) return
     if (!soundName.trim()) { setSoundMsg('❌ Tovush nomini kiriting'); return }
     if (!soundFile) { setSoundMsg('❌ Audio faylni tanlang'); return }
-
-    const supabaseUrl  = import.meta.env.VITE_SUPABASE_URL  as string | undefined
-    const supabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
-    if (!supabaseUrl || !supabaseAnon) {
-      setSoundMsg('❌ Vercel-da VITE_SUPABASE_URL va VITE_SUPABASE_ANON_KEY env varlarini sozlang')
-      return
-    }
+    const jwt = token || localStorage.getItem('auth_token')
+    if (!jwt) { setSoundMsg('❌ Tizimga kirilmagan — sahifani yangilang'); return }
 
     setSoundUploading(true)
     setSoundMsg('⬆️ Yuklanmoqda…')
     setUploadPercent(0)
+    const apiBase = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/+$/, '').replace(/\/api\/?$/, '')
     try {
-      // 1. Upload file directly from browser → Supabase Storage (bypasses Vercel)
-      const ext      = soundFile.name.split('.').pop()?.toLowerCase() || 'mp3'
-      const filename = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
-      const endpoint = `${supabaseUrl}/storage/v1/object/ambient-sounds/${filename}`
-
-      await new Promise<void>((resolve, reject) => {
+      // 1. Upload audio → Bunny CDN
+      const form = new FormData()
+      form.append('file', soundFile)
+      form.append('folder', 'sounds')
+      const publicUrl = await new Promise<string>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        xhr.open('POST', endpoint)
-        xhr.setRequestHeader('Authorization', `Bearer ${supabaseAnon}`)
-        xhr.setRequestHeader('Content-Type', soundFile.type || 'audio/mpeg')
-        xhr.setRequestHeader('x-upsert', 'false')
+        xhr.open('POST', `${apiBase}/api/upload/file`)
+        xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setUploadPercent(Math.round((e.loaded / e.total) * 100))
         }
         xhr.onload = () => {
           if (xhr.status === 200 || xhr.status === 201) {
-            resolve()
+            try { resolve(JSON.parse(xhr.responseText).url) }
+            catch { reject(new Error("Server javobi noto'g'ri")) }
           } else {
-            try { reject(new Error(JSON.parse(xhr.responseText)?.message || `Upload xatosi: ${xhr.status}`)) }
+            try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Upload xatosi: ${xhr.status}`)) }
             catch { reject(new Error(`Upload xatosi: ${xhr.status}`)) }
           }
         }
         xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
-        xhr.send(soundFile)
+        xhr.send(form)
       })
 
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/ambient-sounds/${filename}`
-
-      // 2. Save Supabase CDN URL to DB
+      // 2. Save Bunny CDN URL to Supabase DB record
       setSoundMsg('💾 Saqlanmoqda…')
       await apiService.saveAmbientSound(adminId, soundName.trim(), soundEmoji, publicUrl)
       setSoundMsg('✅ Tovush muvaffaqiyatli saqlandi!')

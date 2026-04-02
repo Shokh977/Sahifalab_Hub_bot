@@ -29,9 +29,16 @@ Storage region endpoints:
   jh  → jh.storage.bunnycdn.com
 """
 
+import io
 import uuid
 import httpx
 from pathlib import Path
+
+try:
+    from PIL import Image as PILImage  # Pillow — optional, degrades gracefully
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -67,10 +74,23 @@ ALLOWED_DOC_MIME = {
     "text/plain",
 }
 
-ALLOWED_FILE_MIME = ALLOWED_IMAGE_MIME | ALLOWED_DOC_MIME
+ALLOWED_AUDIO_MIME = {
+    "audio/mpeg",    # .mp3
+    "audio/ogg",     # .ogg
+    "audio/wav",     # .wav
+    "audio/webm",    # .webm (audio)
+    "audio/aac",     # .aac
+    "audio/flac",    # .flac
+}
+
+# Raster types that will be auto-converted to WebP on upload
+RASTER_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+
+ALLOWED_FILE_MIME = ALLOWED_IMAGE_MIME | ALLOWED_DOC_MIME | ALLOWED_AUDIO_MIME
 
 MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024  # 500 MB
 MAX_FILE_SIZE_BYTES  = 50 * 1024 * 1024   # 50 MB
+MAX_AUDIO_SIZE_BYTES = 30 * 1024 * 1024   # 30 MB — ambient sounds
 
 _MIME_EXT_MAP = {
     "image/jpeg": ".jpg",
@@ -84,7 +104,36 @@ _MIME_EXT_MAP = {
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
     "text/plain": ".txt",
+    # audio
+    "audio/mpeg":  ".mp3",
+    "audio/ogg":   ".ogg",
+    "audio/wav":   ".wav",
+    "audio/webm":  ".webm",
+    "audio/aac":   ".aac",
+    "audio/flac":  ".flac",
 }
+
+# ── Image compression ────────────────────────────────────────────────────────
+def _compress_to_webp(raw: bytes, max_px: int = 1200, quality: int = 85) -> bytes:
+    """
+    Convert a raster image to WebP, downscaling to max_px on the longest side.
+    Falls back to the original bytes if Pillow is unavailable or conversion fails.
+    """
+    if not _PIL_AVAILABLE:
+        return raw
+    try:
+        img = PILImage.open(io.BytesIO(raw))
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGBA" if img.mode in ("P", "PA", "LA", "RGBA") else "RGB")
+        w, h = img.size
+        if w > max_px or h > max_px:
+            img.thumbnail((max_px, max_px), PILImage.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="WEBP", quality=quality, method=6)
+        return buf.getvalue()
+    except Exception:
+        return raw  # fall back to original bytes on any error
+
 
 # Bunny.net region → hostname map
 REGION_HOST: dict[str, str] = {
@@ -268,36 +317,45 @@ async def upload_file(
         )
 
     file_bytes = await file.read()
-    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
-        mb = len(file_bytes) // (1024 * 1024)
+    size_limit = MAX_AUDIO_SIZE_BYTES if file.content_type in ALLOWED_AUDIO_MIME else MAX_FILE_SIZE_BYTES
+    if len(file_bytes) > size_limit:
+        mb        = len(file_bytes) // (1024 * 1024)
+        limit_mb  = size_limit // (1024 * 1024)
         raise HTTPException(
             status_code=413,
-            detail=f"Fayl hajmi juda katta ({mb} MB). Maksimal hajm: 50 MB.",
+            detail=f"Fayl hajmi juda katta ({mb} MB). Maksimal hajm: {limit_mb} MB.",
         )
 
     original_name = file.filename or "file"
-    ext = Path(original_name).suffix.lower()
-    if not ext:
-        ext = _MIME_EXT_MAP.get(file.content_type or "", ".bin")
+
+    # ── Raster images → WebP (reduces Bunny storage + CDN egress) ────────────
+    upload_content_type = file.content_type or "application/octet-stream"
+    if file.content_type in RASTER_IMAGE_MIME:
+        file_bytes          = _compress_to_webp(file_bytes)
+        ext                 = ".webp"
+        upload_content_type = "image/webp"
+    else:
+        ext = Path(original_name).suffix.lower()
+        if not ext:
+            ext = _MIME_EXT_MAP.get(file.content_type or "", ".bin")
 
     unique_name = f"{uuid.uuid4().hex}{ext}"
-    subfolder = folder or "files"
+    # default subfolder: 'sounds' for audio, 'files' for everything else
+    subfolder = folder or ("sounds" if file.content_type in ALLOWED_AUDIO_MIME else "files")
 
     if course_id:
         remote_path = f"courses/{course_id}/{subfolder}/{unique_name}"
     else:
         remote_path = f"uploads/teacher_{teacher_id}/{subfolder}/{unique_name}"
 
-    cdn = await _upload_to_bunny(
-        file_bytes, remote_path, file.content_type or "application/octet-stream"
-    )
+    cdn = await _upload_to_bunny(file_bytes, remote_path, upload_content_type)
 
     return {
         "url":           cdn,
         "remote_path":   remote_path,
         "size_bytes":    len(file_bytes),
         "filename":      unique_name,
-        "content_type":  file.content_type,
+        "content_type":  upload_content_type,
         "original_name": original_name,
     }
 

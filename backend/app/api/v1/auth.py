@@ -12,7 +12,15 @@ import bcrypt
 from pydantic import BaseModel, HttpUrl, EmailStr
 from google.oauth2 import id_token as google_id_token
 from google.auth.transport import requests as google_requests
+import io
 from pathlib import Path
+
+try:
+    from PIL import Image as PILImage  # Pillow — optional, degrades gracefully
+    _PIL_AVAILABLE = True
+except ImportError:
+    _PIL_AVAILABLE = False
+
 from app.core.config import settings
 
 from app.services.auth_service import (
@@ -378,6 +386,31 @@ async def upload_my_photo(file: UploadFile = File(...), authorization: str = Hea
     if not settings.BUNNY_STORAGE_ZONE or not settings.BUNNY_API_KEY or not settings.BUNNY_CDN_HOSTNAME:
         raise HTTPException(status_code=503, detail="Bunny CDN sozlanmagan")
 
+    # ── Compress avatar → WebP (max 400×400, quality 85) ─────────────────────
+    upload_content_type = file.content_type or "application/octet-stream"
+    if _PIL_AVAILABLE and file.content_type in {"image/jpeg", "image/png", "image/gif", "image/webp"}:
+        try:
+            img = PILImage.open(io.BytesIO(file_bytes))
+            if img.mode not in ("RGB", "RGBA"):
+                img = img.convert("RGBA" if img.mode in ("P", "PA", "LA", "RGBA") else "RGB")
+            img.thumbnail((400, 400), PILImage.LANCZOS)
+            buf = io.BytesIO()
+            img.save(buf, format="WEBP", quality=85, method=6)
+            file_bytes = buf.getvalue()
+            upload_content_type = "image/webp"
+            ext = ".webp"
+        except Exception:
+            ext = Path(file.filename or "avatar").suffix.lower() or ".jpg"
+    else:
+        ext = Path(file.filename or "avatar").suffix.lower()
+        if not ext:
+            ext = {
+                "image/jpeg": ".jpg",
+                "image/png":  ".png",
+                "image/webp": ".webp",
+                "image/gif":  ".gif",
+            }.get(file.content_type or "", ".jpg")
+
     region_host = {
         "de": "storage.bunnycdn.com",
         "ny": "ny.storage.bunnycdn.com",
@@ -389,15 +422,6 @@ async def upload_my_photo(file: UploadFile = File(...), authorization: str = Hea
     }
     host = region_host.get(settings.BUNNY_STORAGE_REGION or "de", "storage.bunnycdn.com")
 
-    ext = Path(file.filename or "avatar").suffix.lower()
-    if not ext:
-        ext = {
-            "image/jpeg": ".jpg",
-            "image/png": ".png",
-            "image/webp": ".webp",
-            "image/gif": ".gif",
-        }.get(file.content_type or "", ".jpg")
-
     remote_path = f"uploads/users/{telegram_id}/avatar_{uuid.uuid4().hex}{ext}"
     put_url = f"https://{host}/{settings.BUNNY_STORAGE_ZONE}/{remote_path}"
 
@@ -407,7 +431,7 @@ async def upload_my_photo(file: UploadFile = File(...), authorization: str = Hea
             content=file_bytes,
             headers={
                 "AccessKey": settings.BUNNY_API_KEY,
-                "Content-Type": file.content_type or "application/octet-stream",
+                "Content-Type": upload_content_type,
                 "Content-Length": str(len(file_bytes)),
             },
         )
