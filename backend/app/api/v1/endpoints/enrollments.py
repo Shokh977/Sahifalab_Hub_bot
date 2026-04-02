@@ -69,7 +69,7 @@ async def _get_course(course_id: int) -> dict:
             f"{SUPABASE_URL}/rest/v1/courses",
             params={
                 "id": f"eq.{course_id}",
-                "select": "id, teacher_id, is_paid, is_published",
+                "select": "id, title, price, teacher_id, is_paid, is_published",
             },
             headers=_supabase_headers(),
         )
@@ -88,7 +88,13 @@ def _resolve_provider(provider: str, amount_uzs: int):
     if provider == "telegram_stars":
         stars = max(1, int(amount_uzs / STARS_RATE))
         return "", "XTR", stars
-    raise HTTPException(status_code=400, detail="Only telegram_stars is supported for course payments")
+    elif provider == "click":
+        from app.core.config import settings
+        return settings.CLICK_PROVIDER_TOKEN, "UZS", amount_uzs * 100  # tiyins
+    elif provider == "payme":
+        from app.core.config import settings
+        return settings.PAYME_PROVIDER_TOKEN, "UZS", amount_uzs * 100  # tiyins
+    raise HTTPException(status_code=400, detail=f"Unsupported provider: {provider}")
 
 
 async def _is_enrolled(course_id: int, student_id: int) -> bool:
@@ -138,7 +144,7 @@ class EnrollRequest(BaseModel):
 
 class CreateInvoiceRequest(BaseModel):
     course_id: int
-    provider: Literal["telegram_stars"] = "telegram_stars"
+    provider: Literal["telegram_stars", "click", "payme"] = "telegram_stars"
 
 
 class ConfirmCoursePaymentRequest(BaseModel):
@@ -238,7 +244,7 @@ async def create_invoice_link(body: CreateInvoiceRequest, authorization: Optiona
 
     tg_payload = {
         "title": f"🎓 {course.get('title', f'Course #{body.course_id}')}",
-        "description": "SAHIFALAB kursiga yozilish (⭐ Stars)",
+        "description": f"SAHIFALAB kursiga yozilish ({{'telegram_stars': '⭐ Stars', 'click': '🟢 Click', 'payme': '💙 Payme'}}.get(body.provider, body.provider))",
         "payload": order_id,
         "provider_token": provider_token,
         "currency": currency,

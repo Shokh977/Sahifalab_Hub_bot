@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import apiService from '../services/apiService'
+import PaymentModal from '../components/PaymentModal'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface Course {
@@ -198,7 +199,7 @@ const CourseDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useAuth()
   const { isTelegram } = usePlatform()
-  const { webApp } = useTelegramWebApp()
+  useTelegramWebApp()  // hook preserved for stable hook ordering
 
   const [course,         setCourse]         = useState<Course | null>(null)
   const [lessons,        setLessons]        = useState<Lesson[]>([])
@@ -223,6 +224,7 @@ const CourseDetailPage: React.FC = () => {
   } | null>(null)
   const [expandedLessons,  setExpandedLessons]  = useState<Set<number>>(new Set())
   const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
 
   const courseId   = parseInt(id ?? '0', 10)
   const isOwner    = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -321,30 +323,27 @@ const CourseDetailPage: React.FC = () => {
 
   const handleEnroll = useCallback(async () => {
     if (!course || isOwner || isEnrolled || enrollLoading) return
+
+    // Paid courses → show PaymentModal with Stars/Click/Payme options
+    if (course.is_paid) {
+      setShowPaymentModal(true)
+      return
+    }
+
+    // Free courses → enroll directly
     setEnrollLoading(true)
     try {
-      if (!course.is_paid) {
-        await apiService.enrollCourse(course.id)
-        setIsEnrolled(true)
-        setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
-        return
-      }
-      if (!isTelegram || !webApp) { setError("Pullik kurs to'lovi faqat Telegram ilovasida ishlaydi"); return }
-      const inv = await apiService.createCourseInvoiceLink(course.id, 'telegram_stars')
-      const invoiceUrl = inv.data?.invoice_url as string | undefined
-      const orderId    = inv.data?.order_id    as string | undefined
-      if (!invoiceUrl || !orderId) { setError('Invoice yaratilmadi'); return }
-      webApp.openInvoice(invoiceUrl, async (status: string) => {
-        if (status === 'paid') {
-          try {
-            await apiService.confirmCoursePayment(orderId)
-            setIsEnrolled(true)
-            setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
-          } catch { /* toast */ }
-        }
-      })
+      await apiService.enrollCourse(course.id)
+      setIsEnrolled(true)
+      setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
     } finally { setEnrollLoading(false) }
-  }, [course, isOwner, isEnrolled, enrollLoading, isTelegram, webApp])
+  }, [course, isOwner, isEnrolled, enrollLoading])
+
+  const handlePaymentSuccess = useCallback(() => {
+    setIsEnrolled(true)
+    setShowPaymentModal(false)
+    setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
+  }, [])
 
   const handleOpenCertificate = useCallback(() => {
     if (!course || completedIds.size !== lessons.length || lessons.length === 0) return
@@ -403,7 +402,6 @@ const CourseDetailPage: React.FC = () => {
       {course.is_paid && (
         <div className="flex items-baseline gap-2">
           <span className="text-2xl font-bold text-gray-900 dark:text-white">{course.price.toLocaleString()} so'm</span>
-          <span className="text-xs text-gray-400">Telegram Stars orqali</span>
         </div>
       )}
       {!isOwner ? (
@@ -415,7 +413,7 @@ const CourseDetailPage: React.FC = () => {
           ].join(' ')}>
           {isEnrolled     ? '✓ Siz yozilgansiz' :
            enrollLoading  ? 'Yuklanmoqda...' :
-           course.is_paid ? (isTelegram ? 'Stars bilan xarid qilish' : "Telegram'da to'lash") :
+           course.is_paid ? '💳 Sotib olish' :
                             'Bepul yozilish'}
         </button>
       ) : (
@@ -841,6 +839,19 @@ const CourseDetailPage: React.FC = () => {
       {/* Certificate modal */}
       {showCert && certData && (
         <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />
+      )}
+
+      {/* Payment modal — Click / Payme / Stars */}
+      {course && (
+        <PaymentModal
+          open={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          onSuccess={handlePaymentSuccess}
+          itemType="course"
+          itemId={course.id}
+          itemTitle={course.title}
+          priceUzs={course.price}
+        />
       )}
 
     </PageWrapper>

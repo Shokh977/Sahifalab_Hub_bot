@@ -31,6 +31,17 @@ class Settings(BaseSettings):
     CLICK_PROVIDER_TOKEN: str = ""   # BotFather → Payments → Click
     PAYME_PROVIDER_TOKEN: str = ""   # BotFather → Payments → Payme
 
+    # Payment — Direct merchant credentials (for webhooks + browser checkout)
+    # Click: get from Click.uz merchant dashboard
+    CLICK_MERCHANT_ID:  str = ""
+    CLICK_SERVICE_ID:   str = ""
+    CLICK_SECRET_KEY:   str = ""
+    # Payme: get from Payme merchant dashboard
+    PAYME_MERCHANT_ID:  str = ""
+    PAYME_MERCHANT_KEY: str = ""
+    # Frontend URL for return after payment
+    PAYMENT_RETURN_URL: str = "https://sahifalab-hub-bot.vercel.app"
+
     # Bunny.net CDN — video storage (Step 10)
     # BUNNY_STORAGE_ZONE   → Storage zone name in Bunny.net panel
     # BUNNY_API_KEY        → Storage zone FTP / API password (Read/Write)
