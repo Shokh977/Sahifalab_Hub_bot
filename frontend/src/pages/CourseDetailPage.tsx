@@ -13,8 +13,8 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   AcademicCapIcon, ArrowLeftIcon, ArrowPathIcon, ArrowRightIcon,
-  BanknotesIcon, ChartBarIcon, CheckCircleIcon, ClockIcon,
-  ExclamationCircleIcon, GlobeAltIcon, LockClosedIcon,
+  BanknotesIcon, ChartBarIcon, CheckCircleIcon, ChevronDownIcon, ClockIcon,
+  DocumentTextIcon, ExclamationCircleIcon, GlobeAltIcon, LockClosedIcon,
   PencilSquareIcon, PlayIcon, StarIcon, TagIcon,
   UsersIcon, VideoCameraIcon,
 } from '@heroicons/react/24/outline'
@@ -40,6 +40,7 @@ interface Lesson {
   id: number; title: string; description: string; video_url: string
   video_source: 'youtube' | 'bunny' | 'none'; duration_minutes: number
   order_index: number; is_free: boolean
+  material_url?: string; material_name?: string
 }
 
 interface Review {
@@ -59,50 +60,133 @@ function levelLabel(level: string) {
   return map[level] ?? level
 }
 
+// ── Rating widget — defined OUTSIDE CourseDetailPage to keep ref stable across renders
+// (prevents textarea focus loss on every keypress)
+interface RatingWidgetProps {
+  myRating: number; myReview: string; hoverStar: number; ratingLoading: boolean
+  onReviewChange: (v: string) => void
+  onHoverStar:    (s: number) => void
+  onLeaveStar:    () => void
+  onSubmit:       (stars: number) => void
+}
+const RatingWidget: React.FC<RatingWidgetProps> = ({
+  myRating, myReview, hoverStar, ratingLoading,
+  onReviewChange, onHoverStar, onLeaveStar, onSubmit,
+}) => (
+  <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
+    <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
+      {myRating ? `Sizning bahoyingiz: ${myRating} ★` : 'Kursni baholang:'}
+    </p>
+    <div className="flex gap-1 mb-3">
+      {[1,2,3,4,5].map(star => (
+        <button key={star}
+          onMouseEnter={() => onHoverStar(star)} onMouseLeave={onLeaveStar}
+          onClick={() => onSubmit(star)} disabled={ratingLoading}
+          className={['text-2xl transition-transform hover:scale-110', (hoverStar || myRating) >= star ? 'text-amber-400' : 'text-slate-300 dark:text-slate-600'].join(' ')}>
+          ★
+        </button>
+      ))}
+      {ratingLoading && <ArrowPathIcon className="h-4 w-4 text-gray-400 ml-2 self-center animate-spin" />}
+    </div>
+    <textarea value={myReview} onChange={e => onReviewChange(e.target.value)}
+      placeholder="Qo'shimcha fikr bildiring (ixtiyoriy)..." rows={2}
+      className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-gray-800 dark:text-gray-200 p-2 resize-none focus:outline-none focus:ring-2 focus:ring-sahifa-400" />
+    {myReview.trim() && (
+      <button onClick={() => onSubmit(myRating || 5)} disabled={ratingLoading}
+        className="mt-2 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 disabled:opacity-50">
+        Saqlash
+      </button>
+    )}
+  </div>
+)
+
 // ── Sidebar lesson row ────────────────────────────────────────────────────────
 const SidebarLessonRow: React.FC<{
-  lesson: Lesson; index: number; isActive: boolean
+  lesson: Lesson; index: number; isActive: boolean; courseId: number
   isCompleted: boolean; isUnlocked: boolean; isOwner: boolean
+  isExpanded: boolean
   onClick: () => void
-}> = ({ lesson, index, isActive, isCompleted, isUnlocked, isOwner, onClick }) => (
-  <motion.div
-    initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.02 }}
-    onClick={isUnlocked ? onClick : undefined}
-    className={[
-      'flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all',
-      isUnlocked ? 'cursor-pointer' : 'opacity-50',
-      isActive
-        ? 'bg-sahifa-50 dark:bg-sahifa-900/30 border border-sahifa-200 dark:border-sahifa-700'
-        : isUnlocked ? 'hover:bg-slate-100 dark:hover:bg-slate-700/60' : '',
-    ].join(' ')}
-  >
-    <div className={['w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0',
-      isCompleted ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' :
-      isActive    ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-600' :
-      isUnlocked  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500' :
-                    'bg-slate-100 dark:bg-slate-800 text-slate-400',
-    ].join(' ')}>
-      {isCompleted ? <CheckCircleIcon className="h-4 w-4" /> :
-       !isUnlocked ? <LockClosedIcon className="h-3.5 w-3.5" /> :
-                     <PlayIcon className="h-3.5 w-3.5" />}
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className={['text-xs font-medium truncate', isActive ? 'text-sahifa-700 dark:text-sahifa-300' : 'text-gray-800 dark:text-gray-200'].join(' ')}>
-        {lesson.title}
-      </p>
-      <div className="flex items-center gap-1.5 mt-0.5">
-        {lesson.duration_minutes > 0 && <span className="text-[10px] text-gray-400">{lesson.duration_minutes} daq</span>}
-        {lesson.is_free && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold">Bepul</span>}
+  onToggleExpand: () => void
+}> = ({ lesson, index, isActive, isCompleted, isUnlocked, isOwner, courseId, isExpanded, onClick, onToggleExpand }) => {
+  const hasMeta = !!(lesson.description?.trim() || lesson.material_url)
+  const isPdf   = !!(lesson.material_url && !lesson.video_url)
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.02 }}
+      className={[
+        'rounded-xl overflow-hidden border transition-all',
+        isActive ? 'border-sahifa-200 dark:border-sahifa-700 bg-sahifa-50 dark:bg-sahifa-900/30' : 'border-transparent',
+      ].join(' ')}
+    >
+      {/* Row header */}
+      <div
+        onClick={isUnlocked ? onClick : undefined}
+        className={[
+          'flex items-center gap-2.5 px-3 py-2.5 transition-all',
+          isUnlocked ? 'cursor-pointer' : 'opacity-50',
+          !isActive && isUnlocked ? 'hover:bg-slate-100 dark:hover:bg-slate-700/60 rounded-xl' : '',
+        ].join(' ')}
+      >
+        <div className={['w-7 h-7 rounded-lg flex items-center justify-center text-xs shrink-0',
+          isCompleted ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600' :
+          isActive    ? 'bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-600' :
+          isUnlocked  ? 'bg-slate-100 dark:bg-slate-700 text-slate-500' :
+                        'bg-slate-100 dark:bg-slate-800 text-slate-400',
+        ].join(' ')}>
+          {isCompleted   ? <CheckCircleIcon className="h-4 w-4" /> :
+           !isUnlocked   ? <LockClosedIcon className="h-3.5 w-3.5" /> :
+           isPdf         ? <DocumentTextIcon className="h-3.5 w-3.5" /> :
+                           <PlayIcon className="h-3.5 w-3.5" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className={['text-xs font-medium truncate', isActive ? 'text-sahifa-700 dark:text-sahifa-300' : 'text-gray-800 dark:text-gray-200'].join(' ')}>
+            {lesson.title}
+          </p>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {lesson.duration_minutes > 0 && <span className="text-[10px] text-gray-400">{lesson.duration_minutes} daq</span>}
+            {lesson.is_free     && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 font-bold">Bepul</span>}
+            {lesson.material_url && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-bold">PDF</span>}
+          </div>
+        </div>
+        {hasMeta && isUnlocked && (
+          <button
+            type="button"
+            onClick={e => { e.stopPropagation(); onToggleExpand() }}
+            className="shrink-0 p-1 text-slate-400 hover:text-sahifa-500 transition-colors"
+          >
+            <ChevronDownIcon className={`h-3.5 w-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+          </button>
+        )}
+        {isOwner && (
+          <Link to={`/courses/${courseId}/lessons/${lesson.id}/edit`} onClick={e => e.stopPropagation()}
+            className="shrink-0 p-1 text-slate-400 hover:text-sahifa-500 transition-colors">
+            <PencilSquareIcon className="h-3.5 w-3.5" />
+          </Link>
+        )}
       </div>
-    </div>
-    {isOwner && (
-      <Link to={`/lessons/${lesson.id}/edit`} onClick={e => e.stopPropagation()}
-        className="shrink-0 p-1 text-slate-400 hover:text-sahifa-500 transition-colors">
-        <PencilSquareIcon className="h-3.5 w-3.5" />
-      </Link>
-    )}
-  </motion.div>
-)
+      {/* Expandable details */}
+      {hasMeta && isExpanded && (
+        <div className="px-3 pb-3 pt-1.5 space-y-2 border-t border-slate-100 dark:border-slate-700/50 bg-white/60 dark:bg-slate-800/30">
+          {lesson.description?.trim() && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{lesson.description}</p>
+          )}
+          {lesson.material_url && (
+            <a
+              href={lesson.material_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium transition-colors"
+            >
+              <DocumentTextIcon className="h-3.5 w-3.5 shrink-0" />
+              {lesson.material_name || 'PDF materialini yuklab olish'}
+            </a>
+          )}
+        </div>
+      )}
+    </motion.div>
+  )
+}
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 const CourseDetailPage: React.FC = () => {
@@ -129,6 +213,11 @@ const CourseDetailPage: React.FC = () => {
   const [ratingLoading,  setRatingLoading]  = useState(false)
   const [reviewsLoading, setReviewsLoading] = useState(false)
   const [mobileTab,      setMobileTab]      = useState<'curriculum' | 'overview' | 'reviews'>('curriculum')
+  const [teacherProfile, setTeacherProfile] = useState<{
+    first_name?: string | null; username?: string | null; photo_url?: string | null
+    specialization?: string | null; bio?: string | null
+  } | null>(null)
+  const [expandedLessons, setExpandedLessons] = useState<Set<number>>(new Set())
 
   const courseId   = parseInt(id ?? '0', 10)
   const isOwner    = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
@@ -161,6 +250,14 @@ const CourseDetailPage: React.FC = () => {
       .catch(() => {})
   }, [courseId, isEnrolled])
 
+  // ── Load teacher profile ─────────────────────────────────────────────────
+  useEffect(() => {
+    if (!course?.teacher_id) return
+    apiService.getPublicTeacherProfile(course.teacher_id)
+      .then(res => setTeacherProfile(res.data))
+      .catch(() => {})
+  }, [course?.teacher_id])
+
   // ── Reviews ───────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!courseId) return
@@ -183,6 +280,8 @@ const CourseDetailPage: React.FC = () => {
     const unlocked = lesson.is_free || isOwner || isEnrolled
     if (!unlocked) return
     setActiveLesson(lesson)
+    // auto-expand to show description + PDF when selecting a lesson
+    setExpandedLessons(prev => new Set([...prev, lesson.id]))
     try {
       const res = await apiService.getLesson(lesson.id)
       const d = res.data
@@ -351,33 +450,14 @@ const CourseDetailPage: React.FC = () => {
     </div>
   )
 
-  const RatingWidget = () => user ? (
-    <div className="p-4 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-      <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-2">
-        {myRating ? `Sizning bahoyingiz: ${myRating} ★` : 'Kursni baholang:'}
-      </p>
-      <div className="flex gap-1 mb-3">
-        {[1,2,3,4,5].map(star => (
-          <button key={star}
-            onMouseEnter={() => setHoverStar(star)} onMouseLeave={() => setHoverStar(0)}
-            onClick={() => handleSubmitRating(star)} disabled={ratingLoading}
-            className={['text-2xl transition-transform hover:scale-110', (hoverStar || myRating) >= star ? 'text-amber-400' : 'text-slate-300 dark:text-slate-600'].join(' ')}>
-            ★
-          </button>
-        ))}
-        {ratingLoading && <ArrowPathIcon className="h-4 w-4 text-gray-400 ml-2 self-center animate-spin" />}
-      </div>
-      <textarea value={myReview} onChange={e => setMyReview(e.target.value)}
-        placeholder="Qo'shimcha fikr bildiring (ixtiyoriy)..." rows={2}
-        className="w-full text-xs rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 text-gray-800 dark:text-gray-200 p-2 resize-none focus:outline-none focus:ring-2 focus:ring-sahifa-400" />
-      {myReview.trim() && (
-        <button onClick={() => handleSubmitRating(myRating || 5)} disabled={ratingLoading}
-          className="mt-2 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 disabled:opacity-50">
-          Saqlash
-        </button>
-      )}
-    </div>
-  ) : null
+  // RatingWidget is defined outside this component (above) for stable ref — see fix comment there
+  const ratingWidgetProps: RatingWidgetProps = {
+    myRating, myReview, hoverStar, ratingLoading,
+    onReviewChange: setMyReview,
+    onHoverStar:    setHoverStar,
+    onLeaveStar:    () => setHoverStar(0),
+    onSubmit:       handleSubmitRating,
+  }
 
   const ReviewsList = () => (
     <div>
@@ -444,7 +524,14 @@ const CourseDetailPage: React.FC = () => {
               isCompleted={completedIds.has(lesson.id)}
               isUnlocked={lesson.is_free || isOwner || isEnrolled}
               isOwner={isOwner}
+              courseId={courseId}
+              isExpanded={expandedLessons.has(lesson.id)}
               onClick={() => handleSelectLesson(lesson)}
+              onToggleExpand={() => setExpandedLessons(prev => {
+                const next = new Set(prev)
+                if (next.has(lesson.id)) next.delete(lesson.id); else next.add(lesson.id)
+                return next
+              })}
             />
           ))}
         </div>
@@ -491,6 +578,39 @@ const CourseDetailPage: React.FC = () => {
           <Link to={`/courses/${course.id}/edit`}
             className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-semibold transition-colors">
             <PencilSquareIcon className="h-3.5 w-3.5" /> Kursni tahrirlash
+          </Link>
+        )}
+
+        {/* Teacher chip */}
+        {teacherProfile && (
+          <Link
+            to={`/teacher/${course.teacher_id}`}
+            className="mt-4 inline-flex items-center gap-2.5 group"
+          >
+            {teacherProfile.photo_url ? (
+              <img
+                src={teacherProfile.photo_url}
+                alt={teacherProfile.first_name ?? ''}
+                className="w-8 h-8 rounded-full object-cover border border-white/20"
+              />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-sahifa-500/40 border border-sahifa-400/40 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                {(teacherProfile.first_name ?? teacherProfile.username ?? 'O').charAt(0).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-[11px] text-slate-400 leading-none mb-0.5">O'qituvchi</p>
+              <p className="text-sm font-semibold text-white group-hover:text-sahifa-300 transition-colors leading-none truncate">
+                {teacherProfile.first_name
+                  || (teacherProfile.username ? `@${teacherProfile.username}` : "O'qituvchi")}
+              </p>
+              {teacherProfile.specialization && (
+                <p className="text-[11px] text-slate-400 leading-none mt-0.5 truncate">
+                  {teacherProfile.specialization}
+                </p>
+              )}
+            </div>
+            <span className="ml-1 text-slate-400 group-hover:text-sahifa-300 transition-colors text-xs">→</span>
           </Link>
         )}
       </div>
@@ -570,6 +690,17 @@ const CourseDetailPage: React.FC = () => {
                 {activeLesson.description && (
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">{activeLesson.description}</p>
                 )}
+                {activeLesson.material_url && (
+                  <a
+                    href={activeLesson.material_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                  >
+                    <DocumentTextIcon className="h-4 w-4 shrink-0" />
+                    {activeLesson.material_name || 'PDF materialini yuklab olish'}
+                  </a>
+                )}
               </div>
             ) : (
               <div className="mb-4 pb-4 border-b border-slate-200 dark:border-slate-700">
@@ -615,12 +746,12 @@ const CourseDetailPage: React.FC = () => {
                     {course.description && activeLesson && (
                       <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{course.description}</p>
                     )}
-                    <RatingWidget />
+                    {user && <RatingWidget {...ratingWidgetProps} />}
                   </motion.div>
                 )}
                 {mobileTab === 'reviews' && (
                   <motion.div key="rev" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    <RatingWidget />
+                    {user && <RatingWidget {...ratingWidgetProps} />}
                     <ReviewsList />
                   </motion.div>
                 )}
@@ -636,7 +767,7 @@ const CourseDetailPage: React.FC = () => {
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-3 leading-relaxed">{course.description}</p>
                 )}
               </div>
-              <RatingWidget />
+              {user && <RatingWidget {...ratingWidgetProps} />}
               <ReviewsList />
             </div>
           </div>

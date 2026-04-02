@@ -9,7 +9,7 @@
  *  • Course cards with thumbnail, price badge, rating, enrolment count
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { AcademicCapIcon, MagnifyingGlassIcon, XMarkIcon, VideoCameraIcon, UsersIcon, BookOpenIcon, GlobeAltIcon } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
@@ -44,6 +44,13 @@ interface Course {
   categories?:             { name: string; slug: string; icon: string } | null
 }
 
+interface TeacherMini {
+  first_name?:     string | null
+  username?:       string | null
+  photo_url?:      string | null
+  specialization?: string | null
+}
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 const LEVELS = [
   { value: '',             label: 'Barchasi' },
@@ -67,8 +74,12 @@ function formatDuration(minutes: number) {
 }
 
 // ── Course card ───────────────────────────────────────────────────────────────
-const CourseCard: React.FC<{ course: Course; index: number }> = ({ course, index }) => {
+const CourseCard: React.FC<{ course: Course; index: number; teacher?: TeacherMini }> = ({ course, index, teacher }) => {
+  const navigate = useNavigate()
   const cat = course.categories
+  const teacherName = teacher?.first_name
+    || (teacher?.username ? `@${teacher.username}` : null)
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 14 }}
@@ -120,7 +131,28 @@ const CourseCard: React.FC<{ course: Course; index: number }> = ({ course, index
                 {cat.icon} {cat.name}
               </p>
             )}
-            <div className="flex items-center justify-between pt-1">
+
+            {/* Teacher chip */}
+            {teacherName && (
+              <button
+                type="button"
+                onClick={e => { e.preventDefault(); e.stopPropagation(); navigate(`/teacher/${course.teacher_id}`) }}
+                className="flex items-center gap-1.5 group/t hover:opacity-80 transition-opacity"
+              >
+                {teacher?.photo_url ? (
+                  <img src={teacher.photo_url} alt={teacherName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                ) : (
+                  <div className="w-4 h-4 rounded-full bg-sahifa-500/30 flex items-center justify-center shrink-0 text-[8px] font-bold text-sahifa-700 dark:text-sahifa-300">
+                    {teacherName.charAt(0).toUpperCase()}
+                  </div>
+                )}
+                <span className="text-[11px] text-gray-500 dark:text-gray-400 group-hover/t:text-sahifa-600 dark:group-hover/t:text-sahifa-400 transition-colors truncate">
+                  {teacherName}
+                </span>
+              </button>
+            )}
+
+            <div className="flex items-center justify-between pt-0.5">
               <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
                 {course.total_lessons > 0 && (
                   <span className="inline-flex items-center gap-1"><VideoCameraIcon className="w-3.5 h-3.5" />{course.total_lessons} dars</span>
@@ -169,12 +201,29 @@ const CoursesPage: React.FC = () => {
   const [search, setSearch]                 = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
-  const [loading, setLoading]       = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [catsLoading, setCatsLoading] = useState(true)
+  const [loading, setLoading]         = useState(true)
+  const [loadingMore, setLoadingMore]   = useState(false)
+  const [catsLoading, setCatsLoading]   = useState(true)
+  const [teacherProfiles, setTeacherProfiles] = useState<Record<number, TeacherMini>>({})
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
+  // ── Batch-fetch teacher profiles for visible courses ──────────────────────────
+  useEffect(() => {
+    const ids = [...new Set(courses.map(c => c.teacher_id).filter(Boolean))]
+    const missing = ids.filter(id => !(id in teacherProfiles))
+    if (missing.length === 0) return
+    missing.forEach(tid => {
+      apiService.getPublicTeacherProfile(tid)
+        .then(res => {
+          setTeacherProfiles(prev => ({ ...prev, [tid]: res.data }))
+        })
+        .catch(() => {
+          // mark as fetched with empty to avoid retrying
+          setTeacherProfiles(prev => ({ ...prev, [tid]: {} }))
+        })
+    })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [courses])
   // ── Load categories once ────────────────────────────────────────────────
   useEffect(() => {
     apiService.getCategories()
@@ -366,7 +415,7 @@ const CoursesPage: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {courses.map((c, i) => <CourseCard key={c.id} course={c} index={i} />)}
+            {courses.map((c, i) => <CourseCard key={c.id} course={c} index={i} teacher={teacherProfiles[c.teacher_id]} />)}
           </div>
 
           {hasMore && (

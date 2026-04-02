@@ -157,6 +157,8 @@ const LessonCreatePage: React.FC = () => {
       duration_minutes: form.duration_minutes,
       order_index: form.order_index,
       is_free: form.is_free,
+      material_url:  form.type === 'material' ? form.material_url  : '',
+      material_name: form.type === 'material' ? form.material_name : '',
     }
 
     try {

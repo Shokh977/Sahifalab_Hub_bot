@@ -9,6 +9,7 @@ Routes (all require Bearer JWT):
 from fastapi import APIRouter, HTTPException, Header
 from pydantic import BaseModel, HttpUrl
 from typing import Optional
+import asyncio
 import os
 import logging
 import httpx
@@ -186,13 +187,43 @@ async def update_own_teacher_profile(
 async def get_teacher_profile_by_id(telegram_id: int):
     """
     Public endpoint — fetch any teacher's profile by telegram_id.
-    Used on public course / teacher pages.
+    Also enriches the response with first_name, username, photo_url from profiles table.
+    Returns partial data (from profiles only) even if no teacher_profiles row exists.
     """
     _ensure_supabase()
-    row = await _get_profile_row(telegram_id)
-    if not row:
+
+    # Fetch teacher profile row and user profile row in parallel
+    async with httpx.AsyncClient(timeout=10) as client:
+        tp_res, up_res = await asyncio.gather(
+            client.get(
+                f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "*"},
+                headers=_supabase_headers(),
+            ),
+            client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "first_name,username,photo_url"},
+                headers=_supabase_headers(),
+            ),
+        )
+
+    tp_rows = tp_res.json() if tp_res.status_code == 200 else []
+    up_rows = up_res.json() if up_res.status_code == 200 else []
+
+    teacher_row = tp_rows[0] if isinstance(tp_rows, list) and tp_rows else {}
+    user_row    = up_rows[0] if isinstance(up_rows, list) and up_rows else {}
+
+    if not teacher_row and not user_row:
         raise HTTPException(status_code=404, detail="Teacher profile not found")
-    return row
+
+    # Merge: teacher profile wins on field conflicts; add user display fields
+    return {
+        **teacher_row,
+        "telegram_id": telegram_id,
+        "first_name":  user_row.get("first_name"),
+        "username":    user_row.get("username"),
+        "photo_url":   user_row.get("photo_url"),
+    }
 
 
 @router.get("/analytics")
