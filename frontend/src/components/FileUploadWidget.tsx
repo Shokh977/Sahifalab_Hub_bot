@@ -30,7 +30,12 @@ import {
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://sahifalab-hub-bot-hsgt.vercel.app/api'
+// Normalise base origin: strip any trailing /api so we can always prefix /api/ ourselves.
+// This matches the convention used in apiService.ts (VITE_API_URL = origin only, no /api suffix).
+const _apiOrigin = (
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  'https://sahifalab-hub-bot-hsgt.vercel.app'
+).replace(/\/api\/?$/, '').replace(/\/$/, '')
 
 interface Props {
   accept?:       string
@@ -99,7 +104,7 @@ const FileUploadWidget: React.FC<Props> = ({
 
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${API_BASE}/upload/file`)
+      xhr.open('POST', `${_apiOrigin}/api/upload/file`)
       xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
       xhr.upload.onprogress = (e) => {

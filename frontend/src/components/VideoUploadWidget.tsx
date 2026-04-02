@@ -2,21 +2,25 @@
  * VideoUploadWidget
  *
  * Drag-and-drop / click-to-browse video uploader.
- * Calls POST /api/upload/video (multipart), shows a progress bar,
+ * Calls POST /api/upload/video (multipart/form-data), shows a progress bar,
  * and fires onUploaded(url, durationSeconds) when done.
  *
  * Props:
  *   courseId?      — passed as form field to build the correct Bunny.net path
  *   onUploaded     — callback with CDN url + detected duration in seconds
- *   existingUrl?   — pre-fill (edit mode): shows thumbnail + replace button
- *   disabled?      — locks the widget (while parent form is saving)
+ *   existingUrl?   — pre-fill (edit mode)
+ *   disabled?      — locks the widget while parent form is saving
  */
 import React, { useCallback, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowUpTrayIcon, ExclamationTriangleIcon, FilmIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 
-const API_BASE = import.meta.env.VITE_API_URL ?? 'https://sahifalab-hub-bot-hsgt.vercel.app/api'
+// Bare backend origin — strip any /api suffix (matches apiService.ts convention).
+const _apiOrigin = (
+  (import.meta.env.VITE_API_URL as string | undefined) ||
+  'https://sahifalab-hub-bot-hsgt.vercel.app'
+).replace(/\/api\/?$/, '').replace(/\/$/, '')
 
 const ALLOWED_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska']
 const MAX_MB = 500
@@ -90,13 +94,13 @@ const VideoUploadWidget: React.FC<Props> = ({
 
     const duration = await getDuration(file)
 
-    const form = new FormData()
-    form.append('file', file)
-    if (courseId) form.append('course_id', String(courseId))
+    const formData = new FormData()
+    formData.append('file', file)
+    if (courseId) formData.append('course_id', String(courseId))
 
     await new Promise<void>((resolve, reject) => {
       const xhr = new XMLHttpRequest()
-      xhr.open('POST', `${API_BASE}/upload/video`)
+      xhr.open('POST', `${_apiOrigin}/api/upload/video`)
       xhr.setRequestHeader('Authorization', `Bearer ${token}`)
 
       xhr.upload.onprogress = e => {
@@ -122,7 +126,7 @@ const VideoUploadWidget: React.FC<Props> = ({
       }
 
       xhr.onerror = () => reject(new Error('Tarmoq xatoligi'))
-      xhr.send(form)
+      xhr.send(formData)
     }).catch(err => {
       setErrorMsg(String(err?.message ?? err))
       setState('error')
