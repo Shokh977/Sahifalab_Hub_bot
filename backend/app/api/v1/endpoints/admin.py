@@ -1,6 +1,7 @@
 import json
 import os
 import httpx
+from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from app.db.session import get_db
@@ -436,25 +437,74 @@ async def get_admin_stats(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
-    """Get admin dashboard statistics"""
-    total_users = db.query(User).count()
+    """Get admin dashboard statistics (user counts sourced from Supabase profiles)"""
     total_quizzes = db.query(Quiz).count()
     total_books = db.query(Book).filter(Book.is_available == True).count()
-    total_resources = db.query(Book).filter(Book.is_available == True).count()  # Placeholder
-    
-    active_payments = db.query(PaymentConfig).filter(
-        PaymentConfig.is_enabled == True
-    ).count()
-    
-    recent_uploads = ["Quiz: Python 101", "Book: Data Science", "Resource: Khan Academy"]
-    
+    total_resources = total_books  # same source for now
+    active_payments = db.query(PaymentConfig).filter(PaymentConfig.is_enabled == True).count()
+
+    # ── Pull real user counts from Supabase ───────────────────────────────
+    total_users = db.query(User).count()  # Railway fallback
+    active_1h   = 0
+    active_24h  = 0
+
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            now       = datetime.now(timezone.utc)
+            ago_1h    = (now - timedelta(hours=1)).isoformat()
+            ago_24h   = (now - timedelta(hours=24)).isoformat()
+
+            sb_headers = {
+                **_supabase_headers(),
+                "Prefer":         "count=exact",
+                "Range":          "0-0",
+            }
+
+            async with httpx.AsyncClient(timeout=10) as client:
+                # Total profiles count
+                r_total = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"select": "telegram_id"},
+                    headers=sb_headers,
+                )
+                # Active in the last 1 hour
+                r_1h = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"select": "telegram_id", "app_online_at": f"gte.{ago_1h}"},
+                    headers=sb_headers,
+                )
+                # Active in the last 24 hours
+                r_24h = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"select": "telegram_id", "app_online_at": f"gte.{ago_24h}"},
+                    headers=sb_headers,
+                )
+
+            def _parse_count(resp: httpx.Response) -> int:
+                """Extract the right side of 'Content-Range: 0-0/1234'."""
+                cr = resp.headers.get("content-range", "") or resp.headers.get("Content-Range", "")
+                try:
+                    return int(cr.split("/")[-1])
+                except Exception:
+                    return 0
+
+            total_users = _parse_count(r_total) or total_users
+            active_1h   = _parse_count(r_1h)
+            active_24h  = _parse_count(r_24h)
+        except Exception:
+            pass  # silently fall back to Railway count
+
+    recent_uploads: list[str] = []
+
     return AdminStats(
         total_users=total_users,
         total_quizzes=total_quizzes,
         total_books=total_books,
         total_resources=total_resources,
         active_payments=active_payments,
-        recent_uploads=recent_uploads
+        recent_uploads=recent_uploads,
+        active_users_1h=active_1h,
+        active_users_24h=active_24h,
     )
 
 # Audit Logs

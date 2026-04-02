@@ -175,6 +175,9 @@ class AdminStats(BaseModel):
     total_resources: int
     active_payments: int
     recent_uploads: List[str]
+    # Real user activity counts sourced from Supabase profiles
+    active_users_1h: int = 0
+    active_users_24h: int = 0
 
 class AdminPanelAuthRequest(BaseModel):
     telegram_id: int

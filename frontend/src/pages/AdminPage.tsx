@@ -47,6 +47,8 @@ interface AdminStats {
   total_resources: number
   active_payments: number
   recent_uploads: string[]
+  active_users_1h: number
+  active_users_24h: number
 }
 
 interface AdminProfile {
@@ -389,7 +391,7 @@ const AdminPage: React.FC = () => {
         .from('profiles')
         .select('telegram_id, first_name, username, total_xp, focus_seconds, level, quizzes_completed, app_online_at')
         .order('total_xp', { ascending: false })
-        .limit(500)
+        .limit(5000)
 
       if (error) throw error
 
@@ -1098,36 +1100,62 @@ const AdminPage: React.FC = () => {
                 API: {import.meta.env.VITE_API_URL || 'http://localhost:8000'} · Admin ID: {adminId}
               </p>
             </div>
+
             {stats ? (
               <>
+                {/* Content stats */}
                 <div className="grid grid-cols-2 gap-3">
                   <StatCard emoji="📝" label="Quizlar" value={stats.total_quizzes} />
                   <StatCard emoji="📚" label="Kitoblar" value={stats.total_books} />
-                  <StatCard emoji="👥" label="Foydalanuvchilar" value={profiles.length > 0 ? profiles.length : stats.total_users} />
                   <StatCard emoji="💳" label="Faol to'lovlar" value={stats.active_payments} />
+                  <StatCard emoji="📦" label="Resurslar" value={stats.total_resources} />
                 </div>
-                {stats.recent_uploads.length > 0 && (
-                  <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
-                    <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">So'nggi yuklangan</h3>
-                    <ul className="space-y-1">
-                      {stats.recent_uploads.map((item, i) => (
-                        <li key={i} className="text-sm text-gray-600 dark:text-gray-400 flex items-center gap-2">
-                          <span className="text-green-500">✓</span> {item}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
 
+                {/* ── User Activity Section ── */}
+                <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300">👥 Foydalanuvchilar faolligi</h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-3 text-center">
+                      <p className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+                        {stats.total_users.toLocaleString()}
+                      </p>
+                      <p className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 mt-0.5">Jami ro'yxatdan o'tgan</p>
+                    </div>
+                    <div className="rounded-xl bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 p-3 text-center">
+                      <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
+                        {stats.active_users_24h.toLocaleString()}
+                      </p>
+                      <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-0.5">So'nggi 24 soat</p>
+                    </div>
+                    <div className="rounded-xl bg-violet-50 dark:bg-violet-900/20 border border-violet-100 dark:border-violet-800 p-3 text-center">
+                      <p className="text-2xl font-bold text-violet-700 dark:text-violet-300">
+                        {stats.active_users_1h.toLocaleString()}
+                      </p>
+                      <p className="text-[11px] font-semibold text-violet-600 dark:text-violet-400 mt-0.5">So'nggi 1 soat</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    Faollik: <code className="font-mono">app_online_at</code> maydoni bo'yicha hisoblanadi
+                  </p>
+                </div>
+
+                {/* ── Users List ── */}
                 <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-gray-700 dark:text-gray-300">
-                      👥 Foydalanuvchilar va gamifikatsiya natijalari ({profiles.length})
-                    </h3>
+                    <div>
+                      <h3 className="font-semibold text-gray-700 dark:text-gray-300">
+                        👥 Foydalanuvchilar ro'yxati
+                      </h3>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        {profiles.length > 0
+                          ? `${profiles.length.toLocaleString()} ta yuklandi · jami ${stats.total_users.toLocaleString()}`
+                          : `Jami: ${stats.total_users.toLocaleString()}`}
+                      </p>
+                    </div>
                     <button
                       onClick={loadProfiles}
                       disabled={profilesLoading}
-                      className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-50"
+                      className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg disabled:opacity-50 whitespace-nowrap"
                     >
                       {profilesLoading ? 'Yuklanmoqda…' : '↻ Yangilash'}
                     </button>
@@ -1151,7 +1179,7 @@ const AdminPage: React.FC = () => {
                     </div>
                   ) : (
                     <div className="overflow-x-auto">
-                      <table className="w-full min-w-[720px] text-sm">
+                      <table className="w-full min-w-[800px] text-sm">
                         <thead>
                           <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
                             <th className="py-2 pr-2">#</th>
@@ -1161,53 +1189,73 @@ const AdminPage: React.FC = () => {
                             <th className="py-2 pr-2">XP</th>
                             <th className="py-2 pr-2">Quiz</th>
                             <th className="py-2 pr-2">Focus</th>
+                            <th className="py-2 pr-2">Faollik</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {profiles.map((profile, idx) => (
-                            <tr key={profile.telegram_id || idx} className="border-b border-gray-50 dark:border-gray-800">
-                              <td className="py-2 pr-2 font-semibold text-gray-500 dark:text-gray-400">{idx + 1}</td>
-                              <td className="py-2 pr-2">
-                                {(() => {
-                                  const online = isUserOnline(profile.app_online_at)
-                                  const skin = getProfileSkin({
-                                    level: profile.level,
-                                    totalXP: profile.total_xp,
-                                    quizzesCompleted: profile.quizzes_completed,
-                                    focusSeconds: profile.focus_seconds,
-                                  })
-                                  return (
-                                    <div className="flex items-center gap-2">
-                                      <div className="relative flex-shrink-0">
-                                        <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-sahifa-500 to-sahifa-700 flex items-center justify-center text-white text-xs font-bold ${skin.borderClass}`}>
-                                          {(profile.first_name || '?').charAt(0).toUpperCase()}
+                          {profiles.map((profile, idx) => {
+                            const now = Date.now()
+                            const onlineAt = profile.app_online_at ? new Date(profile.app_online_at).getTime() : null
+                            const diffMs = onlineAt ? now - onlineAt : null
+                            const isOnline  = !!diffMs && diffMs <= 90_000
+                            const is1h      = !!diffMs && diffMs <= 3_600_000
+                            const is24h     = !!diffMs && diffMs <= 86_400_000
+
+                            const activityBadge = isOnline
+                              ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-[10px] font-bold"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />Online</span>
+                              : is1h
+                                ? <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-[10px] font-bold">1 soat</span>
+                                : is24h
+                                  ? <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-bold">24 soat</span>
+                                  : onlineAt
+                                    ? <span className="text-[10px] text-gray-400 dark:text-gray-500">{new Date(onlineAt).toLocaleDateString('uz-UZ')}</span>
+                                    : <span className="text-[10px] text-gray-300 dark:text-gray-600">—</span>
+
+                            return (
+                              <tr key={profile.telegram_id || idx} className="border-b border-gray-50 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                                <td className="py-2 pr-2 font-semibold text-gray-500 dark:text-gray-400">{idx + 1}</td>
+                                <td className="py-2 pr-2">
+                                  {(() => {
+                                    const skin = getProfileSkin({
+                                      level: profile.level,
+                                      totalXP: profile.total_xp,
+                                      quizzesCompleted: profile.quizzes_completed,
+                                      focusSeconds: profile.focus_seconds,
+                                    })
+                                    return (
+                                      <div className="flex items-center gap-2">
+                                        <div className="relative flex-shrink-0">
+                                          <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-sahifa-500 to-sahifa-700 flex items-center justify-center text-white text-xs font-bold ${skin.borderClass}`}>
+                                            {(profile.first_name || '?').charAt(0).toUpperCase()}
+                                          </div>
+                                          <div className="absolute -bottom-1 -right-1 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-200 dark:border-gray-700">
+                                            {skin.emoji}
+                                          </div>
+                                          {isOnline && (
+                                            <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-gray-800 shadow-sm" title="Online" />
+                                          )}
                                         </div>
-                                        <div className="absolute -bottom-1 -right-1 text-[10px] bg-white dark:bg-gray-800 rounded-full w-4 h-4 flex items-center justify-center border border-gray-200 dark:border-gray-700">
-                                          {skin.emoji}
+                                        <div className="min-w-0">
+                                          <div className="font-medium text-gray-900 dark:text-white truncate max-w-[120px]">{profile.first_name || 'Noma\'lum'}</div>
+                                          <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px]">@{profile.username || 'username yo\'q'} · {skin.name}</div>
                                         </div>
-                                        {online && (
-                                          <div className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white dark:border-gray-800 shadow-sm" title="Online" />
-                                        )}
                                       </div>
-                                      <div className="min-w-0">
-                                        <div className="font-medium text-gray-900 dark:text-white truncate max-w-[120px]">{profile.first_name || 'Noma\'lum'}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-[120px]">@{profile.username || 'username yo\'q'} · {skin.name}</div>
-                                      </div>
-                                    </div>
-                                  )
-                                })()}
-                              </td>
-                              <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.telegram_id}</td>
-                              <td className="py-2 pr-2">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-700 dark:text-sahifa-300 font-semibold">
-                                  {getLevelTitle(profile.level)}
-                                </span>
-                              </td>
-                              <td className="py-2 pr-2 font-semibold text-gray-900 dark:text-white">{profile.total_xp.toLocaleString()}</td>
-                              <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.quizzes_completed}</td>
-                              <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{formatFocusTime(profile.focus_seconds)}</td>
-                            </tr>
-                          ))}
+                                    )
+                                  })()}
+                                </td>
+                                <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.telegram_id}</td>
+                                <td className="py-2 pr-2">
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-700 dark:text-sahifa-300 font-semibold">
+                                    {getLevelTitle(profile.level)}
+                                  </span>
+                                </td>
+                                <td className="py-2 pr-2 font-semibold text-gray-900 dark:text-white">{profile.total_xp.toLocaleString()}</td>
+                                <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{profile.quizzes_completed}</td>
+                                <td className="py-2 pr-2 text-gray-700 dark:text-gray-300">{formatFocusTime(profile.focus_seconds)}</td>
+                                <td className="py-2">{activityBadge}</td>
+                              </tr>
+                            )
+                          })}
                         </tbody>
                       </table>
                     </div>
