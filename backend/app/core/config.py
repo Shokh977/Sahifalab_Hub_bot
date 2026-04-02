@@ -70,6 +70,8 @@ class Settings(BaseSettings):
         "https://sahifalab-hub-bot.vercel.app",
         # Allow any Vercel preview/production URL for this project
         "https://sahifalab-hub-bot-*.vercel.app",
+        # Railway backend talking to itself (health checks etc.)
+        "https://*.up.railway.app",
     ]
 
     @field_validator('CORS_ORIGINS', mode='before')
