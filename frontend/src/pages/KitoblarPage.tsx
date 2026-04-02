@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BookOpenIcon, ArchiveBoxXMarkIcon } from '@heroicons/react/24/outline'
+import { motion } from 'framer-motion'
+import { BookOpenIcon, ArchiveBoxXMarkIcon, StarIcon } from '@heroicons/react/24/outline'
 import { fetchBooks } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 
@@ -106,13 +107,14 @@ export const KitoblarPage: React.FC = () => {
 
       {/* Loading skeleton */}
       {loading && (
-        <div className="grid grid-cols-2 gap-3">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden animate-pulse shadow-sm">
-              <div className="aspect-[3/4] bg-gray-200 dark:bg-gray-700" />
-              <div className="p-3 space-y-1.5">
-                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-4/5" />
-                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/5" />
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-pulse">
+              <div className="h-36 bg-slate-100 dark:bg-slate-700" />
+              <div className="p-3 space-y-2">
+                <div className="h-4 bg-slate-100 dark:bg-slate-700 rounded w-3/4" />
+                <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />
+                <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/3" />
               </div>
             </div>
           ))}
@@ -121,69 +123,100 @@ export const KitoblarPage: React.FC = () => {
 
       {/* Empty state */}
       {!loading && !error && filtered.length === 0 && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm">
-          <div className="flex justify-center mb-3"><ArchiveBoxXMarkIcon className="w-10 h-10 text-gray-400" /></div>
-          <p className="text-gray-500 dark:text-gray-400 text-sm">Kitoblar topilmadi</p>
+        <div className="text-center py-16 space-y-3">
+          <ArchiveBoxXMarkIcon className="w-12 h-12 mx-auto text-slate-400" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">Kitoblar topilmadi</p>
         </div>
       )}
 
       {/* Books grid */}
       {!loading && filtered.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-            {filtered.slice(0, displayLimit).map(book => (
-              <button
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {filtered.slice(0, displayLimit).map((book, index) => (
+              <motion.div
                 key={book.id}
-                onClick={() => navigate(`/kitoblar/${book.id}`)}
-                className="bg-white dark:bg-gray-800 rounded-2xl overflow-hidden shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md active:scale-95 transition-all"
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.04 }}
               >
-                {/* Cover */}
-                <div className="aspect-[3/4] relative overflow-hidden bg-gray-100 dark:bg-gray-700">
-                  {book.thumbnail_url ? (
-                    <img
-                      src={book.thumbnail_url}
-                      alt={book.title}
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
-                    />
-                  ) : (
-                    <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
-                      <BookOpenIcon className="w-12 h-12 text-white/80" />
+                <button
+                  onClick={() => navigate(`/kitoblar/${book.id}`)}
+                  className="group block w-full text-left"
+                >
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md hover:border-sahifa-300 dark:hover:border-sahifa-600 transition-all">
+                    {/* Thumbnail */}
+                    <div className="relative h-36 overflow-hidden">
+                      {book.thumbnail_url ? (
+                        <img
+                          src={book.thumbnail_url}
+                          alt={book.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                          onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : (
+                        <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center group-hover:scale-105 transition-transform duration-300`}>
+                          <BookOpenIcon className="w-12 h-12 text-white/70" />
+                        </div>
+                      )}
+                      {/* Price badge */}
+                      <div className="absolute top-2 right-2">
+                        {book.is_paid ? (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold shadow">
+                            {book.price.toLocaleString()} so'm
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold shadow">
+                            Bepul
+                          </span>
+                        )}
+                      </div>
+                      {/* Category badge */}
+                      {book.category && (
+                        <div className="absolute bottom-2 left-2">
+                          <span className="px-2 py-0.5 rounded-full bg-black/50 text-white text-[10px] font-medium backdrop-blur-sm capitalize">
+                            {book.category}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {/* Badge */}
-                  <div className={`absolute top-2 right-2 text-xs font-bold px-2 py-0.5 rounded-full shadow ${
-                    book.is_paid
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-green-500 text-white'
-                  }`}>
-                    {book.is_paid ? `${book.price.toLocaleString()} UZS` : 'Bepul'}
-                  </div>
-                </div>
 
-                {/* Info */}
-                <div className="p-2.5 space-y-0.5">
-                  <p className="font-semibold text-xs text-gray-900 dark:text-white line-clamp-2 leading-snug">
-                    {book.title}
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{book.author}</p>
-                  <div className="flex items-center gap-2 pt-0.5">
-                    <span className="text-yellow-500 text-xs">★ {book.rating.toFixed(1)}</span>
-                    <span className="text-gray-400 text-xs">↓ {book.downloads}</span>
+                    {/* Info */}
+                    <div className="p-3 space-y-1.5">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 leading-snug">
+                        {book.title}
+                      </p>
+                      <p className="text-[11px] text-sahifa-600 dark:text-sahifa-400 font-medium truncate">
+                        {book.author}
+                      </p>
+                      <div className="flex items-center justify-between pt-0.5">
+                        <div className="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+                          {book.rating > 0 && (
+                            <span className="inline-flex items-center gap-0.5">
+                              <StarIcon className="w-3 h-3 text-amber-400" />
+                              {book.rating.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                        {book.downloads > 0 && (
+                          <span className="text-[11px] text-gray-400">↓ {book.downloads}</span>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+              </motion.div>
             ))}
           </div>
 
-          {/* Load more button */}
+          {/* Load more */}
           {displayLimit < filtered.length && (
             <button
               onClick={() => setDisplayLimit(displayLimit + 12)}
-              className="w-full py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+              className="w-full py-2.5 rounded-xl font-semibold text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-sahifa-400 dark:hover:border-sahifa-500 transition-colors"
             >
-              Yana ko'rsating ({filtered.length - displayLimit} qolgan)
+              Ko'proq ko'rish ({filtered.length - displayLimit} qolgan)
             </button>
           )}
         </>

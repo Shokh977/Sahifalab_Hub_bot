@@ -5,6 +5,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { motion } from 'framer-motion'
 import { XMarkIcon, DocumentTextIcon, BookOpenIcon, TrophyIcon, ArrowPathIcon, InformationCircleIcon, ExclamationCircleIcon, AcademicCapIcon } from '@heroicons/react/24/outline'
 import apiService from '@services/apiService'
 import { fetchQuizzes, fetchQuiz } from '../lib/supabase'
@@ -81,6 +82,12 @@ function formatDate(d: Date) {
 
 // â”€â”€â”€ Quiz list â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
+const DIFF_GRADIENT: Record<string, string> = {
+  easy:   'from-emerald-400 to-teal-500',
+  medium: 'from-amber-400 to-orange-500',
+  hard:   'from-red-400 to-rose-500',
+}
+
 const QuizList: React.FC<{
   quizzes: QuizSummary[]
   loading: boolean
@@ -99,75 +106,96 @@ const QuizList: React.FC<{
       </div>
 
       {loading ? (
-        <div className="space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+        <div className="grid grid-cols-2 gap-3">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-pulse">
+              <div className="h-36 bg-slate-100 dark:bg-slate-700" />
+              <div className="p-3 space-y-2">
+                <div className="h-4 bg-slate-100 dark:bg-slate-700 rounded w-3/4" />
+                <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />
+              </div>
+            </div>
           ))}
         </div>
       ) : quizzes.length === 0 ? (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl p-8 text-center shadow-sm border border-gray-100 dark:border-gray-700">
+        <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 text-center border border-slate-200 dark:border-slate-700">
           <div className="flex justify-center mb-3"><BookOpenIcon className="w-10 h-10 text-gray-400" /></div>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">Hali viktorina qo'shilmagan</p>
-      </div>
-    ) : (
-      <>
-        <div className="space-y-3">
-          {displayed.map(quiz => (
-            <button
-              key={quiz.id}
-              onClick={() => onStart(quiz)}
-              className="w-full bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 text-left hover:shadow-md hover:border-blue-200 dark:hover:border-blue-700 transition-all active:scale-[0.98]"
-            >
-              <div className="flex items-start gap-3">
-                <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-xl shrink-0">
-                  <DocumentTextIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900 dark:text-white text-sm leading-tight">{quiz.title}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{quiz.book_title}</p>
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
-                      {quiz.total_questions} savol
-                    </span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${DIFF_STYLE[quiz.difficulty] ?? DIFF_STYLE.medium}`}>
-                      {DIFF_LABEL[quiz.difficulty] ?? quiz.difficulty}
-                    </span>
-                  </div>
-                </div>
-                <span className="text-gray-400 text-lg self-center">›</span>
-              </div>
-            </button>
-          ))}
+          <p className="text-gray-500 dark:text-gray-400 text-sm">Hali viktorina qo'shilmagan</p>
         </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {displayed.map((quiz, index) => (
+              <motion.div
+                key={quiz.id}
+                initial={{ opacity: 0, y: 14 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.04 }}
+              >
+                <button
+                  onClick={() => onStart(quiz)}
+                  className="group block w-full text-left"
+                >
+                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md hover:border-sahifa-300 dark:hover:border-sahifa-600 transition-all">
+                    {/* Thumbnail area */}
+                    <div className={`relative h-36 bg-gradient-to-br ${DIFF_GRADIENT[quiz.difficulty] ?? 'from-blue-400 to-indigo-500'} flex items-center justify-center overflow-hidden`}>
+                      <DocumentTextIcon className="w-14 h-14 text-white/60 group-hover:scale-110 transition-transform duration-300" />
+                      {/* Difficulty badge — bottom left */}
+                      <div className="absolute bottom-2 left-2">
+                        <span className="px-2 py-0.5 rounded-full bg-black/40 text-white text-[10px] font-medium backdrop-blur-sm">
+                          {DIFF_LABEL[quiz.difficulty] ?? quiz.difficulty}
+                        </span>
+                      </div>
+                      {/* Question count badge — top right */}
+                      <div className="absolute top-2 right-2">
+                        <span className="px-2 py-0.5 rounded-full bg-white/25 text-white text-[10px] font-bold backdrop-blur-sm">
+                          {quiz.total_questions} savol
+                        </span>
+                      </div>
+                    </div>
 
-              Ro'yxatga
-        {displayLimit < quizzes.length && (
-          <button
-            onClick={() => setDisplayLimit(displayLimit + 10)}
-            className="w-full py-3 rounded-xl font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
-          >
-            Yana ko'rsating ({quizzes.length - displayLimit} qolgan)
-          </button>
-        )}
-      </>
-    )}
+                    {/* Info */}
+                    <div className="p-3 space-y-1.5">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 leading-snug">
+                        {quiz.title}
+                      </p>
+                      <p className="text-[11px] text-sahifa-600 dark:text-sahifa-400 font-medium truncate">
+                        {quiz.book_title}
+                      </p>
+                    </div>
+                  </div>
+                </button>
+              </motion.div>
+            ))}
+          </div>
 
-    {/* Certificate teaser */}
-    <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3">
-      <p className="text-xs text-amber-800 dark:text-amber-300">
-        <span className="inline-flex items-center gap-1"><TrophyIcon className="w-4 h-4" /><strong>80% va undan yuqori</strong></span> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
-        Instagram Stories uchun tayyorlangan PNG formatida yuklab oling.
-      </p>
+          {displayLimit < quizzes.length && (
+            <button
+              onClick={() => setDisplayLimit(displayLimit + 10)}
+              className="w-full py-2.5 rounded-xl font-semibold text-sm text-gray-700 dark:text-gray-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-sahifa-400 dark:hover:border-sahifa-500 transition-colors"
+            >
+              Ko'proq ko'rish ({quizzes.length - displayLimit} qolgan)
+            </button>
+          )}
+        </>
+      )}
+
+      {/* Certificate teaser */}
+      <div className="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/20 dark:to-yellow-900/20 border border-amber-200 dark:border-amber-800 rounded-2xl p-3">
+        <p className="text-xs text-amber-800 dark:text-amber-300">
+          <span className="inline-flex items-center gap-1"><TrophyIcon className="w-4 h-4" /><strong>80% va undan yuqori</strong></span> ball to'plab, rasmiy <strong>SAHIFALAB sertifikat</strong>ini qozonin!
+          Instagram Stories uchun tayyorlangan PNG formatida yuklab oling.
+        </p>
+      </div>
+
+      {/* XP + Daraja + Anti-farming info */}
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-3">
+        <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
+          <span className="inline-flex items-center gap-1"><InformationCircleIcon className="w-4 h-4" /><strong>XP qoidasi:</strong></span> XP olish uchun kamida <strong>80%</strong> to'g'ri javob kerak.
+          Bir xil viktorinadan XP faqat <strong>bir marta</strong> beriladi. O'ta olmaguningizcha qayta urinishingiz mumkin!
+        </p>
+      </div>
     </div>
-
-    {/* XP + Daraja + Anti-farming info */}
-    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-3">
-      <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
-        <span className="inline-flex items-center gap-1"><InformationCircleIcon className="w-4 h-4" /><strong>XP qoidasi:</strong></span> XP olish uchun kamida <strong>80%</strong> to'g'ri javob kerak.
-        Bir xil viktorinadan XP faqat <strong>bir marta</strong> beriladi. O'ta olmaguningizcha qayta urinishingiz mumkin!
-      </p>
-    </div>
-  </div>
   )
 }
 
