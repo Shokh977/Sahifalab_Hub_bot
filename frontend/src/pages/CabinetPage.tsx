@@ -41,6 +41,7 @@ import { usePlatform } from '../hooks/usePlatform'
 import { useAuth } from '../context/AuthContext'
 import { LEVEL_TITLES, getLevelTitle, getLevelDescription } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+import { showToast } from '../components/ErrorBoundary'
 import PageWrapper from '../components/PageWrapper'
 import apiService from '../services/apiService'
 import {
@@ -233,22 +234,37 @@ const CabinetPage: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false)
   const [editFirstName, setEditFirstName] = useState('')
   const [editUsername, setEditUsername] = useState('')
+  const [localFirstName, setLocalFirstName] = useState('')
+  const [localUsername, setLocalUsername] = useState('')
+  const [localPhotoUrl, setLocalPhotoUrl] = useState<string | null>(null)
   const rawPhotoUrl = isWeb ? authUser?.photo_url : tgUser?.photo_url
-  const photoUrl = (!photoError && rawPhotoUrl) ? rawPhotoUrl : null
+  const resolvedPhotoUrl = localPhotoUrl || rawPhotoUrl || null
+  const photoUrl = (!photoError && resolvedPhotoUrl) ? resolvedPhotoUrl : null
 
   useEffect(() => {
     setEditFirstName(effectiveFirstName || '')
     setEditUsername(effectiveUsername || '')
   }, [effectiveFirstName, effectiveUsername])
 
+  useEffect(() => {
+    setLocalFirstName(effectiveFirstName || '')
+    setLocalUsername(effectiveUsername || '')
+    setLocalPhotoUrl(rawPhotoUrl || null)
+  }, [effectiveFirstName, effectiveUsername, rawPhotoUrl])
+
   const handlePhotoFileUpload = useCallback(async (file: File | null) => {
     if (!file) return
     try {
       setPhotoSaving(true)
-      await apiService.uploadMyPhotoFile(file)
-      window.location.reload()
+      const res = await apiService.uploadMyPhotoFile(file)
+      const nextPhoto = res?.data?.photo_url as string | undefined
+      if (nextPhoto) {
+        setLocalPhotoUrl(nextPhoto)
+        setPhotoError(false)
+      }
+      showToast('Profil rasmi yangilandi', 'success')
     } catch {
-      alert('Rasm yuklanmadi. Bunny sozlamalarini tekshiring va qayta urinib ko\'ring.')
+      showToast('Rasm yuklanmadi. Bunny sozlamalarini tekshiring.', 'error')
     } finally {
       setPhotoSaving(false)
     }
@@ -262,9 +278,12 @@ const CabinetPage: React.FC = () => {
         first_name: editFirstName.trim(),
         username: editUsername.trim() || null,
       })
-      window.location.reload()
+      setLocalFirstName(editFirstName.trim())
+      setLocalUsername(editUsername.trim())
+      setEditOpen(false)
+      showToast('Profil ma\'lumotlari saqlandi', 'success')
     } catch {
-      alert('Profil ma\'lumotlari saqlanmadi. Qayta urinib ko\'ring.')
+      showToast('Profil ma\'lumotlari saqlanmadi', 'error')
     } finally {
       setProfileSaving(false)
     }
@@ -288,7 +307,7 @@ const CabinetPage: React.FC = () => {
   const xpInLevel = effectiveTotalXP - start
   const xpForLevel = end - start
   const grad = levelGradient(effectiveLevel)
-  const displayName = effectiveFirstName || 'Foydalanuvchi'
+  const displayName = localFirstName || effectiveFirstName || 'Foydalanuvchi'
   const focusHours = (effectiveFocusSeconds / 3600).toFixed(1)
 
   // ── Load certificates & purchased books ──────────────────────────────────
@@ -455,8 +474,8 @@ const CabinetPage: React.FC = () => {
             <h1 className="text-lg font-black text-gray-900 dark:text-white truncate">
               {displayName}
             </h1>
-            {username && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">@{username}</p>
+            {(localUsername || username) && (
+              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">@{localUsername || username}</p>
             )}
             <div className="flex items-center gap-2 mt-1">
               <div
