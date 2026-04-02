@@ -301,7 +301,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               exit={{ opacity: 0 }}
               transition={{ duration: 0.2 }}
               onClick={() => setDrawerOpen(false)}
-              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 lg:hidden"
+              className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[55] lg:hidden"
             />
 
             {/* Drawer panel */}
@@ -311,7 +311,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] z-50 flex flex-col bg-white dark:bg-[#121212] border-r border-slate-200 dark:border-[#2A2A2A] overflow-hidden lg:hidden"
+              className="fixed left-0 top-0 bottom-0 w-[280px] z-[60] flex flex-col bg-white dark:bg-[#121212] border-r border-slate-200 dark:border-[#2A2A2A] overflow-hidden lg:hidden"
             >
               {/* Close button inside drawer header */}
               <div className="absolute top-5 right-4 z-10">
