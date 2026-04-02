@@ -342,22 +342,59 @@ async def update_course(
 
 @router.get("/{course_id}/reviews")
 async def list_course_reviews(course_id: int):
-    """Public: list all ratings/reviews for a course, newest first."""
+    """Public: list all ratings/reviews for a course, newest first.
+
+    We do two separate PostgREST queries instead of the nested-join syntax
+    (profiles(...)) because course_ratings.student_id → profiles.telegram_id
+    is not backed by a hard FK constraint in the DB, causing PGRST200.
+    """
     _ensure_supabase()
     async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.get(
+        ratings_res = await client.get(
             f"{SUPABASE_URL}/rest/v1/course_ratings",
             params={
                 "course_id": f"eq.{course_id}",
-                "select": "id, student_id, rating, review, created_at, profiles(first_name, username, photo_url)",
+                "select": "id,student_id,rating,review,created_at",
                 "order": "created_at.desc",
                 "limit": "50",
             },
             headers=_supabase_headers(),
         )
-    if res.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Supabase error: {res.text}")
-    return res.json()
+    if ratings_res.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Supabase error: {ratings_res.text}")
+
+    ratings = ratings_res.json()
+    if not ratings:
+        return []
+
+    # Fetch the matching profiles in one round-trip
+    student_ids = list({r["student_id"] for r in ratings})
+    ids_filter = "in.(" + ",".join(str(i) for i in student_ids) + ")"
+    async with httpx.AsyncClient(timeout=10) as client:
+        profiles_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params={
+                "telegram_id": ids_filter,
+                "select": "telegram_id,first_name,username,photo_url",
+            },
+            headers=_supabase_headers(),
+        )
+
+    profiles_by_id: dict = {}
+    if profiles_res.status_code == 200:
+        for p in profiles_res.json():
+            profiles_by_id[p["telegram_id"]] = p
+
+    # Merge profile data into each rating row
+    for r in ratings:
+        p = profiles_by_id.get(r["student_id"], {})
+        r["profiles"] = {
+            "first_name": p.get("first_name", "User"),
+            "username":   p.get("username"),
+            "photo_url":  p.get("photo_url"),
+        }
+
+    return ratings
 
 
 @router.get("/{course_id}/my-rating")
