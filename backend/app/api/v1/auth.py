@@ -16,6 +16,7 @@ from app.services.auth_service import (
     verify_telegram_auth,
     create_access_token,
     decode_token,
+    decode_token_payload,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,7 +131,7 @@ async def telegram_login(data: TelegramAuthData):
         profile_row = {}
 
     # 5. Generate JWT token
-    token_data = create_access_token(data.id)
+    token_data = create_access_token(data.id, profile_row.get("role", "student"))
 
     return {
         "success": True,
@@ -267,7 +268,7 @@ async def google_sign_in(body: GoogleSignInRequest):
     except Exception:
         profile = {}
 
-    token_data = create_access_token(telegram_id)
+    token_data = create_access_token(telegram_id, profile.get("role", "student"))
     return {
         "status": "ok",
         "telegram_id": telegram_id,
@@ -462,7 +463,7 @@ async def verify_code(code: str):
     except Exception:
         profile = {}
 
-    token_data = create_access_token(telegram_id)
+    token_data = create_access_token(telegram_id, profile.get("role", "student"))
 
     return {
         "status": "ok",
@@ -901,7 +902,7 @@ async def email_register(body: EmailRegisterRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {e}")
 
-    token_data = create_access_token(internal_id)
+    token_data = create_access_token(internal_id, "student")
     return {
         "status": "ok",
         "telegram_id": internal_id,
@@ -966,7 +967,7 @@ async def email_login(body: EmailLoginRequest):
     except Exception:
         pass
 
-    token_data = create_access_token(telegram_id)
+    token_data = create_access_token(telegram_id, row.get("role", "student"))
     return {
         "status": "ok",
         "telegram_id": telegram_id,

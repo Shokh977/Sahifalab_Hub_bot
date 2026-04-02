@@ -53,32 +53,50 @@ def verify_telegram_auth(data: TelegramAuthData, bot_token: str) -> bool:
     
     return True
 
-def create_access_token(telegram_id: int) -> dict:
+def create_access_token(telegram_id: int, role: str = "student") -> dict:
     """
     Create JWT token for user.
+    role is embedded so upload/teacher-gated endpoints can verify without a DB round-trip.
     """
     expire = datetime.now(UTC) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
-    
+
     payload = {
-        "sub": str(telegram_id),
-        "exp": expire,
-        "iat": datetime.now(UTC),
+        "sub":  str(telegram_id),
+        "role": role,
+        "exp":  expire,
+        "iat":  datetime.now(UTC),
     }
-    
+
     token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
     return {
         "access_token": token,
-        "token_type": "bearer",
-        "expires_in": ACCESS_TOKEN_EXPIRE_DAYS * 86400,
+        "token_type":   "bearer",
+        "expires_in":   ACCESS_TOKEN_EXPIRE_DAYS * 86400,
     }
 
 def decode_token(token: str) -> Optional[int]:
     """
-    Decode JWT token and return telegram_id.
+    Decode JWT token and return telegram_id (int).
+    Kept for backward-compat with auth.py helpers.
     """
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        telegram_id = int(payload.get("sub"))
-        return telegram_id
-    except:
+        return int(payload.get("sub"))
+    except Exception:
+        return None
+
+
+def decode_token_payload(token: str) -> Optional[dict]:
+    """
+    Decode JWT and return {"telegram_id": int, "role": str}.
+    Returns None on any error.
+    Falls back to role="student" if the field is absent (old tokens).
+    """
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return {
+            "telegram_id": int(payload.get("sub")),
+            "role":        payload.get("role", "student"),
+        }
+    except Exception:
         return None

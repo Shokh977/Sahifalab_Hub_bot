@@ -37,7 +37,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
-from app.services.auth_service import decode_token
+from app.services.auth_service import decode_token_payload
 
 router = APIRouter()
 _security = HTTPBearer()
@@ -113,8 +113,11 @@ def _cdn_url(remote_path: str) -> str:
 
 
 async def _get_caller(creds: HTTPAuthorizationCredentials) -> dict:
-    """Decode JWT and verify the caller is a teacher or admin."""
-    payload = decode_token(creds.credentials)
+    """
+    Decode JWT and verify the caller is a teacher or admin.
+    Returns {"telegram_id": int, "role": str}.
+    """
+    payload = decode_token_payload(creds.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     role = payload.get("role", "student")
