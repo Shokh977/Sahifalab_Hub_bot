@@ -3,8 +3,8 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  as string
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
-/** FastAPI backend base URL — used for high-traffic public reads to avoid Supabase egress */
-const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || '').replace(/\/$/, '')
+/** FastAPI backend base URL — same var used by apiService.ts */
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TWO-LEVEL TTL CACHE — drastically reduces Supabase egress.
