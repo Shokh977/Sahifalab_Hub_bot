@@ -83,10 +83,16 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
-/* Soften harsh black-on-white in light mode */
-html:not(.dark) .text-black {
-  color: #1f2937 !important;
-}
+/* ── Light mode: soften all near-black text utilities ────────────────────────
+   Tailwind's gray-900 = #111827, slate-900 = #0F172A — both look very harsh
+   on the warm off-white background. Map them to comfortable reading tones.    */
+html:not(.dark) .text-black          { color: #374151 !important; }
+html:not(.dark) .text-gray-900       { color: #374151 !important; }  /* #111827 → #374151 */
+html:not(.dark) .text-slate-900      { color: #374151 !important; }  /* #0F172A → #374151 */
+html:not(.dark) .text-gray-800       { color: #3D4A5C !important; }  /* #1F2937 → #3D4A5C */
+html:not(.dark) .text-slate-800      { color: #3D4A5C !important; }  /* #1E293B → #3D4A5C */
+html:not(.dark) .text-gray-700       { color: #4C5A6A !important; }  /* #374151 → softer */
+html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 → softer */
 
 #root {
   width: 100%;
