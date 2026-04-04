@@ -233,6 +233,44 @@ const AppRoutes: React.FC = () => (
 )
 
 /**
+ * MaintenanceBanner — shows a dismissible Uzbek warning until 11-April 2026.
+ * Auto-hidden after the deadline; dismissed state stored in sessionStorage.
+ */
+const MAINTENANCE_END = new Date('2026-04-11T00:00:00+05:00') // UTC+5 Tashkent
+
+const MaintenanceBanner: React.FC = () => {
+  const [visible, setVisible] = React.useState(() => {
+    if (new Date() >= MAINTENANCE_END) return false
+    return sessionStorage.getItem('maintenance_dismissed') !== '1'
+  })
+
+  if (!visible) return null
+
+  return (
+    <div className="relative z-[9999] w-full bg-amber-400 dark:bg-amber-500 text-amber-950 dark:text-amber-950">
+      <div className="max-w-3xl mx-auto flex items-start gap-3 px-4 py-3 text-sm">
+        <span className="text-xl leading-none mt-0.5" aria-hidden>🚧</span>
+        <div className="flex-1 leading-snug">
+          <span className="font-bold">Texnik ishlar davom etmoqda.</span>{' '}
+          Platforma <span className="font-semibold">11-aprelgacha</span> yangilanish
+          jarayonida — ba'zi bo'limlar vaqtincha cheklangan bo'lishi mumkin.
+          Noqulaylik uchun uzr so'raymiz 🙏
+        </div>
+        <button
+          onClick={() => { sessionStorage.setItem('maintenance_dismissed', '1'); setVisible(false) }}
+          className="flex-shrink-0 ml-1 p-0.5 rounded hover:bg-amber-500/40 dark:hover:bg-amber-600/40 transition-colors"
+          aria-label="Yopish"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/**
  * AppShell — picks TelegramLayout or WebLayout based on detected platform.
  *
  * Telegram Mini App:  TelegramLayout → same behavior as before (no change)
@@ -255,6 +293,7 @@ const AppShell: React.FC = () => {
   if (isTelegram) {
     return (
       <TelegramLayout>
+        <MaintenanceBanner />
         <TelegramBackButtonHandler />
         <GlobalProgressBar />
         <AppRoutes />
@@ -264,6 +303,7 @@ const AppShell: React.FC = () => {
 
   return (
     <WebLayout>
+      <MaintenanceBanner />
       <AppRoutes />
     </WebLayout>
   )
