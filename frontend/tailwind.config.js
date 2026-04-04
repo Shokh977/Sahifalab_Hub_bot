@@ -10,19 +10,33 @@ export default {
       colors: {
         /* ── Premium Orange palette ─────────────────────────────────── */
         sahifa: {
-          50:  '#FFF7ED',
-          100: '#FFEDD5',
-          200: '#FED7AA',
-          300: '#FDB089',
-          400: '#FF8A57',
-          500: '#FF6A2A',   /* ← Brand orange */
-          600: '#F35B1C',
-          700: '#D94A10',
-          800: '#9A3412',
-          900: '#7C2D12',
-          950: '#431407',
+          50:  '#FFF4EE',
+          100: '#FFE4D3',
+          200: '#FFC8A8',
+          300: '#FFA57A',
+          400: '#FF7D44',
+          500: '#F15929',   /* ← Brand orange  */
+          600: '#E04A1A',
+          700: '#C43C12',
+          800: '#922C0C',
+          900: '#6B1F08',
+          950: '#3D0F02',
         },
-        /* ── Deep Slate backgrounds ─────────────────────────────────── */
+        /* ── Deep Slate / Dark mode bg ──────────────────────────────── */
+        pitch: {
+          DEFAULT: '#1C1C22',  /* ← Primary dark bg */
+          50:  '#F5F5F7',
+          100: '#E8E8EE',
+          200: '#C8C8D4',
+          300: '#9898A8',
+          400: '#606070',
+          500: '#3C3C48',
+          600: '#2A2A34',
+          700: '#222230',
+          800: '#1C1C22',
+          900: '#14141A',
+          950: '#0C0C10',
+        },
         slate: {
           950: '#0F172A',
           925: '#111827',
@@ -41,12 +55,15 @@ export default {
         '4xl': '2rem',
       },
       boxShadow: {
-        'glow-sm':   '0 10px 24px rgba(255, 106, 42, 0.18)',
-        'glow':      '0 14px 32px rgba(255, 106, 42, 0.22)',
-        'glow-lg':   '0 18px 40px rgba(255, 106, 42, 0.24)',
-        'glow-gold': '0 0 20px rgba(255, 215, 0, 0.3)',
-        'card':      '0 8px 30px rgba(15, 23, 42, 0.06)',
-        'card-hover':'0 12px 40px rgba(15, 23, 42, 0.08)',
+        'glow-sm':     '0 10px 24px rgba(241, 89, 41, 0.18)',
+        'glow':        '0 14px 32px rgba(241, 89, 41, 0.22)',
+        'glow-lg':     '0 18px 40px rgba(241, 89, 41, 0.28)',
+        'glow-gold':   '0 0 20px rgba(255, 215, 0, 0.3)',
+        'card':        '0 4px 24px rgba(15, 23, 42, 0.06)',
+        'card-hover':  '0 8px 36px rgba(15, 23, 42, 0.10)',
+        'card-dark':   '0 4px 24px rgba(0, 0, 0, 0.28)',
+        'hero':        '0 20px 60px rgba(241, 89, 41, 0.20)',
+        'inner-light': 'inset 0 1px 0 rgba(255,255,255,0.10)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

@@ -22,8 +22,8 @@
   100% { transform: translateX(100%); }
 }
 @keyframes neonPulse {
-  0%, 100% { box-shadow: 0 0 8px rgba(242,103,34,0.3), 0 0 16px rgba(242,103,34,0.15); }
-  50%      { box-shadow: 0 0 16px rgba(242,103,34,0.5), 0 0 32px rgba(242,103,34,0.25); }
+  0%, 100% { box-shadow: 0 0 8px rgba(241,89,41,0.3), 0 0 16px rgba(241,89,41,0.15); }
+  50%      { box-shadow: 0 0 16px rgba(241,89,41,0.5), 0 0 32px rgba(241,89,41,0.25); }
 }
 @keyframes floatSlow {
   0%, 100% { transform: translateY(0); }
@@ -41,8 +41,8 @@
   --tg-theme-button-text-color: #ffffff;
   --tg-theme-secondary-bg-color: #F4F5F7;
 
-  --sahifa-orange: #FF6A2A;
-  --sahifa-orange-glow: rgba(255, 106, 42, 0.16);
+  --sahifa-orange: #F15929;
+  --sahifa-orange-glow: rgba(241, 89, 41, 0.16);
   --sahifa-bg: #FAFAFA;
   --sahifa-surface: #F4F5F7;
   --sahifa-border: #E5E7EB;
@@ -52,7 +52,7 @@
 /* ── Dark mode ─────────────────────────────────────────────────────────────── */
 :root.dark {
   color-scheme: dark;
-  --tg-theme-bg-color: #0F0F0F;
+  --tg-theme-bg-color: #1C1C22;
   --tg-theme-text-color: #F5F5F5;
   --tg-theme-hint-color: #9CA3AF;
   --tg-theme-link-color: #FF6A2A;
@@ -60,12 +60,12 @@
   --tg-theme-button-text-color: #ffffff;
   --tg-theme-secondary-bg-color: #1A1A1A;
 
-  --sahifa-orange: #FF6A2A;
-  --sahifa-orange-glow: rgba(255, 106, 42, 0.2);
-  --sahifa-bg: #0F0F0F;
-  --sahifa-surface: #1A1A1A;
-  --sahifa-border: #2A2A2A;
-  --sahifa-card: #1A1A1A;
+  --sahifa-orange: #F15929;
+  --sahifa-orange-glow: rgba(241, 89, 41, 0.22);
+  --sahifa-bg: #1C1C22;
+  --sahifa-surface: #222230;
+  --sahifa-border: #2E2E3A;
+  --sahifa-card: #222230;
 }
 
 * {
@@ -79,7 +79,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   background:
-    radial-gradient(circle at top, rgba(255, 106, 42, 0.05), transparent 24%),
+    radial-gradient(circle at top, rgba(241, 89, 41, 0.05), transparent 24%),
     var(--sahifa-bg);
   color: var(--tg-theme-text-color);
   transition: background-color 0.3s ease, color 0.3s ease;
@@ -144,8 +144,8 @@ html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 
 
 /* ── Neon glow bar ─────────────────────────────────────────────────────────── */
 .neon-bar {
-  background: linear-gradient(90deg, #F26722 0%, #FFD700 50%, #F26722 100%);
-  box-shadow: 0 0 12px rgba(242, 103, 34, 0.5), 0 0 24px rgba(242, 103, 34, 0.2);
+  background: linear-gradient(90deg, #F15929 0%, #FFD700 50%, #F15929 100%);
+  box-shadow: 0 0 12px rgba(241, 89, 41, 0.5), 0 0 24px rgba(241, 89, 41, 0.2);
   position: relative;
   overflow: hidden;
 }
@@ -192,7 +192,7 @@ html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 
   box-shadow: 0 12px 34px rgba(15, 23, 42, 0.08), 0 0 0 1px rgba(255, 106, 42, 0.08);
 }
 .dark .card-glow:hover {
-  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(255, 106, 42, 0.1);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(241, 89, 41, 0.1);
 }
 .card-glow:active {
   transform: scale(0.96);
@@ -206,7 +206,7 @@ html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 
 @layer components {
   .btn-primary {
     @apply px-5 py-2.5 bg-sahifa-500 text-white rounded-2xl font-semibold transition-all hover:bg-sahifa-600 active:scale-95;
-    box-shadow: 0 10px 24px rgba(255, 106, 42, 0.18);
+    box-shadow: 0 10px 24px rgba(241, 89, 41, 0.22);
   }
 
   .btn-secondary {
@@ -234,6 +234,79 @@ html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 
   }
 
   .premium-shell {
-    @apply bg-white dark:bg-[#0F0F0F];
+    @apply bg-white dark:bg-[#1C1C22];
+  }
+
+  /* ── Course card scroll ─────────────────────────────────────────────────── */
+  .courses-scroll {
+    @apply flex gap-5 overflow-x-auto pb-2;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .courses-scroll::-webkit-scrollbar { display: none; }
+
+  /* ── Stat chip ──────────────────────────────────────────────────────────── */
+  .stat-chip {
+    @apply flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold;
+    background: rgba(255, 255, 255, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    backdrop-filter: blur(8px);
+  }
+
+  /* ── Goal bar ───────────────────────────────────────────────────────────── */
+  .goal-bar-track {
+    @apply h-2 rounded-full overflow-hidden;
+    background: rgba(241, 89, 41, 0.15);
+  }
+  .goal-bar-fill {
+    @apply h-full rounded-full;
+    background: linear-gradient(90deg, #F15929, #FF8C5A);
+    box-shadow: 0 0 8px rgba(241, 89, 41, 0.4);
+    transition: width 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ── Continue card ──────────────────────────────────────────────────────── */
+  .continue-card {
+    @apply relative overflow-hidden rounded-[20px] flex items-center gap-4 p-4;
+    @apply bg-white dark:bg-[#222230];
+    @apply border border-slate-200/80 dark:border-[#2E2E3A];
+    box-shadow: 0 4px 20px rgba(15,23,42,0.06);
+  }
+
+  /* ── Section heading ────────────────────────────────────────────────────── */
+  .section-heading {
+    @apply text-lg font-bold tracking-tight;
+    @apply text-slate-800 dark:text-white;
+  }
+  .section-sub {
+    @apply text-sm mt-0.5;
+    @apply text-slate-500 dark:text-slate-400;
+  }
+
+  /* ── Hero banner glassmorphism ──────────────────────────────────────────── */
+  .hero-glass {
+    @apply relative overflow-hidden rounded-[28px];
+    background: linear-gradient(135deg,
+      rgba(241,89,41,0.92) 0%,
+      rgba(210,62,18,0.96) 60%,
+      rgba(180,44,8,0.98) 100%);
+    box-shadow: 0 20px 60px rgba(241,89,41,0.28), inset 0 1px 0 rgba(255,255,255,0.12);
+  }
+
+  /* ── Course card ────────────────────────────────────────────────────────── */
+  .course-card {
+    @apply relative cursor-pointer rounded-[24px] overflow-hidden flex-shrink-0;
+    @apply bg-white dark:bg-[#222230];
+    @apply border border-slate-200/70 dark:border-[#2E2E3A];
+    box-shadow: 0 4px 24px rgba(15,23,42,0.07);
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+    width: 280px;
+  }
+  .course-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 40px rgba(15,23,42,0.12);
+  }
+  .dark .course-card:hover {
+    box-shadow: 0 12px 40px rgba(0,0,0,0.36);
   }
 }

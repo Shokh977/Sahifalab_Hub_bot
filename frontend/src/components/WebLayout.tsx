@@ -14,6 +14,7 @@ import {
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  ChevronRightIcon,
   ClockIcon,
   CpuChipIcon,
   HomeIcon,
@@ -117,6 +118,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
 
   const showTeacherSection = user?.role === 'teacher' || user?.role === 'admin'
   const showAdminSection = user?.role === 'admin'
+  const isTeacherActive  = showTeacherSection && user?.status !== 'pending'
 
   // Live gamification values — store is populated by ProgressProvider on both platforms
   const displayLevel = isInitialized ? storeLevel : (user?.level ?? 1)
@@ -127,7 +129,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
       {/* Logo */}
       <div className="px-4 pt-6 pb-4">
         <Link to="/" onClick={onNavClick} className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-sahifa-500 text-white flex items-center justify-center shadow-[0_10px_24px_rgba(255,106,42,0.2)]">
+          <div className="w-11 h-11 rounded-2xl bg-sahifa-500 text-white flex items-center justify-center shadow-[0_10px_24px_rgba(241,89,41,0.25)]">
             <BookOpenIcon className="w-5 h-5" />
           </div>
           <div>
@@ -141,9 +143,57 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
         </Link>
       </div>
 
-      <div className="mx-3 h-px bg-slate-100 dark:bg-slate-800 mb-2" />
+      {/* ── Prominent Teacher Panel CTA (teacher/admin only) ──────────── */}
+      {showTeacherSection && (
+        <div className="px-3 mb-3">
+          {user?.status === 'pending' ? (
+            <div className="px-4 py-3 rounded-2xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-amber-100 dark:bg-amber-800/30 flex items-center justify-center flex-shrink-0">
+                <AcademicCapIcon className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-bold text-amber-700 dark:text-amber-300 leading-tight">Ko'rib chiqilmoqda</p>
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 leading-tight mt-0.5">Admin tasdiqlashi kutilmoqda</p>
+              </div>
+            </div>
+          ) : (
+            <Link
+              to="/teacher"
+              onClick={onNavClick}
+              className={`
+                flex items-center gap-3 px-4 py-3 rounded-2xl
+                transition-all duration-150 group
+                ${isActive('/teacher')
+                  ? 'bg-sahifa-500 shadow-glow-sm'
+                  : 'bg-gradient-to-r from-sahifa-50 to-orange-50 dark:from-sahifa-500/10 dark:to-orange-500/5 hover:from-sahifa-100 dark:hover:from-sahifa-500/20 border border-sahifa-200/70 dark:border-sahifa-500/20'
+                }
+              `}
+            >
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                isActive('/teacher')
+                  ? 'bg-white/20'
+                  : 'bg-sahifa-500 shadow-glow-sm'
+              }`}>
+                <AcademicCapIcon className="w-4 h-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <p className={`text-xs font-bold leading-tight ${isActive('/teacher') ? 'text-white' : 'text-sahifa-600 dark:text-sahifa-400'}`}>
+                  O'qituvchi paneli
+                </p>
+                <p className={`text-[10px] leading-tight mt-0.5 ${isActive('/teacher') ? 'text-white/70' : 'text-slate-400 dark:text-slate-500'}`}>
+                  Kurslar, darslar, talabalar
+                </p>
+              </div>
+              <ChevronRightIcon className={`w-3.5 h-3.5 ml-auto flex-shrink-0 ${
+                isActive('/teacher') ? 'text-white/70' : 'text-sahifa-400 dark:text-sahifa-600 group-hover:text-sahifa-500'
+              }`} />
+            </Link>
+          )}
+        </div>
+      )}
 
       {/* Main nav */}
+      <div className="mx-3 h-px bg-slate-100 dark:bg-[#2A2A36] mb-2" />
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
         {NAV_MAIN.map(item => (
           <SidebarNavItem
@@ -168,34 +218,6 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
             onClick={onNavClick}
           />
         ))}
-
-        {/* Teacher section */}
-        {showTeacherSection && (
-          <>
-            <div className="pt-4 pb-1">
-              <p className="px-3 text-[10px] uppercase tracking-widest text-sahifa-400 dark:text-sahifa-600 font-semibold">
-                O'qituvchi
-              </p>
-            </div>
-            {user?.status === 'pending' ? (
-              /* Pending teacher — show notice instead of nav link */
-              <div className="mx-3 my-1 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                <p className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">Ko'rib chiqilmoqda</p>
-                <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-0.5 leading-tight">
-                  Arizangiz admin tasdiqlashini kutmoqda
-                </p>
-              </div>
-            ) : (
-              <SidebarNavItem
-                icon={AcademicCapIcon}
-                label="O'qituvchi paneli"
-                path="/teacher"
-                active={isActive('/teacher')}
-                onClick={onNavClick}
-              />
-            )}
-          </>
-        )}
 
         {/* Become teacher CTA — only for active students */}
         {user?.role === 'student' && user.status === 'active' && (
@@ -235,9 +257,9 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
       </nav>
 
       {/* Bottom: user card + theme toggle */}
-      <div className="px-4 py-4 border-t border-slate-100 dark:border-slate-800 mt-2 space-y-3">
+      <div className="px-4 py-4 border-t border-slate-100 dark:border-[#2A2A36] mt-2 space-y-3">
         {user && (
-          <div className="flex items-center gap-2.5 px-3 py-3 rounded-2xl bg-slate-50 dark:bg-[#141414] border border-gray-200/70 dark:border-[#2A2A2A]">
+          <div className="flex items-center gap-2.5 px-3 py-3 rounded-2xl bg-slate-50 dark:bg-[#222230] border border-gray-200/70 dark:border-[#2E2E3A]">
             {user.photo_url ? (
               <img src={user.photo_url} alt={user.first_name} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
             ) : (
@@ -276,7 +298,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     <div className="flex h-screen overflow-hidden premium-shell">
 
       {/* ── Desktop fixed sidebar (lg+) ─────────────────────────────── */}
-      <aside className="hidden lg:flex flex-col w-[280px] flex-shrink-0 border-r border-slate-200 dark:border-[#2A2A2A] bg-white dark:bg-[#121212] overflow-hidden">
+      <aside className="hidden lg:flex flex-col w-[280px] flex-shrink-0 border-r border-slate-200 dark:border-[#2A2A36] bg-white dark:bg-[#1C1C22] overflow-hidden">
         <SidebarContent />
       </aside>
 
@@ -302,7 +324,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
               animate={{ x: 0 }}
               exit={{ x: -280 }}
               transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-              className="fixed left-0 top-0 bottom-0 w-[280px] z-[60] flex flex-col bg-white dark:bg-[#121212] border-r border-slate-200 dark:border-[#2A2A2A] overflow-hidden lg:hidden"
+              className="fixed left-0 top-0 bottom-0 w-[280px] z-[60] flex flex-col bg-white dark:bg-[#1C1C22] border-r border-slate-200 dark:border-[#2A2A36] overflow-hidden lg:hidden"
             >
               {/* Close button inside drawer header */}
               <div className="absolute top-5 right-4 z-10">
@@ -325,7 +347,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
 
         {/* Mobile top header (< lg) */}
-        <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-[#2A2A2A] bg-white/90 dark:bg-[#0F0F0F]/90 backdrop-blur-xl flex-shrink-0 z-30">
+        <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-[#2A2A36] bg-white/90 dark:bg-[#1C1C22]/95 backdrop-blur-xl flex-shrink-0 z-30">
           <button
             onClick={() => setDrawerOpen(true)}
             className="w-10 h-10 flex items-center justify-center rounded-2xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-[#1A1A1A] transition-colors"
@@ -355,7 +377,7 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
         </main>
 
         {/* ── Mobile bottom tab bar (< lg) ───────────────────────────── */}
-        <nav className="lg:hidden flex items-stretch border-t border-slate-200 dark:border-[#2A2A2A] bg-white/92 dark:bg-[#0F0F0F]/95 backdrop-blur-xl flex-shrink-0 z-30">
+        <nav className="lg:hidden flex items-stretch border-t border-slate-200 dark:border-[#2A2A36] bg-white/92 dark:bg-[#1C1C22]/95 backdrop-blur-xl flex-shrink-0 z-30">
           {BOTTOM_NAV.map(item => {
             const active = isActive(item.path)
             const Icon = item.icon
