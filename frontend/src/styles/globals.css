@@ -31,18 +31,18 @@
 /* ── Light mode (default) ──────────────────────────────────────────────────── */
 :root {
   color-scheme: light;
-  --tg-theme-bg-color: #FFFFFF;
-  --tg-theme-text-color: #111827;
+  --tg-theme-bg-color: #FAFAFA;
+  --tg-theme-text-color: #1F2937;
   --tg-theme-hint-color: #6B7280;
   --tg-theme-link-color: #FF6A2A;
   --tg-theme-button-color: #FF6A2A;
   --tg-theme-button-text-color: #ffffff;
-  --tg-theme-secondary-bg-color: #F7F7F8;
+  --tg-theme-secondary-bg-color: #F4F5F7;
 
   --sahifa-orange: #FF6A2A;
   --sahifa-orange-glow: rgba(255, 106, 42, 0.16);
-  --sahifa-bg: #FFFFFF;
-  --sahifa-surface: #F7F7F8;
+  --sahifa-bg: #FAFAFA;
+  --sahifa-surface: #F4F5F7;
   --sahifa-border: #E5E7EB;
   --sahifa-card: #FFFFFF;
 }
@@ -81,6 +81,11 @@ body {
     var(--sahifa-bg);
   color: var(--tg-theme-text-color);
   transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* Soften harsh black-on-white in light mode */
+html:not(.dark) .text-black {
+  color: #1f2937 !important;
 }
 
 #root {
