@@ -87,43 +87,63 @@ const CourseCard: React.FC<{ course: Course; index: number; teacher?: TeacherMin
       transition={{ delay: index * 0.04 }}
     >
       <Link to={`/courses/${course.id}`} className="group block">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md hover:border-sahifa-300 dark:hover:border-sahifa-600 transition-all">
+        <div className="bg-white/90 dark:bg-[#1A1A1A] rounded-[24px] border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-300">
           {/* Thumbnail */}
-          <div className="relative h-36 bg-gradient-to-br from-sahifa-100 to-sahifa-200 dark:from-sahifa-900/30 dark:to-sahifa-900/20 overflow-hidden">
+          <div className="relative h-44 bg-gradient-to-br from-sahifa-100 to-orange-50 dark:from-slate-800 dark:to-slate-900 overflow-hidden">
             {course.thumbnail_url ? (
               <img
                 src={course.thumbnail_url}
                 alt={course.title}
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <BookOpenIcon className="w-12 h-12 opacity-30" />
+                <BookOpenIcon className="w-14 h-14 text-sahifa-300 dark:text-sahifa-800" />
               </div>
             )}
+            {/* Gradient scrim */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent pointer-events-none" />
+            {/* Orange hover tint */}
+            <div className="absolute inset-0 bg-sahifa-500/0 group-hover:bg-sahifa-500/20 transition-colors duration-300 pointer-events-none" />
             {/* Price badge */}
-            <div className="absolute top-2 right-2">
+            <div className="absolute top-3 right-3">
               {course.is_paid ? (
-                <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold shadow">
+                <span className="px-2.5 py-1 rounded-[10px] bg-black/50 backdrop-blur-sm text-white text-[10px] font-bold border border-white/10">
                   {course.price.toLocaleString()} so'm
                 </span>
               ) : (
-                <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold shadow">
+                <span className="px-2.5 py-1 rounded-[10px] bg-emerald-500/90 text-white text-[10px] font-bold">
                   Bepul
                 </span>
               )}
             </div>
-            {/* Level badge */}
-            <div className="absolute bottom-2 left-2">
-              <span className="px-2 py-0.5 rounded-full bg-black/50 text-white text-[10px] font-medium backdrop-blur-sm">
+            {/* Bottom row: level + teacher avatar */}
+            <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
+              <span className="px-2 py-0.5 rounded-lg bg-white/15 backdrop-blur-sm text-white text-[10px] font-medium border border-white/15">
                 {levelLabel(course.level)}
               </span>
+              {teacher && (
+                <button
+                  type="button"
+                  onClick={e => { e.preventDefault(); e.stopPropagation(); navigate(`/teacher/${course.teacher_id}`) }}
+                  className="flex-shrink-0"
+                  title={teacherName || undefined}
+                >
+                  {teacher.photo_url ? (
+                    <img src={teacher.photo_url} alt={teacherName || ''} className="w-7 h-7 rounded-full border-2 border-white/60 object-cover shadow-md" />
+                  ) : (
+                    <div className="w-7 h-7 rounded-full bg-sahifa-500/80 border-2 border-white/60 flex items-center justify-center text-[9px] font-bold text-white">
+                      {(teacherName || '?').charAt(0).toUpperCase()}
+                    </div>
+                  )}
+                </button>
+              )}
             </div>
           </div>
 
           {/* Info */}
-          <div className="p-3 space-y-1.5">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 leading-snug">
+          <div className="p-4 space-y-2">
+            <p className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-2 leading-snug">
               {course.title}
             </p>
             {cat && (
@@ -131,29 +151,11 @@ const CourseCard: React.FC<{ course: Course; index: number; teacher?: TeacherMin
                 {cat.icon} {cat.name}
               </p>
             )}
-
-            {/* Teacher chip */}
             {teacherName && (
-              <button
-                type="button"
-                onClick={e => { e.preventDefault(); e.stopPropagation(); navigate(`/teacher/${course.teacher_id}`) }}
-                className="flex items-center gap-1.5 group/t hover:opacity-80 transition-opacity"
-              >
-                {teacher?.photo_url ? (
-                  <img src={teacher.photo_url} alt={teacherName} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                ) : (
-                  <div className="w-4 h-4 rounded-full bg-sahifa-500/30 flex items-center justify-center shrink-0 text-[8px] font-bold text-sahifa-700 dark:text-sahifa-300">
-                    {teacherName.charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <span className="text-[11px] text-gray-500 dark:text-gray-400 group-hover/t:text-sahifa-600 dark:group-hover/t:text-sahifa-400 transition-colors truncate">
-                  {teacherName}
-                </span>
-              </button>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate">{teacherName}</p>
             )}
-
             <div className="flex items-center justify-between pt-0.5">
-              <div className="flex items-center gap-2 text-[11px] text-gray-500 dark:text-gray-400">
+              <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500">
                 {course.total_lessons > 0 && (
                   <span className="inline-flex items-center gap-1"><VideoCameraIcon className="w-3.5 h-3.5" />{course.total_lessons} dars</span>
                 )}
@@ -161,7 +163,7 @@ const CourseCard: React.FC<{ course: Course; index: number; teacher?: TeacherMin
                   <span>⏱ {formatDuration(course.total_duration_minutes)}</span>
                 )}
               </div>
-              <div className="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
+              <div className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-gray-500">
                 {course.rating > 0 && (
                   <span>⭐ {course.rating.toFixed(1)}</span>
                 )}
@@ -179,8 +181,8 @@ const CourseCard: React.FC<{ course: Course; index: number; teacher?: TeacherMin
 
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 const SkeletonCard: React.FC = () => (
-  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-pulse">
-    <div className="h-36 bg-slate-100 dark:bg-slate-700" />
+  <div className="bg-white/90 dark:bg-[#1A1A1A] rounded-[24px] border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden animate-pulse">
+    <div className="h-44 bg-slate-100 dark:bg-slate-800" />
     <div className="p-3 space-y-2">
       <div className="h-4 bg-slate-100 dark:bg-slate-700 rounded w-3/4" />
       <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />

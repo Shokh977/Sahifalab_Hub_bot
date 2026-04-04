@@ -93,24 +93,19 @@ const SidebarNavItem: React.FC<NavItem & { active: boolean; onClick?: () => void
     to={path}
     onClick={onClick}
     className={`
-      flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-medium
+      flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm
       transition-all duration-150 group
       ${active
-        ? 'bg-sahifa-500/10 text-sahifa-600 dark:text-sahifa-400 border border-sahifa-500/20 shadow-[0_6px_16px_rgba(255,106,42,0.08)]'
-        : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#1A1A1A] hover:text-slate-900 dark:hover:text-slate-100 border border-transparent'
+        ? 'bg-sahifa-500/10 text-sahifa-600 dark:text-sahifa-400 font-semibold'
+        : 'font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-[#1A1A1A] hover:text-slate-800 dark:hover:text-slate-200'
       }
     `}
   >
-    <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${active ? 'bg-sahifa-500 text-white' : 'bg-gray-50 dark:bg-[#141414] text-gray-500 dark:text-gray-400 group-hover:text-sahifa-500'}`}>
-      <Icon className="w-[18px] h-[18px]" />
-    </span>
+    <Icon className={`w-[18px] h-[18px] flex-shrink-0 transition-colors ${
+      active ? 'text-sahifa-500' : 'text-slate-400 dark:text-slate-500 group-hover:text-sahifa-500'
+    }`} />
     <span className="truncate">{label}</span>
-    {active && (
-      <motion.div
-        layoutId="sidebarActiveIndicator"
-        className="ml-auto w-1.5 h-1.5 rounded-full bg-sahifa-500 shrink-0"
-      />
-    )}
+    {active && <div className="ml-auto w-1.5 h-1.5 rounded-full bg-sahifa-500 flex-shrink-0" />}
   </Link>
 )
 }

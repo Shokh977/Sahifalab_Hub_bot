@@ -34,8 +34,8 @@ export default {
         gold:    '#FFD700',
       },
       fontFamily: {
-        sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        display: ['Inter', 'system-ui', 'sans-serif'],
+        sans: ['Oxygen', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
+        display: ['Oxygen', 'Inter', 'system-ui', 'sans-serif'],
       },
       borderRadius: {
         '4xl': '2rem',

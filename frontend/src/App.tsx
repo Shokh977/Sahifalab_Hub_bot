@@ -5,6 +5,7 @@ import { BookOpenIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
 import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
+import DashboardHome from './components/DashboardHome'
 import ThemeToggle from './components/ThemeToggle'
 import StudyWithMe from './pages/StudyPage'
 import QuizPage from './pages/QuizPage'
@@ -41,6 +42,9 @@ import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 const HomePage: React.FC = () => {
   const { user } = useAuth()
   const { isTelegram } = usePlatform()
+
+  // Web mode: premium dashboard (sidebar already handles navigation)
+  if (!isTelegram) return <DashboardHome />
 
   return (
     <main className={`mx-auto pt-6 px-5 pb-10 paper-texture ${isTelegram ? 'max-w-md pb-28' : 'max-w-6xl'}`}>
