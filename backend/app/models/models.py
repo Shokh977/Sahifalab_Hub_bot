@@ -1,7 +1,64 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
+
+
+# ── Platform-identity models (mirror existing Supabase Postgres tables) ────────
+# These models use SQLAlchemy's direct Postgres connection, which bypasses
+# the Supabase REST API and is NOT subject to cached-egress quota limits.
+
+class Profile(Base):
+    """
+    User profiles — mirrors the Supabase 'profiles' table.
+    Stores gamification state (XP, level, focus) and auth identity.
+    """
+    __tablename__ = "profiles"
+
+    telegram_id       = Column(BigInteger, primary_key=True)
+    first_name        = Column(String(255), nullable=True)
+    username          = Column(String(255), nullable=True)
+    photo_url         = Column(String(1000), nullable=True)
+    role              = Column(String(50), default='student')   # student | teacher | admin
+    status            = Column(String(50), default='active')    # active | pending | suspended
+    total_xp          = Column(Integer, default=0)
+    focus_seconds     = Column(Integer, default=0)
+    level             = Column(Integer, default=1)
+    quizzes_completed = Column(Integer, default=0)
+    password_hash     = Column(Text, nullable=True)
+    email             = Column(String(255), nullable=True, index=True)
+    app_created_at    = Column(DateTime(timezone=True), nullable=True)
+    app_last_login    = Column(DateTime(timezone=True), nullable=True)
+    app_online_at     = Column(DateTime(timezone=True), nullable=True)
+
+
+class AuthCode(Base):
+    """One-time login codes for the Telegram bot auth flow."""
+    __tablename__ = "auth_codes"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    code        = Column(String(64), unique=True, index=True, nullable=False)
+    telegram_id = Column(BigInteger, nullable=True)
+    first_name  = Column(String(255), nullable=True)
+    username    = Column(String(255), nullable=True)
+    photo_url   = Column(String(1000), nullable=True)
+    used        = Column(Boolean, default=False)
+    expires_at  = Column(DateTime(timezone=True), nullable=False)
+    created_at  = Column(DateTime(timezone=True), nullable=True)
+
+
+class TeacherProfile(Base):
+    """Teacher application data — mirrors the Supabase 'teacher_profiles' table."""
+    __tablename__ = "teacher_profiles"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    telegram_id      = Column(BigInteger, unique=True, index=True)
+    specialization   = Column(String(255), nullable=True)
+    experience_years = Column(Integer, nullable=True)
+    bio              = Column(Text, nullable=True)
+    course_idea      = Column(Text, nullable=True)
+    motivation       = Column(Text, nullable=True)
+    applied_at       = Column(DateTime(timezone=True), nullable=True)
 
 # Association table for cart items
 cart_items = Table(

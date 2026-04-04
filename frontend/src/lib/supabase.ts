@@ -179,16 +179,12 @@ export async function fetchAmbientSounds() {
   })
 }
 
-/** Fetch user's rating for a specific book */
+/** Fetch user's rating for a specific book — routed through FastAPI backend */
 export async function fetchMyRating(bookId: number, telegramId: number) {
   return cached(`rating:${bookId}:${telegramId}`, TTL.PERSONAL, async () => {
-    const { data, error } = await supabase
-      .from('book_rating')
-      .select('rating')
-      .eq('book_id', bookId)
-      .eq('telegram_id', telegramId)
-      .maybeSingle()
-    if (error) throw error
+    const res = await fetch(`${API_BASE}/api/profiles/${telegramId}/rating/${bookId}`)
+    if (!res.ok) throw new Error(`rating fetch failed: ${res.status}`)
+    const data = await res.json()
     return data?.rating ?? 0
   })
 }
@@ -197,95 +193,58 @@ export async function fetchMyRating(bookId: number, telegramId: number) {
 // CABINET PAGE QUERIES
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Fetch user's completed quizzes (for certificates) */
+/** Fetch user's completed quizzes (for certificates) — routed through FastAPI backend */
 export async function fetchMyCompletedQuizzes(telegramId: number) {
   return cached(`completions:${telegramId}`, TTL.PERSONAL, async () => {
-    const { data, error } = await supabase
-      .from('user_quiz_completion')
-      .select('id, quiz_id, score, total, percentage, completed_at')
-      .eq('telegram_id', telegramId)
-      .order('completed_at', { ascending: false })
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/profiles/${telegramId}/completions`)
+    if (!res.ok) throw new Error(`completions fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
-/** Fetch quiz titles for a list of quiz IDs (for certificate display) */
+/** Fetch quiz titles for a list of quiz IDs — uses the cached quiz list (no extra request) */
 export async function fetchQuizTitles(quizIds: number[]) {
   if (quizIds.length === 0) return []
-  const key = `quiz_titles:${quizIds.sort().join(',')}`
-  return cached(key, TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('quiz')
-      .select('id, title, book_title')
-      .in('id', quizIds)
-    if (error) throw error
-    return data ?? []
-  })
+  const all = await fetchQuizzes()   // already cached in localStorage
+  const set = new Set(quizIds)
+  return (all as any[]).filter(q => set.has(q.id)).map(q => ({ id: q.id, title: q.title, book_title: q.book_title }))
 }
 
-/** Fetch user's purchased books (completed purchases only) */
+/** Fetch user's purchased books (completed purchases only) — routed through FastAPI backend */
 export async function fetchMyPurchasedBooks(telegramId: number) {
   return cached(`purchases:${telegramId}`, TTL.PERSONAL, async () => {
-    const { data, error } = await supabase
-      .from('book_purchase')
-      .select('id, book_id, amount, currency, status, completed_at')
-      .eq('telegram_id', telegramId)
-      .eq('status', 'completed')
-      .order('completed_at', { ascending: false })
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/profiles/${telegramId}/purchases`)
+    if (!res.ok) throw new Error(`purchases fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
-/** Fetch book details for a list of book IDs */
+/** Fetch book details for a list of book IDs — uses the cached book list (no extra request) */
 export async function fetchBooksByIds(bookIds: number[]) {
   if (bookIds.length === 0) return []
-  const key = `books_by_ids:${bookIds.sort().join(',')}`
-  return cached(key, TTL.STATIC, async () => {
-    const { data, error } = await supabase
-      .from('book')
-      .select('id, title, author, thumbnail_url, category, file_url')
-      .in('id', bookIds)
-    if (error) throw error
-    return data ?? []
-  })
+  const all = await fetchBooks()   // already cached in localStorage
+  const set = new Set(bookIds)
+  return (all as any[]).filter(b => set.has(b.id))
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TEACHER DASHBOARD QUERIES
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Dashboard stats: total students, active today, avg XP, total quizzes */
+/** Dashboard stats: total students, active today, avg XP, total quizzes — routed through FastAPI backend */
 export async function fetchDashboardStats() {
   return cached('dashboard_stats', TTL.LIVE, async () => {
-    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-    const [countRes, activeRes, allRes] = await Promise.all([
-      supabase.from('profiles').select('*', { count: 'exact', head: true }),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('app_online_at', yesterday),
-      supabase.from('profiles').select('total_xp, quizzes_completed'),
-    ])
-    const rows   = (allRes.data ?? []) as { total_xp: number; quizzes_completed: number }[]
-    const avgXP  = rows.length ? Math.round(rows.reduce((s, r) => s + (r.total_xp || 0), 0) / rows.length) : 0
-    const totalQ = rows.reduce((s, r) => s + (r.quizzes_completed || 0), 0)
-    return {
-      totalStudents: countRes.count ?? 0,
-      activeToday:   activeRes.count ?? 0,
-      avgXP,
-      totalQuizzes:  totalQ,
-    }
+    const res = await fetch(`${API_BASE}/api/profiles/dashboard-stats`)
+    if (!res.ok) throw new Error(`dashboard stats fetch failed: ${res.status}`)
+    return res.json()
   })
 }
 
-/** Top-5 students by XP */
+/** Top-5 students by XP — routed through FastAPI backend */
 export async function fetchTop5Students() {
   return cached('top5_students', TTL.LIVE, async () => {
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('telegram_id, first_name, username, total_xp, level, quizzes_completed, app_online_at')
-      .order('total_xp', { ascending: false })
-      .limit(5)
-    if (error) throw error
-    return data ?? []
+    const res = await fetch(`${API_BASE}/api/profiles/leaderboard?limit=5`)
+    if (!res.ok) throw new Error(`leaderboard fetch failed: ${res.status}`)
+    return res.json()
   })
 }

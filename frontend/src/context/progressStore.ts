@@ -15,7 +15,8 @@
  */
 
 import { create } from 'zustand'
-import { supabase } from '../lib/supabase'
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 
 // ── Maths helpers ────────────────────────────────────────────────────────────
 
@@ -97,13 +98,10 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     set({ isLoading: true, telegramId, firstName, username })
 
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('total_xp, focus_seconds, level, quizzes_completed')
-        .eq('telegram_id', telegramId)
-        .single()
+      const res  = await fetch(`${API_BASE}/api/profiles/${telegramId}`)
+      const data = res.ok ? await res.json() : null
 
-      if (data && !error) {
+      if (data) {
         set({
           totalXP:          data.total_xp          ?? 0,
           focusSeconds:     data.focus_seconds      ?? 0,
@@ -112,15 +110,16 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
           isInitialized:    true,
         })
       } else {
-        // Brand-new user: insert a baseline row
-        await supabase.from('profiles').upsert(
-          { telegram_id: telegramId, first_name: firstName, username },
-          { onConflict: 'telegram_id' },
-        )
+        // Brand-new user: ensure a baseline row exists
+        await fetch(`${API_BASE}/api/profiles/upsert`, {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ telegram_id: telegramId, first_name: firstName, username }),
+        })
         set({ isInitialized: true })
       }
     } catch {
-      // Offline or misconfigured Supabase — work locally, sync when possible
+      // Offline — work locally, sync when possible
       set({ isInitialized: true })
     } finally {
       set({ isLoading: false })
@@ -168,8 +167,10 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
     set({ isSyncing: true })
     try {
-      await supabase.from('profiles').upsert(
-        {
+      await fetch(`${API_BASE}/api/profiles/sync`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
           telegram_id:       state.telegramId,
           first_name:        state.firstName,
           username:          state.username,
@@ -177,9 +178,8 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
           focus_seconds:     state.focusSeconds,
           level:             state.level,
           quizzes_completed: state.quizzesCompleted,
-        },
-        { onConflict: 'telegram_id' },
-      )
+        }),
+      })
       set({ pendingFocusSeconds: 0 })
     } catch {
       // Silent fail — next heartbeat or action will retry
@@ -193,15 +193,16 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     if (!state.telegramId || !state.isInitialized) return
 
     try {
-      await supabase.from('profiles').upsert(
-        {
+      await fetch(`${API_BASE}/api/profiles/sync`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
           telegram_id:  state.telegramId,
           first_name:   state.firstName,
           username:     state.username,
           app_online_at: new Date().toISOString(),
-        },
-        { onConflict: 'telegram_id' },
-      )
+        }),
+      })
     } catch {
       // Silent fail — next presence tick will retry
     }
