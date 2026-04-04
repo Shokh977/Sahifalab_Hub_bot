@@ -4,10 +4,8 @@ import { motion } from 'framer-motion'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import {
   BookOpenIcon,
-  CalendarDaysIcon,
   ClockIcon,
   CpuChipIcon,
-  FireIcon,
   LinkIcon,
   RectangleStackIcon,
   ShieldCheckIcon,
@@ -94,22 +92,7 @@ const MENU_ITEMS: MenuItem[] = [
     description: "Kitob haqida suhbat, savol-javob",
     path: '/ai-companion',
   },
-  {
-    id: 'daily',
-    icon: FireIcon,
-    title: 'Daily',
-    titleUz: 'Kunlik',
-    description: 'Bugungi vazifalar va streak',
-    path: '/daily',
-  },
-  {
-    id: 'plans',
-    icon: CalendarDaysIcon,
-    title: 'Plans',
-    titleUz: 'Rejalar',
-    description: '7/14/30 kunlik yoʻl xaritasi',
-    path: '/plans',
-  },
+
 ]
 
 // Stagger children animation

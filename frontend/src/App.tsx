@@ -18,8 +18,6 @@ import CabinetPage from './pages/CabinetPage'
 import LeaderboardPage from './pages/LeaderboardPage'
 import BookSummarizerPage from './pages/BookSummarizerPage'
 import AICompanionPage from './pages/AICompanionPage'
-import DailyPage from './pages/DailyPage'
-import PlansPage from './pages/PlansPage'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import ProgressProvider from './components/ProgressProvider'
 import TelegramLayout from './components/TelegramLayout'
@@ -209,8 +207,6 @@ const AppRoutes: React.FC = () => (
       <Route path="/leaderboard" element={<LeaderboardPage />} />
       <Route path="/book-summarizer" element={<BookSummarizerPage />} />
       <Route path="/ai-companion" element={<AICompanionPage />} />
-      <Route path="/daily" element={<DailyPage />} />
-      <Route path="/plans" element={<PlansPage />} />
       <Route path="/courses" element={<CoursesPage />} />
       <Route path="/courses/:id" element={<CourseDetailPage />} />
 

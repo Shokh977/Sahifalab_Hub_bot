@@ -14,10 +14,8 @@ import {
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
-  CalendarDaysIcon,
   ClockIcon,
   CpuChipIcon,
-  FireIcon,
   HomeIcon,
   LinkIcon,
   RectangleStackIcon,
@@ -63,8 +61,6 @@ const NAV_MAIN: NavItem[] = [
   { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
   { icon: LinkIcon, label: 'Resurslar', path: '/resources' },
   { icon: CpuChipIcon, label: 'SAHIFALAB AI', path: '/ai-companion' },
-  { icon: FireIcon, label: 'Kunlik', path: '/daily' },
-  { icon: CalendarDaysIcon, label: 'Rejalar', path: '/plans' },
 ]
 
 const NAV_SECONDARY: NavItem[] = [

@@ -22,7 +22,6 @@ import {
   ChartBarIcon,
   ChevronRightIcon,
   ClockIcon,
-  FireIcon,
   InformationCircleIcon,
   LightBulbIcon,
   LinkIcon,
@@ -1061,18 +1060,6 @@ const CabinetPage: React.FC = () => {
           label="Resurslar"
           sublabel="Foydali linklar va videolar"
           onClick={() => navigate('/resources')}
-        />
-        <MenuRow
-          icon={FireIcon}
-          label="Kunlik vazifalar"
-          sublabel="Daily streak va missiyalar"
-          onClick={() => navigate('/daily')}
-        />
-        <MenuRow
-          icon={ClockIcon}
-          label="O'qish rejasi"
-          sublabel="7/14/30 kunlik yo'l xaritasi"
-          onClick={() => navigate('/plans')}
         />
         <MenuRow
           icon={InformationCircleIcon}
