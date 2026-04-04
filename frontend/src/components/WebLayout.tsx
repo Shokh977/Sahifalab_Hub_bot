@@ -24,6 +24,7 @@ import {
   SparklesIcon,
   Squares2X2Icon,
   TrophyIcon,
+  UserGroupIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import ThemeToggle from './ThemeToggle'
@@ -65,9 +66,10 @@ const NAV_MAIN: NavItem[] = [
 ]
 
 const NAV_SECONDARY: NavItem[] = [
-  { icon: Squares2X2Icon, label: 'Kabinet', path: '/cabinet' },
-  { icon: TrophyIcon, label: 'Reyting', path: '/leaderboard' },
-  { icon: SparklesIcon, label: 'Haqimizda', path: '/about' },
+  { icon: Squares2X2Icon, label: 'Kabinet',       path: '/cabinet' },
+  { icon: TrophyIcon,     label: 'Reyting',       path: '/leaderboard' },
+  { icon: UserGroupIcon,  label: "O'qituvchilar", path: '/teachers' },
+  { icon: SparklesIcon,   label: 'Haqimizda',     path: '/about' },
 ]
 
 // Shown in the mobile bottom tab bar (max 5 items for readability)
@@ -219,8 +221,8 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
           />
         ))}
 
-        {/* Become teacher CTA — only for active students */}
-        {user?.role === 'student' && user.status === 'active' && (
+        {/* Become teacher CTA — any non-teacher active user */}
+        {user && user.role !== 'teacher' && user.role !== 'admin' && user.status !== 'pending' && (
           <>
             <div className="pt-4 pb-1">
               <p className="px-3 text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-600 font-semibold">

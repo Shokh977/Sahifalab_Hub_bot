@@ -30,6 +30,7 @@ import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import TeacherApplyPage from './pages/TeacherApplyPage'
 import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
 import TeacherPublicPage from './pages/TeacherPublicPage'
+import TeachersGalleryPage from './pages/TeachersGalleryPage'
 import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
 import CourseCreatePage from './pages/CourseCreatePage'
@@ -212,6 +213,9 @@ const AppRoutes: React.FC = () => (
 
       {/* Public teacher profile page — no auth required */}
       <Route path="/teacher/:id" element={<TeacherPublicPage />} />
+
+      {/* Teachers gallery — all active instructors */}
+      <Route path="/teachers" element={<TeachersGalleryPage />} />
 
       {/* Teacher & Admin role-gated routes */}
       <Route element={<RoleGuard roles={['teacher', 'admin']} />}>

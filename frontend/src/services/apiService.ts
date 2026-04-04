@@ -441,6 +441,11 @@ class ApiService {
     return this.axiosInstance.get(`/api/teacher/profile/${telegramId}`)
   }
 
+  /** Public: list all active teachers with aggregated stats (gallery page) */
+  async getTeachersGallery() {
+    return this.axiosInstance.get('/api/profiles/teachers')
+  }
+
   /** Teacher: aggregate analytics (students, paid orders, income estimate) */
   async getTeacherAnalytics() {
     return this.axiosInstance.get('/api/teacher/analytics')

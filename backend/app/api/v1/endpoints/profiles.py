@@ -176,6 +176,61 @@ async def sync_progress(body: ProgressSyncRequest, db: Session = Depends(get_db)
     return {"ok": True}
 
 
+@router.get("/teachers")
+async def get_teachers_gallery(db: Session = Depends(get_db)):
+    """
+    Public teachers gallery.
+    Joins profiles + teacher_profiles + course aggregates in one raw SQL query.
+    Returns every active teacher with their course count, total students, and avg rating.
+    """
+    from sqlalchemy import text
+    rows = db.execute(text("""
+        SELECT
+            p.telegram_id,
+            p.first_name,
+            p.username,
+            p.photo_url,
+            COALESCE(tp.specialization, '')   AS specialization,
+            tp.experience_years,
+            COALESCE(tp.bio, '')              AS bio,
+            COALESCE(cs.course_count, 0)      AS course_count,
+            COALESCE(cs.total_students, 0)    AS total_students,
+            COALESCE(cs.avg_rating, 0)        AS avg_rating
+        FROM profiles p
+        LEFT JOIN teacher_profiles tp
+               ON tp.telegram_id = p.telegram_id
+        LEFT JOIN (
+            SELECT
+                teacher_id,
+                COUNT(*)                                             AS course_count,
+                SUM(COALESCE(enrolled_count, 0))                    AS total_students,
+                AVG(CASE WHEN rating > 0 THEN rating ELSE NULL END) AS avg_rating
+            FROM courses
+            WHERE is_published = true
+            GROUP BY teacher_id
+        ) cs ON cs.teacher_id = p.telegram_id
+        WHERE p.role = 'teacher'
+          AND p.status = 'active'
+        ORDER BY COALESCE(cs.total_students, 0) DESC, p.first_name ASC
+    """)).fetchall()
+
+    return [
+        {
+            "telegram_id":      row.telegram_id,
+            "first_name":       row.first_name or "O'qituvchi",
+            "username":         row.username,
+            "photo_url":        row.photo_url,
+            "specialization":   row.specialization,
+            "experience_years": row.experience_years,
+            "bio":              row.bio,
+            "course_count":     int(row.course_count),
+            "total_students":   int(row.total_students),
+            "avg_rating":       round(float(row.avg_rating), 1) if row.avg_rating else 0.0,
+        }
+        for row in rows
+    ]
+
+
 @router.get("/{telegram_id}")
 async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     """Fetch a single user's gamification state."""
