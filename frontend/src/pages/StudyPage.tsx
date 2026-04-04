@@ -1,5 +1,19 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AcademicCapIcon, PauseIcon, PlayIcon, ArrowPathIcon, ForwardIcon, SpeakerXMarkIcon, ExclamationCircleIcon, SpeakerWaveIcon, LightBulbIcon, Battery100Icon, MusicalNoteIcon, UserGroupIcon, FireIcon } from '@heroicons/react/24/outline'
+﻿import React, { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  AcademicCapIcon,
+  ArrowPathIcon,
+  Battery100Icon,
+  ExclamationCircleIcon,
+  FireIcon,
+  ForwardIcon,
+  LightBulbIcon,
+  MusicalNoteIcon,
+  PauseIcon,
+  PlayIcon,
+  SpeakerWaveIcon,
+  SpeakerXMarkIcon,
+  UserGroupIcon,
+} from '@heroicons/react/24/outline'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
@@ -7,10 +21,10 @@ import { fetchAmbientSounds } from '../lib/supabase'
 import { useProgressStore } from '../context/progressStore'
 import PageWrapper from '../components/PageWrapper'
 
-/* ──────────────────────────────────────────────────────────────────────────────
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    Sound data is loaded dynamically from the database.
-   Admins manage sounds via the Admin Panel → Tovushlar tab.
-   ────────────────────────────────────────────────────────────────────────────── */
+   Admins manage sounds via the Admin Panel â†’ Tovushlar tab.
+   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 
 interface SoundFromDB {
   id: number
@@ -43,20 +57,20 @@ const FOCUS_PRESETS = [15, 25, 45, 60]
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
 const MOTIV_MESSAGES = [
-  { emoji: '🔥', title: "Barakalla! Birga o'qimoqdamiz!",   sub: "Siz yolg'iz emasiz — kuch birlashganda" },
-  { emoji: '⭐', title: "Zo'r ketayapsiz!",                 sub: "Davom eting, muvaffaqiyat kutmoqda" },
-  { emoji: '💪', title: "Kuch sizda!",                      sub: "Bugun yangi rekord qo'ying" },
-  { emoji: '🚀', title: "Parvozda!",                        sub: "Bilim — eng yaxshi investitsiya" },
-  { emoji: '🎯', title: "Maqsadga intiling!",               sub: "Har bir sessiya — bir qadam oldinga" },
-  { emoji: '📚', title: "Ilm — nur!",                       sub: "Har bir daqiqa qadrlidir" },
+  { emoji: 'ðŸ”¥', title: "Barakalla! Birga o'qimoqdamiz!",   sub: "Siz yolg'iz emasiz â€” kuch birlashganda" },
+  { emoji: 'â­', title: "Zo'r ketayapsiz!",                 sub: "Davom eting, muvaffaqiyat kutmoqda" },
+  { emoji: 'ðŸ’ª', title: "Kuch sizda!",                      sub: "Bugun yangi rekord qo'ying" },
+  { emoji: 'ðŸš€', title: "Parvozda!",                        sub: "Bilim â€” eng yaxshi investitsiya" },
+  { emoji: 'ðŸŽ¯', title: "Maqsadga intiling!",               sub: "Har bir sessiya â€” bir qadam oldinga" },
+  { emoji: 'ðŸ“š', title: "Ilm â€” nur!",                       sub: "Har bir daqiqa qadrlidir" },
 ]
 
-const FLOAT_EMOJIS = ['⭐', '🔥', '✨', '💪', '📚', '🎯', '🚀', '💡', '❤️', '🌟', '⚡', '🏆']
+const FLOAT_EMOJIS = ['â­', 'ðŸ”¥', 'âœ¨', 'ðŸ’ª', 'ðŸ“š', 'ðŸŽ¯', 'ðŸš€', 'ðŸ’¡', 'â¤ï¸', 'ðŸŒŸ', 'âš¡', 'ðŸ†']
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   MotivationBurst — full-screen overlay with floating emojis + central card
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   MotivationBurst â€” full-screen overlay with floating emojis + central card
    Triggered when anyone sends a motivation ping (poll detects ts change).
-───────────────────────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 interface MotivationBurstProps { onDone: () => void }
 
 const MotivationBurst: React.FC<MotivationBurstProps> = ({ onDone }) => {
@@ -119,10 +133,10 @@ const MotivationBurst: React.FC<MotivationBurstProps> = ({ onDone }) => {
   )
 }
 
-/* ─────────────────────────────────────────────────────────────────────────────
-   LivePulseBanner — polls /profiles/pulse every 8 s, shows active-user count
+/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+   LivePulseBanner â€” polls /profiles/pulse every 8 s, shows active-user count
    and a "Send Motivation" button (30 s cooldown per sender).
-───────────────────────────────────────────────────────────────────────────── */
+â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 interface PulseData { active_count: number; last_motivation_ts: number }
 interface LivePulseBannerProps { onMotivationReceived: () => void }
 
@@ -145,7 +159,7 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
       }
       lastTsRef.current = data.last_motivation_ts ?? 0
       setPulse(data)
-    } catch { /* network offline — fail silently */ }
+    } catch { /* network offline â€” fail silently */ }
   }, [])
 
   useEffect(() => {
@@ -182,7 +196,7 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
     >
-      {/* Left — live count */}
+      {/* Left â€” live count */}
       <div className="flex items-center gap-2.5 min-w-0">
         {/* Pulsing dot */}
         <span className="relative flex-shrink-0">
@@ -200,7 +214,7 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
         </span>
       </div>
 
-      {/* Right — motivation button */}
+      {/* Right â€” motivation button */}
       <button
         onClick={sendMotivation}
         disabled={sending || cooldown > 0}
@@ -220,17 +234,17 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
 }
 
 /**
- * Plays a two-tone bell ("ting ting") using Web Audio API — no file needed.
+ * Plays a two-tone bell ("ting ting") using Web Audio API â€” no file needed.
  * Also triggers haptic vibration on supported devices.
  */
 function playAlarm() {
-  // ── Vibration ────────────────────────────────────────────────────────────
+  // â”€â”€ Vibration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   try {
     if (navigator.vibrate)
       navigator.vibrate([300, 150, 300, 150, 500])
   } catch {}
 
-  // ── Bell synthesis ───────────────────────────────────────────────────────
+  // â”€â”€ Bell synthesis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
 
@@ -261,8 +275,8 @@ function playAlarm() {
     }
 
     const t = ctx.currentTime
-    ting(t,        1047)  // first ting  — C6
-    ting(t + 0.6,  1319)  // second ting — E6
+    ting(t,        1047)  // first ting  â€” C6
+    ting(t + 0.6,  1319)  // second ting â€” E6
 
     setTimeout(() => ctx.close().catch(() => {}), 3500)
   } catch {}
@@ -271,11 +285,9 @@ function playAlarm() {
 export const StudyWithMe: React.FC = () => {
   const sound = useAmbientSound()
 
-  // Sounds fetched from API
-  const [sounds, setSounds] = useState<SoundFromDB[]>([])
+  const [sounds, setSounds]             = useState<SoundFromDB[]>([])
   const [soundsLoading, setSoundsLoading] = useState(true)
 
-  // Fetch ambient sounds on mount (direct Supabase — fast)
   useEffect(() => {
     fetchAmbientSounds()
       .then(data => setSounds(data as SoundFromDB[]))
@@ -291,12 +303,12 @@ export const StudyWithMe: React.FC = () => {
 
   const timer = useBackgroundTimer({ onComplete: handleTimerComplete })
 
-  // ── Focus XP tracking ────────────────────────────────────────────────────
+  // â”€â”€ Focus XP tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { addFocusSeconds, syncToSupabase, pingPresence } = useProgressStore()
-  const [motivBurst, setMotivBurst] = useState(false)
-  const focusStartRef      = useRef<number | null>(null)
-  const prevIsRunningRef   = useRef(timer.isRunning)
-  const prevIsBreakRef     = useRef(timer.isBreak)
+  const [motivBurst, setMotivBurst]   = useState(false)
+  const focusStartRef    = useRef<number | null>(null)
+  const prevIsRunningRef = useRef(timer.isRunning)
+  const prevIsBreakRef   = useRef(timer.isBreak)
 
   useEffect(() => {
     const wasRunning = prevIsRunningRef.current
@@ -304,34 +316,23 @@ export const StudyWithMe: React.FC = () => {
     prevIsRunningRef.current = timer.isRunning
     prevIsBreakRef.current   = timer.isBreak
 
-    // Focus timer started
     if (!wasRunning && timer.isRunning && !timer.isBreak) {
       focusStartRef.current = Date.now()
     }
-
-    // Focus timer stopped/paused (not a break transition)
     if (wasRunning && !timer.isRunning && !wasBreak) {
       if (focusStartRef.current) {
         const elapsed = Math.floor((Date.now() - focusStartRef.current) / 1000)
-        if (elapsed > 0) {
-          addFocusSeconds(elapsed)
-          syncToSupabase()
-        }
+        if (elapsed > 0) { addFocusSeconds(elapsed); syncToSupabase() }
         focusStartRef.current = null
       }
     }
   }, [timer.isRunning, timer.isBreak, addFocusSeconds, syncToSupabase])
 
   const handleComplete = useCallback(() => {
-    if (!timer.isBreak) {
-      timer.completeSession()
-      timer.startBreak()
-    } else {
-      timer.startFocus()
-    }
+    if (!timer.isBreak) { timer.completeSession(); timer.startBreak() }
+    else { timer.startFocus() }
   }, [timer])
 
-  // Auto-transition when timer reaches 0
   useEffect(() => {
     if (timer.remaining === 0 && !timer.isRunning) {
       const t = setTimeout(handleComplete, 1500)
@@ -339,277 +340,295 @@ export const StudyWithMe: React.FC = () => {
     }
   }, [timer.remaining, timer.isRunning, handleComplete])
 
-  // ── Presence ping every 60 s while a focus session is active ────────────
   useEffect(() => {
     if (!timer.isRunning || timer.isBreak) return
     const id = setInterval(() => pingPresence(), 60_000)
     return () => clearInterval(id)
   }, [timer.isRunning, timer.isBreak, pingPresence])
 
-  const progressPercent = timer.isBreak
-    ? ((5 * 60 - timer.remaining) / (5 * 60)) * 100
-    : ((25 * 60 - timer.remaining) / (25 * 60)) * 100
+  // SVG ring math
+  const totalSecs     = timer.isBreak ? 5 * 60 : 25 * 60
+  const elapsed       = totalSecs - timer.remaining
+  const progressPct   = Math.min(100, (elapsed / totalSecs) * 100)
+  const R             = 88
+  const CIRC          = 2 * Math.PI * R
+  const strokeDash    = `${(progressPct / 100) * CIRC} ${CIRC}`
+  const ringColor     = timer.isBreak ? '#22C55E' : '#F15929'
+  const ringGlow      = timer.isBreak
+    ? 'drop-shadow(0 0 10px rgba(34,197,94,0.7))'
+    : 'drop-shadow(0 0 10px rgba(241,89,41,0.7))'
 
-  /**
-   * Resolve file_id → URL (cached), then play.
-   */
   const handleSoundSelect = useCallback((s: SoundFromDB) => {
-    // Toggle off if same sound playing
-    if (sound.activeSound === String(s.id) && sound.isPlaying) {
-      sound.stop()
-      return
-    }
-
-    // Supabase Storage URLs have proper CORS + MIME headers — play directly.
-    // Legacy Google Drive URLs still go through the backend proxy (302 redirect).
+    if (sound.activeSound === String(s.id) && sound.isPlaying) { sound.stop(); return }
     const audioUrl = s.url?.includes('supabase.co/storage')
       ? s.url
       : `${import.meta.env.VITE_API_URL || ''}/api/audio/proxy/${s.id}`
-    console.log('[StudyPage] Playing:', s.name, audioUrl)
     setResolvingId(s.id)
     sound.play(String(s.id) as SoundType, audioUrl)
   }, [sound])
 
-  // Clear the per-button spinner once the hook reports loading finished
-  useEffect(() => {
-    if (!sound.isLoading) setResolvingId(null)
-  }, [sound.isLoading])
+  useEffect(() => { if (!sound.isLoading) setResolvingId(null) }, [sound.isLoading])
+  const handleSilence = useCallback(() => { sound.stop() }, [sound])
 
-  const handleSilence = useCallback(() => {
-    sound.stop()
-  }, [sound])
+  const activeSound = sound.isPlaying ? sounds.find(s => String(s.id) === sound.activeSound) : null
 
   return (
-    <PageWrapper className="space-y-5">
+    <PageWrapper topPadding="" className="!px-0">
       {/* Motivation Burst overlay */}
       <AnimatePresence>
-        {motivBurst && (
-          <MotivationBurst onDone={() => setMotivBurst(false)} />
-        )}
+        {motivBurst && <MotivationBurst onDone={() => setMotivBurst(false)} />}
       </AnimatePresence>
 
-      {/* Header */}
-      <div className="text-center space-y-1">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white inline-flex items-center gap-2">
-          <AcademicCapIcon className="w-7 h-7" /> Study With Sahifalab
-        </h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          {timer.isBreak ? "Dam olish vaqti — biroz nafas ol" : "Diqqatni jamla — sen uddalaysan"}
-        </p>
-      </div>
+      <div className="min-h-screen bg-[#0A0A14] dark:bg-[#0A0A14] px-4 pt-6 pb-8 space-y-4 max-w-md mx-auto">
 
-      {/* Live Pulse — active session count + Send Motivation */}
-      <LivePulseBanner onMotivationReceived={() => { if (!motivBurst) setMotivBurst(true) }} />
+        {/* â”€â”€ Page title â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        <div className="text-center">
+          <h1 className="text-xl font-extrabold text-white flex items-center justify-center gap-2">
+            <AcademicCapIcon className="w-5 h-5 text-sahifa-500" />
+            Study With Sahifalab
+          </h1>
+          <p className="text-xs text-white/40 mt-0.5">
+            {timer.isBreak ? 'Dam olish vaqti â€” biroz nafas ol ðŸŒ¿' : 'Diqqatni jamla â€” sen uddalaysan ðŸŽ¯'}
+          </p>
+        </div>
 
-      {/* Timer Card */}
-      <div className="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/30 rounded-2xl p-5 shadow-sm border border-blue-100 dark:border-blue-800/40 space-y-4">
-        {/* Progress Ring */}
-        <div className="flex justify-center">
-          <div className="relative w-48 h-48">
-            <svg className="w-full h-full transform -rotate-90" viewBox="0 0 200 200">
-              <circle
-                cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="4"
-                className="text-gray-200 dark:text-gray-700"
-              />
-              <circle
-                cx="100" cy="100" r="90" fill="none" stroke="currentColor" strokeWidth="5"
-                strokeDasharray={`${(Math.PI * 180 * progressPercent) / 100} ${Math.PI * 180}`}
-                className={timer.isBreak ? 'text-green-500' : 'text-blue-500'}
-                strokeLinecap="round"
-                style={{ transition: 'stroke-dasharray 0.5s linear' }}
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <div className="text-5xl font-bold text-gray-900 dark:text-white font-mono tracking-tight">
-                {timer.formatted}
-              </div>
-              <div className={`text-xs font-semibold mt-2 px-3 py-0.5 rounded-full ${
-                timer.isBreak
-                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                  : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-              }`}>
-                {timer.isBreak ? 'Dam olish' : 'Fokus'}
+        {/* â”€â”€ Live Pulse banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        <LivePulseBanner onMotivationReceived={() => { if (!motivBurst) setMotivBurst(true) }} />
+
+        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            GLASSMORPHISM TIMER CARD
+            â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        <motion.div
+          className="glass-timer relative overflow-hidden"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {/* Status label */}
+          <div className="flex justify-center mb-4">
+            <span className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase border ${
+              timer.isBreak
+                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                : 'bg-sahifa-500/15 border-sahifa-500/30 text-sahifa-400'
+            }`}>
+              {timer.isBreak ? 'ðŸŒ¿ Dam olish' : 'âš¡ Fokus sessiyasi'}
+            </span>
+          </div>
+
+          {/* SVG Ring */}
+          <div className="flex justify-center mb-4">
+            <div className="relative w-52 h-52">
+              <svg className="w-full h-full -rotate-90" viewBox="0 0 200 200">
+                <defs>
+                  <linearGradient id="timerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%"   stopColor={ringColor} />
+                    <stop offset="100%" stopColor={timer.isBreak ? '#86EFAC' : '#FF8C5A'} />
+                  </linearGradient>
+                </defs>
+                {/* Track */}
+                <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                {/* Fill */}
+                <circle
+                  cx="100" cy="100" r={R}
+                  fill="none"
+                  stroke="url(#timerGrad)"
+                  strokeWidth="6"
+                  strokeLinecap="round"
+                  strokeDasharray={strokeDash}
+                  style={{ transition: 'stroke-dasharray 0.5s linear', filter: ringGlow }}
+                />
+              </svg>
+              {/* Center display */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
+                <span className="font-mono text-5xl font-bold text-white tracking-tighter tabular-nums">{timer.formatted}</span>
+                <span className="text-xs font-semibold text-white/40">{Math.round(progressPct)}% tamamlandi</span>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Session counter */}
-        <div className="flex justify-center gap-1.5">
-          {[...Array(Math.max(4, timer.sessionsCompleted + 1))].map((_, i) => (
-            <div
-              key={i}
-              className={`w-3 h-3 rounded-full transition-colors ${
-                i < timer.sessionsCompleted
-                  ? 'bg-blue-500 dark:bg-blue-400'
-                  : 'bg-gray-200 dark:bg-gray-700'
-              }`}
-            />
-          ))}
-          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2 self-center">
-            {timer.sessionsCompleted} sessiya
-          </span>
-        </div>
-      </div>
-
-      {/* Focus Presets */}
-      {!timer.isRunning && !timer.isBreak && (
-        <div className="flex gap-2 justify-center">
-          {FOCUS_PRESETS.map((min) => (
-            <button
-              key={min}
-              onClick={() => timer.setRemaining(min * 60)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                timer.remaining === min * 60
-                  ? 'bg-blue-500 text-white shadow-md'
-                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-              }`}
-            >
-              {min} min
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Controls */}
-      <div className="flex gap-3">
-        <button
-          onClick={timer.toggle}
-          className={`flex-1 py-3 rounded-xl font-semibold text-white shadow-md transition-all active:scale-95 ${
-            timer.isRunning
-              ? 'bg-orange-500 hover:bg-orange-600'
-              : 'bg-blue-500 hover:bg-blue-600'
-          }`}
-        >
-          <span className="inline-flex items-center gap-1 justify-center">{timer.isRunning ? <PauseIcon className="w-4 h-4" /> : <PlayIcon className="w-4 h-4" />}{timer.isRunning ? 'Pauza' : 'Boshlash'}</span>
-        </button>
-        <button
-          onClick={() => timer.reset()}
-          className="px-4 py-3 rounded-xl font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
-        >
-          <ArrowPathIcon className="w-5 h-5" />
-        </button>
-        <button
-          onClick={timer.skip}
-          className="px-4 py-3 rounded-xl font-medium bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-all active:scale-95"
-        >
-          <ForwardIcon className="w-5 h-5" />
-        </button>
-      </div>
-
-      {/* Ambient Sounds */}
-      <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-gray-900 dark:text-white text-sm inline-flex items-center gap-1"><MusicalNoteIcon className="w-4 h-4" />Ambient tovushlar</h3>
-          {sound.isPlaying && (
-            <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 px-2 py-0.5 rounded-full animate-pulse">
-              Ijro etilmoqda
-            </span>
-          )}
-        </div>
-
-        {soundsLoading ? (
-          <div className="grid grid-cols-3 gap-2">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="p-3 rounded-xl bg-gray-100 dark:bg-gray-700 h-16 animate-pulse" />
-            ))}
-          </div>
-        ) : sounds.length === 0 ? (
-          <p className="text-sm text-center text-gray-400 dark:text-gray-500 py-4">
-            Hali tovushlar yuklanmagan. Admin paneldan qo'shing.
-          </p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {/* Silence button — always first */}
-            <button
-              onClick={handleSilence}
-              className={`p-3 rounded-xl font-medium transition-all active:scale-95 ${
-                !sound.isPlaying
-                  ? 'bg-blue-500 text-white ring-2 ring-blue-400 shadow-md'
-                  : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
-              }`}
-            >
-              <div className="flex justify-center"><SpeakerXMarkIcon className="w-6 h-6" /></div>
-              <div className="text-xs mt-1">Jimjitlik</div>
-            </button>
-
-            {/* Sounds from database */}
-            {sounds.map((s) => (
-              <button
-                key={s.id}
-                onClick={() => handleSoundSelect(s)}
-                disabled={resolvingId === s.id || sound.isLoading}
-                className={`p-3 rounded-xl font-medium transition-all active:scale-95 relative ${
-                  sound.activeSound === String(s.id) && sound.isPlaying
-                    ? 'bg-blue-500 text-white ring-2 ring-blue-400 shadow-md'
-                    : 'bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-600'
+          {/* Session dots */}
+          <div className="flex justify-center items-center gap-2 mb-5">
+            {[...Array(Math.max(4, timer.sessionsCompleted + 1))].map((_, i) => (
+              <div
+                key={i}
+                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                  i < timer.sessionsCompleted
+                    ? 'bg-sahifa-500 shadow-[0_0_6px_rgba(241,89,41,0.8)]'
+                    : 'bg-white/12'
                 }`}
-              >
-                {resolvingId === s.id ? (
-                  <div className="text-2xl animate-spin">...</div>
-                ) : (
-                  <div className="flex justify-center"><MusicalNoteIcon className="w-6 h-6" /></div>
-                )}
-                <div className="text-xs mt-1">{s.name}</div>
-              </button>
+              />
             ))}
+            <span className="text-xs text-white/35 ml-1">{timer.sessionsCompleted} sessiya</span>
           </div>
-        )}
 
-        {/* Error feedback (visible even in Telegram WebView without DevTools) */}
-        {sound.error && (
-          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-3 space-y-1">
-            <p className="text-xs font-semibold text-red-800 dark:text-red-300">
-              <span className="inline-flex items-center gap-1"><ExclamationCircleIcon className="w-4 h-4" />{sound.error}</span>
+          {/* Focus presets */}
+          {!timer.isRunning && !timer.isBreak && (
+            <div className="flex justify-center gap-2 mb-4">
+              {FOCUS_PRESETS.map(min => (
+                <button
+                  key={min}
+                  onClick={() => timer.setRemaining(min * 60)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    timer.remaining === min * 60
+                      ? 'bg-sahifa-500 text-white shadow-[0_0_12px_rgba(241,89,41,0.5)]'
+                      : 'bg-white/8 text-white/50 border border-white/10 hover:bg-white/14 hover:text-white/80'
+                  }`}
+                >
+                  {min} min
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="flex gap-3">
+            <button
+              onClick={timer.toggle}
+              className={`flex-1 py-3.5 rounded-[16px] font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                timer.isRunning
+                  ? 'bg-white/15 border border-white/20 hover:bg-white/22'
+                  : 'bg-sahifa-500 shadow-[0_4px_20px_rgba(241,89,41,0.45)] hover:bg-sahifa-600'
+              }`}
+            >
+              {timer.isRunning
+                ? <><PauseIcon className="w-4 h-4" /> Pauza</>
+                : <><PlayIcon  className="w-4 h-4" /> Boshlash</>
+              }
+            </button>
+            <button
+              onClick={() => timer.reset()}
+              className="w-12 h-12 rounded-[16px] flex items-center justify-center bg-white/8 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all active:scale-95"
+            >
+              <ArrowPathIcon className="w-4.5 h-4.5" />
+            </button>
+            <button
+              onClick={timer.skip}
+              className="w-12 h-12 rounded-[16px] flex items-center justify-center bg-white/8 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all active:scale-95"
+            >
+              <ForwardIcon className="w-4.5 h-4.5" />
+            </button>
+          </div>
+        </motion.div>
+
+        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+            AMBIENT SOUND MIXER
+            â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        <motion.div
+          className="sound-mixer"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <MusicalNoteIcon className="w-4 h-4 text-white/60" />
+              <span className="text-sm font-bold text-white">Ambient tovushlar</span>
+            </div>
+            {sound.isPlaying && (
+              <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/12 border border-emerald-500/25 px-2.5 py-1 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                Ijro etilmoqda
+              </span>
+            )}
+          </div>
+
+          {/* Sound grid */}
+          {soundsLoading ? (
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-[16px] bg-white/5 animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              {/* Silence */}
+              <button
+                onClick={handleSilence}
+                className={`sound-mixer-btn ${!sound.isPlaying ? 'active' : ''}`}
+              >
+                <SpeakerXMarkIcon className="w-5 h-5" />
+                <span className="text-[10px] font-medium">Jimjitlik</span>
+              </button>
+
+              {sounds.map(s => {
+                const isActive = sound.activeSound === String(s.id) && sound.isPlaying
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => handleSoundSelect(s)}
+                    disabled={resolvingId === s.id && sound.isLoading}
+                    className={`sound-mixer-btn ${isActive ? 'active' : ''}`}
+                  >
+                    {resolvingId === s.id && sound.isLoading ? (
+                      <span className="animate-spin text-sm">âŸ³</span>
+                    ) : (
+                      <span className="text-lg">{s.emoji || 'ðŸŽµ'}</span>
+                    )}
+                    <span className="text-[10px] font-medium line-clamp-1">{s.name}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {/* Per-sound volume slider */}
+          <AnimatePresence>
+            {sound.isPlaying && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-3 pt-3 border-t border-white/8 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-xs text-white/50">
+                      <SpeakerWaveIcon className="w-3.5 h-3.5" />
+                      <span>{activeSound?.name ?? 'Tovush'} ovozi</span>
+                    </div>
+                    <span className="text-xs font-bold text-sahifa-400">{Math.round(sound.volume * 100)}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0} max={1} step={0.02}
+                    value={sound.volume}
+                    onChange={e => sound.changeVolume(parseFloat(e.target.value))}
+                    className="vol-slider w-full"
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Error */}
+          {sound.error && (
+            <div className="mt-3 bg-red-500/10 border border-red-500/25 rounded-[14px] p-3">
+              <p className="text-xs text-red-400 flex items-center gap-1.5">
+                <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" />
+                {sound.error}
+              </p>
+            </div>
+          )}
+        </motion.div>
+
+        {/* â”€â”€ Compact info pills â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        <motion.div
+          className="grid grid-cols-2 gap-2"
+          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+        >
+          <div className="flex items-start gap-2 rounded-[16px] bg-white/[0.04] border border-white/8 px-3 py-2.5">
+            <Battery100Icon className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-white/45 leading-relaxed">
+              Fon rejimi: taymer va tovushlar telefon qulflanganda ham ishlaydi.
             </p>
-            {sound.error.includes('SRC_NOT_SUPPORTED') && (
-              <p className="text-xs text-red-700 dark:text-red-400">
-                Google Drive havolasi ochiq emasdir — «Havola orqali har kim» qilib ulashing.
-              </p>
-            )}
-            {sound.error.includes('NETWORK') && (
-              <p className="text-xs text-red-700 dark:text-red-400">
-                Tarmoq xatosi — internet aloqasini tekshiring.
-              </p>
-            )}
           </div>
-        )}
-
-        {/* Volume Control */}
-        {sound.isPlaying && (
-          <div className="flex items-center gap-3 pt-1">
-            <span className="text-sm"><SpeakerWaveIcon className="w-4 h-4" /></span>
-            <input
-              type="range"
-              min={0}
-              max={1}
-              step={0.05}
-              value={sound.volume}
-              onChange={(e) => sound.changeVolume(parseFloat(e.target.value))}
-              className="flex-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-lg appearance-none cursor-pointer accent-blue-500"
-            />
-            <span className="text-sm"><SpeakerWaveIcon className="w-4 h-4" /></span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 w-8 text-right">
-              {Math.round(sound.volume * 100)}%
-            </span>
+          <div className="flex items-start gap-2 rounded-[16px] bg-white/[0.04] border border-white/8 px-3 py-2.5">
+            <LightBulbIcon className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[11px] text-white/45 leading-relaxed">
+              Pomodoro: 25 daq fokus + 5 daq dam olish. Har 4 sessiyadan keyin uzunroq dam oling!
+            </p>
           </div>
-        )}
-      </div>
+        </motion.div>
 
-      {/* Background playback info */}
-      <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3">
-        <p className="text-xs text-emerald-800 dark:text-emerald-300">
-          <span className="inline-flex items-center gap-1"><Battery100Icon className="w-4 h-4" /><strong>Fon rejimi:</strong></span> Taymer va tovushlar telefon qulflanganda ham ishlaydi.
-          Ilovadan chiqmang — fonga o'tkazing.
-        </p>
-      </div>
-
-      {/* Tips */}
-      <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-xl p-3">
-        <p className="text-xs text-yellow-900 dark:text-yellow-200">
-          <span className="inline-flex items-center gap-1"><LightBulbIcon className="w-4 h-4" /><strong>Maslahat:</strong></span> Pomodoro usuli — 25 daqiqa fokus + 5 daqiqa dam olish.
-          Har 4 sessiyadan so'ng uzunroq dam oling!
-        </p>
       </div>
     </PageWrapper>
   )
