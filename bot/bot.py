@@ -15,6 +15,7 @@ import httpx
 from telegram import (
     Update,
     Bot,
+    BotCommand,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     WebAppInfo,
@@ -599,6 +600,20 @@ class TelegramBotHandler:
     async def post_init(self, application: Application) -> None:
         if not self.scheduler_task or self.scheduler_task.done():
             self.scheduler_task = asyncio.create_task(self._schedule_loop(application))
+        # Register visible commands in the Telegram menu (/ list)
+        try:
+            await application.bot.set_my_commands([
+                BotCommand("start",        "Boshlash — SAHIFALAB ni oching"),
+                BotCommand("app",          "Mini ilovani ochish"),
+                BotCommand("kurslar",      "Barcha kurslarni ko'rish 📚"),
+                BotCommand("oquvchilar",   "O'qituvchilar galereyasi 👨‍🏫"),
+                BotCommand("subscribe",    "Yangiliklarga obuna bo'lish"),
+                BotCommand("unsubscribe",  "Yangiliklardan chiqish"),
+                BotCommand("latest",       "So'nggi yangiliklar"),
+                BotCommand("help",         "Buyruqlar ro'yxati"),
+            ])
+        except Exception as e:
+            logger.warning(f"set_my_commands failed: {e}")
 
     async def post_shutdown(self, application: Application) -> None:
         if self.scheduler_task and not self.scheduler_task.done():
@@ -690,12 +705,24 @@ class TelegramBotHandler:
 
         await self._add_subscriber(chat_id)
 
-        keyboard = [[
-            InlineKeyboardButton(
-                "📚 SAHIFALAB ni ochish",
-                web_app=WebAppInfo(url=MINI_APP_URL),
-            )
-        ]]
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "📚 SAHIFALAB ni ochish",
+                    web_app=WebAppInfo(url=MINI_APP_URL),
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🎓 Kurslar",
+                    web_app=WebAppInfo(url=f"{MINI_APP_URL}/courses"),
+                ),
+                InlineKeyboardButton(
+                    "👨‍🏫 O'qituvchilar",
+                    web_app=WebAppInfo(url=f"{MINI_APP_URL}/teachers"),
+                ),
+            ],
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             f"Assalomu alaykum, {user.first_name}! 👋\n\n"
@@ -1174,6 +1201,38 @@ class TelegramBotHandler:
             "Rahmat! 🙏",
         )
 
+    # ── /kurslar ──────────────────────────────────────────────────────────
+    async def kurslar_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "📚 Kurslarni ko'rish",
+                web_app=WebAppInfo(url=f"{MINI_APP_URL}/courses"),
+            )
+        ]])
+        await update.message.reply_text(
+            "📚 *SAHIFALAB Kurslar*\n\n"
+            "Barcha mavjud kurslarimiz — bepul va premium.\n"
+            "Daraja, narx va kategoriya bo'yicha filtr qiling!",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
+    # ── /oquvchilar ───────────────────────────────────────────────────────
+    async def oquvchilar_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton(
+                "👨‍🏫 O'qituvchilarni ko'rish",
+                web_app=WebAppInfo(url=f"{MINI_APP_URL}/teachers"),
+            )
+        ]])
+        await update.message.reply_text(
+            "👨‍🏫 *SAHIFALAB O'qituvchilar*\n\n"
+            "Bizning tasdiqlangan o'qituvchilarimiz galereyasi.\n"
+            "Mutaxassis, kurs soni va reytingni ko'ring!",
+            parse_mode="Markdown",
+            reply_markup=keyboard,
+        )
+
     # ── /help ─────────────────────────────────────────────────────────────
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         admin_line = (
@@ -1190,6 +1249,8 @@ class TelegramBotHandler:
             "📋 *Buyruqlar ro'yxati:*\n\n"
             "/start — Boshlash\n"
             "/app — Ilovani ochish\n"
+            "/kurslar — Barcha kurslarni ko'rish 📚\n"
+            "/oquvchilar — O'qituvchilar galereyasi 👨‍🏫\n"
             "/subscribe — Yangiliklarga obuna\n"
             "/unsubscribe — Yangiliklardan chiqish\n"
             "/latest — So'nggi yangiliklar\n"
@@ -1236,6 +1297,8 @@ class TelegramBotHandler:
         self.app.add_handler(CommandHandler("admin", self.admin_command))
         self.app.add_handler(CommandHandler("stats", self.stats_command))
         self.app.add_handler(CommandHandler("app", self.app_command))
+        self.app.add_handler(CommandHandler("kurslar", self.kurslar_command))
+        self.app.add_handler(CommandHandler("oquvchilar", self.oquvchilar_command))
         self.app.add_handler(CommandHandler("subscribe", self.subscribe_command))
         self.app.add_handler(CommandHandler("unsubscribe", self.unsubscribe_command))
         self.app.add_handler(CommandHandler("latest", self.latest_command))

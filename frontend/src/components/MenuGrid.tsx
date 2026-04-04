@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import {
+  AcademicCapIcon,
   BookOpenIcon,
   ClockIcon,
   CpuChipIcon,
@@ -12,6 +13,7 @@ import {
   SparklesIcon,
   Squares2X2Icon,
   TrophyIcon,
+  UserGroupIcon,
 } from '@heroicons/react/24/outline'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
@@ -27,6 +29,14 @@ interface MenuItem {
 }
 
 const MENU_ITEMS: MenuItem[] = [
+  {
+    id: 'courses',
+    icon: AcademicCapIcon,
+    title: 'Kurslar',
+    titleUz: 'Kurslar',
+    description: 'Premium & bepul video kurslar',
+    path: '/courses',
+  },
   {
     id: 'study',
     icon: ClockIcon,
@@ -82,6 +92,14 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Reyting',
     description: "Top 10 o'quvchilar",
     path: '/leaderboard',
+  },
+  {
+    id: 'teachers',
+    icon: UserGroupIcon,
+    title: "O'qituvchilar",
+    titleUz: "O'qituvchilar",
+    description: "Tasdiqlangan mentorlar",
+    path: '/teachers',
   },
   {
     id: 'bookSummarizer',
