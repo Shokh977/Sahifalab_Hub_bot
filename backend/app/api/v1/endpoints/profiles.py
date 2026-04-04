@@ -8,11 +8,16 @@ from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, UTC, timedelta
 from pydantic import BaseModel
+import time as _time
 
 from app.db.session import get_db
 from app.models.models import Profile, UserQuizCompletion, BookPurchase, BookRating
 
 router = APIRouter()
+
+# ── Module-level motivation state (single Railway dyno, ephemeral) ────────────
+# Resets on redeploy — motivation is intentionally ephemeral.
+_last_motivation_ts: float = 0.0
 
 
 # ── Request models ─────────────────────────────────────────────────────────────
@@ -75,6 +80,38 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
         "avgXP":         avg_xp,
         "totalQuizzes":  total_q,
     }
+
+
+@router.get("/pulse")
+async def get_pulse(db: Session = Depends(get_db)):
+    """
+    Live Pulse — returns:
+      active_count      : number of users with app_online_at within the last 5 minutes
+      last_motivation_ts: Unix timestamp of the last motivation broadcast (0 if none)
+    Frontend polls this every 8 s to update the live counter and detect new motivation events.
+    """
+    cutoff = datetime.now(UTC) - timedelta(minutes=5)
+    active_count = (
+        db.query(Profile)
+        .filter(Profile.app_online_at >= cutoff)
+        .count()
+    )
+    return {
+        "active_count":       active_count,
+        "last_motivation_ts": _last_motivation_ts,
+    }
+
+
+@router.post("/motivation")
+async def send_motivation():
+    """
+    Broadcast a motivation ping to all active study-page users.
+    Sets a module-level timestamp that /pulse returns on every poll.
+    The ephemeral nature is intentional — motivation is a real-time signal.
+    """
+    global _last_motivation_ts
+    _last_motivation_ts = _time.time()
+    return {"ok": True, "ts": _last_motivation_ts}
 
 
 @router.post("/upsert")
