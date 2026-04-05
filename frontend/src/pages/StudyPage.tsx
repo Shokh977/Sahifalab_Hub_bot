@@ -405,13 +405,13 @@ export const StudyWithMe: React.FC = () => {
         {motivBurst && <MotivationBurst onDone={() => setMotivBurst(false)} />}
       </AnimatePresence>
 
-      <div className="min-h-screen bg-[#0A0A14] dark:bg-[#0A0A14]">
+      <div className="min-h-screen bg-slate-50 dark:bg-[#0A0A14] transition-colors">
         <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-6 pb-10 space-y-5">
 
           {/* ── Page header ─────────────────────────────────────────────────────────────── */}
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-xl font-extrabold text-white flex items-center gap-2.5">
+              <h1 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2.5">
                 <GraduationCap className="w-5 h-5 text-[#F15929]" />
                 Study With Sahifalab
               </h1>
@@ -466,7 +466,7 @@ export const StudyWithMe: React.FC = () => {
                       </linearGradient>
                     </defs>
                     {/* Track */}
-                    <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                    <circle cx="100" cy="100" r={R} fill="none" strokeWidth="6" className="timer-ring-track" />
                     {/* Progress fill */}
                     <circle
                       cx="100" cy="100" r={R}
@@ -499,7 +499,7 @@ export const StudyWithMe: React.FC = () => {
 
               {/* Motivational context text */}
               <div className="text-center mb-5 space-y-0.5">
-                <p className="text-sm font-semibold text-white/65">
+                <p className="text-sm font-semibold text-gray-700 dark:text-white/65">
                   {timer.isBreak ? 'Biroz nafas oling' : 'Diqqatni jamlang'}
                 </p>
                 <p className="text-xs text-slate-600">
@@ -515,7 +515,7 @@ export const StudyWithMe: React.FC = () => {
                     className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
                       i < timer.sessionsCompleted
                         ? 'bg-[#F15929] shadow-[0_0_8px_rgba(241,89,41,0.9)]'
-                        : 'bg-white/10'
+                        : 'bg-black/10 dark:bg-white/10'
                     }`}
                   />
                 ))}
@@ -532,7 +532,7 @@ export const StudyWithMe: React.FC = () => {
                       className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
                         timer.remaining === min * 60
                           ? 'bg-[#F15929] text-white shadow-[0_0_14px_rgba(241,89,41,0.55)]'
-                          : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white/80'
+                          : 'bg-black/5 text-gray-500 border border-black/10 hover:bg-black/10 hover:text-gray-800 dark:bg-white/5 dark:text-white/50 dark:border-white/10 dark:hover:bg-white/10 dark:hover:text-white/80'
                       }`}
                     >
                       {min} min
@@ -545,10 +545,10 @@ export const StudyWithMe: React.FC = () => {
               <div className="flex gap-3">
                 <button
                   onClick={timer.toggle}
-                  className={`flex-1 py-4 rounded-[18px] font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                  className={`flex-1 py-4 rounded-[18px] font-bold text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${
                     timer.isRunning
-                      ? 'bg-white/10 border border-white/15 hover:bg-white/15'
-                      : 'bg-[#F15929] shadow-[0_6px_28px_rgba(241,89,41,0.5)] hover:bg-[#e84e22] active:bg-[#d4451f]'
+                      ? 'bg-black/[0.07] border border-black/10 text-gray-700 hover:bg-black/[0.11] dark:bg-white/10 dark:border-white/15 dark:text-white dark:hover:bg-white/15'
+                      : 'bg-[#F15929] text-white shadow-[0_6px_28px_rgba(241,89,41,0.5)] hover:bg-[#e84e22] active:bg-[#d4451f]'
                   }`}
                 >
                   {timer.isRunning
@@ -558,13 +558,13 @@ export const StudyWithMe: React.FC = () => {
                 </button>
                 <button
                   onClick={() => timer.reset()}
-                  className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+                  className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-black/[0.05] border border-black/[0.08] text-gray-400 hover:bg-black/[0.09] hover:text-gray-900 dark:bg-white/5 dark:border-white/10 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white transition-all active:scale-95"
                 >
                   <RefreshCw className="w-4 h-4" />
                 </button>
                 <button
                   onClick={timer.skip}
-                  className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+                  className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-black/[0.05] border border-black/[0.08] text-gray-400 hover:bg-black/[0.09] hover:text-gray-900 dark:bg-white/5 dark:border-white/10 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white transition-all active:scale-95"
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
@@ -584,8 +584,8 @@ export const StudyWithMe: React.FC = () => {
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
-                    <Music className="w-4 h-4 text-white/60" />
-                    <span className="text-sm font-bold text-white">Ambient tovushlar</span>
+                    <Music className="w-4 h-4 text-gray-400 dark:text-white/60" />
+                    <span className="text-sm font-bold text-gray-900 dark:text-white">Ambient tovushlar</span>
                   </div>
                   {sound.isPlaying && (
                     <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/12 border border-emerald-500/25 px-2.5 py-1 rounded-full">
@@ -598,7 +598,7 @@ export const StudyWithMe: React.FC = () => {
                 {/* Sound selection grid */}
                 {soundsLoading ? (
                   <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-[16px] bg-white/5 animate-pulse" />)}
+                    {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-[16px] bg-black/5 dark:bg-white/5 animate-pulse" />)}
                   </div>
                 ) : (
                   <div className="grid grid-cols-3 gap-2">
@@ -621,7 +621,7 @@ export const StudyWithMe: React.FC = () => {
                           className={`sound-mixer-btn ${isActive ? 'active' : ''}`}
                         >
                           {resolvingId === s.id && sound.isLoading ? (
-                            <RefreshCw className="w-4 h-4 animate-spin text-white/70" />
+                            <RefreshCw className="w-4 h-4 animate-spin text-gray-400 dark:text-white/70" />
                           ) : (
                             <span className="text-lg">{s.emoji || '🎵'}</span>
                           )}
@@ -641,9 +641,9 @@ export const StudyWithMe: React.FC = () => {
                       exit={{ opacity: 0, height: 0 }}
                       className="overflow-hidden"
                     >
-                      <div className="mt-3 pt-3 border-t border-white/8 space-y-2">
+                      <div className="mt-3 pt-3 border-t border-black/[0.08] dark:border-white/8 space-y-2">
                         <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-xs text-white/50">
+                          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-white/50">
                             <Volume2 className="w-3.5 h-3.5" />
                             <span>{activeSound?.name ?? 'Tovush'} ovozi</span>
                           </div>
@@ -677,15 +677,15 @@ export const StudyWithMe: React.FC = () => {
                 className="space-y-2"
                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
               >
-                <div className="flex items-start gap-2.5 rounded-[16px] bg-white/[0.04] border border-white/8 px-3.5 py-3">
-                  <Battery className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-white/45 leading-relaxed">
+                <div className="flex items-start gap-2.5 rounded-[16px] bg-black/[0.04] border border-black/[0.07] dark:bg-white/[0.04] dark:border-white/8 px-3.5 py-3">
+                  <Battery className="w-4 h-4 text-emerald-500 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-gray-500 dark:text-white/45 leading-relaxed">
                     Fon rejimi: taymer va tovushlar telefon qulflanganda ham ishlaydi.
                   </p>
                 </div>
-                <div className="flex items-start gap-2.5 rounded-[16px] bg-white/[0.04] border border-white/8 px-3.5 py-3">
-                  <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-                  <p className="text-[11px] text-white/45 leading-relaxed">
+                <div className="flex items-start gap-2.5 rounded-[16px] bg-black/[0.04] border border-black/[0.07] dark:bg-white/[0.04] dark:border-white/8 px-3.5 py-3">
+                  <Lightbulb className="w-4 h-4 text-amber-500 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-gray-500 dark:text-white/45 leading-relaxed">
                     Pomodoro: 25 daq fokus + 5 daq dam olish. Har 4 sessiyadan keyin uzunroq dam oling!
                   </p>
                 </div>
