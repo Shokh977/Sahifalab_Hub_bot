@@ -15,6 +15,7 @@ import type { InternalAxiosRequestConfig, AxiosResponse } from 'axios'
 import {
   MOCK_USER, MOCK_CATEGORIES, MOCK_COURSES, MOCK_LESSONS, MOCK_REVIEWS,
   MOCK_ENROLLMENTS, MOCK_BOOKS, MOCK_QUIZZES, MOCK_QUIZ_DETAIL,
+  MOCK_QUIZ_DETAILS, MOCK_COURSE_REVIEWS,
   MOCK_RESOURCES, MOCK_AMBIENT_SOUNDS, MOCK_HEATMAP, MOCK_TEACHERS,
   MOCK_TEACHER_PROFILE, MOCK_TEACHER_ANALYTICS, MOCK_ADMIN_STATS,
   MOCK_PLATFORM_ANALYTICS, MOCK_HERO, MOCK_PAYMENT_ORDER, MOCK_LEADERBOARD,
@@ -75,7 +76,9 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   if (m === 'get'  && u === '/api/courses/mine')      return ok(MOCK_COURSES.slice(0, 2), config)
   if (m === 'post' && u === '/api/courses')           return ok({ ...MOCK_COURSES[0], id: 99, title: 'Yangi kurs' }, config)
   if (m === 'get'  && u.match(/^\/api\/courses\/\d+\/reviews/)) {
-    return ok(MOCK_REVIEWS, config)
+    const courseId = seg(url, '/api/courses')
+    const reviews = (courseId !== null && MOCK_COURSE_REVIEWS[courseId]) ? MOCK_COURSE_REVIEWS[courseId] : MOCK_REVIEWS
+    return ok(reviews, config)
   }
   if (m === 'get'  && u.match(/^\/api\/courses\/\d+\/my-rating/)) {
     return ok({ rating: 0, review: '' }, config)
@@ -143,7 +146,7 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   }
   if (m === 'get' && u.match(/^\/api\/quizzes\/\d+$/)) {
     const id = seg(url, '/api/quizzes')
-    const quiz = id === 1 ? MOCK_QUIZ_DETAIL : { ...MOCK_QUIZ_DETAIL, id: id ?? 2, title: MOCK_QUIZZES.find(q => q.id === id)?.title ?? 'Mock Test', questions: MOCK_QUIZ_DETAIL.questions }
+    const quiz = (id !== null && MOCK_QUIZ_DETAILS[id]) ? MOCK_QUIZ_DETAILS[id] : MOCK_QUIZ_DETAIL
     return ok(quiz, config)
   }
 
@@ -236,4 +239,10 @@ export function seedSupabaseCache() {
   }
   write('leaderboard:top', MOCK_LEADERBOARD)
   write('ambient_sounds', MOCK_AMBIENT_SOUNDS)
+  // Seed books + quizzes so supabase.ts fetchBooks() / fetchQuizzes() / fetchQuiz(id)
+  // return mock data without hitting the (offline in dev) FastAPI backend.
+  write('books', MOCK_BOOKS)
+  write('quizzes', MOCK_QUIZZES)
+  MOCK_BOOKS.forEach(b  => write(`book:${b.id}`, b))
+  Object.entries(MOCK_QUIZ_DETAILS).forEach(([id, detail]) => write(`quiz:${id}`, detail))
 }

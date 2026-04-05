@@ -176,12 +176,44 @@ export const MOCK_LESSONS = [
   { id: 8,  course_id: 1, title: "Modullar va paketlar",             description: "import, pip, requirements.txt, virtual env.",            video_url: "https://www.youtube.com/embed/dQw4w9WgXcQ", video_source: "youtube", duration_minutes: 27, order_index: 8,  is_free: false, lesson_type: "video", section_title: "Amaliy" },
 ]
 
-// ── Course reviews ─────────────────────────────────────────────────────────────
+// ── Course reviews (default = course 1) ─────────────────────────────────────────
+// Note: field is `profiles` (not `user`) — matches CourseDetailPage.tsx interface
 export const MOCK_REVIEWS = [
-  { id: 1, user_id: 11, rating: 5, review: "Juda yaxshi kurs! Hamma narsani tushuntiradi.", created_at: "2026-01-10T12:00:00Z", user: { first_name: "Alisher", username: "alisher_uz", photo_url: null } },
-  { id: 2, user_id: 12, rating: 5, review: "O'qituvchi juda tajribali, amaliy misollar ko'p.", created_at: "2026-01-15T08:30:00Z", user: { first_name: "Barno", username: "barno_code", photo_url: null } },
-  { id: 3, user_id: 13, rating: 4, review: "Kurs yaxshi lekin biroz sekinroq tushuntirishsa yaxshi bo'lardi.", created_at: "2026-02-01T14:00:00Z", user: { first_name: "Dilshod", username: "dilshod99", photo_url: null } },
+  { id: 1, student_id: 11, rating: 5, review: "Juda yaxshi kurs! Hamma narsani tushuntiradi.", created_at: "2026-01-10T12:00:00Z", profiles: { first_name: "Alisher", username: "alisher_uz", photo_url: null } },
+  { id: 2, student_id: 12, rating: 5, review: "O'qituvchi juda tajribali, amaliy misollar ko'p.", created_at: "2026-01-15T08:30:00Z", profiles: { first_name: "Barno", username: "barno_code", photo_url: null } },
+  { id: 3, student_id: 13, rating: 4, review: "Kurs yaxshi lekin biroz sekinroq tushuntirishsa yaxshi bo'lardi.", created_at: "2026-02-01T14:00:00Z", profiles: { first_name: "Dilshod", username: "dilshod99", photo_url: null } },
+  { id: 4, student_id: 14, rating: 5, review: "Eng yaxshi Python kursi! Loyiha misollar juda qimmatli.", created_at: "2026-02-14T10:30:00Z", profiles: { first_name: "Kamola", username: "kamola_learns", photo_url: null } },
+  { id: 5, student_id: 15, rating: 4, review: "Tushuntirishlar aniq va lo'nda. Davom ettiring!", created_at: "2026-03-03T16:00:00Z", profiles: { first_name: "Jahongir", username: null, photo_url: null } },
 ]
+
+// ── Per-course reviews map (keyed by course id) ────────────────────────────────
+export const MOCK_COURSE_REVIEWS: Record<number, typeof MOCK_REVIEWS> = {
+  1: MOCK_REVIEWS,
+  2: [
+    { id: 11, student_id: 21, rating: 5, review: "IELTS tayyorgarligim uchun juda foydali bo'ldi. 7.5 oldim!", created_at: "2026-01-20T09:00:00Z", profiles: { first_name: "Zulfiya", username: "zulfiya_study", photo_url: null } },
+    { id: 12, student_id: 22, rating: 4, review: "Speaking bo'limiga ko'proq e'tibor bersalar yaxshi bo'lardi.", created_at: "2026-02-05T14:00:00Z", profiles: { first_name: "Nodir", username: "nodir_dev", photo_url: null } },
+    { id: 13, student_id: 23, rating: 5, review: "Bepul kurs bo'lgani holda sifat juda yuqori!", created_at: "2026-02-20T11:30:00Z", profiles: { first_name: "Mohira", username: "mohira_22", photo_url: null } },
+    { id: 14, student_id: 24, rating: 5, review: "Grammatika bo'limlari ayniqsa foydali. Tavsiya qilaman.", created_at: "2026-03-10T08:00:00Z", profiles: { first_name: "Sherzod", username: null, photo_url: null } },
+  ],
+  3: [
+    { id: 21, student_id: 31, rating: 5, review: "React va TypeScript'ni shu kurs orqali yaxshi o'rgandim. Professional daraja!", created_at: "2026-01-12T10:00:00Z", profiles: { first_name: "Alisher", username: "alisher_uz", photo_url: null } },
+    { id: 22, student_id: 32, rating: 5, review: "Zustand va React Query misollar bilan juda tushunarliq. Rahmat!", created_at: "2026-02-08T15:00:00Z", profiles: { first_name: "Kamola", username: "kamola_learns", photo_url: null } },
+    { id: 23, student_id: 33, rating: 4, review: "Kurs hajmi katta lekin har bir dars qimmatli. Sabr talab qiladi.", created_at: "2026-03-01T12:00:00Z", profiles: { first_name: "Barno", username: "barno_code", photo_url: null } },
+  ],
+  4: [
+    { id: 31, student_id: 41, rating: 5, review: "Integral va differensial hisob nihoyat tushunarli bo'ldi!", created_at: "2026-01-25T09:30:00Z", profiles: { first_name: "Dilshod", username: "dilshod99", photo_url: null } },
+    { id: 32, student_id: 42, rating: 4, review: "Murakkab mavzular bor lekin mukammal tushuntirilgan. Tavsiya!", created_at: "2026-02-18T14:00:00Z", profiles: { first_name: "Jahongir", username: null, photo_url: null } },
+  ],
+  5: [
+    { id: 41, student_id: 51, rating: 5, review: "Kvant fizikasiga kirish uchun ideal kurs. Juda qiziqarli!", created_at: "2026-02-01T10:00:00Z", profiles: { first_name: "Nodir", username: "nodir_dev", photo_url: null } },
+    { id: 42, student_id: 52, rating: 4, review: "Shr'odinger tenglamasi misollar bilan tushuntirilgan — zo'r!", created_at: "2026-02-25T16:00:00Z", profiles: { first_name: "Zulfiya", username: "zulfiya_study", photo_url: null } },
+    { id: 43, student_id: 53, rating: 5, review: "Bepul va shu qadar sifatli. Rahmat!", created_at: "2026-03-15T11:00:00Z", profiles: { first_name: "Sherzod", username: null, photo_url: null } },
+  ],
+  6: [
+    { id: 51, student_id: 61, rating: 5, review: "SQL optimizatsiya qismi ayniqsa foydali bo'ldi. Window functions — ajoyib.", created_at: "2026-02-10T09:00:00Z", profiles: { first_name: "Alisher", username: "alisher_uz", photo_url: null } },
+    { id: 52, student_id: 62, rating: 4, review: "Window functions'ni shu kursdan o'rgandim. Tavsiya!", created_at: "2026-03-05T13:00:00Z", profiles: { first_name: "Barno", username: "barno_code", photo_url: null } },
+  ],
+}
 
 // ── Enrollments ───────────────────────────────────────────────────────────────
 export const MOCK_ENROLLMENTS = [
@@ -191,98 +223,164 @@ export const MOCK_ENROLLMENTS = [
 ]
 
 // ── Books ─────────────────────────────────────────────────────────────────────
+// Fields match KitoblarPage + BookDetailPage interfaces:
+//   thumbnail_url (not cover_url), rating (not rating_avg), downloads (not download_count)
+//   category — English slug so COVER_GRADIENTS in page works correctly
 export const MOCK_BOOKS = [
   {
     id: 1, title: "Clean Code", author: "Robert C. Martin",
-    description: "Dastur kodini qanday toza va o'qilishi oson qilish haqida fundamental asar.",
-    cover_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80",
-    file_url: "#", price: 25_000, is_paid: true, category: "Dasturlash",
-    total_pages: 431, language: "uz", rating_avg: 4.9, rating_count: 128,
-    download_count: 342, is_active: true,
+    description: "Dastur kodini qanday toza va o'qilishi oson qilish haqida fundamental asar. Har bir dasturchining kutubxonasida bo'lishi shart.",
+    thumbnail_url: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?w=400&q=80",
+    file_url: "#", price: 25_000, is_paid: true, category: "programming",
+    rating: 4.9, downloads: 342, is_active: true,
   },
   {
     id: 2, title: "Atomic Habits", author: "James Clear",
-    description: "Kichik odatlar orqali katta o'zgarishlarga erishish yo'llari.",
-    cover_url: "https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=400&q=80",
-    file_url: "#", price: 0, is_paid: false, category: "Motivatsiya",
-    total_pages: 320, language: "uz", rating_avg: 4.8, rating_count: 214,
-    download_count: 890, is_active: true,
+    description: "Kichik odatlar orqali katta o'zgarishlarga erishish yo'llari. 1% yaxshilanish qanday ulkan natija beradi.",
+    thumbnail_url: "https://images.unsplash.com/photo-1589829085413-56de8ae18c73?w=400&q=80",
+    file_url: "#", price: 0, is_paid: false, category: "business",
+    rating: 4.8, downloads: 890, is_active: true,
   },
   {
     id: 3, title: "Python Crash Course", author: "Eric Matthes",
-    description: "Python tilini tezda o'rganish uchun eng yaxshi amaliy qo'llanma.",
-    cover_url: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?w=400&q=80",
-    file_url: "#", price: 35_000, is_paid: true, category: "Dasturlash",
-    total_pages: 544, language: "uz", rating_avg: 4.7, rating_count: 98,
-    download_count: 255, is_active: true,
+    description: "Python tilini tezda o'rganish uchun eng yaxshi amaliy qo'llanma. Loyihalar orqali o'rganish.",
+    thumbnail_url: "https://images.unsplash.com/photo-1515879218367-8466d910aaa4?w=400&q=80",
+    file_url: "#", price: 35_000, is_paid: true, category: "programming",
+    rating: 4.7, downloads: 255, is_active: true,
   },
   {
     id: 4, title: "The Pragmatic Programmer", author: "David Thomas, Andrew Hunt",
-    description: "Professional dasturchilar uchun hayotiy maslahatlar va best practices.",
-    cover_url: "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400&q=80",
-    file_url: "#", price: 30_000, is_paid: true, category: "Dasturlash",
-    total_pages: 352, language: "uz", rating_avg: 4.8, rating_count: 67,
-    download_count: 178, is_active: true,
+    description: "Professional dasturchilar uchun hayotiy maslahatlar va best practices to'plami.",
+    thumbnail_url: "https://images.unsplash.com/photo-1532012197267-da84d127e765?w=400&q=80",
+    file_url: "#", price: 30_000, is_paid: true, category: "programming",
+    rating: 4.8, downloads: 178, is_active: true,
   },
   {
     id: 5, title: "Thinking, Fast and Slow", author: "Daniel Kahneman",
-    description: "Ikkita fikrlash tizimi: tez va sekin. Qarorlar qanday qabul qilinadi.",
-    cover_url: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&q=80",
-    file_url: "#", price: 0, is_paid: false, category: "Psixologiya",
-    total_pages: 499, language: "uz", rating_avg: 4.6, rating_count: 156,
-    download_count: 612, is_active: true,
+    description: "Ikkita fikrlash tizimi: tez va sekin. Qarorlar qanday qabul qilinadi — psixologiya klassikasi.",
+    thumbnail_url: "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=400&q=80",
+    file_url: "#", price: 0, is_paid: false, category: "science",
+    rating: 4.6, downloads: 612, is_active: true,
   },
   {
     id: 6, title: "The Art of Problem Solving vol.1", author: "Richard Rusczyk",
-    description: "Olimpiada matematikasiga tayyorlanish uchun klassik qo'llanma.",
-    cover_url: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=400&q=80",
-    file_url: "#", price: 40_000, is_paid: true, category: "Matematika",
-    total_pages: 288, language: "uz", rating_avg: 4.9, rating_count: 44,
-    download_count: 123, is_active: true,
+    description: "Olimpiada matematikasiga tayyorlanish uchun klassik qo'llanma. Chuqur matematik fikrlash.",
+    thumbnail_url: "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?w=400&q=80",
+    file_url: "#", price: 40_000, is_paid: true, category: "math",
+    rating: 4.9, downloads: 123, is_active: true,
+  },
+  {
+    id: 7, title: "Deep Work", author: "Cal Newport",
+    description: "Chuqur diqqat orqali maksimal natijaga erishish va professional hayotni qayta qurish yo'llari.",
+    thumbnail_url: "https://images.unsplash.com/photo-1471107340929-a87cd0f5b5f3?w=400&q=80",
+    file_url: "#", price: 0, is_paid: false, category: "business",
+    rating: 4.7, downloads: 445, is_active: true,
+  },
+  {
+    id: 8, title: "JavaScript: The Good Parts", author: "Douglas Crockford",
+    description: "JS ning eng kuchli va foydalanishga tayyor qismlarini chuqur o'rganish. Har bir frontend uchun.",
+    thumbnail_url: "https://images.unsplash.com/photo-1627398242454-45a1465c2479?w=400&q=80",
+    file_url: "#", price: 20_000, is_paid: true, category: "programming",
+    rating: 4.5, downloads: 203, is_active: true,
+  },
+  {
+    id: 9, title: "IELTS Writing Masterclass", author: "Marc Roche",
+    description: "IELTS Writing Task 1 va Task 2 uchun barcha zarur strategiya va misollar.",
+    thumbnail_url: "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?w=400&q=80",
+    file_url: "#", price: 15_000, is_paid: true, category: "language",
+    rating: 4.6, downloads: 387, is_active: true,
+  },
+  {
+    id: 10, title: "O'zbekiston Yangi Tarixi", author: "Prof. A. Qodirov",
+    description: "Istiqloldan bugungi kungacha — ijtimoiy, siyosiy va iqtisodiy taraqqiyot bosqichlari.",
+    thumbnail_url: "https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?w=400&q=80",
+    file_url: "#", price: 0, is_paid: false, category: "history",
+    rating: 4.4, downloads: 156, is_active: true,
   },
 ]
 
 // ── Quizzes ───────────────────────────────────────────────────────────────────
 export const MOCK_QUIZZES = [
-  { id: 1, title: "Python asoslari", category: "Dasturlash", difficulty: "easy",   question_count: 10, passing_score: 70, xp_reward: 50,  is_active: true, description: "Python sintaksisi va asosiy tushunchalar." },
-  { id: 2, title: "Algebra — 9-sinf",  category: "Matematika", difficulty: "medium", question_count: 15, passing_score: 65, xp_reward: 75,  is_active: true, description: "Algebraik ifodalar, tenglamalar, funksiyalar." },
-  { id: 3, title: "Ingliz tili: Grammar", category: "Ingliz tili", difficulty: "medium", question_count: 20, passing_score: 60, xp_reward: 80, is_active: true, description: "Tenses, conditionals, passive voice." },
-  { id: 4, title: "Umumiy fizika",     category: "Fizika",    difficulty: "hard",   question_count: 12, passing_score: 75, xp_reward: 100, is_active: true, description: "Mexanika, termodinamika, elektr." },
+  { id: 1, title: "Python asoslari",      category: "Dasturlash",  difficulty: "easy",   question_count: 5,  passing_score: 70, xp_reward: 50,  is_active: true, description: "Python sintaksisi va asosiy tushunchalar." },
+  { id: 2, title: "Algebra — 9-sinf",    category: "Matematika",  difficulty: "medium", question_count: 5,  passing_score: 65, xp_reward: 75,  is_active: true, description: "Algebraik ifodalar, tenglamalar, funksiyalar." },
+  { id: 3, title: "Ingliz tili: Grammar",category: "Ingliz tili", difficulty: "medium", question_count: 5,  passing_score: 60, xp_reward: 80,  is_active: true, description: "Tenses, conditionals, passive voice." },
+  { id: 4, title: "Umumiy fizika",       category: "Fizika",      difficulty: "hard",   question_count: 5,  passing_score: 75, xp_reward: 100, is_active: true, description: "Mexanika, termodinamika, elektr." },
+  { id: 5, title: "JavaScript asoslari",  category: "Dasturlash",  difficulty: "easy",   question_count: 5,  passing_score: 70, xp_reward: 50,  is_active: true, description: "JavaScript sintaksisi, DOM, events, ES6+." },
+  { id: 6, title: "O'zbek tili: Imlo",   category: "Til",         difficulty: "easy",   question_count: 5,  passing_score: 60, xp_reward: 45,  is_active: true, description: "Imlo qoidalari, tinish belgilari, lug'at boyligi." },
+  { id: 7, title: "Kimyo: Davriy jadval",category: "Kimyo",       difficulty: "medium", question_count: 5,  passing_score: 65, xp_reward: 60,  is_active: true, description: "Elementlar, valentlik, kimyoviy reaksiyalar." },
+  { id: 8, title: "O'zbekiston tarixi",  category: "Tarix",       difficulty: "easy",   question_count: 5,  passing_score: 60, xp_reward: 55,  is_active: true, description: "Qadimgi davrdan hozirgi kunga qadar." },
 ]
 
-// ── Full quiz with questions (quiz id=1) ──────────────────────────────────────
-export const MOCK_QUIZ_DETAIL = {
-  id: 1, title: "Python asoslari", category: "Dasturlash", difficulty: "easy",
-  question_count: 5, passing_score: 70, xp_reward: 50, is_active: true,
-  description: "Python sintaksisi va asosiy tushunchalar.",
-  questions: [
-    {
-      id: 1, question_text: "Python — bu qanday dasturlash tili?",
-      options: ["Kompilyatsiya qilinadigan", "Interpretatsiya qilinadigan", "Assamblerlik", "Mashina tili"],
-      order_index: 1,
-    },
-    {
-      id: 2, question_text: "Python'da ro'yxat (list) qanday e'lon qilinadi?",
-      options: ["{ }", "( )", "[ ]", "< >"],
-      order_index: 2,
-    },
-    {
-      id: 3, question_text: "Python'da funksiya qanday aniqlanadi?",
-      options: ["function foo():", "def foo():", "fun foo():", "void foo():"],
-      order_index: 3,
-    },
-    {
-      id: 4, question_text: "len('salom') qanday qiymat qaytaradi?",
-      options: ["4", "5", "6", "Xato"],
-      order_index: 4,
-    },
-    {
-      id: 5, question_text: "Python'da izoh (comment) qanday yoziladi?",
-      options: ["// izoh", "/* izoh */", "# izoh", "-- izoh"],
-      order_index: 5,
-    },
-  ],
+// ── Full quiz question banks (all quizzes) ────────────────────────────────────
+const mkQ = (id: number, text: string, opts: string[]) =>
+  ({ id, question_text: text, options: opts, order_index: id })
+
+export const MOCK_QUIZ_DETAILS: Record<number, {
+  id: number; title: string; category: string; difficulty: string
+  question_count: number; passing_score: number; xp_reward: number
+  is_active: boolean; description: string
+  questions: { id: number; question_text: string; options: string[]; order_index: number }[]
+}> = {
+  1: { ...MOCK_QUIZZES[0], questions: [
+    mkQ(1, "Python — bu qanday dasturlash tili?",          ["Kompilyatsiya qilinadigan", "Interpretatsiya qilinadigan", "Assamblerlik", "Mashina tili"]),
+    mkQ(2, "Python'da ro'yxat (list) qanday e'lon qilinadi?", ["{ }", "( )", "[ ]", "< >"]),
+    mkQ(3, "Python'da funksiya qanday aniqlanadi?",         ["function foo():", "def foo():", "fun foo():", "void foo():"]),
+    mkQ(4, "len('salom') qanday qiymat qaytaradi?",         ["4", "5", "6", "Xato"]),
+    mkQ(5, "Python'da izoh (comment) qanday yoziladi?",     ["// izoh", "/* izoh */", "# izoh", "-- izoh"]),
+  ]},
+  2: { ...MOCK_QUIZZES[1], questions: [
+    mkQ(1, "x² - 5x + 6 = 0 tenglamaning yechimlari qaysi?", ["x=1, x=6", "x=2, x=3", "x=-2, x=-3", "x=0, x=5"]),
+    mkQ(2, "f(x) = 2x + 3 bo'lsa, f(5) = ?",                ["8", "10", "13", "16"]),
+    mkQ(3, "-3 < 2x - 1 < 5 tengsizligining yechimi?",      ["-2 < x < 3", "-1 < x < 3", "1 < x < 3", "-1 < x < 2"]),
+    mkQ(4, "√144 = ?",                                       ["10", "11", "12", "13"]),
+    mkQ(5, "3a + 2b = 12 va a - b = 1 bo'lsa, a = ?",       ["2", "3", "4", "5"]),
+  ]},
+  3: { ...MOCK_QUIZZES[2], questions: [
+    mkQ(1, "Choose the correct sentence:",                   ["She don't like apples.", "She doesn't likes apples.", "She doesn't like apples.", "She not like apples."]),
+    mkQ(2, "If I ___ rich, I would travel the world.",       ["am", "were", "will be", "would be"]),
+    mkQ(3, "The report ___ by the manager yesterday.",       ["wrote", "was written", "has been written", "is written"]),
+    mkQ(4, "He said he ___ come tomorrow. (Reported speech)", ["will", "would", "shall", "should"]),
+    mkQ(5, "Which word is a synonym for 'happy'?",           ["Sad", "Angry", "Content", "Tired"]),
+  ]},
+  4: { ...MOCK_QUIZZES[3], questions: [
+    mkQ(1, "F = ma — bu qaysi qonun?",                       ["Termodinamika 1-qonuni", "Newton 1-qonuni", "Newton 2-qonuni", "Arximed qonuni"]),
+    mkQ(2, "1 Joule (J) — bu nima?",                         ["1 N·m", "1 W·s", "Ikkalasi ham to'g'ri", "Hech biri to'g'ri emas"]),
+    mkQ(3, "Erkin tushish tezlanishi (g) taxminan qancha?",  ["5 m/s²", "9.8 m/s²", "10.2 m/s²", "12 m/s²"]),
+    mkQ(4, "Ohm qonuniga ko'ra: U = ?",                      ["I / R", "I · R", "R / I", "I + R"]),
+    mkQ(5, "Energiyaning saqlanish qonuni nima deydi?",      ["Energiya yo'qolishi mumkin", "Energiya faqat shaklini o'zgartiradi", "Energiya o'sib boradi", "Energiya faqat issiqlik holida saqlanadi"]),
+  ]},
+  5: { ...MOCK_QUIZZES[4], questions: [
+    mkQ(1, "JavaScript'da o'zgaruvchi e'lon qilishning to'g'ri usuli?", ["var x = 5 (faqat)", "let x = 5 (faqat)", "const x = 5 (faqat)", "Uchala usul ham to'g'ri"]),
+    mkQ(2, "typeof null natijasi qanday?",                   ["'null'", "'undefined'", "'object'", "'boolean'"]),
+    mkQ(3, "Arrow function'ning to'g'ri sintaksisi?",        ["function => (x) x*2", "(x) => x * 2", "x -> x * 2", "(x) function x * 2"]),
+    mkQ(4, "Array.prototype.map() nima qaytaradi?",          ["Asl massivni o'zgartiradi", "Yangi massiv", "undefined", "Boolean"]),
+    mkQ(5, "console.log(1 + '2') natijasi?",                 ["3", "'12'", "NaN", "Xato"]),
+  ]},
+  6: { ...MOCK_QUIZZES[5], questions: [
+    mkQ(1, "\"Salom\" so'zi qaysi so'z turkumiga kiradi?",  ["Fe'l", "Ot", "Undov so'z", "Ravish"]),
+    mkQ(2, "Qaysi so'z to'g'ri yozilgan?",                   ["ko'rinish", "ko'riniş", "ko'rinış", "koriniş"]),
+    mkQ(3, "Fe'lning buyruq maylida qo'llanadigan qo'shimcha?", ["-moqchi", "-ing/-ingiz", "-gan", "-sa"]),
+    mkQ(4, "\"Kitob o'qidim\" gapida to'ldiruvchi nima?",    ["Ega: kitob", "To'ldiruvchi: kitob", "Kesim: o'qidim", "Hol: kitob"]),
+    mkQ(5, "Qo'shma gap qanday gap?",                        ["Bitta ega, bitta kesim", "Ikki yoki undan ortiq sodda gapdan iborat", "Faqat uyushiq bo'lakli gap", "Undov gapning turi"]),
+  ]},
+  7: { ...MOCK_QUIZZES[6], questions: [
+    mkQ(1, "Suvning kimyoviy formulasi?",                     ["CO\u2082", "H\u2082O", "NaCl", "O\u2082"]),
+    mkQ(2, "Vodorodning atom raqami?",                        ["1", "2", "6", "8"]),
+    mkQ(3, "Yer atmosferasida qaysi gaz ko'proq?",           ["Kislorod (O\u2082)", "Azot (N\u2082)", "CO\u2082", "Argon"]),
+    mkQ(4, "NaCl — bu qanday modda?",                        ["Shakar", "Natriy xlorid (osh tuzi)", "Kalsiy karbonat", "Sulfat kislota"]),
+    mkQ(5, "Massa saqlanish qonunini kim kashf etgan?",       ["Mendeleev", "Lavoisier", "Curie", "Dalton"]),
+  ]},
+  8: { ...MOCK_QUIZZES[7], questions: [
+    mkQ(1, "O'zbekiston mustaqilligini qachon qo'lga kiritdi?", ["1990-yil", "1991-yil", "1993-yil", "1989-yil"]),
+    mkQ(2, "Amir Temur qaysi davlatni asos soldi?",           ["Somoniylar davlati", "Temuriylar davlati", "Xorazmshohlar davlati", "Qo'qon xonligi"]),
+    mkQ(3, "O'zbekistonning poytaxti qaysi shahar?",          ["Samarqand", "Buxoro", "Toshkent", "Namangan"]),
+    mkQ(4, "Al-Xorazmiy qaysi sohada mashhur?",               ["Tibbiyot", "Matematika va astronomiya", "Falsafa", "Adabiyot"]),
+    mkQ(5, "O'zbekiston qachon BMTga qabul qilindi?",         ["1991-yil", "1992-yil", "1995-yil", "1993-yil"]),
+  ]},
 }
+
+/** Legacy single-quiz export — kept for backward compatibility */
+export const MOCK_QUIZ_DETAIL = MOCK_QUIZ_DETAILS[1]
 
 // ── Resources ─────────────────────────────────────────────────────────────────
 export const MOCK_RESOURCES = [
@@ -368,8 +466,8 @@ export const MOCK_ADMIN_STATS = {
   total_users: 1_842,
   active_users_7d: 347,
   total_courses: 6,
-  total_books: 6,
-  total_quizzes: 4,
+  total_books: 10,
+  total_quizzes: 8,
   total_orders: 218,
   total_revenue: 28_650_000,
   new_users_today: 14,
