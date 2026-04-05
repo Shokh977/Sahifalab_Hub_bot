@@ -231,6 +231,37 @@ async def get_teachers_gallery(db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/heatmap")
+async def get_heatmap(
+    telegram_id: int,
+    days: int = 365,
+    db: Session = Depends(get_db),
+):
+    """
+    Per-day quiz-completion activity for the GitHub-style heatmap.
+    Returns [{date: 'YYYY-MM-DD', count: int}] for the last `days` days.
+    Uses user_quiz_completion.completed_at as the study-activity proxy.
+    """
+    from sqlalchemy import func, cast
+    from sqlalchemy.types import Date as SQLDate
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    rows = (
+        db.query(
+            cast(UserQuizCompletion.completed_at, SQLDate).label("day"),
+            func.count().label("count"),
+        )
+        .filter(
+            UserQuizCompletion.telegram_id == telegram_id,
+            UserQuizCompletion.completed_at >= cutoff,
+        )
+        .group_by(cast(UserQuizCompletion.completed_at, SQLDate))
+        .order_by(cast(UserQuizCompletion.completed_at, SQLDate))
+        .all()
+    )
+    return [{"date": str(r.day), "count": int(r.count)} for r in rows]
+
+
 @router.get("/{telegram_id}")
 async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     """Fetch a single user's gamification state."""

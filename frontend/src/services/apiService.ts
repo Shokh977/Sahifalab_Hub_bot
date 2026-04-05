@@ -696,6 +696,14 @@ class ApiService {
   async reorderLessons(lessons: { id: number; order_index: number }[]) {
     return this.axiosInstance.patch('/api/lessons/reorder', { lessons })
   }
+
+  /** Heatmap — per-day activity count from quiz completions */
+  async getHeatmap(telegramId: number, days = 365) {
+    return this.axiosInstance.get<{ date: string; count: number }[]>(
+      '/api/profiles/heatmap',
+      { params: { telegram_id: telegramId, days } },
+    )
+  }
 }
 
 export default new ApiService()

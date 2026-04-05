@@ -1,19 +1,19 @@
 ﻿import React, { useCallback, useEffect, useRef, useState } from 'react'
 import {
-  AcademicCapIcon,
-  ArrowPathIcon,
-  Battery100Icon,
-  ExclamationCircleIcon,
-  FireIcon,
-  ForwardIcon,
-  LightBulbIcon,
-  MusicalNoteIcon,
-  PauseIcon,
-  PlayIcon,
-  SpeakerWaveIcon,
-  SpeakerXMarkIcon,
-  UserGroupIcon,
-} from '@heroicons/react/24/outline'
+  GraduationCap,
+  RefreshCw,
+  Battery,
+  AlertCircle,
+  Flame,
+  SkipForward,
+  Lightbulb,
+  Music,
+  Pause,
+  Play,
+  Volume2,
+  VolumeX,
+  Users,
+} from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useBackgroundTimer } from '../hooks/useBackgroundTimer'
 import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
@@ -21,10 +21,10 @@ import { fetchAmbientSounds } from '../lib/supabase'
 import { useProgressStore } from '../context/progressStore'
 import PageWrapper from '../components/PageWrapper'
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+/* ------------------------------------------------------------------------------
    Sound data is loaded dynamically from the database.
-   Admins manage sounds via the Admin Panel â†’ Tovushlar tab.
-   â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+   Admins manage sounds via the Admin Panel → Tovushlar tab.
+   ------------------------------------------------------------------------------ */
 
 interface SoundFromDB {
   id: number
@@ -57,20 +57,20 @@ const FOCUS_PRESETS = [15, 25, 45, 60]
 const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
 const MOTIV_MESSAGES = [
-  { emoji: 'ðŸ”¥', title: "Barakalla! Birga o'qimoqdamiz!",   sub: "Siz yolg'iz emasiz â€” kuch birlashganda" },
-  { emoji: 'â­', title: "Zo'r ketayapsiz!",                 sub: "Davom eting, muvaffaqiyat kutmoqda" },
-  { emoji: 'ðŸ’ª', title: "Kuch sizda!",                      sub: "Bugun yangi rekord qo'ying" },
-  { emoji: 'ðŸš€', title: "Parvozda!",                        sub: "Bilim â€” eng yaxshi investitsiya" },
-  { emoji: 'ðŸŽ¯', title: "Maqsadga intiling!",               sub: "Har bir sessiya â€” bir qadam oldinga" },
-  { emoji: 'ðŸ“š', title: "Ilm â€” nur!",                       sub: "Har bir daqiqa qadrlidir" },
+  { emoji: '🔥', title: "Barakalla! Birga o'qimoqdamiz!",   sub: "Siz yolg'iz emasiz — kuch birlashganda" },
+  { emoji: '⭐', title: "Zo'r ketayapsiz!",                 sub: "Davom eting, muvaffaqiyat kutmoqda" },
+  { emoji: '💪', title: "Kuch sizda!",                      sub: "Bugun yangi rekord qo'ying" },
+  { emoji: '🚀', title: "Parvozda!",                        sub: "Bilim — eng yaxshi investitsiya" },
+  { emoji: '🎯', title: "Maqsadga intiling!",               sub: "Har bir sessiya — bir qadam oldinga" },
+  { emoji: '📚', title: "Ilm — nur!",                       sub: "Har bir daqiqa qadrlidir" },
 ]
 
-const FLOAT_EMOJIS = ['â­', 'ðŸ”¥', 'âœ¨', 'ðŸ’ª', 'ðŸ“š', 'ðŸŽ¯', 'ðŸš€', 'ðŸ’¡', 'â¤ï¸', 'ðŸŒŸ', 'âš¡', 'ðŸ†']
+const FLOAT_EMOJIS = ['⭐', '🔥', '✨', '💪', '📚', '🎯', '🚀', '💡', '❤️', '🌟', '⚡', '🏆']
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-   MotivationBurst â€” full-screen overlay with floating emojis + central card
+/* -----------------------------------------------------------------------------
+   MotivationBurst — full-screen overlay with floating emojis + central card
    Triggered when anyone sends a motivation ping (poll detects ts change).
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+----------------------------------------------------------------------------- */
 interface MotivationBurstProps { onDone: () => void }
 
 const MotivationBurst: React.FC<MotivationBurstProps> = ({ onDone }) => {
@@ -85,27 +85,38 @@ const MotivationBurst: React.FC<MotivationBurstProps> = ({ onDone }) => {
     }))
   )
 
+  // Auto-dismiss after 4 s
   useEffect(() => {
-    const t = setTimeout(onDone, 3500)
+    const t = setTimeout(onDone, 4000)
     return () => clearTimeout(t)
+  }, [onDone])
+
+  // Escape key to close
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onDone() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
   }, [onDone])
 
   return (
     <motion.div
-      className="fixed inset-0 z-[200] flex items-center justify-center pointer-events-none"
+      className="fixed inset-0 z-[200] flex items-center justify-center"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25 }}
     >
-      {/* Frosted backdrop */}
-      <div className="absolute inset-0 bg-black/35 backdrop-blur-[3px]" />
+      {/* Clickable frosted backdrop */}
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-[4px] cursor-pointer"
+        onClick={onDone}
+      />
 
-      {/* Floating emoji particles */}
+      {/* Floating emoji particles (pointer-events-none so backdrop stays clickable) */}
       {particles.map((p, i) => (
         <motion.span
           key={i}
-          className="absolute text-2xl select-none"
+          className="absolute text-2xl select-none pointer-events-none"
           style={{ left: p.left, top: p.top }}
           initial={{ opacity: 0, y: 30, scale: 0 }}
           animate={{ opacity: [0, 1, 1, 0], y: -110, scale: [0, 1.3, 1] }}
@@ -117,26 +128,41 @@ const MotivationBurst: React.FC<MotivationBurstProps> = ({ onDone }) => {
 
       {/* Central motivational card */}
       <motion.div
-        className="relative bg-white dark:bg-[#222230] rounded-[28px] px-8 py-7 shadow-2xl text-center max-w-[280px] mx-4"
+        className="relative bg-white dark:bg-[#1C1C2A] rounded-[28px] px-8 py-7 shadow-2xl text-center max-w-[300px] mx-4 z-10"
         initial={{ scale: 0.4, opacity: 0, y: 30 }}
         animate={{ scale: 1,   opacity: 1, y: 0 }}
         exit={{ scale: 0.85, opacity: 0 }}
         transition={{ type: 'spring', stiffness: 320, damping: 22 }}
+        onClick={(e) => e.stopPropagation()}
       >
+        {/* X close button */}
+        <button
+          onClick={onDone}
+          className="absolute top-3 right-3 w-7 h-7 rounded-full bg-slate-100 dark:bg-white/10 flex items-center justify-center text-slate-500 dark:text-white/60 hover:bg-slate-200 dark:hover:bg-white/20 transition-colors text-sm font-bold"
+          aria-label="Yopish"
+        >
+          ✕
+        </button>
         <div className="text-6xl mb-3 leading-none">{msg.emoji}</div>
         <h2 className="text-lg font-extrabold text-slate-800 dark:text-white leading-tight">{msg.title}</h2>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5">{msg.sub}</p>
-        {/* Sahifa brand stripe */}
+        <button
+          onClick={onDone}
+          className="mt-4 px-5 py-2 rounded-2xl bg-sahifa-500 text-white text-xs font-bold hover:bg-sahifa-600 transition-colors"
+        >
+          Davom etish →
+        </button>
+        {/* Brand stripe */}
         <div className="absolute bottom-0 left-0 right-0 h-1 rounded-b-[28px] bg-gradient-to-r from-[#F15929] via-orange-400 to-[#F15929]" />
       </motion.div>
     </motion.div>
   )
 }
 
-/* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-   LivePulseBanner â€” polls /profiles/pulse every 8 s, shows active-user count
+/* -----------------------------------------------------------------------------
+   LivePulseBanner — polls /profiles/pulse every 8 s, shows active-user count
    and a "Send Motivation" button (30 s cooldown per sender).
-â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
+----------------------------------------------------------------------------- */
 interface PulseData { active_count: number; last_motivation_ts: number }
 interface LivePulseBannerProps { onMotivationReceived: () => void }
 
@@ -159,7 +185,7 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
       }
       lastTsRef.current = data.last_motivation_ts ?? 0
       setPulse(data)
-    } catch { /* network offline â€” fail silently */ }
+    } catch { /* network offline — fail silently */ }
   }, [])
 
   useEffect(() => {
@@ -196,14 +222,14 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: 'easeOut' }}
     >
-      {/* Left â€” live count */}
+      {/* Left — live count */}
       <div className="flex items-center gap-2.5 min-w-0">
         {/* Pulsing dot */}
         <span className="relative flex-shrink-0">
           <span className="block w-2.5 h-2.5 rounded-full bg-green-500" />
           <span className="absolute inset-0 rounded-full bg-green-400 animate-ping opacity-75" />
         </span>
-        <UserGroupIcon className="w-4 h-4 flex-shrink-0 text-[#F15929]" />
+        <Users className="w-4 h-4 flex-shrink-0 text-[#F15929]" />
         <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
           {count === 0
             ? "Birinchi bo'lib boshlang!"
@@ -214,7 +240,7 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
         </span>
       </div>
 
-      {/* Right â€” motivation button */}
+      {/* Right — motivation button */}
       <button
         onClick={sendMotivation}
         disabled={sending || cooldown > 0}
@@ -226,7 +252,7 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
           }`
         }
       >
-        <FireIcon className="w-3.5 h-3.5" />
+        <Flame className="w-3.5 h-3.5" />
         {cooldown > 0 ? `${cooldown}s` : 'Motivatsiya'}
       </button>
     </motion.div>
@@ -234,17 +260,17 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
 }
 
 /**
- * Plays a two-tone bell ("ting ting") using Web Audio API â€” no file needed.
+ * Plays a two-tone bell ("ting ting") using Web Audio API — no file needed.
  * Also triggers haptic vibration on supported devices.
  */
 function playAlarm() {
-  // â”€â”€ Vibration â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Vibration ------------------------------------------------------------
   try {
     if (navigator.vibrate)
       navigator.vibrate([300, 150, 300, 150, 500])
   } catch {}
 
-  // â”€â”€ Bell synthesis â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Bell synthesis -------------------------------------------------------
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
 
@@ -275,8 +301,8 @@ function playAlarm() {
     }
 
     const t = ctx.currentTime
-    ting(t,        1047)  // first ting  â€” C6
-    ting(t + 0.6,  1319)  // second ting â€” E6
+    ting(t,        1047)  // first ting  — C6
+    ting(t + 0.6,  1319)  // second ting — E6
 
     setTimeout(() => ctx.close().catch(() => {}), 3500)
   } catch {}
@@ -303,7 +329,7 @@ export const StudyWithMe: React.FC = () => {
 
   const timer = useBackgroundTimer({ onComplete: handleTimerComplete })
 
-  // â”€â”€ Focus XP tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // -- Focus XP tracking ----------------------------------------------------
   const { addFocusSeconds, syncToSupabase, pingPresence } = useProgressStore()
   const [motivBurst, setMotivBurst]   = useState(false)
   const focusStartRef    = useRef<number | null>(null)
@@ -381,18 +407,18 @@ export const StudyWithMe: React.FC = () => {
 
       <div className="min-h-screen bg-[#0A0A14] dark:bg-[#0A0A14] px-4 pt-6 pb-8 space-y-4 max-w-md mx-auto">
 
-        {/* â”€â”€ Page title â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* -- Page title --------------------------------------------------- */}
         <div className="text-center">
           <h1 className="text-xl font-extrabold text-white flex items-center justify-center gap-2">
-            <AcademicCapIcon className="w-5 h-5 text-sahifa-500" />
+            <GraduationCap className="w-5 h-5 text-sahifa-500" />
             Study With Sahifalab
           </h1>
           <p className="text-xs text-white/40 mt-0.5">
-            {timer.isBreak ? 'Dam olish vaqti â€” biroz nafas ol ðŸŒ¿' : 'Diqqatni jamla â€” sen uddalaysan ðŸŽ¯'}
+            {timer.isBreak ? 'Dam olish vaqti — biroz nafas ol 🌿' : 'Diqqatni jamla — sen uddalaysan 🎯'}
           </p>
         </div>
 
-        {/* â”€â”€ Live Pulse banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* -- Live Pulse banner -------------------------------------------- */}
         <LivePulseBanner onMotivationReceived={() => { if (!motivBurst) setMotivBurst(true) }} />
 
         {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -411,7 +437,7 @@ export const StudyWithMe: React.FC = () => {
                 ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
                 : 'bg-sahifa-500/15 border-sahifa-500/30 text-sahifa-400'
             }`}>
-              {timer.isBreak ? 'ðŸŒ¿ Dam olish' : 'âš¡ Fokus sessiyasi'}
+              {timer.isBreak ? '🌿 Dam olish' : '⚡ Fokus sessiyasi'}
             </span>
           </div>
 
@@ -491,21 +517,21 @@ export const StudyWithMe: React.FC = () => {
               }`}
             >
               {timer.isRunning
-                ? <><PauseIcon className="w-4 h-4" /> Pauza</>
-                : <><PlayIcon  className="w-4 h-4" /> Boshlash</>
+                ? <><Pause className="w-4 h-4" /> Pauza</>
+                : <><Play  className="w-4 h-4" /> Boshlash</>
               }
             </button>
             <button
               onClick={() => timer.reset()}
               className="w-12 h-12 rounded-[16px] flex items-center justify-center bg-white/8 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all active:scale-95"
             >
-              <ArrowPathIcon className="w-4.5 h-4.5" />
+              <RefreshCw className="w-4.5 h-4.5" />
             </button>
             <button
               onClick={timer.skip}
               className="w-12 h-12 rounded-[16px] flex items-center justify-center bg-white/8 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all active:scale-95"
             >
-              <ForwardIcon className="w-4.5 h-4.5" />
+              <SkipForward className="w-4.5 h-4.5" />
             </button>
           </div>
         </motion.div>
@@ -522,7 +548,7 @@ export const StudyWithMe: React.FC = () => {
           {/* Header */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <MusicalNoteIcon className="w-4 h-4 text-white/60" />
+              <Music className="w-4 h-4 text-white/60" />
               <span className="text-sm font-bold text-white">Ambient tovushlar</span>
             </div>
             {sound.isPlaying && (
@@ -545,7 +571,7 @@ export const StudyWithMe: React.FC = () => {
                 onClick={handleSilence}
                 className={`sound-mixer-btn ${!sound.isPlaying ? 'active' : ''}`}
               >
-                <SpeakerXMarkIcon className="w-5 h-5" />
+                <VolumeX className="w-5 h-5" />
                 <span className="text-[10px] font-medium">Jimjitlik</span>
               </button>
 
@@ -559,9 +585,9 @@ export const StudyWithMe: React.FC = () => {
                     className={`sound-mixer-btn ${isActive ? 'active' : ''}`}
                   >
                     {resolvingId === s.id && sound.isLoading ? (
-                      <span className="animate-spin text-sm">âŸ³</span>
+                      <RefreshCw className="w-4 h-4 animate-spin text-white/70" />
                     ) : (
-                      <span className="text-lg">{s.emoji || 'ðŸŽµ'}</span>
+                      <span className="text-lg">{s.emoji || '🎵'}</span>
                     )}
                     <span className="text-[10px] font-medium line-clamp-1">{s.name}</span>
                   </button>
@@ -582,7 +608,7 @@ export const StudyWithMe: React.FC = () => {
                 <div className="mt-3 pt-3 border-t border-white/8 space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 text-xs text-white/50">
-                      <SpeakerWaveIcon className="w-3.5 h-3.5" />
+                      <Volume2 className="w-3.5 h-3.5" />
                       <span>{activeSound?.name ?? 'Tovush'} ovozi</span>
                     </div>
                     <span className="text-xs font-bold text-sahifa-400">{Math.round(sound.volume * 100)}%</span>
@@ -603,26 +629,26 @@ export const StudyWithMe: React.FC = () => {
           {sound.error && (
             <div className="mt-3 bg-red-500/10 border border-red-500/25 rounded-[14px] p-3">
               <p className="text-xs text-red-400 flex items-center gap-1.5">
-                <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" />
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
                 {sound.error}
               </p>
             </div>
           )}
         </motion.div>
 
-        {/* â”€â”€ Compact info pills â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* -- Compact info pills ------------------------------------------- */}
         <motion.div
           className="grid grid-cols-2 gap-2"
           initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
         >
           <div className="flex items-start gap-2 rounded-[16px] bg-white/[0.04] border border-white/8 px-3 py-2.5">
-            <Battery100Icon className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+            <Battery className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-white/45 leading-relaxed">
               Fon rejimi: taymer va tovushlar telefon qulflanganda ham ishlaydi.
             </p>
           </div>
           <div className="flex items-start gap-2 rounded-[16px] bg-white/[0.04] border border-white/8 px-3 py-2.5">
-            <LightBulbIcon className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+            <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
             <p className="text-[11px] text-white/45 leading-relaxed">
               Pomodoro: 25 daq fokus + 5 daq dam olish. Har 4 sessiyadan keyin uzunroq dam oling!
             </p>

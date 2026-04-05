@@ -1,5 +1,5 @@
 ﻿/**
- * DashboardHome â€” $100K Bento-grid premium dashboard.
+ * DashboardHome — $100K Bento-grid premium dashboard.
  *
  * Bento cells:
  *   â€¢ Hero glassmorphism banner (full-width)
@@ -12,21 +12,20 @@
  *
  * âš ï¸  Never rendered inside Telegram Mini App (App.tsx guards this).
  */
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  AcademicCapIcon,
-  BookOpenIcon,
-  ChevronRightIcon,
-  ClockIcon,
-  CpuChipIcon,
-  PlayIcon,
-  RectangleStackIcon,
-  StarIcon,
-  UserGroupIcon,
-} from '@heroicons/react/24/outline'
-import { StarIcon as StarSolid } from '@heroicons/react/24/solid'
+  GraduationCap,
+  BookOpen,
+  ChevronRight,
+  Clock,
+  Cpu,
+  Play,
+  LayoutList,
+  Star,
+  Users,
+} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import {
   formatFocusTime,
@@ -100,15 +99,15 @@ const HeroBanner: React.FC<{
   const navigate = useNavigate()
 
   const PILLS = [
-    { icon: ClockIcon,          label: "O'qish",   path: '/study',        },
-    { icon: RectangleStackIcon, label: 'Test',     path: '/quiz',         },
-    { icon: CpuChipIcon,        label: 'AI',       path: '/ai-companion', },
-    { icon: BookOpenIcon,       label: 'Kitoblar', path: '/kitoblar',     },
+    { icon: Clock,          label: "O'qish",   path: '/study',        },
+    { icon: LayoutList, label: 'Test',     path: '/quiz',         },
+    { icon: Cpu,        label: 'AI',       path: '/ai-companion', },
+    { icon: BookOpen,       label: 'Kitoblar', path: '/kitoblar',     },
   ]
 
   return (
     <motion.div {...fadeUp(0)} className="hero-glass col-span-12">
-      {/* Decoration blobs */}
+      
       <div className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/5 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-black/15 blur-3xl" />
       <div
@@ -140,12 +139,12 @@ const HeroBanner: React.FC<{
                 {user.first_name}
               </h1>
             </div>
-            {/* Stat chips */}
+            
             <div className="flex flex-wrap gap-2">
               {[
-                { icon: StarIcon,        val: totalXP.toLocaleString(), lbl: 'XP'     },
-                { icon: AcademicCapIcon, val: `L${level}`,              lbl: 'Daraja' },
-                { icon: ClockIcon,       val: formatFocusTime(focusSeconds), lbl: 'Fokus' },
+                { icon: Star,        val: totalXP.toLocaleString(), lbl: 'XP'     },
+                { icon: GraduationCap, val: `L${level}`,              lbl: 'Daraja' },
+                { icon: Clock,       val: formatFocusTime(focusSeconds), lbl: 'Fokus' },
               ].map(c => (
                 <div key={c.lbl} className="stat-chip text-white">
                   <c.icon className="w-3.5 h-3.5 text-white/70" />
@@ -156,7 +155,7 @@ const HeroBanner: React.FC<{
             </div>
           </div>
 
-          {/* Desktop quick-pills */}
+          
           <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
             {PILLS.map(p => {
               const Icon = p.icon
@@ -174,10 +173,10 @@ const HeroBanner: React.FC<{
           </div>
         </div>
 
-        {/* XP progress bar */}
+        
         <div className="mt-5">
           <div className="flex justify-between text-white/55 text-[11px] mb-1.5 font-medium">
-            <span>Daraja {level} â†’ {level + 1}</span>
+            <span>Daraja {level} → {level + 1}</span>
             <span>{xpInLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP</span>
           </div>
           <div className="h-2 bg-white/12 rounded-full overflow-hidden">
@@ -191,7 +190,7 @@ const HeroBanner: React.FC<{
         </div>
       </div>
 
-      {/* Mobile quick pills */}
+      
       <div className="lg:hidden flex gap-2.5 px-6 pb-5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {PILLS.map(p => {
           const Icon = p.icon
@@ -243,11 +242,11 @@ const ContinueLearningCell: React.FC = () => {
             <img src={lesson.thumbnail_url} alt={lesson.course_title} className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
-              <AcademicCapIcon className="w-7 h-7 text-sahifa-400" />
+              <GraduationCap className="w-7 h-7 text-sahifa-400" />
             </div>
           )}
           <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-            <PlayIcon className="w-5 h-5 text-white" />
+            <Play className="w-5 h-5 text-white" />
           </div>
         </div>
         <div className="flex-1 min-w-0 space-y-1.5">
@@ -258,7 +257,7 @@ const ContinueLearningCell: React.FC = () => {
             <p className="text-[10px] text-slate-400 dark:text-slate-500">{lesson.progress}% bajarildi</p>
           </div>
         </div>
-        <ChevronRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0 group-hover:text-sahifa-500 transition-colors" />
+        <ChevronRight className="w-4 h-4 text-slate-300 dark:text-slate-600 flex-shrink-0 group-hover:text-sahifa-500 transition-colors" />
       </button>
     </motion.div>
   )
@@ -312,74 +311,6 @@ const XPRingCell: React.FC<{
 }
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// BENTO CELL 4: GitHub-style focus heatmap
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-const HeatmapCell: React.FC<{ focusMinsToday: number }> = ({ focusMinsToday }) => {
-  const weeks = useMemo(() => {
-    const stored: number[] = (() => {
-      try { return JSON.parse(localStorage.getItem('focus_week') ?? '[]') as number[] } catch { return [] }
-    })()
-    const grid: number[][] = []
-    for (let w = 0; w < 52; w++) {
-      const row: number[] = []
-      for (let d = 0; d < 7; d++) {
-        const globalDay = w * 7 + d
-        const daysAgo   = 52 * 7 - 1 - globalDay
-        if (daysAgo < 7 && daysAgo < stored.length) {
-          row.push(stored[stored.length - 1 - daysAgo] ?? 0)
-        } else {
-          const seed = (w * 7 + d) * 9301 + 49297
-          const r    = ((seed % 233280) / 233280)
-          row.push(r < 0.35 ? 0 : r < 0.55 ? 10 : r < 0.72 ? 25 : r < 0.87 ? 45 : 90)
-        }
-      }
-      grid.push(row)
-    }
-    return grid
-  }, [focusMinsToday])
-
-  const maxVal = 90
-  const color  = (mins: number) => {
-    if (mins === 0)         return 'bg-slate-100 dark:bg-[#2A2A3A]'
-    const pct = mins / maxVal
-    if (pct < 0.25)         return 'bg-sahifa-200 dark:bg-sahifa-900/40'
-    if (pct < 0.5)          return 'bg-sahifa-300 dark:bg-sahifa-700/60'
-    if (pct < 0.75)         return 'bg-sahifa-400 dark:bg-sahifa-600'
-    return 'bg-sahifa-500'
-  }
-
-  return (
-    <motion.div {...fadeUp(0.16)} className="bento-cell col-span-12 lg:col-span-7">
-      <div className="flex items-end justify-between mb-4">
-        <div>
-          <h2 className="section-heading">Fokus faolligi</h2>
-          <p className="section-sub">So'nggi yil â€” GitHub uslubida</p>
-        </div>
-        <span className="text-[10px] font-semibold text-sahifa-500 bg-sahifa-50 dark:bg-sahifa-500/10 px-2.5 py-1 rounded-full">
-          {focusMinsToday} daq bugun
-        </span>
-      </div>
-      <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
-        <div className="flex gap-[3px]" style={{ minWidth: 52 * 14 }}>
-          {weeks.map((week, wi) => (
-            <div key={wi} className="flex flex-col gap-[3px]">
-              {week.map((mins, di) => (
-                <div key={di} title={`${mins} daqiqa`} className={`heatmap-cell ${color(mins)}`} />
-              ))}
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="flex items-center gap-2 mt-3">
-        <span className="text-[10px] text-slate-400 dark:text-slate-500">Kam</span>
-        {(['bg-slate-100 dark:bg-[#2A2A3A]', 'bg-sahifa-200 dark:bg-sahifa-900/40', 'bg-sahifa-300 dark:bg-sahifa-700/60', 'bg-sahifa-400 dark:bg-sahifa-600', 'bg-sahifa-500'] as const).map((c, i) => (
-          <div key={i} className={`heatmap-cell ${c}`} />
-        ))}
-        <span className="text-[10px] text-slate-400 dark:text-slate-500">Ko'p</span>
-      </div>
-    </motion.div>
-  )
-}
 
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // BENTO CELL 5: Focus Goal widget
@@ -412,9 +343,9 @@ const FocusGoalCell: React.FC<{
       <h2 className="section-heading mb-1">Kunlik maqsad</h2>
       <p className="section-sub mb-4">Bugungi natijalar</p>
 
-      {/* Dual goal rings */}
+      
       <div className="grid grid-cols-2 gap-4 mb-5">
-        {/* Focus ring */}
+        
         <button
           onClick={() => navigate('/study')}
           className="flex flex-col items-center gap-2 p-3 rounded-[16px] bg-slate-50 dark:bg-[#1A1A28] border border-slate-100 dark:border-[#2E2E3A] hover:border-sahifa-300 dark:hover:border-sahifa-800 transition-all"
@@ -448,7 +379,7 @@ const FocusGoalCell: React.FC<{
           </div>
         </button>
 
-        {/* Quiz ring */}
+        
         <button
           onClick={() => navigate('/quiz')}
           className="flex flex-col items-center gap-2 p-3 rounded-[16px] bg-slate-50 dark:bg-[#1A1A28] border border-slate-100 dark:border-[#2E2E3A] hover:border-sahifa-300 dark:hover:border-sahifa-800 transition-all"
@@ -483,7 +414,7 @@ const FocusGoalCell: React.FC<{
         </button>
       </div>
 
-      {/* 7-day bar sparkline */}
+      
       <div>
         <p className="text-[11px] font-semibold text-slate-400 dark:text-slate-500 mb-2">Haftalik fokus</p>
         <div className="flex items-end gap-1.5 h-12">
@@ -537,14 +468,14 @@ const CourseCard: React.FC<{ course: CourseItem; index: number }> = ({ course, i
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <AcademicCapIcon className="w-14 h-14 text-sahifa-300/60 dark:text-sahifa-700/60" />
+            <GraduationCap className="w-14 h-14 text-sahifa-300/60 dark:text-sahifa-700/60" />
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent pointer-events-none" />
         <div className="absolute top-3 left-3">
           {course.is_paid ? (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sahifa-500/90 backdrop-blur-sm text-white text-[10px] font-bold shadow-glow-sm">
-              <StarSolid className="w-2.5 h-2.5" /> Premium
+              <Star className="w-2.5 h-2.5 fill-current" /> Premium
             </span>
           ) : (
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/90 backdrop-blur-sm text-white text-[10px] font-bold">Bepul</span>
@@ -564,7 +495,7 @@ const CourseCard: React.FC<{ course: CourseItem; index: number }> = ({ course, i
         </div>
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
           <div className="w-12 h-12 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/30">
-            <PlayIcon className="w-5 h-5 text-white ml-0.5" />
+            <Play className="w-5 h-5 text-white ml-0.5" />
           </div>
         </div>
       </div>
@@ -580,12 +511,12 @@ const CourseCard: React.FC<{ course: CourseItem; index: number }> = ({ course, i
           <div className="flex items-center gap-2.5 flex-shrink-0">
             {course.rating > 0 && (
               <span className="flex items-center gap-0.5">
-                <StarSolid className="w-3 h-3 text-amber-400" />{course.rating.toFixed(1)}
+                <Star className="w-3 h-3 text-amber-400 fill-current" />{course.rating.toFixed(1)}
               </span>
             )}
             {course.enrolled_count > 0 && (
               <span className="flex items-center gap-0.5">
-                <UserGroupIcon className="w-3 h-3" />{course.enrolled_count}
+                <Users className="w-3 h-3" />{course.enrolled_count}
               </span>
             )}
           </div>
@@ -637,47 +568,27 @@ const DashboardHome: React.FC = () => {
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-8 pt-8 pb-20 space-y-5">
 
-      {/* â”€â”€ BENTO GRID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <div className="bento-grid">
+      
+      
+      {user && (
+        <HeroBanner
+          user={{ first_name: user.first_name, photo_url: user.photo_url }}
+          totalXP={totalXP} level={level} focusSeconds={focusSeconds}
+          xpPct={xpPct} xpInLevel={xpInLevel} xpForLevel={xpForLevel}
+        />
+      )}
 
-        {/* 1. Hero banner */}
-        {user && (
-          <HeroBanner
-            user={{ first_name: user.first_name, photo_url: user.photo_url }}
-            totalXP={totalXP} level={level} focusSeconds={focusSeconds}
-            xpPct={xpPct} xpInLevel={xpInLevel} xpForLevel={xpForLevel}
-          />
-        )}
 
-        {/* 2. Continue Learning */}
-        <ContinueLearningCell />
-
-        {/* 3. XP Ring */}
-        {isInitialized && (
-          <XPRingCell
-            level={level} totalXP={totalXP}
-            xpPct={xpPct} xpInLevel={xpInLevel} xpForLevel={xpForLevel}
-          />
-        )}
-
-        {/* 4. Heatmap */}
-        {isInitialized && <HeatmapCell focusMinsToday={focusMins} />}
-
-        {/* 5. Focus Goal */}
-        {isInitialized && (
-          <FocusGoalCell focusSeconds={focusSeconds} quizzesCompleted={quizzesCompleted ?? 0} />
-        )}
-      </div>
-
-      {/* â”€â”€ COURSES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
-      <motion.section {...fadeUp(0.24)}>
+      
+      {/* Courses — directly under hero */}
+      <motion.section {...fadeUp(0.12)}>
         <div className="flex items-end justify-between mb-5">
           <div>
             <h2 className="section-heading">Kurslar</h2>
             <p className="section-sub">Professional ta'lim dasturlari</p>
           </div>
           <Link to="/courses" className="flex items-center gap-1 text-sm font-semibold text-sahifa-500 hover:text-sahifa-600 transition-colors">
-            Barchasi <ChevronRightIcon className="w-4 h-4" />
+            Barchasi <ChevronRight className="w-4 h-4" />
           </Link>
         </div>
 
@@ -697,15 +608,15 @@ const DashboardHome: React.FC = () => {
               style={{ minHeight: 200 }}
             >
               <div className="w-12 h-12 rounded-2xl bg-sahifa-50 dark:bg-sahifa-500/10 flex items-center justify-center group-hover:bg-sahifa-500 transition-colors">
-                <ChevronRightIcon className="w-5 h-5 text-sahifa-500 group-hover:text-white transition-colors" />
+                <ChevronRight className="w-5 h-5 text-sahifa-500 group-hover:text-white transition-colors" />
               </div>
               <p className="text-sm font-bold text-slate-700 dark:text-white">Barchasi</p>
             </motion.div>
           </div>
         ) : (
           <div className="rounded-[24px] border border-dashed border-slate-200 dark:border-[#2E2E3A] py-12 text-center">
-            <AcademicCapIcon className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
-            <p className="text-sm text-slate-400 dark:text-slate-500">Kurslar yuklanmoqdaâ€¦</p>
+            <GraduationCap className="w-10 h-10 text-slate-300 dark:text-slate-700 mx-auto mb-3" />
+            <p className="text-sm text-slate-400 dark:text-slate-500">Kurslar yuklanmoqda…</p>
             <button onClick={() => navigate('/courses')} className="mt-4 px-5 py-2 rounded-xl bg-sahifa-500 text-white text-xs font-semibold hover:bg-sahifa-600 transition-colors">
               Kurslarni ko'rish
             </button>
@@ -713,10 +624,24 @@ const DashboardHome: React.FC = () => {
         )}
       </motion.section>
 
-      {/* â”€â”€ DAILY QUOTE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* Bento grid — progress & learning stats */}
+      <div className="bento-grid">
+        <ContinueLearningCell />
+        {isInitialized && (
+          <XPRingCell
+            level={level} totalXP={totalXP}
+            xpPct={xpPct} xpInLevel={xpInLevel} xpForLevel={xpForLevel}
+          />
+        )}
+        {isInitialized && (
+          <FocusGoalCell focusSeconds={focusSeconds} quizzesCompleted={quizzesCompleted ?? 0} />
+        )}
+      </div>
+
+      
       <HeroSection />
 
-      {/* Footer */}
+      
       <footer className="text-center space-y-1.5 pb-2">
         <p className="text-[11px] text-slate-400 dark:text-slate-500">@Sahifalab_hub_bot</p>
         <p className="text-[10px] text-slate-500 dark:text-slate-600">Powered by SAHIFALAB Â· 2026</p>

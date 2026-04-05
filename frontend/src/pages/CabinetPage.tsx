@@ -14,21 +14,21 @@ import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  AcademicCapIcon,
-  ArrowDownTrayIcon,
-  ArrowPathIcon,
-  ArrowRightIcon,
-  BookOpenIcon,
-  ChartBarIcon,
-  ChevronRightIcon,
-  ClockIcon,
-  InformationCircleIcon,
-  LightBulbIcon,
-  LinkIcon,
-  PencilSquareIcon,
-  SparklesIcon,
-  TrophyIcon,
-} from '@heroicons/react/24/outline'
+  GraduationCap,
+  Download,
+  RefreshCw,
+  ArrowRight,
+  BookOpen,
+  BarChart2,
+  ChevronRight,
+  Clock,
+  Info,
+  Lightbulb,
+  Link,
+  PenSquare,
+  Sparkles,
+  Trophy,
+} from 'lucide-react'
 import {
   useProgressStore,
   levelProgress,
@@ -151,7 +151,7 @@ const MenuRow: React.FC<{
     {value && (
       <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">{value}</span>
     )}
-    <ChevronRightIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+    <ChevronRight className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
   </button>
 )
 
@@ -203,6 +203,73 @@ function xpNeededForLevel(targetLevel: number): number {
 // ══════════════════════════════════════════════════════════════════════════════
 // Main Page
 // ══════════════════════════════════════════════════════════════════════════════
+
+/* ──────────────────────────────────────────────────────────────────────────────
+   HeatmapDisplay — GitHub-style 52×7 grid using real quiz-completion data
+   Props: data — array of {date: 'YYYY-MM-DD', count: int} from backend
+────────────────────────────────────────────────────────────────────────────── */
+interface HeatmapDay { date: string; count: number }
+
+const HeatmapDisplay: React.FC<{ data: HeatmapDay[] }> = ({ data }) => {
+  const today    = new Date()
+  const dayMap   = new Map(data.map(d => [d.date, d.count]))
+  const maxCount = Math.max(1, ...data.map(d => d.count))
+
+  // Build 52 columns × 7 rows (364 days back + today)
+  const weeks: { date: string; count: number }[][] = []
+  for (let w = 0; w < 52; w++) {
+    const col: { date: string; count: number }[] = []
+    for (let d = 0; d < 7; d++) {
+      const daysAgo = (51 - w) * 7 + (6 - d)
+      const dt      = new Date(today)
+      dt.setDate(today.getDate() - daysAgo)
+      const iso   = dt.toISOString().slice(0, 10)
+      const count = dayMap.get(iso) ?? 0
+      col.push({ date: iso, count })
+    }
+    weeks.push(col)
+  }
+
+  const cellColor = (count: number): string => {
+    if (count === 0) return 'bg-slate-100 dark:bg-[#2A2A3A]'
+    const pct = count / maxCount
+    if (pct < 0.25) return 'bg-sahifa-200 dark:bg-sahifa-900/40'
+    if (pct < 0.5)  return 'bg-sahifa-300 dark:bg-sahifa-700/60'
+    if (pct < 0.75) return 'bg-sahifa-400 dark:bg-sahifa-600'
+    return 'bg-sahifa-500'
+  }
+
+  return (
+    <div>
+      <div className="overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+        <div className="flex gap-[3px]" style={{ minWidth: 52 * 14 }}>
+          {weeks.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-[3px]">
+              {week.map((cell, di) => (
+                <div
+                  key={di}
+                  title={cell.count > 0 ? `${cell.date}: ${cell.count} ta test` : cell.date}
+                  className={`w-[10px] h-[10px] rounded-sm transition-colors ${cellColor(cell.count)}`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 mt-2">
+        <span className="text-[10px] text-slate-400 dark:text-slate-500">Kam</span>
+        {['bg-slate-100 dark:bg-[#2A2A3A]', 'bg-sahifa-200 dark:bg-sahifa-900/40', 'bg-sahifa-300 dark:bg-sahifa-700/60', 'bg-sahifa-400 dark:bg-sahifa-600', 'bg-sahifa-500'].map((c, i) => (
+          <div key={i} className={`w-[10px] h-[10px] rounded-sm ${c}`} />
+        ))}
+        <span className="text-[10px] text-slate-400 dark:text-slate-500">Ko'p</span>
+        {data.length > 0 && (
+          <span className="ml-auto text-[10px] font-semibold text-sahifa-500">{data.reduce((s, d) => s + d.count, 0)} test</span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const CabinetPage: React.FC = () => {
   const navigate = useNavigate()
   const { user: tgUser } = useTelegramWebApp()
@@ -300,6 +367,8 @@ const CabinetPage: React.FC = () => {
   const [loadingCourses, setLoadingCourses] = useState(true)
   const [courseCerts, setCourseCerts] = useState<CourseCertificate[]>([])
   const [loadingCourseCerts, setLoadingCourseCerts] = useState(true)
+  const [heatmap,        setHeatmap]        = useState<{ date: string; count: number }[]>([])
+  const [heatmapLoading, setHeatmapLoading] = useState(false)
 
   const progress  = levelProgress(effectiveTotalXP)
   const { start, end } = levelBounds(effectiveLevel)
@@ -388,6 +457,18 @@ const CabinetPage: React.FC = () => {
       .finally(() => setLoadingCourseCerts(false))
   }, [effectiveTelegramId])
 
+  // Fetch heatmap data
+  useEffect(() => {
+    const id = effectiveTelegramId
+    if (!id) return
+    setHeatmapLoading(true)
+    apiService.getHeatmap(id)
+      .then(r => setHeatmap(r.data))
+      .catch(() => {})
+      .finally(() => setHeatmapLoading(false))
+  }, [effectiveTelegramId])
+
+
   // ── Open certificate modal ──────────────────────────────────────────────
   const openCertificate = useCallback((quiz: CompletedQuiz) => {
     setCertData({
@@ -423,7 +504,7 @@ const CabinetPage: React.FC = () => {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center space-y-3">
-          <ArrowPathIcon className="h-10 w-10 mx-auto text-slate-400 animate-spin" />
+          <RefreshCw className="h-10 w-10 mx-auto text-slate-400 animate-spin" />
           <p className="text-gray-500 dark:text-gray-400 text-sm">Yuklanmoqda…</p>
         </div>
       </div>
@@ -480,7 +561,7 @@ const CabinetPage: React.FC = () => {
               <div
                 className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[11px] font-semibold shadow-sm`}
               >
-                <TrophyIcon className="h-3.5 w-3.5" />
+                <Trophy className="h-3.5 w-3.5" />
                 <span>{getLevelTitle(effectiveLevel)}</span>
               </div>
               <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -489,7 +570,7 @@ const CabinetPage: React.FC = () => {
               {isWeb && (
                 <div className="flex items-center gap-1.5">
                   <label className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1 cursor-pointer">
-                    {photoSaving ? <ArrowPathIcon className="h-3 w-3 animate-spin" /> : <SparklesIcon className="h-3 w-3" />} Rasm
+                    {photoSaving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Rasm
                     <input
                       type="file"
                       accept="image/*"
@@ -502,7 +583,7 @@ const CabinetPage: React.FC = () => {
                     onClick={() => setEditOpen(prev => !prev)}
                     className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1"
                   >
-                    <PencilSquareIcon className="h-3 w-3" /> Ism
+                    <PenSquare className="h-3 w-3" /> Ism
                   </button>
                 </div>
               )}
@@ -538,7 +619,7 @@ const CabinetPage: React.FC = () => {
                 disabled={profileSaving}
                 className="px-3 py-1.5 text-xs rounded-lg bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-1"
               >
-                {profileSaving && <ArrowPathIcon className="h-3.5 w-3.5 animate-spin" />} Saqlash
+                {profileSaving && <RefreshCw className="h-3.5 w-3.5 animate-spin" />} Saqlash
               </button>
             </div>
           </div>
@@ -565,10 +646,10 @@ const CabinetPage: React.FC = () => {
       {/* ═══ Stats Row ═══ */}
       <Section delay={0.05}>
         <div className="flex divide-x divide-gray-100 dark:divide-gray-700/50">
-          <StatPill icon={ClockIcon} value={`${focusHours}h`} label="Diqqat" />
-          <StatPill icon={ChartBarIcon} value={isWeb ? completedQuizzes.length : effectiveQuizCount} label="Testlar" />
-          <StatPill icon={SparklesIcon} value={effectiveTotalXP.toLocaleString()} label="XP" />
-          <StatPill icon={TrophyIcon} value={effectiveLevel} label="Daraja" />
+          <StatPill icon={Clock} value={`${focusHours}h`} label="Diqqat" />
+          <StatPill icon={BarChart2} value={isWeb ? completedQuizzes.length : effectiveQuizCount} label="Testlar" />
+          <StatPill icon={Sparkles} value={effectiveTotalXP.toLocaleString()} label="XP" />
+          <StatPill icon={Trophy} value={effectiveLevel} label="Daraja" />
         </div>
       </Section>
 
@@ -576,7 +657,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.08}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AcademicCapIcon className="h-5 w-5 text-sahifa-500" />
+            <GraduationCap className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Mening Kurslarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -586,18 +667,18 @@ const CabinetPage: React.FC = () => {
 
         {loadingCourses ? (
           <div className="px-4 py-6 text-center">
-            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
+            <RefreshCw className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : enrolledCourses.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <AcademicCapIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+            <GraduationCap className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kursga yozilmagansiz</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">O'rganishni boshlash uchun kurs tanlang</p>
             <button
               onClick={() => navigate('/courses')}
               className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Kurslarga o'tish <ArrowRightIcon className="h-3.5 w-3.5" />
+              Kurslarga o'tish <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
@@ -618,7 +699,7 @@ const CabinetPage: React.FC = () => {
                     <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
                   ) : (
                     <div className="w-full h-full bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center">
-                      <AcademicCapIcon className="h-5 w-5 text-white" />
+                      <GraduationCap className="h-5 w-5 text-white" />
                     </div>
                   )}
                 </div>
@@ -644,7 +725,7 @@ const CabinetPage: React.FC = () => {
                   </div>
                 </div>
 
-                <ChevronRightIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                <ChevronRight className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
               </button>
             )
           })
@@ -655,7 +736,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.1}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AcademicCapIcon className="h-5 w-5 text-sahifa-500" />
+            <GraduationCap className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Sertifikatlarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -665,18 +746,18 @@ const CabinetPage: React.FC = () => {
 
         {loadingData ? (
           <div className="px-4 py-6 text-center">
-            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
+            <RefreshCw className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : completedQuizzes.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <TrophyIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+            <Trophy className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali sertifikat yo'q</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Quizlardan 80%+ oling va sertifikat qozing!</p>
             <button
               onClick={() => navigate('/quiz')}
               className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Quizlarga o'tish <ArrowRightIcon className="h-3.5 w-3.5" />
+              Quizlarga o'tish <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
@@ -688,7 +769,7 @@ const CabinetPage: React.FC = () => {
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
               >
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-amber-100 to-amber-200 dark:from-amber-900/30 dark:to-amber-800/30 flex items-center justify-center flex-shrink-0">
-                  <TrophyIcon className="h-5 w-5 text-amber-600" />
+                  <Trophy className="h-5 w-5 text-amber-600" />
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -698,7 +779,7 @@ const CabinetPage: React.FC = () => {
                     {quiz.score}/{quiz.total} ({quiz.percentage}%) • {new Date(quiz.completed_at).toLocaleDateString('uz-UZ')}
                   </p>
                 </div>
-                <span className="text-xs font-medium text-sahifa-500 inline-flex items-center gap-1"><ArrowDownTrayIcon className="h-3.5 w-3.5" /> Yuklab olish</span>
+                <span className="text-xs font-medium text-sahifa-500 inline-flex items-center gap-1"><Download className="h-3.5 w-3.5" /> Yuklab olish</span>
               </button>
             ))}
             {completedQuizzes.length > 3 && (
@@ -717,7 +798,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.12}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <AcademicCapIcon className="h-5 w-5 text-sahifa-500" />
+            <GraduationCap className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Kurs sertifikatlarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -727,11 +808,11 @@ const CabinetPage: React.FC = () => {
 
         {loadingCourseCerts ? (
           <div className="px-4 py-6 text-center">
-            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
+            <RefreshCw className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : courseCerts.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <AcademicCapIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+            <GraduationCap className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kurs sertifikati yo'q</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Kurslarni 100% yakunlang va sertifikat oling</p>
           </div>
@@ -743,7 +824,7 @@ const CabinetPage: React.FC = () => {
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
             >
               <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-100 to-violet-200 dark:from-indigo-900/30 dark:to-violet-800/30 flex items-center justify-center flex-shrink-0">
-                <AcademicCapIcon className="h-5 w-5 text-indigo-600" />
+                <GraduationCap className="h-5 w-5 text-indigo-600" />
               </div>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
@@ -753,7 +834,7 @@ const CabinetPage: React.FC = () => {
                   {cert.completed_lessons}/{cert.total_lessons} dars • {new Date(cert.issued_at).toLocaleDateString('uz-UZ')}
                 </p>
               </div>
-              <span className="text-xs font-medium text-sahifa-500 inline-flex items-center gap-1"><ArrowDownTrayIcon className="h-3.5 w-3.5" /> Yuklab olish</span>
+              <span className="text-xs font-medium text-sahifa-500 inline-flex items-center gap-1"><Download className="h-3.5 w-3.5" /> Yuklab olish</span>
             </button>
           ))
         )}
@@ -763,7 +844,7 @@ const CabinetPage: React.FC = () => {
       <Section delay={0.15}>
         <div className="px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <BookOpenIcon className="h-5 w-5 text-sahifa-500" />
+            <BookOpen className="h-5 w-5 text-sahifa-500" />
             <h2 className="text-sm font-bold text-gray-900 dark:text-white">Xarid qilgan kitoblarim</h2>
           </div>
           <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -773,18 +854,18 @@ const CabinetPage: React.FC = () => {
 
         {loadingData ? (
           <div className="px-4 py-6 text-center">
-            <ArrowPathIcon className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
+            <RefreshCw className="h-6 w-6 mx-auto text-slate-400 animate-spin" />
           </div>
         ) : purchasedBooks.length === 0 ? (
           <div className="px-4 py-6 text-center">
-            <BookOpenIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+            <BookOpen className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali kitob sotib olinmagan</p>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Premium kitoblarni sotib oling</p>
             <button
               onClick={() => navigate('/kitoblar')}
               className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
             >
-              Kitoblarga o'tish <ArrowRightIcon className="h-3.5 w-3.5" />
+              Kitoblarga o'tish <ArrowRight className="h-3.5 w-3.5" />
             </button>
           </div>
         ) : (
@@ -805,7 +886,7 @@ const CabinetPage: React.FC = () => {
                     />
                   ) : (
                     <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
-                      <BookOpenIcon className="h-5 w-5 text-white" />
+                      <BookOpen className="h-5 w-5 text-white" />
                     </div>
                   )}
                 </div>
@@ -823,9 +904,9 @@ const CabinetPage: React.FC = () => {
                   )}
                 </div>
                 {book.file_url && (
-                  <span className="text-xs font-medium text-emerald-500"><ArrowDownTrayIcon className="h-4 w-4" /></span>
+                  <span className="text-xs font-medium text-emerald-500"><Download className="h-4 w-4" /></span>
                 )}
-                <ChevronRightIcon className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
+                <ChevronRight className="w-4 h-4 text-gray-400 dark:text-gray-500 flex-shrink-0" />
               </button>
             ))}
             {purchasedBooks.length > 3 && (
@@ -843,37 +924,37 @@ const CabinetPage: React.FC = () => {
       {/* ═══ Navigation Menu ═══ */}
       <Section delay={0.2}>
         <MenuRow
-          icon={TrophyIcon}
+          icon={Trophy}
           label="Liderlar Jadvali"
           sublabel="Top 100 o'quvchilar"
           onClick={() => navigate('/leaderboard')}
         />
         <MenuRow
-          icon={ChartBarIcon}
+          icon={BarChart2}
           label="Testlar"
           sublabel="Bilimingizni sinab ko'ring"
           onClick={() => navigate('/quiz')}
         />
         <MenuRow
-          icon={BookOpenIcon}
+          icon={BookOpen}
           label="Kitoblar"
           sublabel="Bepul va Premium kitoblar"
           onClick={() => navigate('/kitoblar')}
         />
         <MenuRow
-          icon={ClockIcon}
+          icon={Clock}
           label="O'qish sessiyasi"
           sublabel="Fokus timer + ambient sounds"
           onClick={() => navigate('/study')}
         />
         <MenuRow
-          icon={SparklesIcon}
+          icon={Sparkles}
           label="SahifaLab AI"
           sublabel="Savolingiz bormi? Yozing!"
           onClick={() => navigate('/ai-companion')}
         />
         <MenuRow
-          icon={AcademicCapIcon}
+          icon={GraduationCap}
           label="Kurslar"
           sublabel="Barcha kurslarni ko'rish"
           onClick={() => navigate('/courses')}
@@ -885,7 +966,7 @@ const CabinetPage: React.FC = () => {
         <Section delay={0.25}>
           {(authUser.role === 'teacher' && authUser.status === 'active') && (
             <MenuRow
-              icon={ChartBarIcon}
+              icon={BarChart2}
               label="O'qituvchi paneli"
               sublabel="Kurslarim, talabalar, daromad"
               onClick={() => navigate('/teacher')}
@@ -893,7 +974,7 @@ const CabinetPage: React.FC = () => {
           )}
           {(authUser.role === 'teacher' && authUser.status === 'pending') && (
             <div className="flex items-center gap-3 px-4 py-3.5">
-              <ArrowPathIcon className="h-5 w-5 text-amber-500 animate-spin" />
+              <RefreshCw className="h-5 w-5 text-amber-500 animate-spin" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-gray-900 dark:text-white">Ariza ko'rib chiqilmoqda</p>
                 <p className="text-xs text-amber-600 dark:text-amber-400">Admin tasdiqlashini kuting</p>
@@ -902,7 +983,7 @@ const CabinetPage: React.FC = () => {
           )}
           {authUser.role === 'student' && (
             <MenuRow
-              icon={AcademicCapIcon}
+              icon={GraduationCap}
               label="O'qituvchi bo'lish"
               sublabel="O'z kurslaringizni yarating va pul ishlang"
               onClick={() => navigate('/become-teacher')}
@@ -910,7 +991,7 @@ const CabinetPage: React.FC = () => {
           )}
           {authUser.role === 'admin' && (
             <MenuRow
-              icon={SparklesIcon}
+              icon={Sparkles}
               label="Admin paneli"
               sublabel="Platforma boshqaruvi"
               onClick={() => navigate('/admin')}
@@ -918,6 +999,23 @@ const CabinetPage: React.FC = () => {
           )}
         </Section>
       )}
+
+          {/* ── Activity Heatmap ────────────────────────────────────────────────── */}
+          <motion.section
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.18 }}
+            className="rounded-[24px] bg-white dark:bg-[#1C1C22] border border-slate-100 dark:border-white/[0.07] p-5 shadow-sm"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-bold text-slate-800 dark:text-white">Faollik tarixim</h2>
+                <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">So'nggi yil — testlar va o'qish</p>
+              </div>
+              {heatmapLoading && <RefreshCw className="w-4 h-4 text-slate-400 animate-spin" />}
+            </div>
+            <HeatmapDisplay data={heatmap} />
+          </motion.section>
 
       {/* ═══ Badges / Yutuqlar Section ═══ */}
       {(() => {
@@ -940,10 +1038,10 @@ const CabinetPage: React.FC = () => {
                 transition={{ duration: 0.3, delay: 0.25 }}
                 className="mx-4 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800/40 rounded-2xl p-4"
               >
-                <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3 inline-flex items-center gap-1"><LightBulbIcon className="h-3.5 w-3.5" /> Keyingi yutuq</p>
+                <p className="text-[11px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-3 inline-flex items-center gap-1"><Lightbulb className="h-3.5 w-3.5" /> Keyingi yutuq</p>
                 <div className="flex items-center gap-3">
                   <div className="w-14 h-14 rounded-2xl bg-white/80 dark:bg-gray-800/60 border-2 border-blue-200 dark:border-blue-700 flex items-center justify-center shadow-sm">
-                    <TrophyIcon className="h-7 w-7 text-blue-500" />
+                    <Trophy className="h-7 w-7 text-blue-500" />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
@@ -974,7 +1072,7 @@ const CabinetPage: React.FC = () => {
             <Section delay={0.3}>
               <div className="px-4 py-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <TrophyIcon className="h-5 w-5 text-sahifa-500" />
+                  <Trophy className="h-5 w-5 text-sahifa-500" />
                   <h2 className="text-sm font-bold text-gray-900 dark:text-white">Yutuqlar</h2>
                 </div>
                 <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -992,7 +1090,7 @@ const CabinetPage: React.FC = () => {
                         key={b.level}
                         className="rounded-xl p-2 text-center bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800/30"
                       >
-                        <div className="text-xl leading-none"><TrophyIcon className="h-5 w-5 mx-auto text-emerald-600" /></div>
+                        <div className="text-xl leading-none"><Trophy className="h-5 w-5 mx-auto text-emerald-600" /></div>
                         <p className="text-[9px] font-semibold text-emerald-700 dark:text-emerald-300 mt-1 truncate">{b.title}</p>
                         <p className="text-[8px] text-emerald-600/60 dark:text-emerald-400/50">Lv.{b.level}</p>
                       </div>
@@ -1015,7 +1113,7 @@ const CabinetPage: React.FC = () => {
                           className="flex items-center gap-3 rounded-xl p-2.5 bg-gray-50 dark:bg-gray-800/40 border border-gray-100 dark:border-gray-700/40"
                         >
                           <div className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0">
-                            <TrophyIcon className="h-4 w-4 opacity-40" />
+                            <Trophy className="h-4 w-4 opacity-40" />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between">
@@ -1044,7 +1142,7 @@ const CabinetPage: React.FC = () => {
               {/* Empty state */}
               {earned.length === 0 && (
                 <div className="px-4 py-6 text-center">
-                  <SparklesIcon className="h-8 w-8 mx-auto mb-2 text-slate-400" />
+                  <Sparkles className="h-8 w-8 mx-auto mb-2 text-slate-400" />
                   <p className="text-sm text-gray-500 dark:text-gray-400">Quizlar yechib, fokus sessiya boshlab yutuqlar oching!</p>
                 </div>
               )}
@@ -1056,13 +1154,13 @@ const CabinetPage: React.FC = () => {
       {/* ═══ More Items ═══ */}
       <Section delay={0.3}>
         <MenuRow
-          icon={LinkIcon}
+          icon={Link}
           label="Resurslar"
           sublabel="Foydali linklar va videolar"
           onClick={() => navigate('/resources')}
         />
         <MenuRow
-          icon={InformationCircleIcon}
+          icon={Info}
           label="Haqimizda"
           sublabel="Bizning hikoyamiz va missiyamiz"
           onClick={() => navigate('/about')}
