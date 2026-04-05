@@ -75,8 +75,10 @@ const TTL = {
   PERSONAL: 5 * 60 * 1000,        //  5 min — user completions, purchases, ratings
 }
 
-/** True only when both env vars are present and not placeholder values */
+/** True only when both env vars are present, not placeholders, and not in mock dev mode */
+const DEV_MOCK = import.meta.env.VITE_DEV_MOCK === 'true'
 export const isSupabaseConfigured =
+  !DEV_MOCK &&
   !!(SUPABASE_URL && SUPABASE_ANON &&
      !SUPABASE_URL.includes('placeholder') &&
      SUPABASE_ANON !== 'placeholder')

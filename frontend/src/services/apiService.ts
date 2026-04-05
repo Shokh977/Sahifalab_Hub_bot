@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios'
 import { showToast } from '../components/ErrorBoundary'
+import { DEV_MOCK, mockAxiosAdapter } from '../lib/mockAdapter'
 
 const API_BASE_URL = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
@@ -9,9 +10,9 @@ class ApiService {
   constructor() {
     this.axiosInstance = axios.create({
       baseURL: API_BASE_URL,
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
+      // In mock mode replace the HTTP adapter so zero real requests are made
+      ...(DEV_MOCK ? { adapter: mockAxiosAdapter } : {}),
     })
 
     // Add interceptor to include auth token

@@ -3,6 +3,12 @@ import ReactDOM from 'react-dom/client'
 import { Analytics } from '@vercel/analytics/react'
 import App from './App'
 import './styles/globals.css'
+import { DEV_MOCK, initMockAuth, seedSupabaseCache } from './lib/mockAdapter'
+
+if (DEV_MOCK) {
+  initMockAuth()
+  seedSupabaseCache()
+}
 
 // ── Google Analytics 4 ────────────────────────────────────────────────────────
 const GA_ID = import.meta.env.VITE_GA_ID as string | undefined
