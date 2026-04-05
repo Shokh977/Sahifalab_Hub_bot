@@ -405,256 +405,296 @@ export const StudyWithMe: React.FC = () => {
         {motivBurst && <MotivationBurst onDone={() => setMotivBurst(false)} />}
       </AnimatePresence>
 
-      <div className="min-h-screen bg-[#0A0A14] dark:bg-[#0A0A14] px-4 pt-6 pb-8 space-y-4 max-w-md mx-auto">
+      <div className="min-h-screen bg-[#0A0A14] dark:bg-[#0A0A14]">
+        <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-6 pb-10 space-y-5">
 
-        {/* -- Page title --------------------------------------------------- */}
-        <div className="text-center">
-          <h1 className="text-xl font-extrabold text-white flex items-center justify-center gap-2">
-            <GraduationCap className="w-5 h-5 text-sahifa-500" />
-            Study With Sahifalab
-          </h1>
-          <p className="text-xs text-white/40 mt-0.5">
-            {timer.isBreak ? 'Dam olish vaqti — biroz nafas ol 🌿' : 'Diqqatni jamla — sen uddalaysan 🎯'}
-          </p>
-        </div>
-
-        {/* -- Live Pulse banner -------------------------------------------- */}
-        <LivePulseBanner onMotivationReceived={() => { if (!motivBurst) setMotivBurst(true) }} />
-
-        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            GLASSMORPHISM TIMER CARD
-            â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <motion.div
-          className="glass-timer relative overflow-hidden"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {/* Status label */}
-          <div className="flex justify-center mb-4">
-            <span className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase border ${
-              timer.isBreak
-                ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
-                : 'bg-sahifa-500/15 border-sahifa-500/30 text-sahifa-400'
-            }`}>
-              {timer.isBreak ? '🌿 Dam olish' : '⚡ Fokus sessiyasi'}
-            </span>
-          </div>
-
-          {/* SVG Ring */}
-          <div className="flex justify-center mb-4">
-            <div className="relative w-52 h-52">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 200 200">
-                <defs>
-                  <linearGradient id="timerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%"   stopColor={ringColor} />
-                    <stop offset="100%" stopColor={timer.isBreak ? '#86EFAC' : '#FF8C5A'} />
-                  </linearGradient>
-                </defs>
-                {/* Track */}
-                <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
-                {/* Fill */}
-                <circle
-                  cx="100" cy="100" r={R}
-                  fill="none"
-                  stroke="url(#timerGrad)"
-                  strokeWidth="6"
-                  strokeLinecap="round"
-                  strokeDasharray={strokeDash}
-                  style={{ transition: 'stroke-dasharray 0.5s linear', filter: ringGlow }}
-                />
-              </svg>
-              {/* Center display */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center gap-1">
-                <span className="font-mono text-5xl font-bold text-white tracking-tighter tabular-nums">{timer.formatted}</span>
-                <span className="text-xs font-semibold text-white/40">{Math.round(progressPct)}% tamamlandi</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Session dots */}
-          <div className="flex justify-center items-center gap-2 mb-5">
-            {[...Array(Math.max(4, timer.sessionsCompleted + 1))].map((_, i) => (
-              <div
-                key={i}
-                className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
-                  i < timer.sessionsCompleted
-                    ? 'bg-sahifa-500 shadow-[0_0_6px_rgba(241,89,41,0.8)]'
-                    : 'bg-white/12'
-                }`}
-              />
-            ))}
-            <span className="text-xs text-white/35 ml-1">{timer.sessionsCompleted} sessiya</span>
-          </div>
-
-          {/* Focus presets */}
-          {!timer.isRunning && !timer.isBreak && (
-            <div className="flex justify-center gap-2 mb-4">
-              {FOCUS_PRESETS.map(min => (
-                <button
-                  key={min}
-                  onClick={() => timer.setRemaining(min * 60)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    timer.remaining === min * 60
-                      ? 'bg-sahifa-500 text-white shadow-[0_0_12px_rgba(241,89,41,0.5)]'
-                      : 'bg-white/8 text-white/50 border border-white/10 hover:bg-white/14 hover:text-white/80'
-                  }`}
-                >
-                  {min} min
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Controls */}
-          <div className="flex gap-3">
-            <button
-              onClick={timer.toggle}
-              className={`flex-1 py-3.5 rounded-[16px] font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                timer.isRunning
-                  ? 'bg-white/15 border border-white/20 hover:bg-white/22'
-                  : 'bg-sahifa-500 shadow-[0_4px_20px_rgba(241,89,41,0.45)] hover:bg-sahifa-600'
-              }`}
-            >
-              {timer.isRunning
-                ? <><Pause className="w-4 h-4" /> Pauza</>
-                : <><Play  className="w-4 h-4" /> Boshlash</>
-              }
-            </button>
-            <button
-              onClick={() => timer.reset()}
-              className="w-12 h-12 rounded-[16px] flex items-center justify-center bg-white/8 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all active:scale-95"
-            >
-              <RefreshCw className="w-4.5 h-4.5" />
-            </button>
-            <button
-              onClick={timer.skip}
-              className="w-12 h-12 rounded-[16px] flex items-center justify-center bg-white/8 border border-white/10 text-white/60 hover:bg-white/15 hover:text-white transition-all active:scale-95"
-            >
-              <SkipForward className="w-4.5 h-4.5" />
-            </button>
-          </div>
-        </motion.div>
-
-        {/* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-            AMBIENT SOUND MIXER
-            â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
-        <motion.div
-          className="sound-mixer"
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Music className="w-4 h-4 text-white/60" />
-              <span className="text-sm font-bold text-white">Ambient tovushlar</span>
-            </div>
-            {sound.isPlaying && (
-              <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/12 border border-emerald-500/25 px-2.5 py-1 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                Ijro etilmoqda
-              </span>
-            )}
-          </div>
-
-          {/* Sound grid */}
-          {soundsLoading ? (
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-[16px] bg-white/5 animate-pulse" />)}
-            </div>
-          ) : (
-            <div className="grid grid-cols-3 gap-2">
-              {/* Silence */}
-              <button
-                onClick={handleSilence}
-                className={`sound-mixer-btn ${!sound.isPlaying ? 'active' : ''}`}
-              >
-                <VolumeX className="w-5 h-5" />
-                <span className="text-[10px] font-medium">Jimjitlik</span>
-              </button>
-
-              {sounds.map(s => {
-                const isActive = sound.activeSound === String(s.id) && sound.isPlaying
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => handleSoundSelect(s)}
-                    disabled={resolvingId === s.id && sound.isLoading}
-                    className={`sound-mixer-btn ${isActive ? 'active' : ''}`}
-                  >
-                    {resolvingId === s.id && sound.isLoading ? (
-                      <RefreshCw className="w-4 h-4 animate-spin text-white/70" />
-                    ) : (
-                      <span className="text-lg">{s.emoji || '🎵'}</span>
-                    )}
-                    <span className="text-[10px] font-medium line-clamp-1">{s.name}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Per-sound volume slider */}
-          <AnimatePresence>
-            {sound.isPlaying && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="overflow-hidden"
-              >
-                <div className="mt-3 pt-3 border-t border-white/8 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 text-xs text-white/50">
-                      <Volume2 className="w-3.5 h-3.5" />
-                      <span>{activeSound?.name ?? 'Tovush'} ovozi</span>
-                    </div>
-                    <span className="text-xs font-bold text-sahifa-400">{Math.round(sound.volume * 100)}%</span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0} max={1} step={0.02}
-                    value={sound.volume}
-                    onChange={e => sound.changeVolume(parseFloat(e.target.value))}
-                    className="vol-slider w-full"
-                  />
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Error */}
-          {sound.error && (
-            <div className="mt-3 bg-red-500/10 border border-red-500/25 rounded-[14px] p-3">
-              <p className="text-xs text-red-400 flex items-center gap-1.5">
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {sound.error}
+          {/* ── Page header ─────────────────────────────────────────────────────────────── */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl font-extrabold text-white flex items-center gap-2.5">
+                <GraduationCap className="w-5 h-5 text-[#F15929]" />
+                Study With Sahifalab
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {timer.isBreak ? '🌿 Dam olish vaqti — biroz nafas ol' : '🎯 Diqqatni jamlang — sen uddalaysan'}
               </p>
             </div>
-          )}
-        </motion.div>
-
-        {/* -- Compact info pills ------------------------------------------- */}
-        <motion.div
-          className="grid grid-cols-2 gap-2"
-          initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
-        >
-          <div className="flex items-start gap-2 rounded-[16px] bg-white/[0.04] border border-white/8 px-3 py-2.5">
-            <Battery className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-white/45 leading-relaxed">
-              Fon rejimi: taymer va tovushlar telefon qulflanganda ham ishlaydi.
-            </p>
+            {timer.sessionsCompleted > 0 && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F15929]/10 border border-[#F15929]/25 text-[#F15929] text-xs font-bold"
+              >
+                <Flame className="w-3 h-3" />
+                {timer.sessionsCompleted} sessiya
+              </motion.div>
+            )}
           </div>
-          <div className="flex items-start gap-2 rounded-[16px] bg-white/[0.04] border border-white/8 px-3 py-2.5">
-            <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
-            <p className="text-[11px] text-white/45 leading-relaxed">
-              Pomodoro: 25 daq fokus + 5 daq dam olish. Har 4 sessiyadan keyin uzunroq dam oling!
-            </p>
-          </div>
-        </motion.div>
 
+          {/* ── Live Pulse banner ─────────────────────────────────────────────────────── */}
+          <LivePulseBanner onMotivationReceived={() => { if (!motivBurst) setMotivBurst(true) }} />
+
+          {/* ── Main grid: Timer (left) + Sidebar (right) ─────────────────────────── */}
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-5 items-start">
+
+            {/* ══ TIMER CARD — Premium Focus Glass ═══════════════════════════════════════ */}
+            <motion.div
+              className="premium-focus-glass"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+            >
+              {/* Status badge */}
+              <div className="flex justify-center mb-6">
+                <span className={`px-4 py-1.5 rounded-full text-xs font-bold tracking-wider uppercase border ${
+                  timer.isBreak
+                    ? 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
+                    : 'bg-[#F15929]/15 border-[#F15929]/30 text-[#F15929]'
+                }`}>
+                  {timer.isBreak ? '🌿 Dam olish' : '⚡ Fokus sessiyasi'}
+                </span>
+              </div>
+
+              {/* SVG Timer ring */}
+              <div className="flex justify-center mb-4">
+                <div className="relative w-52 h-52 sm:w-64 sm:h-64">
+                  <svg className="w-full h-full -rotate-90" viewBox="0 0 200 200">
+                    <defs>
+                      <linearGradient id="timerGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%"   stopColor={ringColor} />
+                        <stop offset="100%" stopColor={timer.isBreak ? '#86EFAC' : '#FF8C5A'} />
+                      </linearGradient>
+                    </defs>
+                    {/* Track */}
+                    <circle cx="100" cy="100" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+                    {/* Progress fill */}
+                    <circle
+                      cx="100" cy="100" r={R}
+                      fill="none"
+                      stroke="url(#timerGrad)"
+                      strokeWidth="6"
+                      strokeLinecap="round"
+                      strokeDasharray={strokeDash}
+                      style={{ transition: 'stroke-dasharray 0.5s linear', filter: ringGlow }}
+                    />
+                  </svg>
+
+                  {/* Center: big orange numbers + progress */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5">
+                    <span
+                      className="font-mono font-extrabold text-[#F15929] tracking-tighter tabular-nums"
+                      style={{
+                        fontSize: 'clamp(2.6rem, 6vw, 3.5rem)',
+                        textShadow: '0 0 32px rgba(241,89,41,0.55)',
+                      }}
+                    >
+                      {timer.formatted}
+                    </span>
+                    <span className="text-xs font-medium text-slate-500">
+                      {Math.round(progressPct)}% tamamlandi
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Motivational context text */}
+              <div className="text-center mb-5 space-y-0.5">
+                <p className="text-sm font-semibold text-white/65">
+                  {timer.isBreak ? 'Biroz nafas oling' : 'Diqqatni jamlang'}
+                </p>
+                <p className="text-xs text-slate-600">
+                  {timer.isBreak ? "Keyingi sessiyaga tayyor bo'ling" : "Muvaffaqiyat sabr talab qiladi"}
+                </p>
+              </div>
+
+              {/* Session completion dots */}
+              <div className="flex justify-center items-center gap-2 mb-5">
+                {[...Array(Math.max(4, timer.sessionsCompleted + 1))].map((_, i) => (
+                  <div
+                    key={i}
+                    className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${
+                      i < timer.sessionsCompleted
+                        ? 'bg-[#F15929] shadow-[0_0_8px_rgba(241,89,41,0.9)]'
+                        : 'bg-white/10'
+                    }`}
+                  />
+                ))}
+                <span className="text-xs text-slate-600 ml-1">{timer.sessionsCompleted} sessiya</span>
+              </div>
+
+              {/* Focus duration presets */}
+              {!timer.isRunning && !timer.isBreak && (
+                <div className="flex justify-center gap-2 mb-5">
+                  {FOCUS_PRESETS.map(min => (
+                    <button
+                      key={min}
+                      onClick={() => timer.setRemaining(min * 60)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        timer.remaining === min * 60
+                          ? 'bg-[#F15929] text-white shadow-[0_0_14px_rgba(241,89,41,0.55)]'
+                          : 'bg-white/5 text-white/50 border border-white/10 hover:bg-white/10 hover:text-white/80'
+                      }`}
+                    >
+                      {min} min
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Controls: Play/Pause · Reset · Skip */}
+              <div className="flex gap-3">
+                <button
+                  onClick={timer.toggle}
+                  className={`flex-1 py-4 rounded-[18px] font-bold text-white text-sm transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                    timer.isRunning
+                      ? 'bg-white/10 border border-white/15 hover:bg-white/15'
+                      : 'bg-[#F15929] shadow-[0_6px_28px_rgba(241,89,41,0.5)] hover:bg-[#e84e22] active:bg-[#d4451f]'
+                  }`}
+                >
+                  {timer.isRunning
+                    ? <><Pause className="w-4 h-4" /> Pauza</>
+                    : <><Play  className="w-4 h-4" /> Boshlash</>
+                  }
+                </button>
+                <button
+                  onClick={() => timer.reset()}
+                  className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={timer.skip}
+                  className="w-12 h-12 rounded-[18px] flex items-center justify-center bg-white/5 border border-white/10 text-white/50 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+                >
+                  <SkipForward className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+
+            {/* ══ SIDEBAR: Sound Mixer + Info Pills ═════════════════════════════════ */}
+            <div className="space-y-4">
+
+              {/* Ambient sound mixer */}
+              <motion.div
+                className="sound-mixer"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.15, duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Music className="w-4 h-4 text-white/60" />
+                    <span className="text-sm font-bold text-white">Ambient tovushlar</span>
+                  </div>
+                  {sound.isPlaying && (
+                    <span className="flex items-center gap-1.5 text-[10px] font-bold text-emerald-400 bg-emerald-500/12 border border-emerald-500/25 px-2.5 py-1 rounded-full">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Ijro etilmoqda
+                    </span>
+                  )}
+                </div>
+
+                {/* Sound selection grid */}
+                {soundsLoading ? (
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map(i => <div key={i} className="h-16 rounded-[16px] bg-white/5 animate-pulse" />)}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {/* Silence option */}
+                    <button
+                      onClick={handleSilence}
+                      className={`sound-mixer-btn ${!sound.isPlaying ? 'active' : ''}`}
+                    >
+                      <VolumeX className="w-5 h-5" />
+                      <span className="text-[10px] font-medium">Jimjitlik</span>
+                    </button>
+
+                    {sounds.map(s => {
+                      const isActive = sound.activeSound === String(s.id) && sound.isPlaying
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => handleSoundSelect(s)}
+                          disabled={resolvingId === s.id && sound.isLoading}
+                          className={`sound-mixer-btn ${isActive ? 'active' : ''}`}
+                        >
+                          {resolvingId === s.id && sound.isLoading ? (
+                            <RefreshCw className="w-4 h-4 animate-spin text-white/70" />
+                          ) : (
+                            <span className="text-lg">{s.emoji || '🎵'}</span>
+                          )}
+                          <span className="text-[10px] font-medium line-clamp-1">{s.name}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* Per-sound volume slider */}
+                <AnimatePresence>
+                  {sound.isPlaying && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="mt-3 pt-3 border-t border-white/8 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs text-white/50">
+                            <Volume2 className="w-3.5 h-3.5" />
+                            <span>{activeSound?.name ?? 'Tovush'} ovozi</span>
+                          </div>
+                          <span className="text-xs font-bold text-[#F15929]">{Math.round(sound.volume * 100)}%</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={0} max={1} step={0.02}
+                          value={sound.volume}
+                          onChange={e => sound.changeVolume(parseFloat(e.target.value))}
+                          className="vol-slider w-full"
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Sound error */}
+                {sound.error && (
+                  <div className="mt-3 bg-red-500/10 border border-red-500/25 rounded-[14px] p-3">
+                    <p className="text-xs text-red-400 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                      {sound.error}
+                    </p>
+                  </div>
+                )}
+              </motion.div>
+
+              {/* Info tip pills */}
+              <motion.div
+                className="space-y-2"
+                initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.3 }}
+              >
+                <div className="flex items-start gap-2.5 rounded-[16px] bg-white/[0.04] border border-white/8 px-3.5 py-3">
+                  <Battery className="w-4 h-4 text-emerald-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-white/45 leading-relaxed">
+                    Fon rejimi: taymer va tovushlar telefon qulflanganda ham ishlaydi.
+                  </p>
+                </div>
+                <div className="flex items-start gap-2.5 rounded-[16px] bg-white/[0.04] border border-white/8 px-3.5 py-3">
+                  <Lightbulb className="w-4 h-4 text-amber-400 flex-shrink-0 mt-0.5" />
+                  <p className="text-[11px] text-white/45 leading-relaxed">
+                    Pomodoro: 25 daq fokus + 5 daq dam olish. Har 4 sessiyadan keyin uzunroq dam oling!
+                  </p>
+                </div>
+              </motion.div>
+
+            </div>
+          </div>
+
+        </div>
       </div>
     </PageWrapper>
   )

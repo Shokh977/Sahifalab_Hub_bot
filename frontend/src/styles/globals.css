@@ -361,6 +361,56 @@ html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 
       rgba(20,28,48,0.98) 100%);
   }
 
+
+  /* ── Premium Focus Glass — "Grid-in-Glass" bento timer card ──────────────── */
+  .premium-focus-glass {
+    @apply relative overflow-hidden rounded-[32px];
+    padding: 1.75rem 1.5rem;
+    /* Layer 1 — solid brand-dark base */
+    background-color: #1C1C22;
+    /* Layer 2 — orange grid matrix: 10×10 px cells, lines at 6% opacity */
+    background-image:
+      linear-gradient(rgba(241, 89, 41, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(241, 89, 41, 0.06) 1px, transparent 1px);
+    background-size: 10px 10px;
+    /* Edge — catch-light orange hairline */
+    border: 1px solid rgba(241, 89, 41, 0.15);
+    /* Depth — inset orange bloom + heavy elevation */
+    box-shadow:
+      0 0 0 1px rgba(241, 89, 41, 0.06),
+      inset 0 0 100px rgba(241, 89, 41, 0.04),
+      0 32px 80px rgba(0, 0, 0, 0.65),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  }
+  /* Layer 3 — frosted glass overlay: dark semi-transparent + blur on grid below */
+  .premium-focus-glass::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: rgba(28, 28, 34, 0.60);
+    backdrop-filter: blur(10px) saturate(1.15);
+    -webkit-backdrop-filter: blur(10px) saturate(1.15);
+    pointer-events: none;
+    z-index: 0;
+  }
+  /* Ambient orange corner glow accent */
+  .premium-focus-glass::after {
+    content: '';
+    position: absolute;
+    top: -50px; right: -50px;
+    width: 160px; height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(241, 89, 41, 0.12) 0%, transparent 65%);
+    pointer-events: none;
+    z-index: 0;
+  }
+  /* All direct children sit above the glass overlay */
+  .premium-focus-glass > * {
+    position: relative;
+    z-index: 1;
+  }
+
   /* ── Ambient Sound Mixer panel ──────────────────────────────────────────── */
   .sound-mixer {
     @apply rounded-[24px] p-4;
