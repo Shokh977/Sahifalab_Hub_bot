@@ -359,8 +359,9 @@ const CourseDetailPage: React.FC = () => {
   const handleOpenCertificate = useCallback(() => {
     if (!course || completedIds.size !== lessons.length || lessons.length === 0) return
     setCertData({
+      type:          'course',
       userName:      user?.first_name || user?.username || 'Talaba',
-      quizTitle:     `${course.title} kursi`,
+      quizTitle:     course.title,
       score: lessons.length, total: lessons.length, percentage: 100,
       date:          new Date().toLocaleDateString('uz-UZ'),
       certificateId: `CRS-${course.id}-${user?.id ?? 'UNKNOWN'}`,
