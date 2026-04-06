@@ -70,10 +70,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-async function makeQrImage(url: string, size = 140): Promise<HTMLImageElement> {
+async function makeQrImage(url: string, size = 140, qrColor = CHARCOAL): Promise<HTMLImageElement> {
   const dataUrl = await QRCode.toDataURL(url, {
     width: size, margin: 1,
-    color: { dark: CHARCOAL, light: '#0000' },
+    color: { dark: qrColor, light: '#0000' },
   })
   return loadImage(dataUrl)
 }
@@ -102,98 +102,92 @@ function blob(ctx: CanvasRenderingContext2D, color: string, path: BlobPath) {
   ctx.fill()
 }
 
+/**
+ * Corner blobs — organic wave shapes in all 4 corners.
+ * Proportions match reference: top-right LARGEST, top-left large,
+ * bottom-left medium, bottom-right smallest.
+ * Each corner has 3 concentric layers (light → mid → dark orange).
+ */
 function drawCornerBlobs(ctx: CanvasRenderingContext2D) {
   const W = CW, H = CH
 
-  // TOP-LEFT (3 layers: light -> mid -> dark)
+  // ===== TOP-LEFT (large) =====
   blob(ctx, ORANGE_LIGHT, c => {
-    c.moveTo(0, 0)
-    c.bezierCurveTo(W*0.15, H*-0.03, W*0.40, H*-0.01, W*0.46, H*0.10)
-    c.bezierCurveTo(W*0.52, H*0.22,  W*0.36, H*0.33,  W*0.24, H*0.46)
-    c.bezierCurveTo(W*0.13, H*0.56,  0,      H*0.52,  0,      H*0.48)
+    c.moveTo(0, H * 0.48)
+    c.bezierCurveTo(W * 0.12, H * 0.50, W * 0.32, H * 0.22, W * 0.38, 0)
+    c.lineTo(0, 0)
     c.closePath()
   })
   blob(ctx, ORANGE_MID, c => {
-    c.moveTo(0, 0)
-    c.bezierCurveTo(W*0.12, H*-0.02, W*0.32, H*0.00, W*0.37, H*0.09)
-    c.bezierCurveTo(W*0.43, H*0.20,  W*0.28, H*0.30, W*0.17, H*0.41)
-    c.bezierCurveTo(W*0.08, H*0.50,  0,      H*0.46, 0,      H*0.42)
+    c.moveTo(0, H * 0.40)
+    c.bezierCurveTo(W * 0.09, H * 0.42, W * 0.25, H * 0.18, W * 0.30, 0)
+    c.lineTo(0, 0)
     c.closePath()
   })
   blob(ctx, ORANGE, c => {
-    c.moveTo(0, 0)
-    c.bezierCurveTo(W*0.10, H*-0.01, W*0.24, H*0.01, W*0.28, H*0.08)
-    c.bezierCurveTo(W*0.33, H*0.17,  W*0.21, H*0.26, W*0.12, H*0.36)
-    c.bezierCurveTo(W*0.06, H*0.43,  0,      H*0.40, 0,      H*0.37)
+    c.moveTo(0, H * 0.32)
+    c.bezierCurveTo(W * 0.06, H * 0.34, W * 0.18, H * 0.14, W * 0.22, 0)
+    c.lineTo(0, 0)
     c.closePath()
   })
 
-  // TOP-RIGHT
+  // ===== TOP-RIGHT (largest — most prominent) =====
   blob(ctx, ORANGE_LIGHT, c => {
-    c.moveTo(W, 0)
-    c.bezierCurveTo(W*0.85, H*-0.03, W*0.60, H*-0.01, W*0.54, H*0.10)
-    c.bezierCurveTo(W*0.48, H*0.22,  W*0.64, H*0.33,  W*0.76, H*0.46)
-    c.bezierCurveTo(W*0.87, H*0.56,  W,      H*0.52,  W,      H*0.48)
+    c.moveTo(W, H * 0.54)
+    c.bezierCurveTo(W * 0.88, H * 0.56, W * 0.66, H * 0.24, W * 0.58, 0)
+    c.lineTo(W, 0)
     c.closePath()
   })
   blob(ctx, ORANGE_MID, c => {
-    c.moveTo(W, 0)
-    c.bezierCurveTo(W*0.88, H*-0.02, W*0.68, H*0.00, W*0.63, H*0.09)
-    c.bezierCurveTo(W*0.57, H*0.20,  W*0.72, H*0.30, W*0.83, H*0.41)
-    c.bezierCurveTo(W*0.92, H*0.50,  W,      H*0.46, W,      H*0.42)
+    c.moveTo(W, H * 0.44)
+    c.bezierCurveTo(W * 0.90, H * 0.46, W * 0.72, H * 0.20, W * 0.66, 0)
+    c.lineTo(W, 0)
     c.closePath()
   })
   blob(ctx, ORANGE, c => {
-    c.moveTo(W, 0)
-    c.bezierCurveTo(W*0.90, H*-0.01, W*0.76, H*0.01, W*0.72, H*0.08)
-    c.bezierCurveTo(W*0.67, H*0.17,  W*0.79, H*0.26, W*0.88, H*0.36)
-    c.bezierCurveTo(W*0.94, H*0.43,  W,      H*0.40, W,      H*0.37)
+    c.moveTo(W, H * 0.35)
+    c.bezierCurveTo(W * 0.93, H * 0.37, W * 0.80, H * 0.16, W * 0.74, 0)
+    c.lineTo(W, 0)
     c.closePath()
   })
 
-  // BOTTOM-LEFT
+  // ===== BOTTOM-LEFT (medium) =====
   blob(ctx, ORANGE_LIGHT, c => {
-    c.moveTo(0, H)
-    c.bezierCurveTo(W*0.15, H*1.03, W*0.40, H*1.01, W*0.46, H*0.90)
-    c.bezierCurveTo(W*0.52, H*0.78, W*0.36, H*0.67, W*0.24, H*0.54)
-    c.bezierCurveTo(W*0.13, H*0.44, 0,      H*0.48, 0,      H*0.52)
+    c.moveTo(0, H * 0.58)
+    c.bezierCurveTo(W * 0.10, H * 0.56, W * 0.20, H * 0.78, W * 0.22, H)
+    c.lineTo(0, H)
     c.closePath()
   })
   blob(ctx, ORANGE_MID, c => {
-    c.moveTo(0, H)
-    c.bezierCurveTo(W*0.12, H*1.02, W*0.32, H*1.00, W*0.37, H*0.91)
-    c.bezierCurveTo(W*0.43, H*0.80, W*0.28, H*0.70, W*0.17, H*0.59)
-    c.bezierCurveTo(W*0.08, H*0.50, 0,      H*0.54, 0,      H*0.58)
+    c.moveTo(0, H * 0.65)
+    c.bezierCurveTo(W * 0.07, H * 0.63, W * 0.14, H * 0.82, W * 0.16, H)
+    c.lineTo(0, H)
     c.closePath()
   })
   blob(ctx, ORANGE, c => {
-    c.moveTo(0, H)
-    c.bezierCurveTo(W*0.10, H*1.01, W*0.24, H*0.99, W*0.28, H*0.92)
-    c.bezierCurveTo(W*0.33, H*0.83, W*0.21, H*0.74, W*0.12, H*0.64)
-    c.bezierCurveTo(W*0.06, H*0.57, 0,      H*0.60, 0,      H*0.63)
+    c.moveTo(0, H * 0.72)
+    c.bezierCurveTo(W * 0.04, H * 0.70, W * 0.09, H * 0.86, W * 0.11, H)
+    c.lineTo(0, H)
     c.closePath()
   })
 
-  // BOTTOM-RIGHT
+  // ===== BOTTOM-RIGHT (smallest) =====
   blob(ctx, ORANGE_LIGHT, c => {
-    c.moveTo(W, H)
-    c.bezierCurveTo(W*0.85, H*1.03, W*0.60, H*1.01, W*0.54, H*0.90)
-    c.bezierCurveTo(W*0.48, H*0.78, W*0.64, H*0.67, W*0.76, H*0.54)
-    c.bezierCurveTo(W*0.87, H*0.44, W,      H*0.48, W,      H*0.52)
+    c.moveTo(W, H * 0.76)
+    c.bezierCurveTo(W * 0.93, H * 0.74, W * 0.86, H * 0.88, W * 0.84, H)
+    c.lineTo(W, H)
     c.closePath()
   })
   blob(ctx, ORANGE_MID, c => {
-    c.moveTo(W, H)
-    c.bezierCurveTo(W*0.88, H*1.02, W*0.68, H*1.00, W*0.63, H*0.91)
-    c.bezierCurveTo(W*0.57, H*0.80, W*0.72, H*0.70, W*0.83, H*0.59)
-    c.bezierCurveTo(W*0.92, H*0.50, W,      H*0.54, W,      H*0.58)
+    c.moveTo(W, H * 0.81)
+    c.bezierCurveTo(W * 0.95, H * 0.79, W * 0.90, H * 0.90, W * 0.88, H)
+    c.lineTo(W, H)
     c.closePath()
   })
   blob(ctx, ORANGE, c => {
-    c.moveTo(W, H)
-    c.bezierCurveTo(W*0.90, H*1.01, W*0.76, H*0.99, W*0.72, H*0.92)
-    c.bezierCurveTo(W*0.67, H*0.83, W*0.79, H*0.74, W*0.88, H*0.64)
-    c.bezierCurveTo(W*0.94, H*0.57, W,      H*0.60, W,      H*0.63)
+    c.moveTo(W, H * 0.86)
+    c.bezierCurveTo(W * 0.97, H * 0.84, W * 0.93, H * 0.93, W * 0.92, H)
+    c.lineTo(W, H)
     c.closePath()
   })
 }
@@ -244,6 +238,34 @@ function drawAwardMedal(ctx: CanvasRenderingContext2D, cx: number, topY: number)
   ctx.lineCap = 'butt'
 }
 
+/** Handwritten signature flourish (bezier curves) */
+function drawSignature(ctx: CanvasRenderingContext2D, cx: number, baseY: number) {
+  ctx.save()
+  ctx.strokeStyle = BROWN_DARK
+  ctx.lineWidth = 1.8
+  ctx.lineCap = 'round'
+  ctx.lineJoin = 'round'
+
+  // Main cursive autograph strokes
+  ctx.beginPath()
+  ctx.moveTo(cx - 58, baseY + 36)
+  ctx.bezierCurveTo(cx - 50, baseY + 8, cx - 40, baseY - 22, cx - 26, baseY - 12)
+  ctx.bezierCurveTo(cx - 18, baseY - 4, cx - 28, baseY + 22, cx - 16, baseY + 8)
+  ctx.bezierCurveTo(cx - 8, baseY - 6, cx, baseY + 16, cx + 8, baseY + 4)
+  ctx.bezierCurveTo(cx + 16, baseY - 10, cx + 24, baseY + 14, cx + 32, baseY + 2)
+  ctx.bezierCurveTo(cx + 40, baseY - 10, cx + 50, baseY + 8, cx + 58, baseY - 2)
+  ctx.bezierCurveTo(cx + 64, baseY - 10, cx + 70, baseY + 4, cx + 74, baseY)
+  ctx.stroke()
+
+  // Underline flourish
+  ctx.beginPath()
+  ctx.moveTo(cx - 8, baseY + 42)
+  ctx.bezierCurveTo(cx + 22, baseY + 34, cx + 52, baseY + 36, cx + 78, baseY + 24)
+  ctx.stroke()
+
+  ctx.restore()
+}
+
 async function drawCourseCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
   canvas.width  = CW
   canvas.height = CH
@@ -251,28 +273,33 @@ async function drawCourseCertificate(canvas: HTMLCanvasElement, data: Certificat
   ctx.textAlign    = 'center'
   ctx.textBaseline = 'middle'
 
-  // White background
+  // 1. White background
   ctx.fillStyle = '#FFFFFF'
   ctx.fillRect(0, 0, CW, CH)
 
-  // Corner blobs
+  // 2. Corner blobs (drawn BEFORE borders — blobs go under borders)
   drawCornerBlobs(ctx)
 
-  // Thin border
-  ctx.strokeStyle = 'rgba(0,0,0,0.10)'
-  ctx.lineWidth = 1.5
-  ctx.strokeRect(30, 24, CW - 60, CH - 48)
+  // 3. Double orange border (outer thicker + inner thinner)
+  ctx.strokeStyle = ORANGE_MID
+  ctx.lineWidth = 2.5
+  ctx.strokeRect(50, 36, CW - 100, CH - 72)
+  ctx.strokeStyle = ORANGE_MID
+  ctx.lineWidth = 1.2
+  ctx.strokeRect(66, 52, CW - 132, CH - 104)
 
-  // ---- TITLE: CERTIFICATE -------------------------------------------------
+  // 4. TITLE: CERTIFICATE (bold, uppercase, orange with shadow)
   ctx.font = '900 88px "Arial Black", Impact, Arial, sans-serif'
   ctx.letterSpacing = '7px'
+  // Shadow pass
   ctx.fillStyle = 'rgba(200,75,5,0.22)'
   ctx.fillText('CERTIFICATE', CCX + 2, 131)
+  // Main pass
   ctx.fillStyle = ORANGE
   ctx.fillText('CERTIFICATE', CCX, 129)
   ctx.letterSpacing = '0px'
 
-  // ---- Dotted separator ---------------------------------------------------
+  // 5. Dotted separator (orange dots)
   for (let x = CCX - 96; x <= CCX + 96; x += 11) {
     ctx.beginPath()
     ctx.arc(x, 181, 2.2, 0, Math.PI * 2)
@@ -280,12 +307,12 @@ async function drawCourseCertificate(canvas: HTMLCanvasElement, data: Certificat
     ctx.fill()
   }
 
-  // ---- Subtitle -----------------------------------------------------------
+  // 6. Subtitle
   ctx.fillStyle = BROWN
   ctx.font = 'italic 27px Georgia, "Times New Roman", serif'
   ctx.fillText('Ushbu sertifikat egasi', CCX, 224)
 
-  // ---- User name ----------------------------------------------------------
+  // 7. User name (LARGEST element — script font, curly quotes)
   const safeName = data.userName.trim() || 'Talaba'
   const displayName = '\u201c' + safeName + '\u201d'
   ctx.fillStyle = BROWN_DARK
@@ -295,7 +322,7 @@ async function drawCourseCertificate(canvas: HTMLCanvasElement, data: Certificat
   ctx.fillText(displayName, CCX, 320)
   ctx.shadowBlur = 0
 
-  // Orange underline
+  // 8. Orange underline beneath name
   const nameW = Math.min(ctx.measureText(displayName).width, 960)
   ctx.strokeStyle = ORANGE
   ctx.lineWidth = 4.5
@@ -304,72 +331,61 @@ async function drawCourseCertificate(canvas: HTMLCanvasElement, data: Certificat
   ctx.lineTo(CCX + nameW / 2, 368)
   ctx.stroke()
 
-  // ---- Body text ----------------------------------------------------------
+  // 9. Body text (centered, serif)
   const courseName = data.quizTitle.trim() || 'Kurs'
   const bodyText = 'Sahifalabning \u201c' + courseName + '\u201d kursini muvaffaqiyatli yakunladi.'
   ctx.fillStyle = '#333333'
   ctx.font = '400 30px Georgia, "Times New Roman", serif'
-  wrapText(ctx, bodyText, 880).forEach((line, i) => ctx.fillText(line, CCX, 434 + i * 50))
+  const bodyLines = wrapText(ctx, bodyText, 820)
+  bodyLines.forEach((line, i) => ctx.fillText(line, CCX, 440 + i * 50))
 
-  // ---- Footer -------------------------------------------------------------
-  const footY = 714
+  // 10. Footer — three columns, NO divider lines (matching reference)
+  const footY = 720
 
-  // Horizontal divider
-  ctx.strokeStyle = 'rgba(0,0,0,0.11)'
-  ctx.lineWidth = 1
-  ctx.beginPath()
-  ctx.moveTo(92, footY)
-  ctx.lineTo(CW - 92, footY)
-  ctx.stroke()
-
-  // Vertical column dividers
-  for (const dx of [0.35, 0.65]) {
-    ctx.beginPath()
-    ctx.moveTo(CW * dx, footY + 14)
-    ctx.lineTo(CW * dx, CH - 28)
-    ctx.stroke()
-  }
-
-  // LEFT: Cursive Signature + SAHIFALAB label
+  // ---- LEFT COLUMN: Handwritten signature + line + SAHIFALAB ----
   const c1 = CW * 0.175
-  ctx.fillStyle = ORANGE
-  ctx.font = 'italic 52px "Brush Script MT", "Segoe Script", cursive'
-  ctx.fillText('Sahifalab', c1, footY + 86)
+  drawSignature(ctx, c1, footY + 28)
+  // Horizontal line under signature
   ctx.strokeStyle = CHARCOAL
-  ctx.lineWidth = 1.5
+  ctx.lineWidth = 1.2
   ctx.beginPath()
-  ctx.moveTo(c1 - 102, footY + 120)
-  ctx.lineTo(c1 + 102, footY + 120)
+  ctx.moveTo(c1 - 80, footY + 102)
+  ctx.lineTo(c1 + 80, footY + 102)
   ctx.stroke()
+  // SAHIFALAB label
   ctx.fillStyle = CHARCOAL
-  ctx.letterSpacing = '3px'
-  ctx.font = '700 18px Arial, sans-serif'
-  ctx.fillText('SAHIFALAB', c1, footY + 150)
+  ctx.letterSpacing = '4px'
+  ctx.font = '700 20px Arial, sans-serif'
+  ctx.fillText('SAHIFALAB', c1, footY + 134)
   ctx.letterSpacing = '0px'
 
-  // CENTER: Award medal + date
-  drawAwardMedal(ctx, CCX, footY + 32)
+  // ---- CENTER COLUMN: Award medal + date ----
+  drawAwardMedal(ctx, CCX, footY + 28)
   ctx.fillStyle = CHARCOAL
-  ctx.font = '600 23px Arial, sans-serif'
-  ctx.fillText(data.date, CCX, footY + 174)
+  ctx.font = '600 20px Arial, sans-serif'
+  ctx.fillText('\u201c' + data.date + '\u201d', CCX, footY + 176)
 
-  // RIGHT: Certificate ID
+  // ---- RIGHT COLUMN: Certificate ID label + value ----
   const c3 = CW * 0.825
   const certId = formatCertificateId(data)
+  // Label
   ctx.fillStyle = MUTED
-  ctx.font = '500 17px Arial, sans-serif'
-  ctx.fillText('\u201cCertificate ID\u201d', c3, footY + 72)
+  ctx.font = '600 16px Arial, sans-serif'
+  ctx.letterSpacing = '1px'
+  ctx.fillText('\u201cCERTIFICATE ID\u201d', c3, footY + 60)
+  ctx.letterSpacing = '0px'
+  // Value
   ctx.fillStyle = CHARCOAL
   ctx.letterSpacing = '1px'
-  ctx.font = '700 20px "Courier New", monospace'
-  ctx.fillText(certId, c3, footY + 110)
+  ctx.font = '700 22px Arial, sans-serif'
+  ctx.fillText(certId, c3, footY + 100)
   ctx.letterSpacing = '0px'
 
-  // QR code bottom-right
+  // 11. QR code bottom-right (ORANGE colored, matching reference)
   const qrSize = 88
-  const qrX = CW - qrSize - 34
-  const qrY = CH - qrSize - 26
-  const qrImg = await makeQrImage(TELEGRAM_CHANNEL_URL, 104)
+  const qrX = CW - qrSize - 36
+  const qrY = CH - qrSize - 28
+  const qrImg = await makeQrImage(TELEGRAM_CHANNEL_URL, 104, ORANGE)
   ctx.fillStyle = 'rgba(255,255,255,0.85)'
   ctx.beginPath()
   ctx.roundRect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8, 8)
