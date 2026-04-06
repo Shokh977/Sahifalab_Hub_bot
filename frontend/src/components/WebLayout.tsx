@@ -58,20 +58,26 @@ interface NavItem {
   path: string
 }
 
-const NAV_MAIN: NavItem[] = [
+const NAV_HOME: NavItem[] = [
   { icon: HomeIcon, label: 'Bosh sahifa', path: '/' },
-  { icon: GlobeAltIcon, label: 'Lenta', path: '/social' },
-  { icon: ChatBubbleLeftRightIcon, label: 'Slooth', path: '/messenger' },
+]
+
+const NAV_LEARNING: NavItem[] = [
   { icon: AcademicCapIcon, label: 'Kurslar', path: '/courses' },
-  { icon: ClockIcon, label: "O'qish", path: '/study' },
   { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
+  { icon: ClockIcon, label: "O'qish", path: '/study' },
   { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
   { icon: LinkIcon, label: 'Resurslar', path: '/resources' },
   { icon: CpuChipIcon, label: 'SAHIFALAB AI', path: '/ai-companion' },
 ]
 
+const NAV_SOCIAL: NavItem[] = [
+  { icon: GlobeAltIcon, label: 'Lenta', path: '/social' },
+  { icon: ChatBubbleLeftRightIcon, label: 'Slooth', path: '/messenger' },
+  { icon: MagnifyingGlassIcon, label: 'Kashfiyot', path: '/discover' },
+]
+
 const NAV_SECONDARY: NavItem[] = [
-  { icon: MagnifyingGlassIcon, label: 'Kashfiyot',    path: '/discover' },
   { icon: Squares2X2Icon, label: 'Kabinet',       path: '/cabinet' },
   { icon: TrophyIcon,     label: 'Reyting',       path: '/leaderboard' },
   { icon: UserGroupIcon,  label: "O'qituvchilar", path: '/teachers' },
@@ -203,7 +209,35 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
       {/* Main nav */}
       <div className="mx-3 h-px bg-slate-100 dark:bg-[#2A2A36] mb-2" />
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
-        {NAV_MAIN.map(item => (
+        {NAV_HOME.map(item => (
+          <SidebarNavItem
+            key={item.path}
+            {...item}
+            active={isActive(item.path)}
+            onClick={onNavClick}
+          />
+        ))}
+
+        <div className="pt-4 pb-1">
+          <p className="px-3 text-[10px] uppercase tracking-widest text-slate-400 dark:text-slate-600 font-semibold">
+            Ta'lim
+          </p>
+        </div>
+        {NAV_LEARNING.map(item => (
+          <SidebarNavItem
+            key={item.path}
+            {...item}
+            active={isActive(item.path)}
+            onClick={onNavClick}
+          />
+        ))}
+
+        <div className="pt-4 pb-1">
+          <p className="px-3 text-[10px] uppercase tracking-widest text-sahifa-500 dark:text-sahifa-600 font-semibold">
+            Ijtimoiy
+          </p>
+        </div>
+        {NAV_SOCIAL.map(item => (
           <SidebarNavItem
             key={item.path}
             {...item}

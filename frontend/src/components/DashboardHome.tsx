@@ -134,7 +134,7 @@ const HeroBanner: React.FC<{
 
           <div className="flex-1 min-w-0 space-y-3">
             <div>
-              <p className="text-white/60 text-sm">Assalomu alaykum ðŸ‘‹</p>
+              <p className="text-white/60 text-sm">Assalomu alaykum 👋</p>
               <h1 className="text-2xl font-extrabold text-white tracking-tight truncate mt-0.5">
                 {user.first_name}
               </h1>

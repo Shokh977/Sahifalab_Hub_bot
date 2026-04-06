@@ -7,8 +7,10 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Compass, Users, Loader2, RefreshCw } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useProgressStore } from '../context/progressStore'
 import api from '../services/apiService'
 import PostCard from '../components/social/PostCard'
 import CreatePost from '../components/social/CreatePost'
@@ -18,6 +20,7 @@ type Tab = 'feed' | 'explore'
 
 const SocialFeed: React.FC = () => {
   const { user } = useAuth()
+  const { level: storeLevel, totalXP, isInitialized } = useProgressStore()
   const [tab, setTab] = useState<Tab>('feed')
   const [posts, setPosts] = useState<PostData[]>([])
   const [loading, setLoading] = useState(true)
@@ -90,8 +93,8 @@ const SocialFeed: React.FC = () => {
     username: (user as any)?.username,
     photo_url: (user as any)?.photo_url,
     role: (user as any)?.role || 'student',
-    level: (user as any)?.level || 1,
-    xp: (user as any)?.xp || (user as any)?.total_xp || 0,
+    level: isInitialized ? storeLevel : ((user as any)?.level || 1),
+    xp: isInitialized ? totalXP : ((user as any)?.xp || (user as any)?.total_xp || 0),
   }
 
   return (
@@ -145,42 +148,53 @@ const SocialFeed: React.FC = () => {
           uploadImage={handleUploadImage}
         />
 
-        {/* Posts */}
-        {loading ? (
-          <div className="flex justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-white/30" />
-          </div>
-        ) : posts.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-white/30 text-sm">
-              {tab === 'feed'
-                ? "Hali hech kim kuzatilmayapti. Kashfiyot bo'limidan foydalanuvchilarni toping!"
-                : "Hali postlar yo'q. Birinchi bo'ling!"}
-            </p>
-          </div>
-        ) : (
-          <>
-            {posts.map(post => (
-              <PostCard
-                key={post.id}
-                post={post}
-                currentUserId={telegramId}
-                onLike={handleLike}
-                onUnlike={handleUnlike}
-                onDelete={handleDelete}
-              />
-            ))}
+        {/* Posts — fade-in on tab switch */}
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={tab}
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.22, ease: 'easeOut' }}
+            className="space-y-4"
+          >
+            {loading ? (
+              <div className="flex justify-center py-20">
+                <Loader2 className="w-6 h-6 animate-spin text-white/30" />
+              </div>
+            ) : posts.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-white/30 text-sm">
+                  {tab === 'feed'
+                    ? "Hali hech kim kuzatilmayapti. Kashfiyot bo'limidan foydalanuvchilarni toping!"
+                    : "Hali postlar yo'q. Birinchi bo'ling!"}
+                </p>
+              </div>
+            ) : (
+              <>
+                {posts.map(post => (
+                  <PostCard
+                    key={post.id}
+                    post={post}
+                    currentUserId={telegramId}
+                    onLike={handleLike}
+                    onUnlike={handleUnlike}
+                    onDelete={handleDelete}
+                  />
+                ))}
 
-            {hasMore && (
-              <button
-                onClick={handleLoadMore}
-                className="w-full py-3 rounded-xl text-sm text-white/40 hover:text-white/60 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.04] transition-colors"
-              >
-                Ko'proq yuklash
-              </button>
+                {hasMore && (
+                  <button
+                    onClick={handleLoadMore}
+                    className="w-full py-3 rounded-xl text-sm text-white/40 hover:text-white/60 bg-white/[0.02] hover:bg-white/[0.04] border border-white/[0.04] transition-colors"
+                  >
+                    Ko'proq yuklash
+                  </button>
+                )}
+              </>
             )}
-          </>
-        )}
+          </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   )
