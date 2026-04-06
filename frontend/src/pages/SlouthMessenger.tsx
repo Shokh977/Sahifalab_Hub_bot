@@ -9,11 +9,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, Loader2, MessageSquare, Check, CheckCheck } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, MessageSquare, Check, CheckCheck, Search } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
 import UserIdentity from '../components/social/UserIdentity'
 import LinkPreview, { extractUrls } from '../components/social/LinkPreview'
+import { linkify } from '../utils/linkify'
 import type { UserIdentityUser } from '../components/social/UserIdentity'
 import { supabase } from '../lib/supabase'
 
@@ -41,8 +43,21 @@ interface ConversationItem {
 const ConversationList: React.FC<{
   conversations: ConversationItem[]
   loading: boolean
+  activeId?: number | null
   onSelect: (conv: ConversationItem) => void
-}> = ({ conversations, loading, onSelect }) => {
+}> = ({ conversations, loading, activeId, onSelect }) => {
+  const [searchQuery, setSearchQuery] = useState('')
+
+  const filtered = searchQuery.trim()
+    ? conversations.filter(c => {
+        const q = searchQuery.toLowerCase()
+        return (
+          (c.other_user.full_name ?? '').toLowerCase().includes(q) ||
+          (c.other_user.username ?? '').toLowerCase().includes(q)
+        )
+      })
+    : conversations
+
   if (loading) {
     return (
       <div className="flex justify-center py-20">
@@ -51,49 +66,74 @@ const ConversationList: React.FC<{
     )
   }
 
-  if (conversations.length === 0) {
-    return (
-      <div className="text-center py-20 px-4">
-        <MessageSquare className="w-12 h-12 text-white/10 mx-auto mb-3" />
-        <p className="text-white/30 text-sm">Hali xabarlar yo'q</p>
-        <p className="text-white/20 text-xs mt-1">Profildan xabar yuboring</p>
-      </div>
-    )
-  }
-
   return (
-    <div className="divide-y divide-white/[0.04]">
-      {conversations.map(conv => {
-        const lastMsg = conv.last_message
-        const timeStr = lastMsg
-          ? new Date(lastMsg.created_at).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })
-          : ''
-        return (
-          <button
-            key={conv.id}
-            onClick={() => onSelect(conv)}
-            className="w-full flex items-center gap-3 p-4 hover:bg-white/[0.03] transition-colors text-left"
-          >
-            <UserIdentity user={conv.other_user} size="md" showName={false} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <UserIdentity user={conv.other_user} size="xs" showName showBadge className="!gap-1.5" />
-                <span className="text-[10px] text-white/30 flex-shrink-0">{timeStr}</span>
-              </div>
-              <div className="flex items-center justify-between mt-0.5">
-                <p className="text-xs text-white/40 truncate max-w-[200px]">
-                  {lastMsg?.content || 'Yangi suhbat'}
-                </p>
-                {conv.unread_count > 0 && (
-                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-sahifa-500 text-white text-[10px] font-bold flex items-center justify-center">
-                    {conv.unread_count}
-                  </span>
-                )}
-              </div>
-            </div>
-          </button>
-        )
-      })}
+    <div>
+      {/* Search bar */}
+      <div className="px-4 py-3">
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Suhbat qidirish..."
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white placeholder:text-white/25 outline-none focus:border-sahifa-500/30 transition-colors"
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 && !loading ? (
+        <div className="text-center py-16 px-4">
+          <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+            <MessageSquare className="w-8 h-8 text-white/10" />
+          </div>
+          <p className="text-white/30 text-sm font-medium">
+            {searchQuery ? "Hech narsa topilmadi" : "Hali xabarlar yo'q"}
+          </p>
+          <p className="text-white/15 text-xs mt-1">
+            {searchQuery ? "Boshqa so'z bilan qidiring" : "Profildan xabar yuboring"}
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-white/[0.04]">
+          {filtered.map(conv => {
+            const lastMsg = conv.last_message
+            const isActive = activeId === conv.id
+            const timeStr = lastMsg
+              ? new Date(lastMsg.created_at).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })
+              : ''
+            return (
+              <button
+                key={conv.id}
+                onClick={() => onSelect(conv)}
+                className={`w-full flex items-center gap-3 p-4 transition-all text-left relative ${
+                  isActive
+                    ? 'bg-sahifa-500/[0.08] border-l-2 border-sahifa-500'
+                    : 'hover:bg-white/[0.03] border-l-2 border-transparent'
+                }`}
+              >
+                <UserIdentity user={conv.other_user} size="md" showName={false} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between">
+                    <UserIdentity user={conv.other_user} size="xs" showName showBadge className="!gap-1.5" />
+                    <span className="text-[10px] text-white/30 flex-shrink-0">{timeStr}</span>
+                  </div>
+                  <div className="flex items-center justify-between mt-0.5">
+                    <p className="text-xs text-white/40 truncate max-w-[200px]">
+                      {lastMsg?.content || 'Yangi suhbat'}
+                    </p>
+                    {conv.unread_count > 0 && (
+                      <span className="flex-shrink-0 w-5 h-5 rounded-full bg-sahifa-500 text-white text-[10px] font-bold flex items-center justify-center">
+                        {conv.unread_count}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -232,6 +272,10 @@ const ChatView: React.FC<{
             const showTime = idx === 0 ||
               new Date(msg.created_at).getTime() - new Date(messages[idx - 1].created_at).getTime() > 300000
 
+            // Avatar grouping: show avatar only for the first message in a consecutive same-sender sequence
+            const prevMsg = idx > 0 ? messages[idx - 1] : null
+            const isFirstInGroup = !prevMsg || prevMsg.sender_id !== msg.sender_id || showTime
+
             return (
               <React.Fragment key={msg.id}>
                 {showTime && (
@@ -241,7 +285,13 @@ const ChatView: React.FC<{
                     </span>
                   </div>
                 )}
-                <div className={`flex ${isMine ? 'justify-end' : 'justify-start'}`}>
+                <div className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${!isFirstInGroup ? (isMine ? 'pr-0' : 'pl-10') : ''}`}>
+                  {/* Avatar for received messages — only first in group */}
+                  {!isMine && isFirstInGroup && (
+                    <div className="flex-shrink-0 mr-2 self-end mb-1">
+                      <UserIdentity user={otherUser} size="xs" showName={false} />
+                    </div>
+                  )}
                   <div
                     className={`max-w-[75%] rounded-2xl px-3.5 py-2 ${
                       isMine
@@ -250,7 +300,7 @@ const ChatView: React.FC<{
                     }`}
                   >
                     <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
-                      {msg.content}
+                      {linkify(msg.content)}
                     </p>
                     {/* Read receipt for sent messages */}
                     {isMine && (
@@ -360,8 +410,8 @@ const SlouthMessenger: React.FC = () => {
           {/* Header */}
           <div className="sticky top-0 z-30 bg-pitch/80 backdrop-blur-xl border-b border-white/[0.04]">
             <div className="max-w-2xl mx-auto px-4 py-3">
-              <h1 className="text-lg font-bold text-white tracking-tight">Slooth</h1>
-              <p className="text-xs text-white/30">Xabarlar</p>
+              <h1 className="text-lg font-bold text-white tracking-tight">Xabarlar</h1>
+              <p className="text-xs text-white/30">Shaxsiy xabarlar</p>
             </div>
           </div>
 
@@ -370,6 +420,7 @@ const SlouthMessenger: React.FC = () => {
             <ConversationList
               conversations={conversations}
               loading={loading}
+              activeId={null}
               onSelect={handleSelectConv}
             />
           </div>

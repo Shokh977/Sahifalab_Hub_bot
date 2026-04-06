@@ -73,7 +73,7 @@ const NAV_LEARNING: NavItem[] = [
 
 const NAV_SOCIAL: NavItem[] = [
   { icon: GlobeAltIcon, label: 'Lenta', path: '/social' },
-  { icon: ChatBubbleLeftRightIcon, label: 'Slooth', path: '/messenger' },
+  { icon: ChatBubbleLeftRightIcon, label: 'Xabarlar', path: '/messenger' },
   { icon: MagnifyingGlassIcon, label: 'Kashfiyot', path: '/discover' },
 ]
 
@@ -88,7 +88,7 @@ const NAV_SECONDARY: NavItem[] = [
 const BOTTOM_NAV: NavItem[] = [
   { icon: HomeIcon, label: 'Home', path: '/' },
   { icon: GlobeAltIcon, label: 'Lenta', path: '/social' },
-  { icon: ChatBubbleLeftRightIcon, label: 'Slooth', path: '/messenger' },
+  { icon: ChatBubbleLeftRightIcon, label: 'Xabarlar', path: '/messenger' },
   { icon: MagnifyingGlassIcon, label: 'Kashfiyot', path: '/discover' },
   { icon: Squares2X2Icon, label: 'Kabinet', path: '/cabinet' },
 ]

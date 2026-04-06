@@ -66,6 +66,11 @@ export default {
         'inner-light': 'inset 0 1px 0 rgba(255,255,255,0.10)',
         'glass':       '0 8px 32px rgba(0, 0, 0, 0.18)',
         'glass-lg':    '0 12px 48px rgba(0, 0, 0, 0.24)',
+        'bento':       '0 1px 2px rgba(0,0,0,0.12), 0 4px 12px rgba(0,0,0,0.08), 0 12px 36px rgba(0,0,0,0.16)',
+        'bento-hover': '0 2px 4px rgba(0,0,0,0.14), 0 8px 24px rgba(0,0,0,0.12), 0 16px 48px rgba(0,0,0,0.20)',
+        'elevation-1': '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
+        'elevation-2': '0 3px 6px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.12)',
+        'elevation-3': '0 10px 20px rgba(0,0,0,0.15), 0 3px 6px rgba(0,0,0,0.10)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',

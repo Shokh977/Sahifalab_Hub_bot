@@ -6,10 +6,13 @@
  */
 
 import React, { useState } from 'react'
-import { Heart, MessageCircle, Trash2, MoreHorizontal } from 'lucide-react'
+import { Heart, MessageCircle, Trash2, MoreHorizontal, Send, Loader2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import UserIdentity from './UserIdentity'
 import type { UserIdentityUser } from './UserIdentity'
+import { linkify } from '../../utils/linkify'
+import api from '../../services/apiService'
 
 export interface PostData {
   id: number
@@ -19,6 +22,13 @@ export interface PostData {
   likes_count: number
   comments_count: number
   is_liked: boolean
+  created_at: string
+}
+
+interface Comment {
+  id: number
+  author: UserIdentityUser
+  content: string
   created_at: string
 }
 
@@ -53,8 +63,14 @@ const PostCard: React.FC<Props> = ({
 }) => {
   const [liked, setLiked] = useState(post.is_liked)
   const [likesCount, setLikesCount] = useState(post.likes_count)
+  const [commentsCount, setCommentsCount] = useState(post.comments_count)
   const [imgLoaded, setImgLoaded] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [showComments, setShowComments] = useState(false)
+  const [comments, setComments] = useState<Comment[]>([])
+  const [commentText, setCommentText] = useState('')
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [sendingComment, setSendingComment] = useState(false)
   const navigate = useNavigate()
   const isOwner = currentUserId === post.author.telegram_id
 
@@ -71,8 +87,41 @@ const PostCard: React.FC<Props> = ({
     }
   }
 
+  const handleToggleComments = async () => {
+    if (showComments) {
+      setShowComments(false)
+      return
+    }
+    setShowComments(true)
+    if (comments.length === 0) {
+      setLoadingComments(true)
+      try {
+        const res = await api.client.get(`/api/v1/social/posts/${post.id}/comments`)
+        setComments(res.data?.comments || res.data || [])
+      } catch (err) {
+        console.error('Failed to fetch comments:', err)
+      }
+      setLoadingComments(false)
+    }
+  }
+
+  const handleSendComment = async () => {
+    const text = commentText.trim()
+    if (!text || sendingComment) return
+    setSendingComment(true)
+    try {
+      const res = await api.client.post(`/api/v1/social/posts/${post.id}/comments`, { content: text })
+      setComments(prev => [...prev, res.data])
+      setCommentsCount(c => c + 1)
+      setCommentText('')
+    } catch (err) {
+      console.error('Failed to send comment:', err)
+    }
+    setSendingComment(false)
+  }
+
   return (
-    <article className="relative rounded-2xl border border-white/[0.06] bg-white/[0.04] backdrop-blur-md p-4 transition-all hover:bg-white/[0.06] hover:shadow-glass">
+    <article className="relative rounded-2xl border border-white/[0.06] bg-white/[0.04] backdrop-blur-md p-4 transition-all hover:bg-white/[0.06] shadow-bento hover:shadow-bento-hover">
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <UserIdentity
@@ -109,7 +158,7 @@ const PostCard: React.FC<Props> = ({
       {/* Content */}
       {post.content && (
         <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed mb-3">
-          {post.content}
+          {linkify(post.content)}
         </p>
       )}
 
@@ -144,13 +193,73 @@ const PostCard: React.FC<Props> = ({
         </button>
 
         <button
-          onClick={() => onComment?.(post.id)}
-          className="flex items-center gap-1.5 text-sm text-white/40 hover:text-blue-400 transition-colors active:scale-90"
+          onClick={handleToggleComments}
+          className={`flex items-center gap-1.5 text-sm transition-colors active:scale-90 ${
+            showComments ? 'text-blue-400' : 'text-white/40 hover:text-blue-400'
+          }`}
         >
-          <MessageCircle className="w-[18px] h-[18px]" />
-          <span className="tabular-nums">{post.comments_count || ''}</span>
+          <MessageCircle className={`w-[18px] h-[18px] ${showComments ? 'fill-blue-400/20' : ''}`} />
+          <span className="tabular-nums">{commentsCount || ''}</span>
         </button>
       </div>
+
+      {/* Inline Comments Section */}
+      <AnimatePresence>
+        {showComments && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="overflow-hidden"
+          >
+            <div className="mt-3 pt-3 border-t border-white/[0.06]">
+              {/* Comment input */}
+              <div className="flex items-center gap-2 mb-3">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleSendComment() }}
+                  placeholder="Izoh yozing..."
+                  className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white placeholder:text-white/25 outline-none focus:border-sahifa-500/30 transition-colors"
+                />
+                <button
+                  onClick={handleSendComment}
+                  disabled={!commentText.trim() || sendingComment}
+                  className="p-2 rounded-xl bg-sahifa-500/10 text-sahifa-400 hover:bg-sahifa-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+                >
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Comments list */}
+              {loadingComments ? (
+                <div className="flex justify-center py-4">
+                  <Loader2 className="w-4 h-4 animate-spin text-white/20" />
+                </div>
+              ) : comments.length === 0 ? (
+                <p className="text-xs text-white/20 text-center py-3">Hali izohlar yo'q</p>
+              ) : (
+                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
+                  {comments.map(comment => (
+                    <div key={comment.id} className="flex gap-2">
+                      <UserIdentity user={comment.author} size="xs" showName={false} onClick={() => navigate(`/profile/${comment.author.telegram_id}`)} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline gap-1.5">
+                          <span className="text-xs font-semibold text-white/70 truncate">{comment.author.full_name || comment.author.username || 'Foydalanuvchi'}</span>
+                          <span className="text-[10px] text-white/25 flex-shrink-0">{timeAgo(comment.created_at)}</span>
+                        </div>
+                        <p className="text-xs text-white/60 leading-relaxed mt-0.5">{linkify(comment.content)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </article>
   )
 }

@@ -7,7 +7,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, UserPlus, UserMinus, MessageCircle, Loader2, Grid3X3, List } from 'lucide-react'
+import { ArrowLeft, UserPlus, UserMinus, MessageCircle, Loader2, Grid3X3, List, BadgeCheck, Shield } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
 import UserIdentity, { getRankInfo } from '../components/social/UserIdentity'
@@ -122,8 +122,17 @@ const PublicProfile: React.FC = () => {
 
             <div className="flex-1 text-center sm:text-left">
               <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                <UserIdentity user={profile} size="lg" showName showRank showBadge className="!gap-3" />
+                <span className="text-lg font-bold text-white">{profile.full_name || profile.username || 'Foydalanuvchi'}</span>
+                {profile.role === 'teacher' && (
+                  <BadgeCheck className="w-[18px] h-[18px] text-blue-400 fill-blue-400/20 flex-shrink-0" />
+                )}
+                {profile.role === 'admin' && (
+                  <Shield className="w-[18px] h-[18px] text-sahifa-500 fill-sahifa-500/20 flex-shrink-0" />
+                )}
               </div>
+              {profile.username && (
+                <p className="text-sm text-white/40">@{profile.username}</p>
+              )}
 
               {profile.bio && (
                 <p className="text-sm text-white/50 mt-2 leading-relaxed">{profile.bio}</p>
@@ -200,20 +209,25 @@ const PublicProfile: React.FC = () => {
           </div>
 
           {posts.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-white/30 text-sm">Hali postlar yo'q</p>
+            <div className="text-center py-16">
+              <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+                <List className="w-8 h-8 text-white/10" />
+              </div>
+              <p className="text-white/30 text-sm font-medium">Hali postlar yo'q</p>
+              <p className="text-white/15 text-xs mt-1">Bu foydalanuvchi hali hech narsa yozmagan</p>
             </div>
           ) : viewMode === 'list' ? (
             <div className="space-y-4">
               {posts.map(post => (
-                <PostCard
-                  key={post.id}
-                  post={post}
-                  currentUserId={myId}
-                  onLike={handleLike}
-                  onUnlike={handleUnlike}
-                  onDelete={isOwnProfile ? handleDelete : undefined}
-                />
+                <div key={post.id} id={`post-${post.id}`}>
+                  <PostCard
+                    post={post}
+                    currentUserId={myId}
+                    onLike={handleLike}
+                    onUnlike={handleUnlike}
+                    onDelete={isOwnProfile ? handleDelete : undefined}
+                  />
+                </div>
               ))}
             </div>
           ) : (
@@ -222,7 +236,7 @@ const PublicProfile: React.FC = () => {
                 <div
                   key={post.id}
                   className="aspect-square bg-pitch-700 cursor-pointer hover:opacity-80 transition-opacity"
-                  onClick={() => {/* Could open post detail */}}
+                  onClick={() => { setViewMode('list'); setTimeout(() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100) }}
                 >
                   <img src={post.image_url!} alt="" className="w-full h-full object-cover" />
                 </div>
@@ -231,6 +245,7 @@ const PublicProfile: React.FC = () => {
                 <div
                   key={post.id}
                   className="aspect-square bg-white/[0.03] flex items-center justify-center p-3 cursor-pointer hover:bg-white/[0.06] transition-colors"
+                  onClick={() => { setViewMode('list'); setTimeout(() => document.getElementById(`post-${post.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 100) }}
                 >
                   <p className="text-[10px] text-white/40 line-clamp-4 text-center leading-snug">
                     {post.content}

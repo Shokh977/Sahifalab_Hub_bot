@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { BookOpenIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
 import HeroSection from './components/HeroSection'
@@ -193,59 +193,72 @@ const NotFoundPage: React.FC = () => {
 }
 
 // All app routes — shared between both layout modes
-const AppRoutes: React.FC = () => (
-  <Routes>
-    {/* Public — accessible without authentication */}
-    <Route path="/login" element={<LoginPage />} />
+const AppRoutes: React.FC = () => {
+  const location = useLocation()
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location.pathname}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+      >
+        <Routes location={location}>
+          {/* Public — accessible without authentication */}
+          <Route path="/login" element={<LoginPage />} />
 
-    {/* Protected — AuthGuard checks JWT in web mode; passes through in Telegram */}
-    <Route element={<AuthGuard />}>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/study" element={<StudyWithMe />} />
-      <Route path="/quiz" element={<QuizPage />} />
-      <Route path="/kitoblar" element={<KitoblarPage />} />
-      <Route path="/kitoblar/:id" element={<BookDetailPage />} />
-      <Route path="/resources" element={<ResourcesPage />} />
-      <Route path="/about" element={<AboutPage />} />
-      <Route path="/admin" element={<AdminRoute />} />
-      <Route path="/cabinet" element={<CabinetPage />} />
-      <Route path="/leaderboard" element={<LeaderboardPage />} />
-      <Route path="/book-summarizer" element={<BookSummarizerPage />} />
-      <Route path="/ai-companion" element={<AICompanionPage />} />
-      <Route path="/courses" element={<CoursesPage />} />
-      <Route path="/courses/:id" element={<CourseDetailPage />} />
+          {/* Protected — AuthGuard checks JWT in web mode; passes through in Telegram */}
+          <Route element={<AuthGuard />}>
+            <Route path="/" element={<HomePage />} />
+            <Route path="/study" element={<StudyWithMe />} />
+            <Route path="/quiz" element={<QuizPage />} />
+            <Route path="/kitoblar" element={<KitoblarPage />} />
+            <Route path="/kitoblar/:id" element={<BookDetailPage />} />
+            <Route path="/resources" element={<ResourcesPage />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/admin" element={<AdminRoute />} />
+            <Route path="/cabinet" element={<CabinetPage />} />
+            <Route path="/leaderboard" element={<LeaderboardPage />} />
+            <Route path="/book-summarizer" element={<BookSummarizerPage />} />
+            <Route path="/ai-companion" element={<AICompanionPage />} />
+            <Route path="/courses" element={<CoursesPage />} />
+            <Route path="/courses/:id" element={<CourseDetailPage />} />
 
-      {/* Social ecosystem */}
-      <Route path="/social" element={<SocialFeed />} />
-      <Route path="/discover" element={<DiscoverUsers />} />
-      <Route path="/profile/:userId" element={<PublicProfile />} />
-      <Route path="/messenger" element={<SlouthMessenger />} />
-      <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
+            {/* Social ecosystem */}
+            <Route path="/social" element={<SocialFeed />} />
+            <Route path="/discover" element={<DiscoverUsers />} />
+            <Route path="/profile/:userId" element={<PublicProfile />} />
+            <Route path="/messenger" element={<SlouthMessenger />} />
+            <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
-      {/* Public teacher profile page — no auth required */}
-      <Route path="/teacher/:id" element={<TeacherPublicPage />} />
+            {/* Public teacher profile page — no auth required */}
+            <Route path="/teacher/:id" element={<TeacherPublicPage />} />
 
-      {/* Teachers gallery — all active instructors */}
-      <Route path="/teachers" element={<TeachersGalleryPage />} />
+            {/* Teachers gallery — all active instructors */}
+            <Route path="/teachers" element={<TeachersGalleryPage />} />
 
-      {/* Teacher & Admin role-gated routes */}
-      <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
-        <Route path="/teacher" element={<TeacherDashboardPage />} />
-        <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
-        <Route path="/courses/create" element={<CourseCreatePage />} />
-        <Route path="/courses/:id/edit" element={<CourseCreatePage />} />
-        <Route path="/courses/:courseId/lessons/add" element={<LessonCreatePage />} />
-        <Route path="/courses/:courseId/lessons/:lessonId/edit" element={<LessonCreatePage />} />
-      </Route>
+            {/* Teacher & Admin role-gated routes */}
+            <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
+              <Route path="/teacher" element={<TeacherDashboardPage />} />
+              <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
+              <Route path="/courses/create" element={<CourseCreatePage />} />
+              <Route path="/courses/:id/edit" element={<CourseCreatePage />} />
+              <Route path="/courses/:courseId/lessons/add" element={<LessonCreatePage />} />
+              <Route path="/courses/:courseId/lessons/:lessonId/edit" element={<LessonCreatePage />} />
+            </Route>
 
-      {/* Teacher application — any authenticated user */}
-      <Route path="/become-teacher" element={<TeacherApplyPage />} />
-    </Route>
+            {/* Teacher application — any authenticated user */}
+            <Route path="/become-teacher" element={<TeacherApplyPage />} />
+          </Route>
 
-    {/* 404 — catch-all */}
-    <Route path="*" element={<NotFoundPage />} />
-  </Routes>
-)
+          {/* 404 — catch-all */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Routes>
+      </motion.div>
+    </AnimatePresence>
+  )
+}
 
 /**
  * MaintenanceBanner — shows a dismissible Uzbek warning until 11-April 2026.

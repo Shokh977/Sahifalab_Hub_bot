@@ -236,6 +236,43 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   if (m === 'post' && u.match(/^\/api\/v1\/social\/posts\/\d+\/like$/)) return ok({ success: true }, config)
   if (m === 'delete' && u.match(/^\/api\/v1\/social\/posts\/\d+\/like$/)) return ok({ success: true }, config)
 
+  // ── Social — Comments ─────────────────────────────────────────────────────
+  if (m === 'get' && u.match(/^\/api\/v1\/social\/posts\/\d+\/comments$/)) {
+    const mockComments = [
+      {
+        id: 1,
+        author: { telegram_id: 200001, full_name: 'Sardor Rustamov', username: 'sardor_r', photo_url: null, role: 'student', level: 5, xp: 2400 },
+        content: 'Juda foydali post! 👏',
+        created_at: new Date(Date.now() - 3600000).toISOString(),
+      },
+      {
+        id: 2,
+        author: { telegram_id: 200002, full_name: 'Nilufar Karimova', username: 'nilufar_k', photo_url: null, role: 'teacher', level: 12, xp: 14400 },
+        content: "Qiziqarli fikr. Men ham shu haqda o'ylab ko'rgan edim.",
+        created_at: new Date(Date.now() - 1800000).toISOString(),
+      },
+    ]
+    return ok({ comments: mockComments }, config)
+  }
+  if (m === 'post' && u.match(/^\/api\/v1\/social\/posts\/\d+\/comments$/)) {
+    const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    const newComment = {
+      id: Date.now(),
+      author: {
+        telegram_id: MOCK_USER.telegram_id,
+        full_name: MOCK_USER.first_name,
+        username: MOCK_USER.username,
+        photo_url: MOCK_USER.photo_url,
+        role: MOCK_USER.role,
+        level: MOCK_USER.level,
+        xp: MOCK_USER.total_xp,
+      },
+      content: body?.content ?? '',
+      created_at: new Date().toISOString(),
+    }
+    return ok(newComment, config)
+  }
+
   // ── Social — Delete post ──────────────────────────────────────────────────
   if (m === 'delete' && u.match(/^\/api\/v1\/social\/posts\/\d+$/)) return ok({ success: true }, config)
 

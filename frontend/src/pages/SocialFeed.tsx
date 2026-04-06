@@ -163,11 +163,21 @@ const SocialFeed: React.FC = () => {
                 <Loader2 className="w-6 h-6 animate-spin text-white/30" />
               </div>
             ) : posts.length === 0 ? (
-              <div className="text-center py-20">
-                <p className="text-white/30 text-sm">
+              <div className="text-center py-16">
+                <div className="w-24 h-24 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-sahifa-500/10 to-sahifa-600/5 border border-sahifa-500/10 flex items-center justify-center">
+                  {tab === 'feed' ? (
+                    <Users className="w-10 h-10 text-sahifa-500/30" />
+                  ) : (
+                    <Compass className="w-10 h-10 text-sahifa-500/30" />
+                  )}
+                </div>
+                <h3 className="text-base font-semibold text-white/50 mb-1">
+                  {tab === 'feed' ? "Lenta bo'sh" : "Hali postlar yo'q"}
+                </h3>
+                <p className="text-sm text-white/25 max-w-xs mx-auto leading-relaxed">
                   {tab === 'feed'
-                    ? "Hali hech kim kuzatilmayapti. Kashfiyot bo'limidan foydalanuvchilarni toping!"
-                    : "Hali postlar yo'q. Birinchi bo'ling!"}
+                    ? "Kashfiyot bo'limidan qiziqarli foydalanuvchilarni toping va kuzating!"
+                    : "Birinchi bo'lib post yozing va jamiyatga ilhom ulashing!"}
                 </p>
               </div>
             ) : (
