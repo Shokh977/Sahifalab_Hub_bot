@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import UserIdentity from './UserIdentity'
 import type { UserIdentityUser } from './UserIdentity'
 import DeleteConfirmModal from './DeleteConfirmModal'
+import UnifiedComment from './UnifiedComment'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
 
@@ -85,10 +86,7 @@ const PostCard: React.FC<Props> = ({
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'post' | 'comment'; id: number } | null>(null)
   const [deleting, setDeleting] = useState(false)
 
-  // Comment edit state
-  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
-  const [editCommentText, setEditCommentText] = useState('')
-  const [savingCommentEdit, setSavingCommentEdit] = useState(false)
+  // Comment menu state (tracks which comment's ⋯ menu is open)
   const [showCommentMenu, setShowCommentMenu] = useState<number | null>(null)
 
   const navigate = useNavigate()
@@ -191,25 +189,10 @@ const PostCard: React.FC<Props> = ({
     setDeleteTarget(null)
   }
 
-  // ── Comment editing ─────────────────────────────────────────────────────
-  const handleStartEditComment = (comment: Comment) => {
-    setEditingCommentId(comment.id)
-    setEditCommentText(comment.content)
-    setShowCommentMenu(null)
-  }
-
-  const handleSaveCommentEdit = async (commentId: number) => {
-    const text = editCommentText.trim()
-    if (!text || savingCommentEdit) return
-    setSavingCommentEdit(true)
-    try {
-      await api.client.patch(`/api/v1/social/comments/${commentId}`, { content: text })
-      setComments(prev => prev.map(c => c.id === commentId ? { ...c, content: text } : c))
-      setEditingCommentId(null)
-    } catch (err) {
-      console.error('Failed to edit comment:', err)
-    }
-    setSavingCommentEdit(false)
+  // ── Comment editing (called from UnifiedComment) ────────────────────────
+  const handleEditComment = async (commentId: number, newContent: string) => {
+    await api.client.patch(`/api/v1/social/comments/${commentId}`, { content: newContent })
+    setComments(prev => prev.map(c => c.id === commentId ? { ...c, content: newContent } : c))
   }
 
   return (
@@ -367,72 +350,18 @@ const PostCard: React.FC<Props> = ({
                 <p className="text-xs text-gray-400 dark:text-white/20 text-center py-3">Hali izohlar yo'q</p>
               ) : (
                 <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                  {comments.map(comment => {
-                    const isCommentOwner = currentUserId === comment.author.telegram_id
-                    const isEditingThis = editingCommentId === comment.id
-
-                    return (
-                    <div key={comment.id} className="group flex gap-2">
-                      <UserIdentity user={comment.author} size="xs" showName={false} onClick={() => navigate(`/profile/${comment.author.telegram_id}`)} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-xs font-semibold text-gray-700 dark:text-white/70 truncate">{comment.author.full_name || comment.author.username || 'Foydalanuvchi'}</span>
-                          <span className="text-[10px] text-gray-400 dark:text-white/25 flex-shrink-0">{timeAgo(comment.created_at)}</span>
-                          {isCommentOwner && !isEditingThis && (
-                            <div className="relative ml-auto">
-                              <button
-                                onClick={() => setShowCommentMenu(showCommentMenu === comment.id ? null : comment.id)}
-                                className="p-0.5 rounded text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/50 opacity-0 group-hover:opacity-100 transition-all"
-                              >
-                                <MoreHorizontal className="w-3.5 h-3.5" />
-                              </button>
-                              {showCommentMenu === comment.id && (
-                                <div className="absolute right-0 top-5 z-20 w-32 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white/95 dark:bg-pitch-700/95 backdrop-blur-xl shadow-frost dark:shadow-glass-lg py-1">
-                                  <button
-                                    onClick={() => handleStartEditComment(comment)}
-                                    className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-xs text-gray-700 dark:text-white/70 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
-                                  >
-                                    <Pencil className="w-3 h-3" /> Tahrirlash
-                                  </button>
-                                  <button
-                                    onClick={() => handleRequestDelete('comment', comment.id)}
-                                    className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-xs text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-white/[0.06] transition-colors"
-                                  >
-                                    <Trash2 className="w-3 h-3" /> O'chirish
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        {isEditingThis ? (
-                          <div className="mt-1">
-                            <input
-                              type="text"
-                              value={editCommentText}
-                              onChange={e => setEditCommentText(e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter') handleSaveCommentEdit(comment.id); if (e.key === 'Escape') setEditingCommentId(null) }}
-                              className="w-full px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-sahifa-500/30 text-xs text-gray-800 dark:text-white outline-none focus:border-sahifa-500/50 transition-colors"
-                              autoFocus
-                            />
-                            <div className="flex gap-1.5 mt-1">
-                              <button onClick={() => setEditingCommentId(null)} className="text-[10px] text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/50">Bekor</button>
-                              <button
-                                onClick={() => handleSaveCommentEdit(comment.id)}
-                                disabled={!editCommentText.trim() || savingCommentEdit}
-                                className="text-[10px] text-sahifa-500 font-semibold hover:text-sahifa-600 disabled:opacity-40"
-                              >
-                                {savingCommentEdit ? 'Saqlanmoqda...' : 'Saqlash'}
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-600 dark:text-white/60 leading-relaxed mt-0.5">{linkify(comment.content)}</p>
-                        )}
-                      </div>
-                    </div>
-                    )
-                  })}
+                  {comments.map(comment => (
+                    <UnifiedComment
+                      key={comment.id}
+                      comment={comment}
+                      isOwner={currentUserId === comment.author.telegram_id}
+                      menuOpen={showCommentMenu === comment.id}
+                      onToggleMenu={() => setShowCommentMenu(showCommentMenu === comment.id ? null : comment.id)}
+                      onEdit={handleEditComment}
+                      onRequestDelete={id => handleRequestDelete('comment', id)}
+                      onAuthorClick={() => navigate(`/profile/${comment.author.telegram_id}`)}
+                    />
+                  ))}
                 </div>
               )}
             </div>

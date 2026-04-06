@@ -22,6 +22,9 @@ import {
 import PageWrapper from '../components/PageWrapper'
 import VideoPlayer from '../components/VideoPlayer'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+import UnifiedComment from '../components/social/UnifiedComment'
+import type { UnifiedCommentData } from '../components/social/UnifiedComment'
+import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
@@ -59,6 +62,24 @@ function formatDuration(minutes: number) {
 function levelLabel(level: string) {
   const map: Record<string, string> = { beginner: "Boshlang'ich", intermediate: "O'rta", advanced: 'Yuqori' }
   return map[level] ?? level
+}
+
+/** Map a Review to UnifiedCommentData so the shared component can render it. */
+function reviewToCommentData(r: Review): UnifiedCommentData {
+  return {
+    id: r.id,
+    author: {
+      telegram_id: r.student_id,
+      first_name: r.profiles?.first_name ?? undefined,
+      username: r.profiles?.username ?? undefined,
+      photo_url: r.profiles?.photo_url ?? undefined,
+      role: 'student',
+      level: 1,
+    },
+    content: r.review || '',
+    created_at: r.created_at,
+    rating: r.rating,
+  }
 }
 
 // ── RatingWidget (outside component for stable ref) ───────────────────────────
@@ -237,6 +258,11 @@ const CourseDetailPage: React.FC = () => {
   const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
   const [showPaymentModal, setShowPaymentModal] = useState(false)
 
+  // Review menu & delete state (for UnifiedComment)
+  const [showReviewMenu,     setShowReviewMenu]     = useState<number | null>(null)
+  const [deleteReviewTarget, setDeleteReviewTarget] = useState<number | null>(null)
+  const [deletingReview,     setDeletingReview]     = useState(false)
+
   const courseId    = parseInt(id ?? '0', 10)
   const isOwner     = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
   const freeLessons = lessons.filter(l => l.is_free).length
@@ -338,6 +364,32 @@ const CourseDetailPage: React.FC = () => {
     } catch { /* toast */ }
     setRatingLoading(false)
   }, [ratingLoading, courseId, myReview])
+
+  // ── Review edit / delete handlers (for UnifiedComment) ──────────────────
+  const handleEditReview = useCallback(async (reviewId: number, newContent: string) => {
+    // Re-submit the review text via the existing rating API
+    try {
+      await apiService.rateCourse(courseId, myRating || 5, newContent)
+      setMyReview(newContent)
+      setReviews(prev =>
+        prev.map(r => r.id === reviewId ? { ...r, review: newContent } : r),
+      )
+    } catch { /* toast handled by apiService */ }
+  }, [courseId, myRating])
+
+  const handleConfirmDeleteReview = useCallback(async () => {
+    if (deleteReviewTarget === null) return
+    setDeletingReview(true)
+    try {
+      // Remove via API (or mock — simply re-submit with empty text and 0 stars)
+      await apiService.rateCourse(courseId, 0, '')
+      setMyRating(0)
+      setMyReview('')
+      setReviews(prev => prev.filter(r => r.id !== deleteReviewTarget))
+    } catch { /* toast */ }
+    setDeletingReview(false)
+    setDeleteReviewTarget(null)
+  }, [deleteReviewTarget, courseId])
 
   const handleEnroll = useCallback(async () => {
     if (!course || isOwner || isEnrolled || enrollLoading) return
@@ -698,52 +750,31 @@ const CourseDetailPage: React.FC = () => {
           Hali sharh yo'q. Birinchi bo'lib fikr bildiring!
         </p>
       ) : (
-        <div className="space-y-3">
-          {reviews.map((r, idx) => (
-            <motion.div
-              key={r.id}
-              initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.04 }}
-              className={[
-                'flex gap-3 p-4 rounded-2xl border transition-colors',
-                idx === 0 && r.rating >= 4
-                  ? 'bg-gradient-to-br from-amber-50 to-orange-50/40 dark:from-amber-900/10 dark:to-orange-900/5 border-amber-200/60 dark:border-amber-700/20'
-                  : 'bg-white dark:bg-white/[0.025] border-slate-100 dark:border-white/6',
-              ].join(' ')}
-            >
-              {r.profiles?.photo_url ? (
-                <img src={r.profiles.photo_url} alt={r.profiles.first_name ?? 'User'}
-                  className="w-9 h-9 rounded-xl object-cover shrink-0 ring-2 ring-slate-100 dark:ring-white/10" />
-              ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F15929] to-[#FF7043] flex items-center justify-center shrink-0 text-white text-sm font-black">
-                  {(r.profiles?.first_name ?? r.profiles?.username ?? 'A').charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs font-bold text-gray-900 dark:text-white">
-                    {r.profiles?.first_name ?? r.profiles?.username ?? 'Foydalanuvchi'}
-                  </span>
-                  {idx === 0 && r.rating >= 4 && (
-                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-bold">
-                      Top sharh
-                    </span>
-                  )}
-                  <span className="ml-auto text-[10px] text-gray-400">
-                    {new Date(r.created_at).toLocaleDateString('uz-UZ')}
-                  </span>
-                </div>
-                <div className="flex gap-0.5 mb-1.5">
-                  {[1,2,3,4,5].map(s => (
-                    <Star key={s} className={`w-3 h-3 ${s <= r.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-200 dark:text-slate-700'}`} />
-                  ))}
-                </div>
-                {r.review && (
-                  <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{r.review}</p>
-                )}
-              </div>
-            </motion.div>
-          ))}
+        <div className="space-y-2.5">
+          <AnimatePresence>
+            {reviews.map(r => {
+              const isReviewOwner = !!(user && user.id === r.student_id)
+              return (
+                <motion.div
+                  key={r.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -8 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                >
+                  <UnifiedComment
+                    comment={reviewToCommentData(r)}
+                    isOwner={isReviewOwner}
+                    menuOpen={showReviewMenu === r.id}
+                    onToggleMenu={() => setShowReviewMenu(showReviewMenu === r.id ? null : r.id)}
+                    onEdit={handleEditReview}
+                    onRequestDelete={id => setDeleteReviewTarget(id)}
+                    onAuthorClick={() => navigate(`/profile/${r.student_id}`)}
+                  />
+                </motion.div>
+              )
+            })}
+          </AnimatePresence>
         </div>
       )}
     </div>
@@ -1101,6 +1132,16 @@ const CourseDetailPage: React.FC = () => {
           userId={user?.id}
         />
       )}
+
+      {/* Review delete confirm modal */}
+      <DeleteConfirmModal
+        open={deleteReviewTarget !== null}
+        title="Sharhni o'chirish"
+        description="Bu sharh butunlay o'chiriladi. Ortga qaytarib bo'lmaydi."
+        loading={deletingReview}
+        onConfirm={handleConfirmDeleteReview}
+        onCancel={() => setDeleteReviewTarget(null)}
+      />
 
     </PageWrapper>
   )
