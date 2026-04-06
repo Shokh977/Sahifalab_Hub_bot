@@ -1,29 +1,34 @@
 /**
- * CourseDetailPage — Premium redesign
- * MasterClass × Notion × Stripe-level polish
+ * CourseDetailPage — Premium "Focus Mode" redesign
+ * Udemy-inspired with Modern Bento twist
  *
  * Desktop (lg+):
- *   LEFT  — hero → video player → lesson info → description → rating → reviews
- *   RIGHT — sticky CTA card + curriculum list
+ *   LEFT  — Video player (rounded-[24px]) + Tabbed content (Tavsif | Resurslar | Sharhlar)
+ *   RIGHT — Sticky sidebar: progress bar + CTA + accordion curriculum
  *
  * Mobile / Telegram:
- *   Stacked: hero → video → CTA → tab bar (Curriculum | Haqida | Sharhlar)
+ *   Stacked: compact header → video → CTA → tab bar → content
+ *
+ * Theme:
+ *   Light: #F8F9FA bg + frosted glass (white/70) containers
+ *   Dark:  #1C1C22 bg + deep slate glass containers
  */
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  GraduationCap, ArrowLeft, RefreshCw, ArrowRight,
+  GraduationCap, ArrowLeft, RefreshCw, ArrowUp,
   Banknote, BarChart2, CheckCircle2, ChevronDown, Clock,
   FileText, AlertCircle, Globe, Lock,
   PenLine, Play, HelpCircle, Star, Tag,
   Users, Video, Zap, Award, ChevronRight, Flame,
 } from 'lucide-react'
-import PageWrapper from '../components/PageWrapper'
 import VideoPlayer from '../components/VideoPlayer'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import UnifiedComment from '../components/social/UnifiedComment'
 import type { UnifiedCommentData } from '../components/social/UnifiedComment'
+import UserIdentity from '../components/social/UserIdentity'
+import type { UserIdentityUser } from '../components/social/UserIdentity'
 import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
@@ -59,12 +64,17 @@ function formatDuration(minutes: number) {
   const h = Math.floor(minutes / 60), m = minutes % 60
   return h ? `${h} soat${m > 0 ? ' ' + m + ' daq' : ''}` : `${m} daqiqa`
 }
+function formatLessonDuration(minutes: number) {
+  if (!minutes) return ''
+  const h = Math.floor(minutes / 60), m = minutes % 60
+  return h ? `${h}:${m.toString().padStart(2, '0')}` : `${m}:00`
+}
 function levelLabel(level: string) {
   const map: Record<string, string> = { beginner: "Boshlang'ich", intermediate: "O'rta", advanced: 'Yuqori' }
   return map[level] ?? level
 }
 
-/** Map a Review to UnifiedCommentData so the shared component can render it. */
+/** Map a Review → UnifiedCommentData for the shared component. */
 function reviewToCommentData(r: Review): UnifiedCommentData {
   return {
     id: r.id,
@@ -82,7 +92,7 @@ function reviewToCommentData(r: Review): UnifiedCommentData {
   }
 }
 
-// ── RatingWidget (outside component for stable ref) ───────────────────────────
+// ── RatingWidget ──────────────────────────────────────────────────────────────
 interface RatingWidgetProps {
   myRating: number; myReview: string; hoverStar: number; ratingLoading: boolean
   onReviewChange: (v: string) => void
@@ -94,7 +104,7 @@ const RatingWidget: React.FC<RatingWidgetProps> = ({
   myRating, myReview, hoverStar, ratingLoading,
   onReviewChange, onHoverStar, onLeaveStar, onSubmit,
 }) => (
-  <div className="p-5 rounded-2xl border border-slate-200 dark:border-white/8 bg-white dark:bg-white/[0.025]">
+  <div className="p-5 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md">
     <p className="text-xs font-bold text-gray-700 dark:text-gray-300 mb-3">
       {myRating ? `Sizning bahoyingiz: ${myRating} ★` : 'Kursni baholang'}
     </p>
@@ -112,127 +122,29 @@ const RatingWidget: React.FC<RatingWidgetProps> = ({
     <textarea
       value={myReview} onChange={e => onReviewChange(e.target.value)}
       placeholder="Qo'shimcha fikr bildiring (ixtiyoriy)..." rows={2}
-      className="w-full text-xs rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 p-3 resize-none focus:outline-none focus:ring-2 focus:ring-[#F15929]/40 placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-shadow"
+      className="w-full text-xs rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-[#F8F9FA] dark:bg-white/[0.04] text-gray-800 dark:text-gray-200 p-3 resize-none focus:outline-none focus:ring-2 focus:ring-[#F15929]/40 placeholder:text-gray-400 dark:placeholder:text-gray-600 transition-shadow"
     />
     {myReview.trim() && (
       <button onClick={() => onSubmit(myRating || 5)} disabled={ratingLoading}
-        className="mt-2.5 w-full py-2.5 rounded-xl text-xs font-bold bg-[#F15929] text-white hover:bg-[#e84e22] disabled:opacity-50 transition-all">
+        className="mt-2.5 w-full py-2.5 rounded-xl text-xs font-bold bg-[#F15929] text-white hover:bg-[#e84e22] disabled:opacity-50 transition-all active:scale-[.98]">
         Saqlash
       </button>
     )}
   </div>
 )
 
-// ── SidebarLessonRow ──────────────────────────────────────────────────────────
-const SidebarLessonRow: React.FC<{
-  lesson: Lesson; index: number; isActive: boolean; courseId: number
-  isCompleted: boolean; isUnlocked: boolean; isOwner: boolean
-  isExpanded: boolean
-  onClick: () => void
-  onToggleExpand: () => void
-}> = ({ lesson, index, isActive, isCompleted, isUnlocked, isOwner, courseId, isExpanded, onClick, onToggleExpand }) => {
-  const hasMeta = !!(lesson.description?.trim() || lesson.material_url)
-  const isPdf   = !!(lesson.material_url && !lesson.video_url)
-  const isQuiz  = lesson.lesson_type === 'quiz'
-  const isMat   = isPdf || lesson.lesson_type === 'material'
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.02 }}
-      className={[
-        'rounded-xl overflow-hidden transition-all duration-200 border-l-2',
-        isActive
-          ? isQuiz ? 'bg-violet-50 dark:bg-violet-900/10 border-l-violet-500'
-          : isMat  ? 'bg-blue-50 dark:bg-blue-900/10 border-l-blue-500'
-                   : 'bg-[#F15929]/[0.07] dark:bg-[#F15929]/[0.08] border-l-[#F15929]'
-          : isUnlocked
-            ? 'hover:bg-slate-100 dark:hover:bg-white/[0.04] border-l-transparent'
-            : 'opacity-45 border-l-transparent',
-      ].join(' ')}
-    >
-      <div
-        onClick={isUnlocked ? onClick : undefined}
-        className={['flex items-center gap-2.5 px-3 py-2.5', isUnlocked ? 'cursor-pointer' : ''].join(' ')}
-      >
-        {/* Icon */}
-        <div className={[
-          'w-7 h-7 rounded-lg flex items-center justify-center shrink-0',
-          isCompleted ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' :
-          isActive && isQuiz  ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400' :
-          isActive && isMat   ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' :
-          isActive            ? 'bg-[#F15929]/10 text-[#F15929]' :
-          isUnlocked          ? 'bg-slate-100 dark:bg-white/8 text-slate-500 dark:text-slate-400' :
-                                'bg-slate-100 dark:bg-white/5 text-slate-400',
-        ].join(' ')}>
-          {isCompleted  ? <CheckCircle2 className="w-4 h-4" /> :
-           !isUnlocked  ? <Lock className="w-3.5 h-3.5" /> :
-           isQuiz       ? <HelpCircle className="w-3.5 h-3.5" /> :
-           isMat        ? <FileText className="w-3.5 h-3.5" /> :
-                          <Play className="w-3.5 h-3.5" />}
-        </div>
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          <p className={[
-            'text-xs font-semibold truncate leading-snug',
-            isActive    ? (isQuiz ? 'text-violet-600 dark:text-violet-400' : isMat ? 'text-blue-600 dark:text-blue-400' : 'text-[#F15929]') :
-            isCompleted ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-800 dark:text-gray-200',
-          ].join(' ')}>
-            {lesson.title}
-          </p>
-          <div className="flex items-center gap-1.5 mt-0.5">
-            {lesson.duration_minutes > 0 && (
-              <span className="text-[10px] text-gray-400 dark:text-gray-500 inline-flex items-center gap-0.5">
-                <Clock className="w-2.5 h-2.5" />{lesson.duration_minutes}daq
-              </span>
-            )}
-            {lesson.is_free && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 font-bold">Bepul</span>}
-            {isQuiz      && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 font-bold">Quiz</span>}
-            {lesson.material_url && <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 font-bold">PDF</span>}
-          </div>
-        </div>
-        {hasMeta && isUnlocked && (
-          <button type="button" onClick={e => { e.stopPropagation(); onToggleExpand() }}
-            className="shrink-0 p-1 text-gray-400 hover:text-[#F15929] transition-colors">
-            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
-          </button>
-        )}
-        {isOwner && (
-          <Link to={`/courses/${courseId}/lessons/${lesson.id}/edit`} onClick={e => e.stopPropagation()}
-            className="shrink-0 p-1 text-gray-400 hover:text-[#F15929] transition-colors">
-            <PenLine className="w-3.5 h-3.5" />
-          </Link>
-        )}
-      </div>
-      {/* Expandable detail */}
-      {hasMeta && isExpanded && (
-        <div className="px-3 pb-3 pt-1.5 space-y-2 border-t border-slate-100 dark:border-white/6">
-          {lesson.description?.trim() && (
-            <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{lesson.description}</p>
-          )}
-          {lesson.material_url && (
-            <a href={lesson.material_url} target="_blank" rel="noopener noreferrer"
-              onClick={e => e.stopPropagation()}
-              className="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 font-medium transition-colors">
-              <FileText className="w-3.5 h-3.5 shrink-0" />
-              {lesson.material_name || 'PDF materialini yuklab olish'}
-            </a>
-          )}
-        </div>
-      )}
-    </motion.div>
-  )
-}
-
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════════
+// Main page
+// ══════════════════════════════════════════════════════════════════════════════
 const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { user } = useAuth()
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { isTelegram } = usePlatform()
   useTelegramWebApp()
+  const scrollRef = useRef<HTMLDivElement>(null)
 
+  // ── State ───────────────────────────────────────────────────────────────
   const [course,         setCourse]         = useState<Course | null>(null)
   const [lessons,        setLessons]        = useState<Lesson[]>([])
   const [loading,        setLoading]        = useState(true)
@@ -249,20 +161,27 @@ const CourseDetailPage: React.FC = () => {
   const [hoverStar,      setHoverStar]      = useState(0)
   const [ratingLoading,  setRatingLoading]  = useState(false)
   const [reviewsLoading, setReviewsLoading] = useState(false)
-  const [mobileTab,      setMobileTab]      = useState<'curriculum' | 'overview' | 'reviews'>('curriculum')
   const [teacherProfile, setTeacherProfile] = useState<{
     first_name?: string | null; username?: string | null; photo_url?: string | null
     specialization?: string | null; bio?: string | null
   } | null>(null)
-  const [expandedLessons,  setExpandedLessons]  = useState<Set<number>>(new Set())
   const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
   const [showPaymentModal, setShowPaymentModal] = useState(false)
 
-  // Review menu & delete state (for UnifiedComment)
+  // Content tab (Tavsif | Resurslar | Sharhlar)
+  const [contentTab, setContentTab] = useState<'description' | 'resources' | 'reviews'>('description')
+  // Mobile view toggle (Kurs | Darslar)
+  const [mobileView, setMobileView] = useState<'content' | 'curriculum'>('content')
+
+  // Scroll-to-top
+  const [showScrollTop, setShowScrollTop] = useState(false)
+
+  // Review menu & delete (UnifiedComment)
   const [showReviewMenu,     setShowReviewMenu]     = useState<number | null>(null)
   const [deleteReviewTarget, setDeleteReviewTarget] = useState<number | null>(null)
   const [deletingReview,     setDeletingReview]     = useState(false)
 
+  // ── Derived ─────────────────────────────────────────────────────────────
   const courseId    = parseInt(id ?? '0', 10)
   const isOwner     = !!(user && (user.id === course?.teacher_id || user.role === 'admin'))
   const freeLessons = lessons.filter(l => l.is_free).length
@@ -270,6 +189,23 @@ const CourseDetailPage: React.FC = () => {
   const avgRating   = reviews.length > 0
     ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length
     : (course?.rating ?? 0)
+
+  // Teacher as UserIdentityUser for the unified component
+  const teacherUser: UserIdentityUser | null = teacherProfile ? {
+    telegram_id: course?.teacher_id ?? 0,
+    first_name: teacherProfile.first_name ?? undefined,
+    username: teacherProfile.username ?? undefined,
+    photo_url: teacherProfile.photo_url ?? undefined,
+    role: 'teacher',
+    level: 10,
+  } : null
+
+  // ── Scroll listener ─────────────────────────────────────────────────────
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 400)
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   // ── Load course + lessons ─────────────────────────────────────────────────
   useEffect(() => {
@@ -327,7 +263,6 @@ const CourseDetailPage: React.FC = () => {
     const unlocked = lesson.is_free || isOwner || isEnrolled
     if (!unlocked) return
     setActiveLesson(lesson)
-    setExpandedLessons(prev => new Set([...prev, lesson.id]))
     try {
       const res = await apiService.getLesson(lesson.id)
       const d = res.data
@@ -345,6 +280,8 @@ const CourseDetailPage: React.FC = () => {
           .catch(() => {})
       }
     } catch { /* toast handled by apiService */ }
+    if (window.innerWidth < 1024) setMobileView('content')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [isOwner, isEnrolled])
 
   const handleSubmitRating = useCallback(async (stars: number) => {
@@ -365,23 +302,20 @@ const CourseDetailPage: React.FC = () => {
     setRatingLoading(false)
   }, [ratingLoading, courseId, myReview])
 
-  // ── Review edit / delete handlers (for UnifiedComment) ──────────────────
   const handleEditReview = useCallback(async (reviewId: number, newContent: string) => {
-    // Re-submit the review text via the existing rating API
     try {
       await apiService.rateCourse(courseId, myRating || 5, newContent)
       setMyReview(newContent)
       setReviews(prev =>
         prev.map(r => r.id === reviewId ? { ...r, review: newContent } : r),
       )
-    } catch { /* toast handled by apiService */ }
+    } catch { /* toast */ }
   }, [courseId, myRating])
 
   const handleConfirmDeleteReview = useCallback(async () => {
     if (deleteReviewTarget === null) return
     setDeletingReview(true)
     try {
-      // Remove via API (or mock — simply re-submit with empty text and 0 stars)
       await apiService.rateCourse(courseId, 0, '')
       setMyRating(0)
       setMyReview('')
@@ -435,37 +369,15 @@ const CourseDetailPage: React.FC = () => {
     return next
   }), [])
 
-  // ── Skeleton loading ─────────────────────────────────────────────────────
-  if (loading) return (
-    <PageWrapper>
-      <div className="animate-pulse space-y-5">
-        <div className="h-8 w-36 rounded-xl bg-slate-100 dark:bg-white/5" />
-        <div className="h-72 rounded-2xl bg-slate-100 dark:bg-white/5" />
-        <div className="h-9 w-3/4 rounded-xl bg-slate-100 dark:bg-white/5" />
-        <div className="h-4 w-1/2 rounded-xl bg-slate-100 dark:bg-white/5" />
-        <div className="grid grid-cols-3 gap-3">
-          {[1,2,3].map(i => <div key={i} className="h-16 rounded-xl bg-slate-100 dark:bg-white/5" />)}
-        </div>
-      </div>
-    </PageWrapper>
-  )
+  const ratingWidgetProps: RatingWidgetProps = {
+    myRating, myReview, hoverStar, ratingLoading,
+    onReviewChange: setMyReview,
+    onHoverStar:    setHoverStar,
+    onLeaveStar:    handleLeaveStar,
+    onSubmit:       handleSubmitRating,
+  }
 
-  if (error || !course) return (
-    <PageWrapper>
-      <div className="text-center py-20 space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center mx-auto">
-          <AlertCircle className="w-8 h-8 text-red-400" />
-        </div>
-        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{error || 'Kurs topilmadi'}</p>
-        <button onClick={() => navigate('/courses')}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#F15929] hover:text-[#e84e22] transition-colors">
-          <ArrowLeft className="w-3.5 h-3.5" /> Kurslarga qaytish
-        </button>
-      </div>
-    </PageWrapper>
-  )
-
-  // ── Group lessons into collapsible modules ────────────────────────────────
+  // ── Module grouping ─────────────────────────────────────────────────────
   const modules: { title: string; lessons: Lesson[] }[] = []
   for (const lesson of lessons) {
     const st   = lesson.section_title?.trim() || 'Darslar'
@@ -475,651 +387,679 @@ const CourseDetailPage: React.FC = () => {
   }
   const multiModule = modules.length > 1
 
-  const ratingWidgetProps: RatingWidgetProps = {
-    myRating, myReview, hoverStar, ratingLoading,
-    onReviewChange: setMyReview,
-    onHoverStar:    setHoverStar,
-    onLeaveStar:    handleLeaveStar,
-    onSubmit:       handleSubmitRating,
-  }
+  // Resources (PDF / material lessons)
+  const resourceLessons = lessons.filter(l => l.material_url)
 
-  // ──────────────────────────────────────────────────────────────────────────
-  // Shared JSX blocks
-  // ──────────────────────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════
+  // Sidebar renderer (shared between desktop + mobile)
+  // ════════════════════════════════════════════════════════════════════════
+  const renderSidebar = () => (
+    <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md overflow-hidden flex flex-col lg:max-h-[calc(100vh-88px)]">
 
-  // ── CTA + Progress card ───────────────────────────────────────────────────
-  const ctaCardJsx = (
-    <div className="space-y-4">
-      {/* Price */}
-      {course.is_paid && !isOwner && !isEnrolled && (
-        <div className="flex items-baseline gap-1.5">
-          <span className="text-3xl font-black text-gray-900 dark:text-white">
-            {course.price.toLocaleString()}
-          </span>
-          <span className="text-sm text-gray-400">so'm</span>
-        </div>
-      )}
-
-      {/* Primary CTA */}
-      {!isOwner ? (
-        <button onClick={handleEnroll} disabled={isEnrolled || enrollLoading}
-          className={[
-            'w-full py-3.5 rounded-2xl font-bold text-sm transition-all active:scale-[.98] flex items-center justify-center gap-2',
-            isEnrolled
-              ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 cursor-default'
-              : course.is_paid
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-[0_8px_24px_rgba(245,158,11,0.35)] hover:shadow-[0_12px_32px_rgba(245,158,11,0.5)] hover:brightness-105'
-                : 'bg-gradient-to-r from-[#F15929] to-[#FF7043] text-white shadow-[0_8px_24px_rgba(241,89,41,0.35)] hover:shadow-[0_12px_32px_rgba(241,89,41,0.5)] hover:brightness-105',
-          ].join(' ')}>
-          {isEnrolled    ? <><CheckCircle2 className="w-4 h-4" /> Yozilgansiz</> :
-           enrollLoading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Yuklanmoqda...</> :
-           course.is_paid ? <><Banknote className="w-4 h-4" /> Sotib olish</> :
-                            <><Zap className="w-4 h-4" /> Bepul boshlash</>}
-        </button>
-      ) : (
-        <div className="space-y-2">
-          <Link to={`/courses/${course.id}/edit`}
-            className="flex items-center justify-center gap-2 w-full py-3.5 rounded-2xl font-bold text-sm bg-gradient-to-r from-[#F15929] to-[#FF7043] text-white shadow-[0_8px_24px_rgba(241,89,41,0.35)] hover:brightness-105 transition-all">
-            <PenLine className="w-4 h-4" /> Kursni tahrirlash
-          </Link>
-          <Link to={`/courses/${course.id}/lessons/add`}
-            className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl font-semibold text-sm bg-slate-100 dark:bg-white/[0.05] border border-slate-200 dark:border-white/8 text-gray-700 dark:text-gray-300 hover:bg-slate-200 dark:hover:bg-white/[0.09] transition-all">
-            + Yangi dars qo'shish
-          </Link>
-        </div>
-      )}
-
-      {!isOwner && !isEnrolled && freeLessons > 0 && (
-        <p className="text-center text-[11px] text-gray-400">
-          ✦ {freeLessons} ta darsni bepul ko'ring
-        </p>
-      )}
-
-      {/* Progress section */}
+      {/* ── Progress bar at very top ─────────────────────────────────── */}
       {(isEnrolled || isOwner) && lessons.length > 0 && (
-        <div className="pt-4 border-t border-slate-100 dark:border-white/8 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-700 dark:text-gray-300">Kurs progressi</span>
-            <span className={`text-xs font-black ${progressPct === 100 ? 'text-emerald-500' : 'text-[#F15929]'}`}>
-              {progressPct}%
+        <div className="px-5 pt-4 pb-3 border-b border-gray-200/40 dark:border-white/[0.04]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] font-semibold text-gray-500 dark:text-white/40">Kurs progressi</span>
+            <span className={`text-[11px] font-black tabular-nums ${progressPct === 100 ? 'text-emerald-500' : 'text-[#F15929]'}`}>
+              {completedIds.size}/{lessons.length} · {progressPct}%
             </span>
           </div>
-
-          {/* Animated bar + milestone dots */}
-          <div className="relative h-2">
-            <div className="h-2 rounded-full bg-slate-100 dark:bg-white/8 overflow-hidden">
-              <motion.div
-                className={`h-full rounded-full ${progressPct === 100 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-[#F15929] to-[#FF8C5A]'}`}
-                initial={{ width: 0 }}
-                animate={{ width: `${progressPct}%` }}
-                transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
-              />
-            </div>
-            {[25, 50, 75].map(pct => (
-              <div key={pct}
-                className={`absolute top-1/2 -translate-y-1/2 w-2 h-2 rounded-full border-2 transition-colors duration-500 ${progressPct >= pct ? 'border-[#F15929] bg-[#F15929]' : 'border-slate-200 dark:border-white/15 bg-white dark:bg-slate-900'}`}
-                style={{ left: `calc(${pct}% - 4px)` }}
-              />
-            ))}
+          <div className="h-1.5 rounded-full bg-gray-200/60 dark:bg-white/[0.06] overflow-hidden">
+            <motion.div
+              className={`h-full rounded-full ${progressPct === 100 ? 'bg-gradient-to-r from-emerald-400 to-emerald-500' : 'bg-gradient-to-r from-[#F15929] to-[#FF8C5A]'}`}
+              initial={{ width: 0 }} animate={{ width: `${progressPct}%` }}
+              transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+            />
           </div>
-
-          {/* Motivational microcopy */}
-          <p className="text-[11px] text-gray-400 dark:text-gray-500">
-            {progressPct === 0   && '🚀 Boshlang! Birinchi dars sizi kutmoqda'}
-            {progressPct > 0  && progressPct < 50  && `🔥 ${completedIds.size}/${lessons.length} dars — davom eting!`}
-            {progressPct >= 50 && progressPct < 100 && `🎯 Zo'r! Siz ${progressPct}% ga yetdingiz`}
-            {progressPct === 100 && '🏆 Tabriklaymiz! Kursni tugatdingiz'}
-          </p>
-
           {progressPct === 100 && (
             <button onClick={handleOpenCertificate}
-              className="w-full py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-105 transition-all flex items-center justify-center gap-2 shadow-[0_4px_16px_rgba(212,175,55,0.3)]">
+              className="mt-3 w-full py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#F26722] to-[#D4AF37] hover:brightness-105 transition-all flex items-center justify-center gap-2 active:scale-[.98]">
               <GraduationCap className="w-4 h-4" /> Sertifikat olish
             </button>
           )}
         </div>
       )}
 
-      {/* Mini course-stats (unenrolled visitors) */}
-      {!isEnrolled && !isOwner && (course.total_lessons > 0 || course.total_duration_minutes > 0) && (
-        <div className="pt-3 border-t border-slate-100 dark:border-white/8 grid grid-cols-2 gap-y-2 gap-x-3">
-          {course.total_lessons > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-              <Video className="w-3.5 h-3.5 text-[#F15929]/60 shrink-0" /> {course.total_lessons} dars
-            </div>
-          )}
-          {course.total_duration_minutes > 0 && (
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-              <Clock className="w-3.5 h-3.5 text-[#F15929]/60 shrink-0" /> {formatDuration(course.total_duration_minutes)}
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-            <Globe className="w-3.5 h-3.5 text-[#F15929]/60 shrink-0" /> {course.language.toUpperCase()}
+      {/* ── CTA (desktop only) ────────────────────────────────────────── */}
+      <div className="hidden lg:block px-5 py-4 border-b border-gray-200/40 dark:border-white/[0.04]">
+        {course!.is_paid && !isOwner && !isEnrolled && (
+          <div className="flex items-baseline gap-1.5 mb-3">
+            <span className="text-2xl font-black text-gray-900 dark:text-white">{course!.price.toLocaleString()}</span>
+            <span className="text-xs text-gray-400">so'm</span>
           </div>
-          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-            <Award className="w-3.5 h-3.5 text-[#F15929]/60 shrink-0" /> Sertifikat
-          </div>
-        </div>
-      )}
-    </div>
-  )
+        )}
 
-  // ── Curriculum list ───────────────────────────────────────────────────────
-  const curriculumJsx = (
-    <div>
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-          Kurs tarkibi
-          <span className="ml-1.5 text-gray-400 dark:text-gray-500 font-normal text-xs">
-            ({lessons.length} dars)
-          </span>
-        </h3>
-        {isOwner && (
-          <Link to={`/courses/${course.id}/lessons/add`}
-            className="text-xs font-semibold text-[#F15929] hover:text-[#e84e22] transition-colors">
-            + Dars qo'sh
-          </Link>
+        {!isOwner ? (
+          <button onClick={handleEnroll} disabled={isEnrolled || enrollLoading}
+            className={[
+              'w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-[.98] flex items-center justify-center gap-2',
+              isEnrolled
+                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 cursor-default'
+                : 'bg-gradient-to-r from-[#F15929] to-[#FF7043] text-white shadow-glow-sm hover:shadow-glow hover:brightness-105',
+            ].join(' ')}>
+            {isEnrolled    ? <><CheckCircle2 className="w-4 h-4" /> Yozilgansiz</> :
+             enrollLoading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Yuklanmoqda...</> :
+             course!.is_paid ? <><Banknote className="w-4 h-4" /> Sotib olish</> :
+                              <><Zap className="w-4 h-4" /> Bepul boshlash</>}
+          </button>
+        ) : (
+          <div className="space-y-2">
+            <Link to={`/courses/${course!.id}/edit`}
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-[#F15929] to-[#FF7043] text-white shadow-glow-sm hover:brightness-105 transition-all">
+              <PenLine className="w-4 h-4" /> Kursni tahrirlash
+            </Link>
+            <Link to={`/courses/${course!.id}/lessons/add`}
+              className="flex items-center justify-center gap-2 w-full py-2.5 rounded-xl font-semibold text-xs bg-gray-100 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-gray-600 dark:text-white/50 hover:bg-gray-200 dark:hover:bg-white/[0.08] transition-all">
+              + Yangi dars qo'shish
+            </Link>
+          </div>
+        )}
+
+        {!isOwner && !isEnrolled && freeLessons > 0 && (
+          <p className="text-center text-[10px] text-gray-400 dark:text-white/25 mt-2">✦ {freeLessons} ta bepul dars</p>
         )}
       </div>
 
-      {lessons.length === 0 ? (
-        <div className="text-center py-10 space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 flex items-center justify-center mx-auto">
-            <Video className="w-6 h-6 text-slate-400" />
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            {isOwner ? "Hali dars qo'shilmagan" : "Darslar tez orada qo'shiladi"}
-          </p>
-          {isOwner && (
-            <Link to={`/courses/${course.id}/lessons/add`}
-              className="inline-flex items-center gap-1 text-xs text-[#F15929] font-semibold hover:text-[#e84e22]">
-              Birinchi darsni qo'shing <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-1">
-          {modules.map((mod, modIdx) => {
-            const isCollapsed  = collapsedModules.has(String(modIdx))
-            const modStart     = modules.slice(0, modIdx).reduce((s, m) => s + m.lessons.length, 0)
-            const modCompleted = mod.lessons.filter(l => completedIds.has(l.id)).length
-            return (
-              <div key={modIdx}>
-                {multiModule && (
-                  <button type="button" onClick={() => toggleModule(String(modIdx))}
-                    className="w-full flex items-center gap-2 px-2 py-2.5 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.04] transition-colors group">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-md bg-[#F15929]/10 text-[10px] font-black text-[#F15929] shrink-0">
-                      {modIdx + 1}
-                    </span>
-                    <span className="flex-1 text-left text-xs font-bold text-gray-800 dark:text-gray-200 truncate">
-                      {mod.title}
-                    </span>
-                    {modCompleted > 0 ? (
-                      <span className="text-[9px] text-emerald-500 font-bold shrink-0">
-                        {modCompleted}/{mod.lessons.length}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-gray-400 shrink-0">{mod.lessons.length} dars</span>
-                    )}
-                    <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-200 group-hover:text-[#F15929] ${isCollapsed ? '' : 'rotate-180'}`} />
-                  </button>
-                )}
-                {!isCollapsed && (
-                  <div className={`space-y-0.5 ${multiModule ? 'mt-0.5 ml-1 pl-3 border-l border-slate-100 dark:border-white/6' : ''}`}>
-                    {mod.lessons.map((lesson, lessonIdx) => (
-                      <SidebarLessonRow
-                        key={lesson.id} lesson={lesson} index={modStart + lessonIdx}
-                        isActive={activeLesson?.id === lesson.id}
-                        isCompleted={completedIds.has(lesson.id)}
-                        isUnlocked={lesson.is_free || isOwner || isEnrolled}
-                        isOwner={isOwner} courseId={courseId}
-                        isExpanded={expandedLessons.has(lesson.id)}
-                        onClick={() => handleSelectLesson(lesson)}
-                        onToggleExpand={() => setExpandedLessons(prev => {
-                          const next = new Set(prev)
-                          if (next.has(lesson.id)) next.delete(lesson.id); else next.add(lesson.id)
-                          return next
-                        })}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </div>
-  )
+      {/* ── Curriculum header ──────────────────────────────────────────── */}
+      <div className="px-5 py-3 flex items-center justify-between border-b border-gray-200/40 dark:border-white/[0.04]">
+        <h3 className="text-xs font-bold text-gray-800 dark:text-white uppercase tracking-wider">Dars rejasi</h3>
+        <span className="text-[10px] text-gray-400 dark:text-white/25 font-medium">
+          {lessons.length} dars{course!.total_duration_minutes > 0 ? ` · ${formatDuration(course!.total_duration_minutes)}` : ''}
+        </span>
+      </div>
 
-  // ── Reviews section ───────────────────────────────────────────────────────
-  const reviewsJsx = (
-    <div>
-      <h3 className="text-base font-bold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-        <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-        Talabalar sharhlari
-        {reviews.length > 0 && (
-          <span className="text-gray-400 font-normal text-sm">({reviews.length})</span>
-        )}
-      </h3>
-
-      {/* Rating distribution summary */}
-      {reviews.length > 0 && (
-        <div className="flex gap-5 items-start p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50/60 dark:from-amber-900/10 dark:to-orange-900/5 border border-amber-100/80 dark:border-amber-800/20 mb-5">
-          <div className="text-center shrink-0">
-            <div className="text-5xl font-black text-amber-500 leading-none">
-              {avgRating.toFixed(1)}
+      {/* ── Accordion lesson list ──────────────────────────────────────── */}
+      <div className="flex-1 overflow-y-auto overscroll-contain">
+        {lessons.length === 0 ? (
+          <div className="text-center py-10 px-5 space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mx-auto">
+              <Video className="w-6 h-6 text-gray-300 dark:text-white/15" />
             </div>
-            <div className="flex justify-center gap-0.5 mt-2">
-              {[1,2,3,4,5].map(s => (
-                <Star key={s} className={`w-3 h-3 ${s <= Math.round(avgRating) ? 'fill-amber-400 text-amber-400' : 'text-amber-200 dark:text-amber-800'}`} />
-              ))}
-            </div>
-            <p className="text-[10px] text-amber-600/60 dark:text-amber-400/50 mt-1">{reviews.length} sharh</p>
+            <p className="text-xs text-gray-400 dark:text-white/25">
+              {isOwner ? "Hali dars qo'shilmagan" : "Darslar tez orada qo'shiladi"}
+            </p>
           </div>
-          <div className="flex-1 space-y-1.5">
-            {[5,4,3,2,1].map(star => {
-              const count = reviews.filter(r => r.rating === star).length
-              const pct   = reviews.length > 0 ? (count / reviews.length) * 100 : 0
+        ) : (
+          <div className="py-1">
+            {modules.map((mod, modIdx) => {
+              const isCollapsed  = collapsedModules.has(String(modIdx))
+              const modCompleted = mod.lessons.filter(l => completedIds.has(l.id)).length
+              const modPct       = mod.lessons.length > 0 ? Math.round((modCompleted / mod.lessons.length) * 100) : 0
               return (
-                <div key={star} className="flex items-center gap-2">
-                  <span className="text-[10px] text-amber-700 dark:text-amber-400 w-2.5 text-right font-bold shrink-0">{star}</span>
-                  <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
-                  <div className="flex-1 h-1.5 rounded-full bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
-                    <motion.div
-                      className="h-full rounded-full bg-amber-400"
-                      initial={{ width: 0 }}
-                      animate={{ width: `${pct}%` }}
-                      transition={{ duration: 0.6, delay: (5 - star) * 0.06 }}
-                    />
-                  </div>
-                  <span className="text-[10px] text-amber-500/50 w-4 text-right shrink-0">{count}</span>
+                <div key={modIdx}>
+                  {/* Module accordion header */}
+                  {multiModule && (
+                    <button type="button" onClick={() => toggleModule(String(modIdx))}
+                      className="w-full flex items-center gap-2.5 px-5 py-3 hover:bg-gray-100/50 dark:hover:bg-white/[0.03] transition-colors group">
+                      <span className="flex h-6 w-6 items-center justify-center rounded-lg bg-[#F15929]/8 text-[10px] font-black text-[#F15929] shrink-0">
+                        {modIdx + 1}
+                      </span>
+                      <div className="flex-1 min-w-0 text-left">
+                        <span className="text-xs font-bold text-gray-800 dark:text-white truncate block">{mod.title}</span>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-[10px] text-gray-400 dark:text-white/25">{mod.lessons.length} dars</span>
+                          {modCompleted > 0 && (
+                            <span className={`text-[10px] font-bold ${modPct === 100 ? 'text-emerald-500' : 'text-[#F15929]'}`}>
+                              {modCompleted}/{mod.lessons.length}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <ChevronDown className={`w-3.5 h-3.5 text-gray-400 shrink-0 transition-transform duration-300 ${isCollapsed ? '' : 'rotate-180'}`} />
+                    </button>
+                  )}
+
+                  {/* Lessons within module */}
+                  <AnimatePresence>
+                    {!isCollapsed && (
+                      <motion.div
+                        initial={multiModule ? { height: 0, opacity: 0 } : false}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={{ duration: 0.25, ease: 'easeOut' }}
+                        className="overflow-hidden"
+                      >
+                        <div className={multiModule ? 'pb-1' : ''}>
+                          {mod.lessons.map((lesson) => {
+                            const isActive    = activeLesson?.id === lesson.id
+                            const isCompleted = completedIds.has(lesson.id)
+                            const isUnlocked  = lesson.is_free || isOwner || isEnrolled
+                            const isQuiz      = lesson.lesson_type === 'quiz'
+                            const isMat       = !!(lesson.material_url && !lesson.video_url) || lesson.lesson_type === 'material'
+
+                            return (
+                              <div
+                                key={lesson.id}
+                                onClick={isUnlocked ? () => handleSelectLesson(lesson) : undefined}
+                                className={[
+                                  'flex items-center gap-3 px-5 py-2.5 transition-all duration-200 relative',
+                                  isActive
+                                    ? 'bg-[#F15929]/[0.06] dark:bg-[#F15929]/[0.08] border-l-[3px] border-l-[#F15929]'
+                                    : 'border-l-[3px] border-l-transparent',
+                                  isUnlocked
+                                    ? 'cursor-pointer hover:bg-gray-100/50 dark:hover:bg-white/[0.03]'
+                                    : 'opacity-40 cursor-not-allowed',
+                                ].join(' ')}
+                              >
+                                {/* Status icon */}
+                                <div className={[
+                                  'w-7 h-7 rounded-lg flex items-center justify-center shrink-0',
+                                  isCompleted ? 'bg-emerald-100 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' :
+                                  isActive    ? 'bg-[#F15929]/10 text-[#F15929]' :
+                                  isUnlocked  ? 'bg-gray-100 dark:bg-white/[0.04] text-gray-400 dark:text-white/25' :
+                                                'bg-gray-100 dark:bg-white/[0.03] text-gray-300 dark:text-white/15',
+                                ].join(' ')}>
+                                  {isCompleted  ? <CheckCircle2 className="w-3.5 h-3.5" /> :
+                                   !isUnlocked  ? <Lock className="w-3 h-3" /> :
+                                   isQuiz       ? <HelpCircle className="w-3.5 h-3.5" /> :
+                                   isMat        ? <FileText className="w-3.5 h-3.5" /> :
+                                   isActive     ? <Play className="w-3.5 h-3.5 fill-current" /> :
+                                                  <Play className="w-3.5 h-3.5" />}
+                                </div>
+
+                                {/* Title + meta */}
+                                <div className="flex-1 min-w-0">
+                                  <p className={[
+                                    'text-xs font-semibold truncate leading-snug',
+                                    isActive    ? 'text-[#F15929]' :
+                                    isCompleted ? 'text-emerald-700 dark:text-emerald-400' :
+                                                  'text-gray-700 dark:text-gray-300',
+                                  ].join(' ')}>
+                                    {lesson.title}
+                                  </p>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    {lesson.is_free && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 font-bold">Bepul</span>
+                                    )}
+                                    {isQuiz && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 font-bold">Quiz</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                {/* Duration tag */}
+                                {lesson.duration_minutes > 0 && (
+                                  <span className="text-[10px] text-gray-400 dark:text-white/25 font-mono tabular-nums shrink-0">
+                                    {formatLessonDuration(lesson.duration_minutes)}
+                                  </span>
+                                )}
+
+                                {/* Owner edit button */}
+                                {isOwner && (
+                                  <Link to={`/courses/${courseId}/lessons/${lesson.id}/edit`} onClick={e => e.stopPropagation()}
+                                    className="shrink-0 p-1 text-gray-300 dark:text-white/15 hover:text-[#F15929] transition-colors">
+                                    <PenLine className="w-3 h-3" />
+                                  </Link>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
               )
             })}
           </div>
-        </div>
-      )}
-
-      {reviewsLoading ? (
-        <div className="flex justify-center py-8">
-          <RefreshCw className="w-5 h-5 text-slate-400 animate-spin" />
-        </div>
-      ) : reviews.length === 0 ? (
-        <p className="text-xs text-gray-400 text-center py-8">
-          Hali sharh yo'q. Birinchi bo'lib fikr bildiring!
-        </p>
-      ) : (
-        <div className="space-y-2.5">
-          <AnimatePresence>
-            {reviews.map(r => {
-              const isReviewOwner = !!(user && user.id === r.student_id)
-              return (
-                <motion.div
-                  key={r.id}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.2, ease: 'easeOut' }}
-                >
-                  <UnifiedComment
-                    comment={reviewToCommentData(r)}
-                    isOwner={isReviewOwner}
-                    menuOpen={showReviewMenu === r.id}
-                    onToggleMenu={() => setShowReviewMenu(showReviewMenu === r.id ? null : r.id)}
-                    onEdit={handleEditReview}
-                    onRequestDelete={id => setDeleteReviewTarget(id)}
-                    onAuthorClick={() => navigate(`/profile/${r.student_id}`)}
-                  />
-                </motion.div>
-              )
-            })}
-          </AnimatePresence>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 
-  // ── MAIN RENDER ───────────────────────────────────────────────────────────
+  // ════════════════════════════════════════════════════════════════════════
+  // SKELETON
+  // ════════════════════════════════════════════════════════════════════════
+  if (loading) return (
+    <div className="min-h-screen bg-[#F8F9FA] dark:bg-[#1C1C22]">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="animate-pulse space-y-5">
+          <div className="h-8 w-36 rounded-xl bg-gray-200/60 dark:bg-white/[0.06]" />
+          <div className="h-[400px] rounded-[24px] bg-gray-200/60 dark:bg-white/[0.06]" />
+          <div className="flex gap-6">
+            <div className="flex-1 space-y-3">
+              <div className="h-7 w-3/4 rounded-xl bg-gray-200/60 dark:bg-white/[0.06]" />
+              <div className="h-4 w-1/2 rounded-xl bg-gray-200/60 dark:bg-white/[0.06]" />
+            </div>
+            <div className="w-[380px] hidden lg:block space-y-3">
+              <div className="h-20 rounded-2xl bg-gray-200/60 dark:bg-white/[0.06]" />
+              <div className="h-40 rounded-2xl bg-gray-200/60 dark:bg-white/[0.06]" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+
+  if (error || !course) return (
+    <div className="min-h-screen bg-[#F8F9FA] dark:bg-[#1C1C22] flex items-center justify-center">
+      <div className="text-center space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-red-50 dark:bg-red-900/20 flex items-center justify-center mx-auto">
+          <AlertCircle className="w-8 h-8 text-red-400" />
+        </div>
+        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{error || 'Kurs topilmadi'}</p>
+        <button onClick={() => navigate('/courses')}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#F15929] hover:text-[#e84e22] transition-colors">
+          <ArrowLeft className="w-3.5 h-3.5" /> Kurslarga qaytish
+        </button>
+      </div>
+    </div>
+  )
+
+  // ════════════════════════════════════════════════════════════════════════
+  // MAIN RENDER — Focus Mode
+  // ════════════════════════════════════════════════════════════════════════
   return (
-    <PageWrapper topPadding="">
+    <div ref={scrollRef} className="min-h-screen bg-[#F8F9FA] dark:bg-[#1C1C22] transition-colors duration-300">
 
-      {/* ── PREMIUM HERO ──────────────────────────────────────────────────── */}
-      <div className="-mx-4 sm:-mx-5 lg:-mx-8 relative overflow-hidden bg-gradient-to-br from-[#0D0D16] via-[#131320] to-[#0A0A14]">
-        {/* Ambient glow blobs */}
-        <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-[#F15929]/[0.07] blur-[130px] pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 w-72 h-72 rounded-full bg-indigo-600/[0.04] blur-[110px] pointer-events-none" />
-
-        <div className="relative z-10 px-4 sm:px-5 lg:px-8 pt-5 pb-8">
-
-          {/* Back button */}
+      {/* ── STICKY TOP NAV ─────────────────────────────────────────────── */}
+      <div className="sticky top-0 z-40 bg-white/80 dark:bg-[#1C1C22]/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-white/[0.06]">
+        <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-4 h-14">
           <button onClick={() => navigate('/courses')}
-            className="mb-5 inline-flex items-center gap-1.5 text-white/35 hover:text-white/75 text-xs font-medium transition-all group">
-            <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-0.5 transition-transform" />
-            Kurslarga qaytish
+            className="flex items-center gap-1.5 text-gray-400 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/70 text-xs font-medium transition-all group shrink-0">
+            <ArrowLeft className="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" />
+            <span className="hidden sm:inline">Kurslarga qaytish</span>
           </button>
 
-          {/* Badge row */}
-          <div className="flex flex-wrap gap-2 mb-4">
-            {course.categories && (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F15929]/12 border border-[#F15929]/20 text-[#F15929] text-[11px] font-bold">
-                <Tag className="w-3 h-3" /> {course.categories.name}
-              </span>
-            )}
-            {course.is_paid ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/12 border border-amber-500/20 text-amber-400 text-[11px] font-bold">
-                <Banknote className="w-3 h-3" /> {course.price.toLocaleString()} so'm
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/12 border border-emerald-500/20 text-emerald-400 text-[11px] font-bold">
-                <Zap className="w-3 h-3" /> Bepul kurs
-              </span>
-            )}
-            {!course.is_published && (
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-bold">
-                Qoralama
-              </span>
-            )}
-            {(avgRating >= 4.5 && (reviews.length >= 3 || course.rating >= 4.5)) && (
-              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-amber-400/10 border border-amber-400/20 text-amber-300 text-[11px] font-bold">
-                <Flame className="w-3 h-3" /> Top baholangan
-              </span>
-            )}
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-800 dark:text-white truncate">{course.title}</p>
           </div>
 
-          {/* Course title — dominant */}
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white leading-tight tracking-tight mb-3 max-w-3xl">
-            {course.title}
-          </h1>
-
-          {/* Teaser description */}
-          {course.description && !activeLesson && (
-            <p className="text-sm text-white/45 leading-relaxed mb-4 max-w-2xl line-clamp-2">
-              {course.description}
-            </p>
-          )}
-
-          {/* Meta pills */}
-          <div className="flex flex-wrap gap-1.5 mb-5">
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/[0.07] text-white/55 text-[11px]">
-              <Globe className="w-3 h-3" /> {course.language.toUpperCase()}
-            </span>
-            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/[0.07] text-white/55 text-[11px]">
-              <BarChart2 className="w-3 h-3" /> {levelLabel(course.level)}
-            </span>
-            {course.total_lessons > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/[0.07] text-white/55 text-[11px]">
-                <Video className="w-3 h-3" /> {course.total_lessons} dars
-              </span>
-            )}
-            {course.total_duration_minutes > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/[0.07] text-white/55 text-[11px]">
-                <Clock className="w-3 h-3" /> {formatDuration(course.total_duration_minutes)}
-              </span>
-            )}
-            {course.enrolled_count > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.06] border border-white/[0.07] text-white/55 text-[11px]">
-                <Users className="w-3 h-3" /> {course.enrolled_count.toLocaleString()} talaba
-              </span>
-            )}
-            {avgRating > 0 && (
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-400/15 text-amber-400 text-[11px] font-bold">
-                <Star className="w-3 h-3 fill-amber-400" /> {avgRating.toFixed(1)}
-                {reviews.length > 0 && <span className="text-amber-400/50 font-normal">({reviews.length})</span>}
-              </span>
-            )}
-          </div>
-
-          {/* Teacher chip */}
-          {teacherProfile && (
-            <Link to={`/profile/${course.teacher_id}?tab=courses`}
-              className="inline-flex items-center gap-3 group p-2.5 rounded-2xl hover:bg-white/[0.06] transition-all -ml-2.5">
-              {teacherProfile.photo_url ? (
-                <img src={teacherProfile.photo_url} alt={teacherProfile.first_name ?? ''}
-                  className="w-9 h-9 rounded-xl object-cover ring-2 ring-white/10 group-hover:ring-[#F15929]/35 transition-all" />
-              ) : (
-                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#F15929] to-[#e84e22] flex items-center justify-center text-white text-sm font-black shrink-0">
-                  {(teacherProfile.first_name ?? teacherProfile.username ?? 'O').charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div>
-                <p className="text-[10px] text-white/30 font-semibold uppercase tracking-widest leading-none mb-1">
-                  O'qituvchi
-                </p>
-                <p className="text-sm font-bold text-white group-hover:text-[#F15929] transition-colors leading-none">
-                  {teacherProfile.first_name || (teacherProfile.username ? `@${teacherProfile.username}` : "O'qituvchi")}
-                </p>
-                {teacherProfile.specialization && (
-                  <p className="text-[11px] text-white/35 leading-none mt-0.5">{teacherProfile.specialization}</p>
-                )}
+          {/* Nav progress */}
+          {(isEnrolled || isOwner) && lessons.length > 0 && (
+            <div className="hidden sm:flex items-center gap-2 shrink-0">
+              <div className="w-24 h-1.5 rounded-full bg-gray-200/60 dark:bg-white/[0.08] overflow-hidden">
+                <motion.div
+                  className={`h-full rounded-full ${progressPct === 100 ? 'bg-emerald-500' : 'bg-[#F15929]'}`}
+                  initial={{ width: 0 }} animate={{ width: `${progressPct}%` }}
+                  transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+                />
               </div>
-              <ChevronRight className="w-3.5 h-3.5 text-white/20 group-hover:text-[#F15929]/50 transition-all group-hover:translate-x-0.5 ml-1" />
-            </Link>
+              <span className={`text-[11px] font-bold tabular-nums ${progressPct === 100 ? 'text-emerald-500' : 'text-gray-500 dark:text-white/40'}`}>{progressPct}%</span>
+            </div>
+          )}
+          {avgRating > 0 && (
+            <span className="hidden sm:inline-flex items-center gap-1 text-[11px] font-bold text-amber-500 shrink-0">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {avgRating.toFixed(1)}
+            </span>
           )}
         </div>
       </div>
 
-      {/* ── TWO-COLUMN BODY ───────────────────────────────────────────────── */}
-      <div className="-mx-4 sm:-mx-5 lg:-mx-8 flex flex-col lg:flex-row bg-slate-50 dark:bg-[#0D0D16]">
+      {/* ── MAIN 2-COLUMN LAYOUT ───────────────────────────────────────── */}
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        <div className="flex flex-col lg:flex-row gap-6">
 
-        {/* LEFT: Video + below-fold content */}
-        <div className="flex-1 min-w-0">
+          {/* ══ LEFT COLUMN — Video + Tabs ══════════════════════════════ */}
+          <div className="flex-1 min-w-0">
 
-          {/* Video player */}
-          <div className="bg-black w-full">
-            {activeLesson?.video_url ? (
-              <div className="aspect-video">
-                <VideoPlayer
-                  videoSource={activeLesson.video_source ?? 'bunny'}
-                  videoUrl={activeLesson.video_url}
-                  title={activeLesson.title}
-                />
-              </div>
-            ) : (
-              <div className="aspect-video relative overflow-hidden">
-                {course.thumbnail_url
-                  ? <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
-                  : <div className="w-full h-full bg-gradient-to-br from-slate-900 to-slate-800" />
-                }
-                {/* Cinematic overlays */}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/20 to-transparent" />
-                <div className="absolute inset-0 bg-gradient-to-r from-black/40 to-transparent" />
+            {/* Video player — rounded-[24px] */}
+            <div className="rounded-[24px] overflow-hidden bg-black shadow-bento dark:shadow-glass-lg">
+              {activeLesson?.video_url ? (
+                <div className="aspect-video">
+                  <VideoPlayer
+                    videoSource={activeLesson.video_source ?? 'bunny'}
+                    videoUrl={activeLesson.video_url}
+                    title={activeLesson.title}
+                  />
+                </div>
+              ) : (
+                <div className="aspect-video relative overflow-hidden">
+                  {course.thumbnail_url
+                    ? <img src={course.thumbnail_url} alt={course.title} className="w-full h-full object-cover" />
+                    : <div className="w-full h-full bg-gradient-to-br from-[#1C1C22] to-[#14141A]" />
+                  }
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
-                {/* Animated play button */}
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-                  <motion.div
-                    whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.96 }}
-                    className="relative cursor-pointer"
-                    onClick={() => {
-                      const first = lessons.find(l => l.is_free || isOwner || isEnrolled)
-                      if (first) handleSelectLesson(first)
-                    }}
-                  >
-                    {/* Pulse rings */}
+                  <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
                     <motion.div
-                      animate={{ scale: [1, 1.45, 1], opacity: [0.3, 0, 0.3] }}
-                      transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut' }}
-                      className="absolute inset-0 rounded-full bg-white/15"
-                    />
-                    <motion.div
-                      animate={{ scale: [1, 1.75, 1], opacity: [0.15, 0, 0.15] }}
-                      transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut', delay: 0.5 }}
-                      className="absolute inset-0 rounded-full bg-white/8"
-                    />
-                    <div className="relative w-16 h-16 rounded-full bg-white flex items-center justify-center shadow-[0_0_40px_rgba(255,255,255,0.25)]">
-                      <Play className="w-7 h-7 text-gray-900 ml-1 fill-gray-900" />
-                    </div>
-                  </motion.div>
-                  <div className="text-center">
-                    <p className="text-white font-semibold text-sm drop-shadow">Kursni ko'rish</p>
-                    <p className="text-white/45 text-xs mt-0.5">
-                      {freeLessons > 0
-                        ? `${freeLessons} ta bepul dars mavjud`
-                        : lessons.length > 0 ? 'Darsni tanlang' : "Darslar tez qo'shiladi"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Bottom label */}
-                <div className="absolute bottom-3 left-3">
-                  <span className="text-[10px] text-white/55 bg-black/50 backdrop-blur-sm px-2.5 py-1 rounded-full">
-                    ▶ Oldindan ko'rish
-                  </span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Below-video info */}
-          <div className="px-4 sm:px-5 lg:px-8 py-5 bg-white dark:bg-[#0D0D16]">
-
-            {/* Active lesson or course description */}
-            {activeLesson ? (
-              <div className="mb-5 pb-5 border-b border-slate-200 dark:border-white/8">
-                <div className="flex items-start justify-between gap-3">
-                  <h2 className="text-lg font-bold text-gray-900 dark:text-white leading-snug">
-                    {activeLesson.title}
-                  </h2>
-                  {completedIds.has(activeLesson.id) ? (
-                    <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-700/30 px-2.5 py-1 rounded-full">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Tugatildi
-                    </span>
-                  ) : isEnrolled ? (
-                    <button onClick={() => handleMarkLessonCompleted(activeLesson.id)}
-                      className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-[#F15929]/8 hover:bg-[#F15929]/15 text-[#F15929] border border-[#F15929]/20 transition-all">
-                      <CheckCircle2 className="w-3.5 h-3.5" /> Tugatildi deb belgilash
-                    </button>
-                  ) : null}
-                </div>
-
-                {/* Inline progress bar */}
-                {(isEnrolled || isOwner) && lessons.length > 0 && (
-                  <div className="mt-3 flex items-center gap-3">
-                    <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/8 overflow-hidden">
+                      whileHover={{ scale: 1.06 }} whileTap={{ scale: 0.96 }}
+                      className="relative cursor-pointer"
+                      onClick={() => {
+                        const first = lessons.find(l => l.is_free || isOwner || isEnrolled)
+                        if (first) handleSelectLesson(first)
+                      }}
+                    >
                       <motion.div
-                        className={`h-full rounded-full ${progressPct === 100 ? 'bg-emerald-500' : 'bg-[#F15929]'}`}
-                        initial={{ width: 0 }} animate={{ width: `${progressPct}%` }}
-                        transition={{ duration: 0.6 }}
+                        animate={{ scale: [1, 1.4, 1], opacity: [0.3, 0, 0.3] }}
+                        transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut' }}
+                        className="absolute inset-0 rounded-full bg-white/15"
                       />
+                      <div className="relative w-16 h-16 rounded-full bg-white/95 backdrop-blur-sm flex items-center justify-center shadow-[0_0_40px_rgba(255,255,255,0.2)]">
+                        <Play className="w-7 h-7 text-gray-900 ml-1 fill-gray-900" />
+                      </div>
+                    </motion.div>
+                    <div className="text-center">
+                      <p className="text-white font-semibold text-sm drop-shadow">Kursni ko'rish</p>
+                      <p className="text-white/40 text-xs mt-0.5">
+                        {freeLessons > 0 ? `${freeLessons} ta bepul dars mavjud` : 'Darsni tanlang'}
+                      </p>
                     </div>
-                    <span className="text-xs font-bold text-gray-500 dark:text-gray-400 shrink-0 tabular-nums">
-                      {progressPct}%
-                    </span>
                   </div>
-                )}
-
-                {activeLesson.duration_minutes > 0 && (
-                  <p className="text-xs text-gray-400 mt-2 inline-flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" /> {activeLesson.duration_minutes} daqiqa
-                  </p>
-                )}
-                {activeLesson.description && (
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mt-2 leading-relaxed">
-                    {activeLesson.description}
-                  </p>
-                )}
-                {activeLesson.material_url && (
-                  <a href={activeLesson.material_url} target="_blank" rel="noopener noreferrer"
-                    className="mt-3 inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-50 dark:bg-blue-900/15 border border-blue-200 dark:border-blue-800/30 text-blue-700 dark:text-blue-300 text-xs font-semibold hover:bg-blue-100 dark:hover:bg-blue-900/25 transition-colors">
-                    <FileText className="w-4 h-4 shrink-0" />
-                    {activeLesson.material_name || 'PDF materialini yuklab olish'}
-                  </a>
-                )}
-              </div>
-            ) : (
-              <div className="mb-5 pb-5 border-b border-slate-200 dark:border-white/8">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">{course.title}</h2>
-                {course.description && (
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-                    {course.description}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* MOBILE: CTA card */}
-            <div className="lg:hidden mb-5 p-4 rounded-2xl bg-white dark:bg-white/[0.03] border border-slate-200 dark:border-white/8 shadow-sm">
-              {ctaCardJsx}
+                </div>
+              )}
             </div>
 
-            {/* MOBILE: tab bar */}
-            <div className="lg:hidden flex gap-1 bg-slate-100 dark:bg-white/[0.05] rounded-xl p-1 mb-4">
-              {([
-                { id: 'curriculum', label: 'Kurs tarkibi' },
-                { id: 'overview',   label: 'Haqida' },
-                { id: 'reviews',    label: `Sharhlar${reviews.length ? ` (${reviews.length})` : ''}` },
-              ] as { id: typeof mobileTab; label: string }[]).map(t => (
-                <button key={t.id} onClick={() => setMobileTab(t.id)}
+            {/* Active lesson info */}
+            {activeLesson && (
+              <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="mt-4 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-lg font-bold text-gray-900 dark:text-white truncate">{activeLesson.title}</h2>
+                  <div className="flex items-center gap-3 mt-1">
+                    {activeLesson.duration_minutes > 0 && (
+                      <span className="text-xs text-gray-400 dark:text-white/35 inline-flex items-center gap-1">
+                        <Clock className="w-3 h-3" /> {activeLesson.duration_minutes} daq
+                      </span>
+                    )}
+                  </div>
+                </div>
+                {completedIds.has(activeLesson.id) ? (
+                  <span className="shrink-0 inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-1.5 rounded-full">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Tugatildi
+                  </span>
+                ) : isEnrolled ? (
+                  <button onClick={() => handleMarkLessonCompleted(activeLesson.id)}
+                    className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-semibold bg-[#F15929]/8 hover:bg-[#F15929]/15 text-[#F15929] border border-[#F15929]/20 transition-all active:scale-95">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Tugatildi
+                  </button>
+                ) : null}
+              </motion.div>
+            )}
+
+            {/* ── MOBILE CTA ──────────────────────────────────────────── */}
+            <div className="lg:hidden mt-5">
+              <div className="p-4 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md">
+                {!isOwner ? (
+                  <button onClick={handleEnroll} disabled={isEnrolled || enrollLoading}
+                    className={[
+                      'w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-[.98] flex items-center justify-center gap-2',
+                      isEnrolled
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/25 cursor-default'
+                        : 'bg-gradient-to-r from-[#F15929] to-[#FF7043] text-white shadow-glow-sm hover:shadow-glow',
+                    ].join(' ')}>
+                    {isEnrolled    ? <><CheckCircle2 className="w-4 h-4" /> Yozilgansiz</> :
+                     enrollLoading ? <><RefreshCw className="w-4 h-4 animate-spin" /> Yuklanmoqda...</> :
+                     course.is_paid ? <><Banknote className="w-4 h-4" /> {course.price.toLocaleString()} so'm — Sotib olish</> :
+                                      <><Zap className="w-4 h-4" /> Bepul boshlash</>}
+                  </button>
+                ) : (
+                  <Link to={`/courses/${course.id}/edit`}
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl font-bold text-sm bg-gradient-to-r from-[#F15929] to-[#FF7043] text-white shadow-glow-sm transition-all">
+                    <PenLine className="w-4 h-4" /> Tahrirlash
+                  </Link>
+                )}
+              </div>
+            </div>
+
+            {/* ── MOBILE VIEW TOGGLE ──────────────────────────────────── */}
+            <div className="lg:hidden flex gap-1 mt-4 p-1 bg-gray-100 dark:bg-white/[0.04] rounded-xl">
+              {(['content', 'curriculum'] as const).map(v => (
+                <button key={v} onClick={() => setMobileView(v)}
                   className={[
                     'flex-1 py-2 text-xs font-bold rounded-lg transition-all',
-                    mobileTab === t.id
-                      ? 'bg-white dark:bg-white/10 text-[#F15929] shadow-sm'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
+                    mobileView === v
+                      ? 'bg-white dark:bg-white/[0.08] text-[#F15929] shadow-sm'
+                      : 'text-gray-500 dark:text-white/40',
                   ].join(' ')}>
-                  {t.label}
+                  {v === 'content' ? 'Kurs' : `Darslar (${lessons.length})`}
                 </button>
               ))}
             </div>
 
-            {/* MOBILE: tab content */}
-            <div className="lg:hidden">
-              <AnimatePresence mode="wait">
-                {mobileTab === 'curriculum' && (
-                  <motion.div key="curr" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    {curriculumJsx}
-                  </motion.div>
-                )}
-                {mobileTab === 'overview' && (
-                  <motion.div key="over" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    {course.description && activeLesson && (
-                      <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{course.description}</p>
-                    )}
-                    {user && <RatingWidget {...ratingWidgetProps} />}
-                  </motion.div>
-                )}
-                {mobileTab === 'reviews' && (
-                  <motion.div key="rev" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
-                    {user && <RatingWidget {...ratingWidgetProps} />}
-                    {reviewsJsx}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* DESKTOP: overview + rating + reviews */}
-            <div className="hidden lg:block space-y-8 mt-2">
-              {course.description && (
-                <div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2">Kurs haqida</h3>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{course.description}</p>
-                </div>
+            {/* ── MOBILE CURRICULUM ───────────────────────────────────── */}
+            <AnimatePresence mode="wait">
+              {mobileView === 'curriculum' && (
+                <motion.div key="mob-cur" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} className="lg:hidden mt-4">
+                  {renderSidebar()}
+                </motion.div>
               )}
-              {user && <RatingWidget {...ratingWidgetProps} />}
-              {reviewsJsx}
+            </AnimatePresence>
+
+            {/* ── TABBED CONTENT ──────────────────────────────────────── */}
+            <AnimatePresence mode="wait">
+              {(mobileView === 'content' || !isTelegram) && (
+                <motion.div key="tabs" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+
+                  {/* Tab bar — orange underline */}
+                  <div className="mt-6 border-b border-gray-200/60 dark:border-white/[0.06]">
+                    <div className="flex gap-6">
+                      {([
+                        { id: 'description' as const, label: 'Tavsif' },
+                        { id: 'resources' as const,   label: 'Resurslar' },
+                        { id: 'reviews' as const,     label: `Sharhlar${reviews.length ? ` (${reviews.length})` : ''}` },
+                      ]).map(tab => (
+                        <button key={tab.id} onClick={() => setContentTab(tab.id)}
+                          className={[
+                            'relative pb-3 text-sm font-semibold transition-colors',
+                            contentTab === tab.id
+                              ? 'text-[#F15929]'
+                              : 'text-gray-400 dark:text-white/35 hover:text-gray-700 dark:hover:text-white/60',
+                          ].join(' ')}>
+                          {tab.label}
+                          {contentTab === tab.id && (
+                            <motion.div
+                              layoutId="tab-underline"
+                              className="absolute bottom-0 left-0 right-0 h-[2px] bg-[#F15929] rounded-full"
+                              transition={{ duration: 0.25, ease: 'easeOut' }}
+                            />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Tab content */}
+                  <div className="mt-6">
+                    <AnimatePresence mode="wait">
+
+                      {/* ── TAVSIF ───────────────────────────────────── */}
+                      {contentTab === 'description' && (
+                        <motion.div key="t-desc" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="space-y-6">
+
+                          {/* Description card */}
+                          {(course.description || activeLesson?.description) && (
+                            <div className="p-5 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md">
+                              <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+                                {activeLesson?.description || course.description}
+                              </p>
+                            </div>
+                          )}
+
+                          {/* Stats grid */}
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            {[
+                              { icon: Video,    label: 'Darslar',    value: `${course.total_lessons}`,              show: course.total_lessons > 0 },
+                              { icon: Clock,    label: 'Davomiylik', value: formatDuration(course.total_duration_minutes), show: course.total_duration_minutes > 0 },
+                              { icon: BarChart2, label: 'Daraja',    value: levelLabel(course.level),                show: true },
+                              { icon: Users,    label: 'Talabalar',  value: course.enrolled_count.toLocaleString(), show: course.enrolled_count > 0 },
+                            ].filter(s => s.show).map((stat, i) => (
+                              <motion.div key={stat.label} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                                className="p-4 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md text-center">
+                                <stat.icon className="w-4 h-4 text-[#F15929]/60 mx-auto mb-1.5" />
+                                <p className="text-sm font-bold text-gray-800 dark:text-white">{stat.value}</p>
+                                <p className="text-[10px] text-gray-400 dark:text-white/30 mt-0.5">{stat.label}</p>
+                              </motion.div>
+                            ))}
+                          </div>
+
+                          {/* Teacher block — UserIdentity */}
+                          {teacherUser && (
+                            <div className="p-5 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md cursor-pointer hover:border-[#F15929]/20 transition-all group"
+                              onClick={() => navigate(`/profile/${course.teacher_id}?tab=courses`)}>
+                              <p className="text-[10px] text-gray-400 dark:text-white/30 font-semibold uppercase tracking-widest mb-3">O'qituvchi</p>
+                              <div className="flex items-center justify-between">
+                                <UserIdentity user={teacherUser} size="md" showRank showBadge />
+                                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-white/20 group-hover:text-[#F15929] group-hover:translate-x-0.5 transition-all" />
+                              </div>
+                              {teacherProfile?.specialization && (
+                                <p className="text-xs text-gray-400 dark:text-white/30 mt-3 pl-[52px]">{teacherProfile.specialization}</p>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Badges */}
+                          <div className="flex flex-wrap gap-2">
+                            {course.categories && (
+                              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F15929]/8 border border-[#F15929]/15 text-[#F15929] text-[11px] font-bold">
+                                <Tag className="w-3 h-3" /> {course.categories.name}
+                              </span>
+                            )}
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-gray-100 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-gray-500 dark:text-white/40 text-[11px] font-medium">
+                              <Globe className="w-3 h-3" /> {course.language.toUpperCase()}
+                            </span>
+                            {!course.is_published && (
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/20 text-amber-600 dark:text-amber-400 text-[11px] font-bold">Qoralama</span>
+                            )}
+                            {(avgRating >= 4.5 && (reviews.length >= 3 || course.rating >= 4.5)) && (
+                              <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-full bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/20 text-amber-600 dark:text-amber-400 text-[11px] font-bold">
+                                <Flame className="w-3 h-3" /> Top baholangan
+                              </span>
+                            )}
+                          </div>
+                        </motion.div>
+                      )}
+
+                      {/* ── RESURSLAR ─────────────────────────────────── */}
+                      {contentTab === 'resources' && (
+                        <motion.div key="t-res" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="space-y-3">
+                          {resourceLessons.length === 0 ? (
+                            <div className="text-center py-12 space-y-3">
+                              <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mx-auto">
+                                <FileText className="w-6 h-6 text-gray-300 dark:text-white/15" />
+                              </div>
+                              <p className="text-xs text-gray-400 dark:text-white/25">Hozircha resurslar yo'q</p>
+                            </div>
+                          ) : (
+                            resourceLessons.map((lesson, i) => (
+                              <motion.a key={lesson.id} href={lesson.material_url!} target="_blank" rel="noopener noreferrer"
+                                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.04 }}
+                                className="flex items-center gap-3 p-4 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md hover:border-blue-300 dark:hover:border-blue-500/20 transition-all group">
+                                <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/15 flex items-center justify-center shrink-0">
+                                  <FileText className="w-5 h-5 text-blue-500" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-semibold text-gray-800 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                    {lesson.material_name || lesson.title}
+                                  </p>
+                                  <p className="text-[11px] text-gray-400 dark:text-white/30 mt-0.5">PDF Material</p>
+                                </div>
+                                <ChevronRight className="w-4 h-4 text-gray-300 dark:text-white/15 group-hover:text-blue-500 group-hover:translate-x-0.5 transition-all shrink-0" />
+                              </motion.a>
+                            ))
+                          )}
+
+                          {activeLesson?.material_url && (
+                            <div className="p-4 rounded-2xl border-2 border-dashed border-[#F15929]/20 bg-[#F15929]/[0.03]">
+                              <p className="text-[10px] text-[#F15929]/60 font-bold uppercase tracking-wider mb-2">Joriy dars materiali</p>
+                              <a href={activeLesson.material_url} target="_blank" rel="noopener noreferrer"
+                                className="inline-flex items-center gap-2 text-sm font-semibold text-[#F15929] hover:text-[#e84e22] transition-colors">
+                                <FileText className="w-4 h-4" /> {activeLesson.material_name || 'PDF yuklab olish'}
+                              </a>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+
+                      {/* ── SHARHLAR ──────────────────────────────────── */}
+                      {contentTab === 'reviews' && (
+                        <motion.div key="t-rev" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="space-y-5">
+                          {user && <RatingWidget {...ratingWidgetProps} />}
+
+                          {/* Rating distribution */}
+                          {reviews.length > 0 && (
+                            <div className="flex gap-5 items-start p-5 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md">
+                              <div className="text-center shrink-0">
+                                <div className="text-4xl font-black text-amber-500 leading-none">{avgRating.toFixed(1)}</div>
+                                <div className="flex justify-center gap-0.5 mt-2">
+                                  {[1,2,3,4,5].map(s => (
+                                    <Star key={s} className={`w-3 h-3 ${s <= Math.round(avgRating) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-white/10'}`} />
+                                  ))}
+                                </div>
+                                <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">{reviews.length} sharh</p>
+                              </div>
+                              <div className="flex-1 space-y-1.5">
+                                {[5,4,3,2,1].map(star => {
+                                  const count = reviews.filter(r => r.rating === star).length
+                                  const pct   = reviews.length > 0 ? (count / reviews.length) * 100 : 0
+                                  return (
+                                    <div key={star} className="flex items-center gap-2">
+                                      <span className="text-[10px] text-gray-500 dark:text-white/30 w-2.5 text-right font-bold shrink-0">{star}</span>
+                                      <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-400 shrink-0" />
+                                      <div className="flex-1 h-1.5 rounded-full bg-gray-200/60 dark:bg-white/[0.06] overflow-hidden">
+                                        <motion.div className="h-full rounded-full bg-amber-400" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6, delay: (5 - star) * 0.06 }} />
+                                      </div>
+                                      <span className="text-[10px] text-gray-400/50 w-4 text-right shrink-0">{count}</span>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Reviews list */}
+                          {reviewsLoading ? (
+                            <div className="flex justify-center py-8"><RefreshCw className="w-5 h-5 text-gray-300 dark:text-white/15 animate-spin" /></div>
+                          ) : reviews.length === 0 ? (
+                            <p className="text-xs text-gray-400 dark:text-white/25 text-center py-8">Hali sharh yo'q. Birinchi bo'lib fikr bildiring!</p>
+                          ) : (
+                            <div className="space-y-2.5">
+                              <AnimatePresence>
+                                {reviews.map(r => {
+                                  const isReviewOwner = !!(user && user.id === r.student_id)
+                                  return (
+                                    <motion.div key={r.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2, ease: 'easeOut' }}>
+                                      <UnifiedComment
+                                        comment={reviewToCommentData(r)}
+                                        isOwner={isReviewOwner}
+                                        menuOpen={showReviewMenu === r.id}
+                                        onToggleMenu={() => setShowReviewMenu(showReviewMenu === r.id ? null : r.id)}
+                                        onEdit={handleEditReview}
+                                        onRequestDelete={id => setDeleteReviewTarget(id)}
+                                        onAuthorClick={() => navigate(`/profile/${r.student_id}`)}
+                                      />
+                                    </motion.div>
+                                  )
+                                })}
+                              </AnimatePresence>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* ══ RIGHT COLUMN — Sticky Sidebar (Desktop) ═══════════════ */}
+          <div className="hidden lg:block w-[380px] xl:w-[400px] shrink-0">
+            <div className="sticky top-[72px]">
+              {renderSidebar()}
             </div>
           </div>
-        </div>
 
-        {/* RIGHT: sticky sidebar (desktop only) */}
-        <div className="hidden lg:flex flex-col w-[360px] xl:w-[400px] shrink-0 border-l border-slate-200 dark:border-white/6 lg:sticky lg:top-0 lg:max-h-screen lg:overflow-y-auto bg-white dark:bg-[#0D0D16]">
-          {/* CTA */}
-          <div className="p-5 border-b border-slate-200 dark:border-white/6">
-            {ctaCardJsx}
-          </div>
-          {/* Curriculum */}
-          <div className="flex-1 overflow-y-auto p-4">
-            {curriculumJsx}
-          </div>
         </div>
-
       </div>
 
-      {/* Certificate modal */}
-      {showCert && certData && (
-        <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />
-      )}
+      {/* ── SCROLL TO TOP FAB ──────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.8, y: 10 }}
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="fixed bottom-6 right-6 z-50 w-11 h-11 rounded-full bg-white/80 dark:bg-white/[0.08] backdrop-blur-xl border border-gray-200/60 dark:border-white/[0.08] shadow-frost-lg dark:shadow-glass flex items-center justify-center text-gray-500 dark:text-white/50 hover:text-[#F15929] hover:border-[#F15929]/20 transition-all active:scale-90"
+          >
+            <ArrowUp className="w-4 h-4" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
-      {/* Payment modal */}
+      {/* ── MODALS ─────────────────────────────────────────────────────── */}
+      {showCert && certData && <CertificateGenerator data={certData} onClose={() => setShowCert(false)} />}
       {course && (
         <PaymentModal
           open={showPaymentModal}
@@ -1132,8 +1072,6 @@ const CourseDetailPage: React.FC = () => {
           userId={user?.id}
         />
       )}
-
-      {/* Review delete confirm modal */}
       <DeleteConfirmModal
         open={deleteReviewTarget !== null}
         title="Sharhni o'chirish"
@@ -1142,8 +1080,7 @@ const CourseDetailPage: React.FC = () => {
         onConfirm={handleConfirmDeleteReview}
         onCancel={() => setDeleteReviewTarget(null)}
       />
-
-    </PageWrapper>
+    </div>
   )
 }
 
