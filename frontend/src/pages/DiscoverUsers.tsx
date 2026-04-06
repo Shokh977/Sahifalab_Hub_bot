@@ -58,26 +58,26 @@ const DiscoverUsers: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-pitch pb-24">
+    <div className="min-h-screen bg-[#F8F9FA] dark:bg-pitch pb-24">
       {/* Header */}
-      <div className="sticky top-0 z-30 bg-pitch/80 backdrop-blur-xl border-b border-white/[0.04]">
+      <div className="sticky top-0 z-30 bg-white/80 dark:bg-pitch/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-white/[0.04]">
         <div className="max-w-2xl mx-auto px-4 py-3">
-          <h1 className="text-lg font-bold text-white mb-3">Kashfiyot</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-white mb-3">Kashfiyot</h1>
 
           {/* Search bar */}
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/30" />
             <input
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="Foydalanuvchi qidirish..."
-              className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white placeholder:text-white/30 outline-none focus:border-sahifa-500/30 focus:bg-white/[0.06] transition-colors"
+              className="w-full pl-10 pr-8 py-2.5 rounded-xl bg-white/70 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 outline-none focus:border-sahifa-500/30 focus:bg-white dark:focus:bg-white/[0.06] transition-colors"
             />
             {query && (
               <button
                 onClick={() => setQuery('')}
-                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-white/30 hover:text-white/60"
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -90,11 +90,11 @@ const DiscoverUsers: React.FC = () => {
       <div className="max-w-2xl mx-auto px-4 pt-4">
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="w-6 h-6 animate-spin text-white/30" />
+            <Loader2 className="w-6 h-6 animate-spin text-gray-300 dark:text-white/30" />
           </div>
         ) : users.length === 0 ? (
           <div className="text-center py-20">
-            <p className="text-white/30 text-sm">
+            <p className="text-gray-400 dark:text-white/30 text-sm">
               {query ? "Natija topilmadi" : "Hech kim topilmadi"}
             </p>
           </div>
@@ -106,7 +106,7 @@ const DiscoverUsers: React.FC = () => {
               return (
                 <div
                   key={u.telegram_id}
-                  className="flex items-center justify-between p-3 rounded-xl border border-white/[0.04] bg-white/[0.02] hover:bg-white/[0.04] transition-colors"
+                  className="flex items-center justify-between p-3 rounded-xl border border-gray-200/60 dark:border-white/[0.04] bg-white/70 dark:bg-white/[0.02] hover:bg-white dark:hover:bg-white/[0.04] transition-colors"
                 >
                   <div
                     className="flex items-center gap-3 min-w-0 cursor-pointer flex-1"
@@ -122,7 +122,7 @@ const DiscoverUsers: React.FC = () => {
                       <UserPlus className="w-3.5 h-3.5" /> Kuzatish
                     </button>
                   ) : (
-                    <span className="text-xs text-white/30 px-3 flex-shrink-0">Kuzatilmoqda</span>
+                    <span className="text-xs text-gray-400 dark:text-white/30 px-3 flex-shrink-0">Kuzatilmoqda</span>
                   )}
                 </div>
               )

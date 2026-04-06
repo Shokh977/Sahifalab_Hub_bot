@@ -66,7 +66,7 @@ const CreatePost: React.FC<Props> = ({ user, onSubmit, uploadImage }) => {
   }
 
   return (
-    <div className="rounded-2xl border border-white/[0.06] bg-white/[0.04] backdrop-blur-md p-4">
+    <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.04] backdrop-blur-md p-4">
       <div className="flex gap-3">
         <UserIdentity user={user} size="sm" showName={false} />
 
@@ -77,12 +77,12 @@ const CreatePost: React.FC<Props> = ({ user, onSubmit, uploadImage }) => {
             placeholder="Fikringizni ulashing..."
             rows={2}
             maxLength={2000}
-            className="w-full bg-transparent text-sm text-white/90 placeholder:text-white/30 resize-none outline-none leading-relaxed"
+            className="w-full bg-transparent text-sm text-gray-700 dark:text-gray-300 placeholder:text-gray-400 dark:placeholder:text-white/30 resize-none outline-none leading-relaxed"
           />
 
           {/* Image preview */}
           {preview && (
-            <div className="relative mt-2 rounded-xl overflow-hidden max-h-60 bg-pitch-700">
+            <div className="relative mt-2 rounded-xl overflow-hidden max-h-60 bg-gray-100 dark:bg-pitch-700">
               <img src={preview} alt="" className="w-full max-h-60 object-cover" />
               <button
                 onClick={removeImage}
@@ -94,17 +94,17 @@ const CreatePost: React.FC<Props> = ({ user, onSubmit, uploadImage }) => {
           )}
 
           {compressing && (
-            <div className="flex items-center gap-2 mt-2 text-xs text-white/40">
+            <div className="flex items-center gap-2 mt-2 text-xs text-gray-400 dark:text-white/40">
               <Loader2 className="w-3 h-3 animate-spin" /> Rasm siqilmoqda...
             </div>
           )}
 
           {/* Actions */}
-          <div className="flex items-center justify-between mt-3 pt-2 border-t border-white/[0.04]">
+          <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-200/40 dark:border-white/[0.04]">
             <button
               onClick={() => fileRef.current?.click()}
               disabled={!!imageBlob || compressing}
-              className="p-2 rounded-lg text-white/40 hover:text-sahifa-400 hover:bg-white/[0.06] transition-colors disabled:opacity-30"
+              className="p-2 rounded-lg text-gray-400 dark:text-white/40 hover:text-sahifa-500 dark:hover:text-sahifa-400 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors disabled:opacity-30"
             >
               <Image className="w-5 h-5" />
             </button>

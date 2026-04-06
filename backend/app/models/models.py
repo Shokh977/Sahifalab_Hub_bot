@@ -34,6 +34,7 @@ class Profile(Base):
     followers_count   = Column(Integer, default=0)
     following_count   = Column(Integer, default=0)
     bio               = Column(Text, nullable=True)
+    about_me          = Column(Text, nullable=True)
 
 
 class AuthCode(Base):

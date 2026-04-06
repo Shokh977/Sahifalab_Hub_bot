@@ -35,6 +35,7 @@ import type { CourseData } from '../components/CourseCard'
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface ProfileData extends UserIdentityUser {
   bio?: string | null
+  about_me?: string | null
   followers_count: number
   following_count: number
   is_following: boolean
@@ -250,8 +251,10 @@ const PublicProfile: React.FC = () => {
                 </div>
               )}
 
-              {profile.bio && (
-                <p className="text-sm text-gray-500 dark:text-white/50 mt-2 leading-relaxed">{profile.bio}</p>
+              {(profile.bio || true) && (
+                <p className="text-sm text-gray-500 dark:text-white/50 mt-2 leading-relaxed line-clamp-3">
+                  {profile.bio || (profile.role === 'teacher' ? "O'qituvchi" : "O'quvchi")}
+                </p>
               )}
 
               {/* Stats */}
@@ -484,16 +487,16 @@ interface HaqidaTabProps {
 const HaqidaTab: React.FC<HaqidaTabProps> = ({ profile, rank, teacherInfo, isTeacher }) => (
   <div className="grid grid-cols-2 gap-3">
 
-    {/* ── Bio card (full-width) ──────────────────────────────────────────── */}
-    {profile.bio && (
+    {/* ── About Me card (full-width) ────────────────────────────────────── */}
+    {(profile.about_me || profile.bio) && (
       <motion.div
         initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         className="col-span-2 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-frost dark:shadow-none p-4"
       >
         <h3 className="text-xs font-bold text-gray-400 dark:text-white/40 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-          <BookOpen className="w-3.5 h-3.5 text-sahifa-500" /> Bio
+          <BookOpen className="w-3.5 h-3.5 text-sahifa-500" /> Haqida
         </h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-line">{profile.bio}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed whitespace-pre-line">{profile.about_me || profile.bio}</p>
       </motion.div>
     )}
 
@@ -583,8 +586,8 @@ const HaqidaTab: React.FC<HaqidaTabProps> = ({ profile, rank, teacherInfo, isTea
       </motion.div>
     )}
 
-    {/* ── "No data" fallback when bio is empty and not a teacher ──────────── */}
-    {!profile.bio && !isTeacher && (
+    {/* ── "No data" fallback when both bio and about_me are empty ────────── */}
+    {!profile.bio && !profile.about_me && !isTeacher && (
       <motion.div
         initial={{ opacity: 0 }} animate={{ opacity: 1 }}
         className="col-span-2 text-center py-12"

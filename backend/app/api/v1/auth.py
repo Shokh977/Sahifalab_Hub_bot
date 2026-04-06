@@ -68,6 +68,8 @@ class PhotoUpdateRequest(BaseModel):
 class ProfileUpdateRequest(BaseModel):
     first_name: Optional[str] = None
     username:   Optional[str] = None
+    bio:        Optional[str] = None
+    about_me:   Optional[str] = None
 
 class ApplyTeacherRequest(BaseModel):
     specialization:   str
@@ -187,6 +189,8 @@ async def get_current_user(
         "username": profile.username, "photo_url": profile.photo_url,
         "role": profile.role or "student", "status": profile.status or "active",
         "level": profile.level or 1, "total_xp": profile.total_xp or 0,
+        "bio": getattr(profile, "bio", None),
+        "about_me": getattr(profile, "about_me", None),
     }
 
 
@@ -244,6 +248,10 @@ async def update_my_profile(
         payload["first_name"] = body.first_name.strip()
     if body.username is not None:
         payload["username"] = body.username.strip() or None
+    if body.bio is not None:
+        payload["bio"] = body.bio.strip()[:150] or None      # short bio, max 150 chars
+    if body.about_me is not None:
+        payload["about_me"] = body.about_me.strip() or None
     if not payload:
         return {"ok": True}
     _upsert_profile(db, telegram_id, **payload)

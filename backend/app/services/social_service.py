@@ -351,6 +351,7 @@ def get_public_profile(db: Session, target_id: int, viewer_id: Optional[int] = N
         return None
     result = _profile_to_author(profile)
     result["bio"] = getattr(profile, "bio", None)
+    result["about_me"] = getattr(profile, "about_me", None)
     result["followers_count"] = getattr(profile, "followers_count", 0) or 0
     result["following_count"] = getattr(profile, "following_count", 0) or 0
     result["is_following"] = is_following(db, viewer_id, target_id) if viewer_id else False

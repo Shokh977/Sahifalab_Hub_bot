@@ -393,7 +393,7 @@ class ApiService {
   }
 
   /** Current user: update editable profile fields */
-  async updateMyProfile(data: { first_name?: string; username?: string | null }) {
+  async updateMyProfile(data: { first_name?: string; username?: string | null; bio?: string | null; about_me?: string | null }) {
     return this.axiosInstance.patch('/api/auth/me', data)
   }
 

@@ -182,6 +182,7 @@ const TeacherDashboardPage: React.FC = () => {
             {/* Profile banner */}
             {!profileLoading && (
               teacherProfile?.profile_complete ? (
+                <>
                 <div className="flex items-center gap-3 p-4 rounded-2xl bg-gradient-to-r from-sahifa-50 to-sahifa-100/40 dark:from-sahifa-900/20 dark:to-sahifa-900/10 border border-sahifa-200/60 dark:border-sahifa-800/60">
                   <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-xl shrink-0 shadow-md">
                     {(user?.first_name || '?').charAt(0).toUpperCase()}
@@ -201,6 +202,13 @@ const TeacherDashboardPage: React.FC = () => {
                     <PencilSquareIcon className="h-4 w-4 text-slate-500" />
                   </Link>
                 </div>
+                {/* Kabinet redirect note */}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-blue-50/80 dark:bg-blue-900/10 border border-blue-200/60 dark:border-blue-800/40 mt-2">
+                  <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-snug flex-1">
+                    Umumiy bio va "Haqida" ma'lumotlarini <Link to="/cabinet" className="font-semibold underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300">Kabinet</Link> sahifasida tahrirlang.
+                  </p>
+                </div>
+                </>
               ) : (
                 <div className="flex items-start gap-3 p-4 rounded-2xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/60">
                   <ExclamationTriangleIcon className="h-5 w-5 shrink-0 mt-0.5 text-amber-500" />

@@ -300,6 +300,8 @@ const CabinetPage: React.FC = () => {
   const [editOpen, setEditOpen] = useState(false)
   const [editFirstName, setEditFirstName] = useState('')
   const [editUsername, setEditUsername] = useState('')
+  const [editBio, setEditBio] = useState('')
+  const [editAboutMe, setEditAboutMe] = useState('')
   const [localFirstName, setLocalFirstName] = useState('')
   const [localUsername, setLocalUsername] = useState('')
   const [localPhotoUrl, setLocalPhotoUrl] = useState<string | null>(null)
@@ -310,7 +312,9 @@ const CabinetPage: React.FC = () => {
   useEffect(() => {
     setEditFirstName(effectiveFirstName || '')
     setEditUsername(effectiveUsername || '')
-  }, [effectiveFirstName, effectiveUsername])
+    setEditBio((authUser as any)?.bio || '')
+    setEditAboutMe((authUser as any)?.about_me || '')
+  }, [effectiveFirstName, effectiveUsername, authUser])
 
   useEffect(() => {
     setLocalFirstName(effectiveFirstName || '')
@@ -343,6 +347,8 @@ const CabinetPage: React.FC = () => {
       await apiService.updateMyProfile({
         first_name: editFirstName.trim(),
         username: editUsername.trim() || null,
+        bio: editBio.trim().slice(0, 150) || null,
+        about_me: editAboutMe.trim() || null,
       })
       setLocalFirstName(editFirstName.trim())
       setLocalUsername(editUsername.trim())
@@ -353,7 +359,7 @@ const CabinetPage: React.FC = () => {
     } finally {
       setProfileSaving(false)
     }
-  }, [isWeb, editFirstName, editUsername])
+  }, [isWeb, editFirstName, editUsername, editBio, editAboutMe])
 
   // Certificate & books state
   const [completedQuizzes, setCompletedQuizzes] = useState<CompletedQuiz[]>([])
@@ -583,7 +589,7 @@ const CabinetPage: React.FC = () => {
                     onClick={() => setEditOpen(prev => !prev)}
                     className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1"
                   >
-                    <PenSquare className="h-3 w-3" /> Ism
+                    <PenSquare className="h-3 w-3" /> Tahrirlash
                   </button>
                 </div>
               )}
@@ -607,6 +613,32 @@ const CabinetPage: React.FC = () => {
                 className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
               />
             </div>
+
+            {/* Short Bio (Status) — max 150 chars */}
+            <div className="relative">
+              <input
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value.slice(0, 150))}
+                placeholder="Qisqa bio (status) — profilning boshida ko'rinadi"
+                maxLength={150}
+                className="w-full rounded-xl px-3 py-2 pr-14 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
+              />
+              <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium ${editBio.length >= 140 ? 'text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                {editBio.length}/150
+              </span>
+            </div>
+
+            {/* About Me (long-form) */}
+            <div className="relative">
+              <textarea
+                value={editAboutMe}
+                onChange={(e) => setEditAboutMe(e.target.value)}
+                placeholder="Batafsil ma'lumot (Haqida) — 'Haqida' tabida to'liq ko'rinadi"
+                rows={3}
+                className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400 resize-none leading-relaxed"
+              />
+            </div>
+
             <div className="flex items-center justify-end gap-2">
               <button
                 onClick={() => setEditOpen(false)}
