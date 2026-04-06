@@ -1,8 +1,8 @@
 /**
  * CertificateGenerator -- dual-mode certificate renderer
  *
- * type === 'course' -> Landscape 1500x1060  SAHIFALAB Course Completion design
- * type === 'quiz'   -> Portrait 1080x1350   existing minimalist quiz certificate
+ * type === 'course' -> Landscape 1500x1060  SAHIFALAB Course Completion
+ * type === 'quiz'   -> Portrait  1080x1350  Quiz certificate
  */
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import QRCode from 'qrcode'
@@ -26,27 +26,31 @@ interface Props {
 }
 
 // -- Dimensions ------------------------------------------------------------
-const CW = 1500
-const CH = 1060
+const CW  = 1500                // course canvas width
+const CH  = 1060                // course canvas height
 const CCX = CW / 2
-const QW = 1080
-const QH = 1350
+const QW  = 1080                // quiz canvas width
+const QH  = 1350                // quiz canvas height
 const QCX = QW / 2
 
 // -- Palette ---------------------------------------------------------------
-const ORANGE        = '#F26722'
-const ORANGE_MID    = '#F88A45'
-const ORANGE_LIGHT  = '#FFAD6B'
-const OFF_WHITE     = '#FAFAFA'
-const CHARCOAL      = '#1F2937'
-const GOLD          = '#D4AF37'
-const MUTED         = '#6B7280'
-const BROWN_DARK    = '#4A2008'
-const BROWN         = '#7B3F1A'
+const ORANGE       = '#F26722'
+const ORANGE_MID   = '#F88A45'
+const ORANGE_LIGHT = '#FFAD6B'
+const OFF_WHITE    = '#FAFAFA'
+const CHARCOAL     = '#1F2937'
+const GOLD         = '#D4AF37'
+const MUTED        = '#6B7280'
+const BROWN_DARK   = '#4A2008'
+const BROWN        = '#7B3F1A'
 const TELEGRAM_CHANNEL_URL = 'https://t.me/sahifalab1'
 
 // -- Utilities -------------------------------------------------------------
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string[] {
   const words = text.split(' ')
   const lines: string[] = []
   let line = ''
@@ -55,7 +59,9 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
     if (ctx.measureText(test).width > maxWidth && line) {
       lines.push(line)
       line = word
-    } else { line = test }
+    } else {
+      line = test
+    }
   })
   if (line) lines.push(line)
   return lines
@@ -70,9 +76,14 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   })
 }
 
-async function makeQrImage(url: string, size = 140, qrColor = CHARCOAL): Promise<HTMLImageElement> {
+async function makeQrImage(
+  url: string,
+  size = 140,
+  qrColor = CHARCOAL,
+): Promise<HTMLImageElement> {
   const dataUrl = await QRCode.toDataURL(url, {
-    width: size, margin: 1,
+    width: size,
+    margin: 1,
     color: { dark: qrColor, light: '#0000' },
   })
   return loadImage(dataUrl)
@@ -80,18 +91,27 @@ async function makeQrImage(url: string, size = 140, qrColor = CHARCOAL): Promise
 
 function formatCertificateId(data: CertificateData): string {
   if (data.certificateId?.trim()) {
-    return data.certificateId.trim().replace(/[^A-Za-z0-9-]/g, '').toUpperCase()
+    return data.certificateId
+      .trim()
+      .replace(/[^A-Za-z0-9-]/g, '')
+      .toUpperCase()
   }
-  const seed = data.userName + '|' + data.quizTitle + '|' + data.date + '|' +
+  const seed =
+    data.userName + '|' + data.quizTitle + '|' + data.date + '|' +
     (data.score ?? 0) + '|' + (data.total ?? 1) + '|' + (data.percentage ?? 100)
   let hash = 0
-  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0
-  const token = Math.abs(hash).toString(36).toUpperCase().padStart(8, '0').slice(0, 8)
+  for (let i = 0; i < seed.length; i++)
+    hash = (hash * 31 + seed.charCodeAt(i)) | 0
+  const token = Math.abs(hash)
+    .toString(36)
+    .toUpperCase()
+    .padStart(8, '0')
+    .slice(0, 8)
   return 'SLH-' + token
 }
 
 // ==========================================================================
-//  COURSE CERTIFICATE - LANDSCAPE 1500 x 1060
+//  COURSE CERTIFICATE helpers
 // ==========================================================================
 
 type BlobPath = (ctx: CanvasRenderingContext2D) => void
@@ -103,95 +123,120 @@ function blob(ctx: CanvasRenderingContext2D, color: string, path: BlobPath) {
 }
 
 /**
- * Corner blobs — organic wave shapes in all 4 corners.
- * Proportions match reference: top-right LARGEST, top-left large,
- * bottom-left medium, bottom-right smallest.
- * Each corner has 3 concentric layers (light → mid → dark orange).
+ * Corner waves — organic S-curve shapes.
+ * ONLY top-right (dominant) and bottom-left (secondary).
+ * Bottom-right has a tiny accent for QR area.
+ * NO top-left corner blobs — matches the reference exactly.
  */
 function drawCornerBlobs(ctx: CanvasRenderingContext2D) {
-  const W = CW, H = CH
+  const W = CW
+  const H = CH
 
-  // ===== TOP-RIGHT (largest — dominant corner wave) =====
+  // ===== TOP-RIGHT — 3 organic S-curve wave layers =====
+  // Outermost (lightest, yellow-orange tint)
   blob(ctx, '#F9C56B', c => {
-    c.moveTo(W * 0.80, 0)
-    c.bezierCurveTo(W * 0.88, H * 0.01, W * 0.95, H * 0.05, W, H * 0.10)
+    c.moveTo(W * 0.72, 0)
+    c.bezierCurveTo(W * 0.78, H * 0.02, W * 0.86, H * 0.01, W * 0.92, 0)
     c.lineTo(W, 0)
+    c.lineTo(W, H * 0.12)
+    c.bezierCurveTo(W * 0.98, H * 0.08, W * 0.94, H * 0.04, W * 0.72, 0)
     c.closePath()
   })
+  // Layer 2 — light orange
   blob(ctx, ORANGE_LIGHT, c => {
     c.moveTo(W * 0.52, 0)
-    c.bezierCurveTo(W * 0.66, H * 0.05, W * 0.83, H * 0.06, W, H * 0.18)
+    c.bezierCurveTo(W * 0.58, H * 0.08, W * 0.72, H * 0.14, W * 0.82, H * 0.12)
+    c.bezierCurveTo(W * 0.92, H * 0.10, W * 0.97, H * 0.06, W, H * 0.20)
     c.lineTo(W, 0)
+    c.lineTo(W * 0.52, 0)
     c.closePath()
   })
+  // Layer 3 — mid orange
   blob(ctx, ORANGE_MID, c => {
     c.moveTo(W * 0.58, 0)
-    c.bezierCurveTo(W * 0.72, H * 0.04, W * 0.86, H * 0.10, W, H * 0.23)
+    c.bezierCurveTo(W * 0.64, H * 0.06, W * 0.74, H * 0.12, W * 0.84, H * 0.14)
+    c.bezierCurveTo(W * 0.92, H * 0.15, W * 0.96, H * 0.12, W, H * 0.28)
     c.lineTo(W, 0)
+    c.lineTo(W * 0.58, 0)
     c.closePath()
   })
+  // Layer 4 — darkest, most prominent orange
   blob(ctx, ORANGE, c => {
-    c.moveTo(W * 0.64, 0)
-    c.bezierCurveTo(W * 0.79, H * 0.05, W * 0.90, H * 0.14, W, H * 0.29)
+    c.moveTo(W * 0.66, 0)
+    c.bezierCurveTo(W * 0.72, H * 0.05, W * 0.80, H * 0.10, W * 0.88, H * 0.14)
+    c.bezierCurveTo(W * 0.94, H * 0.17, W * 0.97, H * 0.20, W, H * 0.34)
     c.lineTo(W, 0)
+    c.lineTo(W * 0.66, 0)
     c.closePath()
   })
 
-  // ===== BOTTOM-LEFT (second dominant corner wave) =====
+  // ===== BOTTOM-LEFT — 3 organic S-curve wave layers =====
   blob(ctx, ORANGE_LIGHT, c => {
-    c.moveTo(0, H * 0.74)
-    c.bezierCurveTo(W * 0.10, H * 0.80, W * 0.24, H * 0.90, W * 0.38, H)
+    c.moveTo(0, H * 0.68)
+    c.bezierCurveTo(W * 0.04, H * 0.72, W * 0.10, H * 0.82, W * 0.14, H * 0.86)
+    c.bezierCurveTo(W * 0.20, H * 0.92, W * 0.30, H * 0.96, W * 0.38, H)
     c.lineTo(0, H)
     c.closePath()
   })
   blob(ctx, ORANGE_MID, c => {
-    c.moveTo(0, H * 0.79)
-    c.bezierCurveTo(W * 0.08, H * 0.83, W * 0.20, H * 0.92, W * 0.31, H)
+    c.moveTo(0, H * 0.74)
+    c.bezierCurveTo(W * 0.03, H * 0.78, W * 0.08, H * 0.86, W * 0.12, H * 0.90)
+    c.bezierCurveTo(W * 0.18, H * 0.95, W * 0.24, H * 0.97, W * 0.30, H)
     c.lineTo(0, H)
     c.closePath()
   })
   blob(ctx, ORANGE, c => {
-    c.moveTo(0, H * 0.84)
-    c.bezierCurveTo(W * 0.05, H * 0.87, W * 0.15, H * 0.95, W * 0.24, H)
+    c.moveTo(0, H * 0.80)
+    c.bezierCurveTo(W * 0.02, H * 0.84, W * 0.06, H * 0.90, W * 0.10, H * 0.93)
+    c.bezierCurveTo(W * 0.14, H * 0.96, W * 0.18, H * 0.98, W * 0.22, H)
     c.lineTo(0, H)
     c.closePath()
   })
 
-  // ===== BOTTOM-RIGHT (small subtle accent) =====
+  // ===== BOTTOM-RIGHT — tiny accent =====
   blob(ctx, ORANGE_LIGHT, c => {
-    c.moveTo(W, H * 0.92)
-    c.bezierCurveTo(W * 0.96, H * 0.92, W * 0.93, H * 0.96, W * 0.90, H)
+    c.moveTo(W, H * 0.91)
+    c.bezierCurveTo(W * 0.97, H * 0.93, W * 0.94, H * 0.96, W * 0.91, H)
+    c.lineTo(W, H)
+    c.closePath()
+  })
+  blob(ctx, ORANGE_MID, c => {
+    c.moveTo(W, H * 0.94)
+    c.bezierCurveTo(W * 0.98, H * 0.95, W * 0.96, H * 0.97, W * 0.94, H)
     c.lineTo(W, H)
     c.closePath()
   })
 }
 
-/** Award medal: orange circle with checkmark + two ribbon strips below */
+/**
+ * Award medal/badge: rosette with checkmark + ribbon strips.
+ * Matches the golden-orange badge in the reference center-bottom.
+ */
 function drawAwardMedal(ctx: CanvasRenderingContext2D, cx: number, topY: number) {
-  const r = 34
+  const r  = 30
   const cy = topY + r
 
-  // Ribbon strips
-  ctx.fillStyle = ORANGE
+  // Ribbon strips (behind medal)
+  ctx.fillStyle = ORANGE_MID
   ctx.beginPath()
-  ctx.moveTo(cx - 24, cy + r - 8)
-  ctx.lineTo(cx - 38, cy + r + 46)
-  ctx.lineTo(cx - 5,  cy + r + 20)
+  ctx.moveTo(cx - 18, cy + r - 4)
+  ctx.lineTo(cx - 30, cy + r + 42)
+  ctx.lineTo(cx - 4, cy + r + 18)
   ctx.closePath()
   ctx.fill()
   ctx.beginPath()
-  ctx.moveTo(cx + 24, cy + r - 8)
-  ctx.lineTo(cx + 38, cy + r + 46)
-  ctx.lineTo(cx + 5,  cy + r + 20)
+  ctx.moveTo(cx + 18, cy + r - 4)
+  ctx.lineTo(cx + 30, cy + r + 42)
+  ctx.lineTo(cx + 4, cy + r + 18)
   ctx.closePath()
   ctx.fill()
 
-  // Rosette outer ring
+  // Rosette points (star-like rim)
   ctx.fillStyle = '#F2B84A'
   ctx.beginPath()
-  for (let i = 0; i < 24; i++) {
-    const a = (Math.PI * 2 * i) / 24 - Math.PI / 2
-    const rr = i % 2 === 0 ? r + 6 : r
+  for (let i = 0; i < 20; i++) {
+    const a  = (Math.PI * 2 * i) / 20 - Math.PI / 2
+    const rr = i % 2 === 0 ? r + 5 : r - 1
     const px = cx + Math.cos(a) * rr
     const py = cy + Math.sin(a) * rr
     if (i === 0) ctx.moveTo(px, py)
@@ -200,190 +245,237 @@ function drawAwardMedal(ctx: CanvasRenderingContext2D, cx: number, topY: number)
   ctx.closePath()
   ctx.fill()
 
-  // Center circle
+  // Center disc
   ctx.fillStyle = '#F4C35F'
   ctx.beginPath()
-  ctx.arc(cx, cy, r, 0, Math.PI * 2)
+  ctx.arc(cx, cy, r - 2, 0, Math.PI * 2)
   ctx.fill()
 
   // Inner ring
-  ctx.strokeStyle = 'rgba(255,255,255,0.65)'
-  ctx.lineWidth = 2.5
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)'
+  ctx.lineWidth = 2
   ctx.beginPath()
   ctx.arc(cx, cy, r - 10, 0, Math.PI * 2)
   ctx.stroke()
 
   // Checkmark
   ctx.strokeStyle = '#FFFFFF'
-  ctx.lineWidth = 4.2
-  ctx.lineCap = 'round'
+  ctx.lineWidth = 3.5
+  ctx.lineCap  = 'round'
   ctx.lineJoin = 'round'
   ctx.beginPath()
-  ctx.moveTo(cx - 14, cy + 3)
-  ctx.lineTo(cx - 3,  cy + 14)
-  ctx.lineTo(cx + 18, cy - 14)
+  ctx.moveTo(cx - 10, cy + 2)
+  ctx.lineTo(cx - 2, cy + 10)
+  ctx.lineTo(cx + 14, cy - 10)
   ctx.stroke()
   ctx.lineCap = 'butt'
 }
 
-/** Handwritten signature flourish (bezier curves) */
+/**
+ * Handwritten signature — traced from the uploaded signature image.
+ * The signature shows: initial loop bottom-left, ascending zigzag
+ * strokes, tall right ascender, trailing descending curve.
+ */
 function drawSignature(ctx: CanvasRenderingContext2D, cx: number, baseY: number) {
   ctx.save()
-  ctx.strokeStyle = BROWN_DARK
-  ctx.lineWidth = 1.8
-  ctx.lineCap = 'round'
-  ctx.lineJoin = 'round'
+  const s = 0.72           // scale to fit ~140px wide
+  ctx.translate(cx - 70, baseY - 26)
+  ctx.scale(s, s)
 
-  // Main cursive autograph strokes
+  ctx.strokeStyle = '#1a1a1a'
+  ctx.lineWidth   = 2.8
+  ctx.lineCap     = 'round'
+  ctx.lineJoin    = 'round'
+
+  // Stroke 1 — initial loop (bottom-left oval)
   ctx.beginPath()
-  ctx.moveTo(cx - 58, baseY + 36)
-  ctx.bezierCurveTo(cx - 50, baseY + 8, cx - 40, baseY - 22, cx - 26, baseY - 12)
-  ctx.bezierCurveTo(cx - 18, baseY - 4, cx - 28, baseY + 22, cx - 16, baseY + 8)
-  ctx.bezierCurveTo(cx - 8, baseY - 6, cx, baseY + 16, cx + 8, baseY + 4)
-  ctx.bezierCurveTo(cx + 16, baseY - 10, cx + 24, baseY + 14, cx + 32, baseY + 2)
-  ctx.bezierCurveTo(cx + 40, baseY - 10, cx + 50, baseY + 8, cx + 58, baseY - 2)
-  ctx.bezierCurveTo(cx + 64, baseY - 10, cx + 70, baseY + 4, cx + 74, baseY)
+  ctx.moveTo(28, 106)
+  ctx.bezierCurveTo(12, 98, 4, 78, 16, 62)
+  ctx.bezierCurveTo(28, 46, 48, 52, 42, 68)
+  ctx.bezierCurveTo(36, 84, 18, 96, 28, 106)
   ctx.stroke()
 
-  // Underline flourish
+  // Stroke 2 — ascending diagonal from loop through zigzag
   ctx.beginPath()
-  ctx.moveTo(cx - 8, baseY + 42)
-  ctx.bezierCurveTo(cx + 22, baseY + 34, cx + 52, baseY + 36, cx + 78, baseY + 24)
+  ctx.moveTo(28, 106)
+  ctx.bezierCurveTo(38, 90, 56, 58, 72, 40)
+  ctx.bezierCurveTo(88, 22, 112, 10, 140, 8)
+  ctx.stroke()
+
+  // Stroke 3 — zigzag peaks (the "www" part)
+  ctx.lineWidth = 2.4
+  ctx.beginPath()
+  ctx.moveTo(52, 76)
+  ctx.bezierCurveTo(56, 60, 64, 50, 68, 56)
+  ctx.bezierCurveTo(72, 62, 70, 72, 76, 58)
+  ctx.bezierCurveTo(82, 44, 86, 52, 90, 60)
+  ctx.bezierCurveTo(94, 68, 92, 56, 98, 46)
+  ctx.bezierCurveTo(104, 36, 108, 42, 112, 50)
+  ctx.bezierCurveTo(116, 58, 114, 44, 120, 36)
+  ctx.stroke()
+
+  // Stroke 4 — tall ascending stroke (right side)
+  ctx.lineWidth = 2.6
+  ctx.beginPath()
+  ctx.moveTo(120, 36)
+  ctx.bezierCurveTo(128, 22, 136, 8, 148, 2)
+  ctx.bezierCurveTo(156, -2, 160, 6, 158, 18)
+  ctx.stroke()
+
+  // Stroke 5 — descending tail/flourish
+  ctx.lineWidth = 2.2
+  ctx.beginPath()
+  ctx.moveTo(158, 18)
+  ctx.bezierCurveTo(162, 36, 170, 56, 178, 68)
+  ctx.bezierCurveTo(186, 80, 190, 76, 192, 64)
+  ctx.bezierCurveTo(194, 52, 188, 44, 182, 52)
+  ctx.bezierCurveTo(176, 60, 180, 72, 186, 76)
   ctx.stroke()
 
   ctx.restore()
 }
 
-async function drawCourseCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
+// ==========================================================================
+//  COURSE CERTIFICATE — LANDSCAPE 1500 × 1060
+// ==========================================================================
+
+async function drawCourseCertificate(
+  canvas: HTMLCanvasElement,
+  data: CertificateData,
+) {
   canvas.width  = CW
   canvas.height = CH
   const ctx = canvas.getContext('2d')!
   ctx.textAlign    = 'center'
   ctx.textBaseline = 'middle'
 
-  // 1. Light neutral background
-  ctx.fillStyle = '#F3F3F3'
+  // ── 1. Background ──────────────────────────────────────────────────────
+  ctx.fillStyle = '#FEFEFE'
   ctx.fillRect(0, 0, CW, CH)
 
-  // 2. Corner blobs (drawn BEFORE borders — blobs go under borders)
+  // ── 2. Corner waves (UNDER borders) ────────────────────────────────────
   drawCornerBlobs(ctx)
 
-  // 3. Double orange border
-  ctx.strokeStyle = ORANGE
-  ctx.lineWidth = 2
-  ctx.strokeRect(50, 36, CW - 100, CH - 72)
-  ctx.strokeStyle = ORANGE
-  ctx.lineWidth = 1
+  // ── 3. Double orange border frame ──────────────────────────────────────
+  //       Outer rect + inner rect, both ORANGE
+  ctx.strokeStyle = ORANGE_MID
+  ctx.lineWidth   = 2.2
+  ctx.strokeRect(52, 38, CW - 104, CH - 76)
+  ctx.lineWidth = 1.0
   ctx.strokeRect(66, 52, CW - 132, CH - 104)
 
-  // 4. TITLE: CERTIFICATE (bold, uppercase, orange with shadow)
-  ctx.font = '900 84px "Arial Black", Impact, Arial, sans-serif'
-  ctx.letterSpacing = '7px'
-  // Shadow pass
-  ctx.fillStyle = 'rgba(200,75,5,0.22)'
-  ctx.fillText('CERTIFICATE', CCX + 2, 132)
-  // Main pass
+  // ── 4. Title: CERTIFICATE ──────────────────────────────────────────────
+  ctx.font = '900 82px "Arial Black", Impact, Arial, sans-serif'
+  ctx.letterSpacing = '6px'
+  // shadow
+  ctx.fillStyle = 'rgba(200,75,5,0.18)'
+  ctx.fillText('CERTIFICATE', CCX + 2, 134)
+  // main
   ctx.fillStyle = ORANGE
-  ctx.fillText('CERTIFICATE', CCX, 130)
+  ctx.fillText('CERTIFICATE', CCX, 132)
   ctx.letterSpacing = '0px'
 
-  // 5. Dotted separator (orange dots)
-  for (let x = CCX - 94; x <= CCX + 94; x += 11) {
+  // ── 5. Dotted separator ────────────────────────────────────────────────
+  ctx.fillStyle = ORANGE
+  for (let x = CCX - 90; x <= CCX + 90; x += 12) {
     ctx.beginPath()
-    ctx.arc(x, 185, 2.2, 0, Math.PI * 2)
-    ctx.fillStyle = ORANGE
+    ctx.arc(x, 186, 2.5, 0, Math.PI * 2)
     ctx.fill()
   }
 
-  // 6. Subtitle
+  // ── 6. Subtitle ────────────────────────────────────────────────────────
   ctx.fillStyle = BROWN
-  ctx.font = 'italic 27px Georgia, "Times New Roman", serif'
-  ctx.fillText('Ushbu sertifikat egasi', CCX, 238)
+  ctx.font = 'italic 28px Georgia, "Times New Roman", serif'
+  ctx.fillText('Ushbu sertifikat egasi', CCX, 232)
 
-  // 7. User name (LARGEST element — script font, curly quotes)
-  const safeName = data.userName.trim() || 'Talaba'
+  // ── 7. User name — THE LARGEST, MOST PROMINENT element ─────────────────
+  const safeName    = data.userName.trim() || 'Talaba'
   const displayName = '\u201c' + safeName + '\u201d'
-  ctx.fillStyle = BROWN_DARK
-  ctx.shadowColor = 'rgba(74,32,8,0.12)'
-  ctx.shadowBlur  = 6
-  ctx.font = 'italic 92px "Brush Script MT", "Segoe Script", "Palatino Linotype", cursive'
-  ctx.fillText(displayName, CCX, 350)
+  ctx.fillStyle     = BROWN_DARK
+  ctx.shadowColor   = 'rgba(74,32,8,0.10)'
+  ctx.shadowBlur    = 5
+  ctx.font = 'italic 96px "Brush Script MT", "Segoe Script", "Palatino Linotype", cursive'
+  ctx.fillText(displayName, CCX, 348)
   ctx.shadowBlur = 0
 
-  // 8. Orange underline beneath name
-  const nameW = Math.min(ctx.measureText(displayName).width + 30, 980)
+  // ── 8. Orange underline ────────────────────────────────────────────────
+  const nameW = Math.min(ctx.measureText(displayName).width + 20, 1000)
   ctx.strokeStyle = ORANGE
-  ctx.lineWidth = 4.5
+  ctx.lineWidth   = 3
   ctx.beginPath()
-  ctx.moveTo(CCX - nameW / 2, 412)
-  ctx.lineTo(CCX + nameW / 2, 412)
+  ctx.moveTo(CCX - nameW / 2, 408)
+  ctx.lineTo(CCX + nameW / 2, 408)
   ctx.stroke()
 
-  // 9. Body text (centered, serif)
+  // ── 9. Body text ───────────────────────────────────────────────────────
   const courseName = data.quizTitle.trim() || 'Kurs'
-  const bodyText = 'Sahifalabning \u201c' + courseName + '\u201d kursini muvaffaqiyatli yakunladi.'
-  ctx.fillStyle = '#333333'
-  ctx.font = '400 30px Georgia, "Times New Roman", serif'
-  const bodyLines = wrapText(ctx, bodyText, 830)
-  bodyLines.forEach((line, i) => ctx.fillText(line, CCX, 482 + i * 52))
+  const bodyText =
+    'Sahifalabning \u201c' + courseName + '\u201d kursini muvaffaqiyatli\nyakunladi.'
+  ctx.fillStyle = '#444444'
+  ctx.font = '400 28px Georgia, "Times New Roman", serif'
+  bodyText.split('\n').forEach((line, i) => {
+    ctx.fillText(line.trim(), CCX, 472 + i * 44)
+  })
 
-  // 10. Footer — three columns, NO divider lines (matching reference)
-  const footY = 740
+  // ── 10. Footer — three columns ─────────────────────────────────────────
+  const footY = 660
 
-  // ---- LEFT COLUMN: Handwritten signature + line + SAHIFALAB ----
-  const c1 = CW * 0.175
-  drawSignature(ctx, c1, footY + 28)
-  // Horizontal line under signature
-  ctx.strokeStyle = CHARCOAL
-  ctx.lineWidth = 1.2
+  // ---- LEFT: Signature + line + SAHIFALAB label ----
+  const c1 = CW * 0.20
+  drawSignature(ctx, c1, footY + 34)
+  // Horizontal line
+  ctx.strokeStyle = '#888888'
+  ctx.lineWidth   = 0.8
   ctx.beginPath()
-  ctx.strokeStyle = ORANGE
-  ctx.moveTo(c1 - 128, footY + 100)
-  ctx.lineTo(c1 + 128, footY + 100)
+  ctx.moveTo(c1 - 72, footY + 108)
+  ctx.lineTo(c1 + 72, footY + 108)
   ctx.stroke()
-  // SAHIFALAB label
+  // SAHIFALAB — small caps style (first letter bigger via separate draws)
   ctx.fillStyle = BROWN_DARK
-  ctx.letterSpacing = '4px'
-  ctx.font = '800 45px Impact, "Arial Black", Arial, sans-serif'
-  ctx.fillText('SAHIFALAB', c1, footY + 138)
+  ctx.font = '700 26px Georgia, "Times New Roman", serif'
+  ctx.letterSpacing = '3px'
+  ctx.fillText('SAHIFALAB', c1, footY + 142)
   ctx.letterSpacing = '0px'
 
-  // ---- CENTER COLUMN: Award medal + date ----
-  drawAwardMedal(ctx, CCX, footY + 28)
-  ctx.fillStyle = '#111111'
-  ctx.font = '700 36px Impact, "Arial Black", Arial, sans-serif'
-  ctx.fillText(data.date, CCX, footY + 140)
+  // ---- CENTER: Badge + "DATE" ----
+  drawAwardMedal(ctx, CCX, footY + 20)
+  ctx.fillStyle = '#444444'
+  ctx.font = '600 16px Georgia, "Times New Roman", serif'
+  ctx.fillText('\u201c' + data.date + '\u201d', CCX, footY + 130)
 
-  // ---- RIGHT COLUMN: Certificate ID label + value ----
-  const c3 = CW * 0.825
+  // ---- RIGHT: "Certificate ID" label + value ----
+  const c3 = CW * 0.80
   const certId = formatCertificateId(data)
   // Label
-  ctx.fillStyle = '#111111'
-  ctx.font = '700 46px Impact, "Arial Black", Arial, sans-serif'
-  ctx.letterSpacing = '1px'
-  ctx.fillText('\u201cCERTIFICATE ID\u201d', c3, footY + 70)
+  ctx.fillStyle = BROWN_DARK
+  ctx.font = '700 18px Georgia, "Times New Roman", serif'
+  ctx.letterSpacing = '2px'
+  ctx.fillText('\u201cCERTIFICATE ID\u201d', c3, footY + 58)
   ctx.letterSpacing = '0px'
+  // Thin line
+  ctx.strokeStyle = '#888888'
+  ctx.lineWidth   = 0.8
+  ctx.beginPath()
+  ctx.moveTo(c3 - 100, footY + 80)
+  ctx.lineTo(c3 + 100, footY + 80)
+  ctx.stroke()
   // Value
   ctx.fillStyle = BROWN_DARK
-  ctx.letterSpacing = '1px'
-  ctx.font = '800 52px Impact, "Arial Black", Arial, sans-serif'
-  ctx.fillText(certId, c3, footY + 124)
+  ctx.font = '700 24px Georgia, "Times New Roman", serif'
+  ctx.letterSpacing = '2px'
+  ctx.fillText(certId, c3, footY + 110)
   ctx.letterSpacing = '0px'
 
-  // 11. QR code bottom-right (ORANGE colored, matching reference)
-  const qrSize = 88
-  const qrX = CW - qrSize - 46
-  const qrY = CH - qrSize - 66
-  const qrImg = await makeQrImage(TELEGRAM_CHANNEL_URL, 104, ORANGE)
-  ctx.fillStyle = 'rgba(255,255,255,0.85)'
-  ctx.beginPath()
-  ctx.roundRect(qrX - 4, qrY - 4, qrSize + 8, qrSize + 8, 8)
-  ctx.fill()
+  // ── 11. QR code — bottom-right, orange ─────────────────────────────────
+  const qrSize = 80
+  const qrX    = CW - qrSize - 56
+  const qrY    = CH - qrSize - 32
+  const qrImg  = await makeQrImage(TELEGRAM_CHANNEL_URL, 96, ORANGE)
   ctx.drawImage(qrImg, qrX, qrY, qrSize, qrSize)
 }
 
 // ==========================================================================
-//  QUIZ CERTIFICATE - PORTRAIT 1080 x 1350 (existing design, preserved)
+//  QUIZ CERTIFICATE — PORTRAIT 1080 × 1350
 // ==========================================================================
 
 function drawPremiumPaperTexture(ctx: CanvasRenderingContext2D) {
@@ -402,7 +494,11 @@ function drawPremiumPaperTexture(ctx: CanvasRenderingContext2D) {
 
 function drawCircularText(
   ctx: CanvasRenderingContext2D,
-  text: string, x: number, y: number, radius: number, startAngle: number,
+  text: string,
+  x: number,
+  y: number,
+  radius: number,
+  startAngle: number,
 ) {
   ctx.save()
   ctx.translate(x, y)
@@ -421,7 +517,10 @@ function drawCircularText(
   ctx.restore()
 }
 
-async function drawQuizCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
+async function drawQuizCertificate(
+  canvas: HTMLCanvasElement,
+  data: CertificateData,
+) {
   canvas.width  = QW
   canvas.height = QH
   const ctx = canvas.getContext('2d')!
@@ -430,100 +529,177 @@ async function drawQuizCertificate(canvas: HTMLCanvasElement, data: CertificateD
 
   drawPremiumPaperTexture(ctx)
 
-  ctx.strokeStyle = ORANGE; ctx.lineWidth = 2
+  ctx.strokeStyle = ORANGE
+  ctx.lineWidth = 2
   ctx.strokeRect(24, 24, QW - 48, QH - 48)
-  ctx.strokeStyle = GOLD; ctx.lineWidth = 1
+  ctx.strokeStyle = GOLD
+  ctx.lineWidth = 1
   ctx.strokeRect(40, 40, QW - 80, QH - 80)
 
-  ctx.fillStyle = CHARCOAL; ctx.font = '700 64px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '700 64px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('SAHIFALAB', QCX, 130)
-  ctx.fillStyle = GOLD; ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillStyle = GOLD
+  ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('H U B', QCX, 170)
 
-  ctx.strokeStyle = 'rgba(31,41,55,0.22)'; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.moveTo(QCX - 210, 212); ctx.lineTo(QCX + 210, 212); ctx.stroke()
+  ctx.strokeStyle = 'rgba(31,41,55,0.22)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(QCX - 210, 212)
+  ctx.lineTo(QCX + 210, 212)
+  ctx.stroke()
 
-  ctx.fillStyle = CHARCOAL; ctx.font = '700 86px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '700 86px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('QUIZ CERTIFICATE', QCX, 300)
-  ctx.fillStyle = MUTED; ctx.font = '500 30px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillStyle = MUTED
+  ctx.font = '500 30px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('Ushbu sertifikat egasi', QCX, 390)
 
   const safeName = data.userName.trim() || 'Ishtirokchi'
   ctx.fillStyle = CHARCOAL
-  ctx.font = '700 88px "Playfair Display", Georgia, "Times New Roman", serif'
+  ctx.font =
+    '700 88px "Playfair Display", Georgia, "Times New Roman", serif'
   ctx.fillText(safeName, QCX, 500)
 
   const nw = Math.min(ctx.measureText(safeName).width + 30, 780)
   const ug = ctx.createLinearGradient(QCX - nw / 2, 0, QCX + nw / 2, 0)
-  ug.addColorStop(0, ORANGE); ug.addColorStop(1, GOLD)
-  ctx.strokeStyle = ug; ctx.lineWidth = 3
-  ctx.beginPath(); ctx.moveTo(QCX - nw / 2, 556); ctx.lineTo(QCX + nw / 2, 556); ctx.stroke()
+  ug.addColorStop(0, ORANGE)
+  ug.addColorStop(1, GOLD)
+  ctx.strokeStyle = ug
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.moveTo(QCX - nw / 2, 556)
+  ctx.lineTo(QCX + nw / 2, 556)
+  ctx.stroke()
 
-  ctx.fillStyle = CHARCOAL; ctx.font = '500 31px Inter, Montserrat, Arial, sans-serif'
-  const ach = "Ushbu sertifikat egasi SAHIFALAB Hub platformasidagi " + data.quizTitle + " testidan muvaffaqiyatli o'tib, o'z bilimini rasman tasdiqladi."
-  wrapText(ctx, ach, 850).forEach((line, idx) => ctx.fillText(line, QCX, 640 + idx * 46))
+  ctx.fillStyle = CHARCOAL
+  ctx.font = '500 31px Inter, Montserrat, Arial, sans-serif'
+  const ach =
+    "Ushbu sertifikat egasi SAHIFALAB Hub platformasidagi " +
+    data.quizTitle +
+    " testidan muvaffaqiyatli o'tib, o'z bilimini rasman tasdiqladi."
+  wrapText(ctx, ach, 850).forEach((line, idx) =>
+    ctx.fillText(line, QCX, 640 + idx * 46),
+  )
 
-  const sx = 250, sy = 935, sr = 95
+  const sx = 250
+  const sy = 935
+  const sr = 95
   ctx.save()
-  ctx.strokeStyle = ORANGE; ctx.lineWidth = 3
-  ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.stroke()
-  ctx.strokeStyle = GOLD; ctx.lineWidth = 1.5
-  ctx.beginPath(); ctx.arc(sx, sy, sr - 12, 0, Math.PI * 2); ctx.stroke()
-  ctx.fillStyle = ORANGE; ctx.font = '700 13px Inter, Montserrat, Arial, sans-serif'
-  drawCircularText(ctx, 'SAHIFALAB - DEEP WORK CERTIFIED', sx, sy, sr - 7, -Math.PI * 0.85)
-  ctx.fillStyle = GOLD; ctx.font = '700 32px Inter, Montserrat, Arial, sans-serif'
+  ctx.strokeStyle = ORANGE
+  ctx.lineWidth = 3
+  ctx.beginPath()
+  ctx.arc(sx, sy, sr, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.strokeStyle = GOLD
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.arc(sx, sy, sr - 12, 0, Math.PI * 2)
+  ctx.stroke()
+  ctx.fillStyle = ORANGE
+  ctx.font = '700 13px Inter, Montserrat, Arial, sans-serif'
+  drawCircularText(
+    ctx,
+    'SAHIFALAB - DEEP WORK CERTIFIED',
+    sx,
+    sy,
+    sr - 7,
+    -Math.PI * 0.85,
+  )
+  ctx.fillStyle = GOLD
+  ctx.font = '700 32px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('CERTIFIED', sx, sy)
   ctx.restore()
 
   ctx.textAlign = 'left'
-  ctx.fillStyle = ORANGE; ctx.font = 'italic 58px "Brush Script MT", "Segoe Script", cursive'
+  ctx.fillStyle = ORANGE
+  ctx.font = 'italic 58px "Brush Script MT", "Segoe Script", cursive'
   ctx.fillText('SAHIFALAB', 670, 920)
-  ctx.fillStyle = MUTED; ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillStyle = MUTED
+  ctx.font = '500 20px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('Official Digital Signature', 678, 958)
 
   const certId = formatCertificateId(data)
-  const mT = 1080, mX = 95, mW = QW - 190, mH = 160
-  const pg = ctx.createLinearGradient(0, mT, 0, mT + mH)
-  pg.addColorStop(0, 'rgba(255,255,255,0.8)'); pg.addColorStop(1, 'rgba(255,255,255,0.55)')
-  ctx.fillStyle = pg; ctx.strokeStyle = 'rgba(31,41,55,0.16)'; ctx.lineWidth = 1.2
-  ctx.beginPath(); ctx.roundRect(mX, mT, mW, mH, 20); ctx.fill(); ctx.stroke()
+  const mT  = 1080
+  const mX  = 95
+  const mW  = QW - 190
+  const mH  = 160
+  const pg  = ctx.createLinearGradient(0, mT, 0, mT + mH)
+  pg.addColorStop(0, 'rgba(255,255,255,0.8)')
+  pg.addColorStop(1, 'rgba(255,255,255,0.55)')
+  ctx.fillStyle   = pg
+  ctx.strokeStyle = 'rgba(31,41,55,0.16)'
+  ctx.lineWidth   = 1.2
+  ctx.beginPath()
+  ctx.roundRect(mX, mT, mW, mH, 20)
+  ctx.fill()
+  ctx.stroke()
   const cw = mW / 3
-  ctx.strokeStyle = 'rgba(31,41,55,0.15)'; ctx.lineWidth = 1
+  ctx.strokeStyle = 'rgba(31,41,55,0.15)'
+  ctx.lineWidth = 1
   for (let i = 1; i < 3; i++) {
     ctx.beginPath()
-    ctx.moveTo(mX + i * cw, mT + 18); ctx.lineTo(mX + i * cw, mT + mH - 18); ctx.stroke()
+    ctx.moveTo(mX + i * cw, mT + 18)
+    ctx.lineTo(mX + i * cw, mT + mH - 18)
+    ctx.stroke()
   }
   const metrics = [
-    { label: 'Date',           value: data.date },
-    { label: 'Score',          value: String(Math.round(data.percentage ?? 100)) + '%' },
-    { label: 'Certificate ID', value: certId.length <= 10 ? certId : certId.slice(0, 10) + '...' },
+    { label: 'Date', value: data.date },
+    {
+      label: 'Score',
+      value: String(Math.round(data.percentage ?? 100)) + '%',
+    },
+    {
+      label: 'Certificate ID',
+      value:
+        certId.length <= 10 ? certId : certId.slice(0, 10) + '...',
+    },
   ]
   ctx.textAlign = 'center'
   metrics.forEach((item, idx) => {
     const x = mX + cw * idx + cw / 2
-    ctx.fillStyle = GOLD; ctx.font = '700 19px Inter, Montserrat, Arial, sans-serif'
+    ctx.fillStyle = GOLD
+    ctx.font = '700 19px Inter, Montserrat, Arial, sans-serif'
     ctx.fillText(item.label, x, mT + 46)
     ctx.fillStyle = CHARCOAL
-    ctx.font = idx === 2 ? '700 18px Inter, Montserrat, Arial, sans-serif' : '600 28px Inter, Montserrat, Arial, sans-serif'
+    ctx.font =
+      idx === 2
+        ? '700 18px Inter, Montserrat, Arial, sans-serif'
+        : '600 28px Inter, Montserrat, Arial, sans-serif'
     ctx.fillText(item.value, x, mT + 104)
   })
 
-  const qb = 130, qx = QW - qb - 68, qy = 760
+  const qb = 130
+  const qx = QW - qb - 68
+  const qy = 760
   const qi = await makeQrImage(TELEGRAM_CHANNEL_URL, 132)
-  ctx.fillStyle = 'rgba(255,255,255,0.9)'; ctx.strokeStyle = 'rgba(31,41,55,0.2)'; ctx.lineWidth = 1
-  ctx.beginPath(); ctx.roundRect(qx, qy, qb, qb, 14); ctx.fill(); ctx.stroke()
+  ctx.fillStyle   = 'rgba(255,255,255,0.9)'
+  ctx.strokeStyle = 'rgba(31,41,55,0.2)'
+  ctx.lineWidth   = 1
+  ctx.beginPath()
+  ctx.roundRect(qx, qy, qb, qb, 14)
+  ctx.fill()
+  ctx.stroke()
   ctx.drawImage(qi, qx + 9, qy + 9, qb - 18, qb - 18)
-  ctx.textAlign = 'left'; ctx.fillStyle = MUTED; ctx.font = '500 14px Inter, Montserrat, Arial, sans-serif'
+  ctx.textAlign = 'left'
+  ctx.fillStyle = MUTED
+  ctx.font = '500 14px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('Scan to verify channel', qx, qy - 16)
   ctx.textAlign = 'center'
-  ctx.fillStyle = GOLD; ctx.font = '700 22px Inter, Montserrat, Arial, sans-serif'
+  ctx.fillStyle = GOLD
+  ctx.font = '700 22px Inter, Montserrat, Arial, sans-serif'
   ctx.fillText('SAHIFALAB HUB', QCX, QH - 44)
 }
 
 // ==========================================================================
 //  DISPATCH
 // ==========================================================================
-async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData) {
+async function drawCertificate(
+  canvas: HTMLCanvasElement,
+  data: CertificateData,
+) {
   if (data.type === 'course') await drawCourseCertificate(canvas, data)
   else await drawQuizCertificate(canvas, data)
 }
@@ -534,7 +710,7 @@ async function drawCertificate(canvas: HTMLCanvasElement, data: CertificateData)
 const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
   const offscreenRef = useRef<HTMLCanvasElement | null>(null)
   const previewRef   = useRef<HTMLCanvasElement>(null)
-  const [dataUrl,   setDataUrl]   = useState<string | null>(null)
+  const [dataUrl, setDataUrl]     = useState<string | null>(null)
   const [rendering, setRendering] = useState(true)
 
   const isCourseCert = data.type === 'course'
@@ -550,7 +726,7 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
 
       const preview = previewRef.current
       if (preview) {
-        const scale  = (preview.offsetWidth || 320) / srcW
+        const scale = (preview.offsetWidth || 320) / srcW
         preview.width  = srcW * scale
         preview.height = srcH * scale
         const pCtx = preview.getContext('2d')!
@@ -564,26 +740,35 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
     })
   }, [data, srcW, srcH])
 
-  useEffect(() => { render() }, [render])
+  useEffect(() => {
+    render()
+  }, [render])
 
   const handleDownload = () => {
     if (!dataUrl) return
     const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = 'sahifalab-' + (isCourseCert ? 'kurs' : 'quiz') + '-sertifikat-' + data.userName.replace(/\s+/g, '-') + '.png'
+    a.href     = dataUrl
+    a.download =
+      'sahifalab-' +
+      (isCourseCert ? 'kurs' : 'quiz') +
+      '-sertifikat-' +
+      data.userName.replace(/\s+/g, '-') +
+      '.png'
     a.click()
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm">
       <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-t-3xl p-5 space-y-4 max-h-[92vh] overflow-y-auto">
-
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white inline-flex items-center gap-2">
             <Trophy className="w-5 h-5 text-[#F26722]" />
             {isCourseCert ? 'Kurs sertifikati' : 'Quiz sertifikati'}
           </h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -600,7 +785,10 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
           <canvas
             ref={previewRef}
             className="w-full h-full object-contain"
-            style={{ opacity: rendering ? 0 : 1, transition: 'opacity 0.35s' }}
+            style={{
+              opacity: rendering ? 0 : 1,
+              transition: 'opacity 0.35s',
+            }}
           />
         </div>
 
@@ -611,7 +799,10 @@ const CertificateGenerator: React.FC<Props> = ({ data, onClose }) => {
         </p>
 
         <div className="grid grid-cols-2 gap-3">
-          <button onClick={onClose} className="py-3 rounded-xl font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+          <button
+            onClick={onClose}
+            className="py-3 rounded-xl font-semibold text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+          >
             Yopish
           </button>
           <button
