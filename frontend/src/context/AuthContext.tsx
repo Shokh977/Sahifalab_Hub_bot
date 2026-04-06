@@ -35,6 +35,9 @@ export interface AuthUser {
   /** Gamification — filled from /api/auth/me */
   level?: number
   total_xp?: number
+  /** Profile bio fields */
+  bio?: string | null
+  about_me?: string | null
 }
 
 /** Data received from the Telegram Login Widget callback */
@@ -103,6 +106,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status: res.data.status ?? 'active',
           level: res.data.level ?? 1,
           total_xp: res.data.total_xp ?? 0,
+          bio: res.data.bio ?? null,
+          about_me: res.data.about_me ?? null,
         })
       })
       .catch(() => {

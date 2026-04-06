@@ -18,14 +18,15 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ArrowLeft, UserPlus, UserMinus, MessageCircle, Loader2,
-  Grid3X3, List, BadgeCheck, Shield, BookOpen, GraduationCap,
+  ArrowLeft, Loader2,
+  Grid3X3, List, BookOpen, GraduationCap,
   Globe, ExternalLink, PlayCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
 import apiService from '../services/apiService'
-import UserIdentity, { getRankInfo } from '../components/social/UserIdentity'
+import { getRankInfo } from '../components/social/UserIdentity'
+import ProfileHeaderCard from '../components/ProfileHeaderCard'
 import PostCard from '../components/social/PostCard'
 import CourseCard from '../components/CourseCard'
 import type { PostData } from '../components/social/PostCard'
@@ -220,104 +221,19 @@ const PublicProfile: React.FC = () => {
 
       <div className="max-w-2xl mx-auto px-4 pt-6">
 
-        {/* ── Profile card (identical for all roles) ──────────────────────── */}
-        <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-frost dark:shadow-none p-6">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-            {/* Large avatar */}
-            <UserIdentity user={profile} size="xl" showName={false} />
-
-            <div className="flex-1 text-center sm:text-left">
-              {/* Name + badges */}
-              <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                <span className="text-lg font-bold text-gray-900 dark:text-white">{profile.full_name || profile.username || 'Foydalanuvchi'}</span>
-                {profile.role === 'teacher' && (
-                  <BadgeCheck className="w-[18px] h-[18px] text-blue-400 fill-blue-400/20 flex-shrink-0" />
-                )}
-                {profile.role === 'admin' && (
-                  <Shield className="w-[18px] h-[18px] text-sahifa-500 fill-sahifa-500/20 flex-shrink-0" />
-                )}
-              </div>
-
-              {profile.username && (
-                <p className="text-sm text-gray-400 dark:text-white/40">@{profile.username}</p>
-              )}
-
-              {/* Teacher specialization pill */}
-              {isTeacher && teacherInfo?.specialization && (
-                <div className="mt-2">
-                  <span className="inline-block px-3 py-1 rounded-full bg-sahifa-500/10 dark:bg-sahifa-500/20 border border-sahifa-500/20 dark:border-sahifa-500/30 text-sahifa-600 dark:text-sahifa-300 text-xs font-semibold">
-                    {teacherInfo.specialization}
-                  </span>
-                </div>
-              )}
-
-              {(profile.bio || true) && (
-                <p className="text-sm text-gray-500 dark:text-white/50 mt-2 leading-relaxed line-clamp-3">
-                  {profile.bio || (profile.role === 'teacher' ? "O'qituvchi" : "O'quvchi")}
-                </p>
-              )}
-
-              {/* Stats */}
-              <div className="flex items-center justify-center sm:justify-start gap-5 mt-4 flex-wrap">
-                <div className="text-center">
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuvchi</span>
-                </div>
-                <div className="text-center">
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuv</span>
-                </div>
-                <div className="text-center">
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{posts.length}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40">Post</span>
-                </div>
-                {isTeacher && (
-                  <>
-                    <div className="text-center">
-                      <span className="block text-lg font-bold text-gray-900 dark:text-white">{courses.length}</span>
-                      <span className="text-xs text-gray-400 dark:text-white/40">Kurs</span>
-                    </div>
-                    <div className="text-center">
-                      <span className="block text-lg font-bold text-gray-900 dark:text-white">{totalStudents}</span>
-                      <span className="text-xs text-gray-400 dark:text-white/40">Talaba</span>
-                    </div>
-                  </>
-                )}
-              </div>
-
-              {/* Rank badge */}
-              <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06]">
-                <span>{rank.emoji}</span>
-                <span className="text-xs font-medium text-gray-600 dark:text-white/60">{rank.title}</span>
-                <span className="text-xs text-gray-400 dark:text-white/30">· Lvl {profile.level || 1}</span>
-              </div>
-
-              {/* Actions */}
-              {!isOwnProfile && (
-                <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
-                  <button
-                    onClick={handleFollow}
-                    disabled={followLoading}
-                    className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
-                      profile.is_following
-                        ? 'bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/60 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 border border-gray-200/60 dark:border-white/[0.08]'
-                        : 'bg-sahifa-500 text-white hover:bg-sahifa-600'
-                    }`}
-                  >
-                    {profile.is_following ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                    {profile.is_following ? 'Kuzatishdan chiqish' : 'Kuzatish'}
-                  </button>
-                  <button
-                    onClick={handleMessage}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-500 dark:text-white/60 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors active:scale-95"
-                  >
-                    <MessageCircle className="w-4 h-4" /> Xabar
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+        {/* ── Profile card (shared component) ──────────────────────────── */}
+        <ProfileHeaderCard
+          profile={profile}
+          postCount={posts.length}
+          courseCount={courses.length}
+          studentCount={totalStudents}
+          specialization={teacherInfo?.specialization}
+          isOwnProfile={isOwnProfile}
+          onFollow={handleFollow}
+          followLoading={followLoading}
+          onMessage={handleMessage}
+          onEditProfile={() => navigate('/cabinet')}
+        />
 
         {/* ── Tab bar ──────────────────────────────────────────────────────── */}
         <div className="mt-5 flex gap-1 p-1 rounded-xl bg-gray-100/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06]">

@@ -25,21 +25,20 @@ import {
   Info,
   Lightbulb,
   Link,
-  PenSquare,
   Sparkles,
   Trophy,
 } from 'lucide-react'
 import {
   useProgressStore,
-  levelProgress,
-  levelBounds,
   formatFocusTime,
 } from '../context/progressStore'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { usePlatform } from '../hooks/usePlatform'
 import { useAuth } from '../context/AuthContext'
-import { LEVEL_TITLES, getLevelTitle, getLevelDescription } from '../utils/levelTitles'
+import { LEVEL_TITLES } from '../utils/levelTitles'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
+import ProfileHeaderCard from '../components/ProfileHeaderCard'
+import type { ProfileHeaderData } from '../components/ProfileHeaderCard'
 import { showToast } from '../components/ErrorBoundary'
 import PageWrapper from '../components/PageWrapper'
 import apiService from '../services/apiService'
@@ -97,37 +96,7 @@ interface CourseCertificate {
   } | null
 }
 
-// ── Avatar colour based on telegram_id ───────────────────────────────────────
-const AVATAR_COLORS = [
-  'from-blue-400 to-blue-600',
-  'from-purple-400 to-purple-600',
-  'from-emerald-400 to-green-600',
-  'from-orange-400 to-amber-600',
-  'from-pink-400 to-rose-600',
-  'from-indigo-400 to-violet-600',
-  'from-teal-400 to-cyan-600',
-]
 
-function avatarColor(telegramId: number | null): string {
-  if (!telegramId) return AVATAR_COLORS[0]
-  return AVATAR_COLORS[telegramId % AVATAR_COLORS.length]
-}
-
-// ── Level gradient ───────────────────────────────────────────────────────────
-function levelGradient(level: number): string {
-  if (level >= 50) return 'from-amber-300 to-yellow-600'
-  if (level >= 40) return 'from-rose-500 to-pink-700'
-  if (level >= 30) return 'from-indigo-500 to-violet-700'
-  if (level >= 25) return 'from-fuchsia-400 to-purple-600'
-  if (level >= 20) return 'from-rose-400 to-pink-600'
-  if (level >= 15) return 'from-indigo-400 to-violet-600'
-  if (level >= 10) return 'from-orange-400 to-red-500'
-  if (level >= 7)  return 'from-yellow-400 to-amber-500'
-  if (level >= 5)  return 'from-purple-400 to-purple-600'
-  if (level >= 3)  return 'from-blue-400 to-blue-600'
-  if (level >= 2)  return 'from-emerald-400 to-green-500'
-  return 'from-gray-400 to-gray-500'
-}
 
 // ── Menu row component ────────────────────────────────────────────────────────
 const MenuRow: React.FC<{
@@ -376,11 +345,6 @@ const CabinetPage: React.FC = () => {
   const [heatmap,        setHeatmap]        = useState<{ date: string; count: number }[]>([])
   const [heatmapLoading, setHeatmapLoading] = useState(false)
 
-  const progress  = levelProgress(effectiveTotalXP)
-  const { start, end } = levelBounds(effectiveLevel)
-  const xpInLevel = effectiveTotalXP - start
-  const xpForLevel = end - start
-  const grad = levelGradient(effectiveLevel)
   const displayName = localFirstName || effectiveFirstName || 'Foydalanuvchi'
   const focusHours = (effectiveFocusSeconds / 3600).toFixed(1)
 
@@ -520,160 +484,109 @@ const CabinetPage: React.FC = () => {
   return (
     <PageWrapper className="space-y-3" topPadding="">
 
-      {/* ═══ Profile Header ═══ */}
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.35 }}
-        className="px-4 pt-4 pb-5"
-      >
-        {/* Top row: Avatar + Name + XP */}
-        <div className="flex items-center gap-4">
-          {/* Avatar */}
-          <div className="flex-shrink-0 relative">
-            {photoUrl ? (
-              <img
-                src={photoUrl}
-                alt={displayName}
-                onError={() => setPhotoError(true)}
-                className="w-16 h-16 rounded-full object-cover shadow-lg ring-2 ring-white dark:ring-gray-700"
-              />
-            ) : (
-              <div
-                className={`w-16 h-16 rounded-full bg-gradient-to-br ${avatarColor(effectiveTelegramId)} flex items-center justify-center shadow-lg`}
-              >
-                <span className="text-2xl font-black text-white">
-                  {displayName.charAt(0).toUpperCase()}
-                </span>
-              </div>
-            )}
-            {/* Level pip */}
-            <div
-              className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-gradient-to-r ${grad} text-white text-[10px] font-black flex items-center justify-center shadow-md border-2 border-white dark:border-gray-900`}
-            >
-              {level}
-            </div>
-          </div>
+      {/* ═══ Profile Header — Live Preview Card ═══ */}
+      <div className="px-4 pt-4 pb-2">
+        <ProfileHeaderCard
+          editMode
+          profile={{
+            telegram_id: effectiveTelegramId,
+            full_name: localFirstName || effectiveFirstName,
+            username: localUsername || effectiveUsername,
+            photo_url: photoUrl,
+            role: authUser?.role,
+            level: effectiveLevel,
+            xp: effectiveTotalXP,
+            bio: authUser?.bio,
+            about_me: authUser?.about_me,
+          } as ProfileHeaderData}
+          liveFirstName={editFirstName || undefined}
+          liveBio={editBio || undefined}
+          onAvatarUpload={(file) => handlePhotoFileUpload(file)}
+          avatarUploading={photoSaving}
+          onEditClick={() => setEditOpen(prev => !prev)}
+        />
+      </div>
 
-          {/* Name + handle + level */}
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg font-black text-gray-900 dark:text-white truncate">
-              {displayName}
-            </h1>
-            {(localUsername || username) && (
-              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">@{localUsername || username}</p>
-            )}
-            <div className="flex items-center gap-2 mt-1">
-              <div
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r ${grad} text-white text-[11px] font-semibold shadow-sm`}
-              >
-                <Trophy className="h-3.5 w-3.5" />
-                <span>{getLevelTitle(effectiveLevel)}</span>
-              </div>
-              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                {effectiveTotalXP.toLocaleString()} XP
-              </span>
-              {isWeb && (
-                <div className="flex items-center gap-1.5">
-                  <label className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1 cursor-pointer">
-                    {photoSaving ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />} Rasm
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) => handlePhotoFileUpload(e.target.files?.[0] ?? null)}
-                      disabled={photoSaving}
-                    />
-                  </label>
-                  <button
-                    onClick={() => setEditOpen(prev => !prev)}
-                    className="text-[10px] px-2 py-0.5 rounded-full border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sahifa-500 hover:border-sahifa-300 transition-colors inline-flex items-center gap-1"
-                  >
-                    <PenSquare className="h-3 w-3" /> Tahrirlash
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+      {/* ═══ Bento Settings Form ═══ */}
+      {isWeb && editOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -8, height: 0 }}
+          animate={{ opacity: 1, y: 0, height: 'auto' }}
+          exit={{ opacity: 0, y: -8, height: 0 }}
+          transition={{ duration: 0.25, ease: [0.25, 0.46, 0.45, 0.94] }}
+          className="mx-4"
+        >
+          <div className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-[0_2px_24px_rgba(0,0,0,0.04)] dark:shadow-none p-5 space-y-4">
+            <p className="text-xs font-bold text-gray-400 dark:text-white/30 uppercase tracking-widest">Profil sozlamalari</p>
 
-        {isWeb && editOpen && (
-          <div className="mt-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-800/40 p-3 space-y-2">
-            <div className="grid sm:grid-cols-2 gap-2">
-              <input
-                value={editFirstName}
-                onChange={(e) => setEditFirstName(e.target.value)}
-                placeholder="Ismingiz"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
-              />
-              <input
-                value={editUsername}
-                onChange={(e) => setEditUsername(e.target.value.replace(/^@+/, ''))}
-                placeholder="username"
-                className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
-              />
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-500 dark:text-white/40 mb-1.5">Ism</label>
+                <input
+                  value={editFirstName}
+                  onChange={(e) => setEditFirstName(e.target.value)}
+                  placeholder="Ismingiz"
+                  className="w-full rounded-xl px-3.5 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400/40 focus:border-sahifa-400 transition-all"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-gray-500 dark:text-white/40 mb-1.5">Username</label>
+                <input
+                  value={editUsername}
+                  onChange={(e) => setEditUsername(e.target.value.replace(/^@+/, ''))}
+                  placeholder="username"
+                  className="w-full rounded-xl px-3.5 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400/40 focus:border-sahifa-400 transition-all"
+                />
+              </div>
             </div>
 
             {/* Short Bio (Status) — max 150 chars */}
-            <div className="relative">
-              <input
-                value={editBio}
-                onChange={(e) => setEditBio(e.target.value.slice(0, 150))}
-                placeholder="Qisqa bio (status) — profilning boshida ko'rinadi"
-                maxLength={150}
-                className="w-full rounded-xl px-3 py-2 pr-14 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400"
-              />
-              <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium ${editBio.length >= 140 ? 'text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>
-                {editBio.length}/150
-              </span>
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-500 dark:text-white/40 mb-1.5">Qisqa bio</label>
+              <div className="relative">
+                <input
+                  value={editBio}
+                  onChange={(e) => setEditBio(e.target.value.slice(0, 150))}
+                  placeholder="Status — profilning boshida ko'rinadi"
+                  maxLength={150}
+                  className="w-full rounded-xl px-3.5 py-2.5 pr-14 text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400/40 focus:border-sahifa-400 transition-all"
+                />
+                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium ${editBio.length >= 140 ? 'text-red-400' : 'text-gray-400 dark:text-white/30'}`}>
+                  {editBio.length}/150
+                </span>
+              </div>
             </div>
 
             {/* About Me (long-form) */}
-            <div className="relative">
+            <div>
+              <label className="block text-[11px] font-semibold text-gray-500 dark:text-white/40 mb-1.5">Haqida</label>
               <textarea
                 value={editAboutMe}
                 onChange={(e) => setEditAboutMe(e.target.value)}
-                placeholder="Batafsil ma'lumot (Haqida) — 'Haqida' tabida to'liq ko'rinadi"
+                placeholder="Batafsil ma'lumot — 'Haqida' tabida to'liq ko'rinadi"
                 rows={3}
-                className="w-full rounded-xl px-3 py-2 text-sm bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400 resize-none leading-relaxed"
+                className="w-full rounded-xl px-3.5 py-2.5 text-sm bg-gray-50/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06] text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-sahifa-400/40 focus:border-sahifa-400 resize-none leading-relaxed transition-all"
               />
             </div>
 
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex items-center justify-end gap-2 pt-1">
               <button
                 onClick={() => setEditOpen(false)}
-                className="px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"
+                className="px-4 py-2 text-xs font-medium rounded-xl border border-gray-200/60 dark:border-white/[0.08] text-gray-600 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/[0.04] transition-colors"
               >
                 Bekor qilish
               </button>
               <button
                 onClick={handleSaveProfile}
                 disabled={profileSaving}
-                className="px-3 py-1.5 text-xs rounded-lg bg-sahifa-500 hover:bg-sahifa-600 text-white font-semibold disabled:opacity-50 inline-flex items-center gap-1"
+                className="px-4 py-2 text-xs font-semibold rounded-xl bg-sahifa-500 hover:bg-sahifa-600 text-white disabled:opacity-50 inline-flex items-center gap-1.5 transition-colors"
               >
                 {profileSaving && <RefreshCw className="h-3.5 w-3.5 animate-spin" />} Saqlash
               </button>
             </div>
           </div>
-        )}
-
-        {/* XP progress bar */}
-        <div className="mt-4">
-          <div className="flex justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-1.5 px-0.5">
-            <span>Lv.{effectiveLevel}</span>
-            <span>{xpInLevel} / {xpForLevel} XP</span>
-            <span>Lv.{effectiveLevel + 1}</span>
-          </div>
-          <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
-            <motion.div
-              className={`h-full rounded-full bg-gradient-to-r ${grad}`}
-              initial={{ width: 0 }}
-              animate={{ width: `${Math.min(progress * 100, 100)}%` }}
-              transition={{ duration: 1, ease: 'easeOut' }}
-            />
-          </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
 
       {/* ═══ Stats Row ═══ */}
       <Section delay={0.05}>
