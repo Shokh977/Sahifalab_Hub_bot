@@ -195,3 +195,16 @@ def get_total_unread(db: Session, user_id: int) -> int:
         .scalar()
     )
     return count or 0
+
+
+def delete_message(db: Session, message_id: int, user_id: int) -> bool:
+    """Delete a message. Only the sender can delete."""
+    msg = db.query(DirectMessage).filter(
+        DirectMessage.id == message_id,
+        DirectMessage.sender_id == user_id,
+    ).first()
+    if not msg:
+        return False
+    db.delete(msg)
+    db.commit()
+    return True

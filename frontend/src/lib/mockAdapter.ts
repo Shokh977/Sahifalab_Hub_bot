@@ -273,8 +273,23 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
     return ok(newComment, config)
   }
 
+  // ── Social — Edit post ───────────────────────────────────────────────────
+  if (m === 'patch' && u.match(/^\/api\/v1\/social\/posts\/\d+$/)) {
+    const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    return ok({ ok: true, content: body?.content }, config)
+  }
+
   // ── Social — Delete post ──────────────────────────────────────────────────
   if (m === 'delete' && u.match(/^\/api\/v1\/social\/posts\/\d+$/)) return ok({ success: true }, config)
+
+  // ── Social — Edit comment ─────────────────────────────────────────────────
+  if (m === 'patch' && u.match(/^\/api\/v1\/social\/comments\/\d+$/)) {
+    const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    return ok({ ok: true, content: body?.content }, config)
+  }
+
+  // ── Social — Delete comment ───────────────────────────────────────────────
+  if (m === 'delete' && u.match(/^\/api\/v1\/social\/comments\/\d+$/)) return ok({ success: true }, config)
 
   // ── Social — User profile ─────────────────────────────────────────────────
   if (m === 'get' && u.match(/^\/api\/v1\/social\/users\/\d+\/profile$/)) {
@@ -341,6 +356,11 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
       created_at: new Date().toISOString(),
     }
     return ok(newMsg, config)
+  }
+
+  // ── Messenger — Delete message ────────────────────────────────────────────
+  if (m === 'delete' && u.match(/^\/api\/v1\/messenger\/messages\/\d+$/)) {
+    return ok({ ok: true }, config)
   }
 
   // ── Messenger — Mark read ─────────────────────────────────────────────────

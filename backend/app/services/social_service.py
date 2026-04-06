@@ -72,6 +72,21 @@ def delete_post(db: Session, post_id: int, user_id: int) -> bool:
     return True
 
 
+def edit_post(db: Session, post_id: int, user_id: int, content: str) -> Optional[dict]:
+    """Update post content. Only the author can edit."""
+    post = db.query(Post).filter(Post.id == post_id, Post.author_id == user_id).first()
+    if not post:
+        return None
+    post.content = content
+    db.commit()
+    db.refresh(post)
+    author = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+    is_liked = db.query(
+        exists().where(and_(PostLike.post_id == post_id, PostLike.user_id == user_id))
+    ).scalar()
+    return _enrich_post(post, author, is_liked)
+
+
 # ── Feed ─────────────────────────────────────────────────────────────────────
 
 def get_feed(
@@ -245,6 +260,26 @@ def delete_comment(db: Session, comment_id: int, user_id: int) -> bool:
     db.delete(comment)
     db.commit()
     return True
+
+
+def edit_comment(db: Session, comment_id: int, user_id: int, content: str) -> Optional[dict]:
+    """Update comment content. Only the author can edit."""
+    comment = db.query(PostComment).filter(
+        PostComment.id == comment_id, PostComment.author_id == user_id
+    ).first()
+    if not comment:
+        return None
+    comment.content = content
+    db.commit()
+    db.refresh(comment)
+    author = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+    return {
+        "id": comment.id,
+        "post_id": comment.post_id,
+        "author": _profile_to_author(author),
+        "content": comment.content,
+        "created_at": comment.created_at,
+    }
 
 
 # ── Follows ──────────────────────────────────────────────────────────────────

@@ -79,6 +79,19 @@ def mark_read(
     return {"ok": True, "marked": count}
 
 
+# ── Delete message ───────────────────────────────────────────────────────────
+
+@router.delete("/messages/{message_id}")
+def delete_message(
+    message_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    if not msvc.delete_message(db, message_id, user_id):
+        raise HTTPException(404, "Message not found or not yours")
+    return {"ok": True}
+
+
 # ── Unread count ─────────────────────────────────────────────────────────────
 
 @router.get("/unread-count")

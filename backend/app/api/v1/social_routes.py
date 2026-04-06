@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
-from app.schemas.social_schemas import PostCreate, CommentCreate
+from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, CommentUpdate
 from app.services import social_service as svc
 
 router = APIRouter(prefix="/social", tags=["social"])
@@ -97,6 +97,19 @@ def delete_post(
     return {"ok": True}
 
 
+@router.patch("/posts/{post_id}")
+def edit_post(
+    post_id: int,
+    body: PostUpdate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    result = svc.edit_post(db, post_id, user_id, body.content.strip())
+    if not result:
+        raise HTTPException(404, "Post not found or not yours")
+    return result
+
+
 # ── Likes ────────────────────────────────────────────────────────────────────
 
 @router.post("/posts/{post_id}/like")
@@ -150,6 +163,19 @@ def delete_comment(
     if not svc.delete_comment(db, comment_id, user_id):
         raise HTTPException(404, "Comment not found or not yours")
     return {"ok": True}
+
+
+@router.patch("/comments/{comment_id}")
+def edit_comment(
+    comment_id: int,
+    body: CommentUpdate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    result = svc.edit_comment(db, comment_id, user_id, body.content.strip())
+    if not result:
+        raise HTTPException(404, "Comment not found or not yours")
+    return result
 
 
 # ── Follows ──────────────────────────────────────────────────────────────────

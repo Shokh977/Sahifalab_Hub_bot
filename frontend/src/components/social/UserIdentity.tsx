@@ -141,7 +141,7 @@ const UserIdentity: React.FC<Props> = ({
         }}
       >
         <div
-          className="w-full h-full rounded-full overflow-hidden bg-pitch-700"
+          className="w-full h-full rounded-full overflow-hidden bg-gray-200 dark:bg-pitch-700"
           style={{ width: avatarPx, height: avatarPx }}
         >
           {user.photo_url ? (
@@ -152,7 +152,7 @@ const UserIdentity: React.FC<Props> = ({
               loading="lazy"
             />
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-white/60 font-bold"
+            <div className="w-full h-full flex items-center justify-center text-gray-500 dark:text-white/60 font-bold"
                  style={{ fontSize: avatarPx * 0.4 }}>
               {displayName.charAt(0).toUpperCase()}
             </div>
@@ -164,7 +164,7 @@ const UserIdentity: React.FC<Props> = ({
       {showName && (
         <div className="min-w-0 flex flex-col">
           <div className="flex items-center gap-1">
-            <span className={`font-semibold text-white truncate ${font} ${nameClass}`}>
+            <span className={`font-semibold text-gray-900 dark:text-white truncate ${font} ${nameClass}`}>
               {displayName}
             </span>
             {showBadge && isTeacher && (
@@ -181,7 +181,7 @@ const UserIdentity: React.FC<Props> = ({
             )}
           </div>
           {showRank && (
-            <span className="text-xs text-white/50 truncate">
+            <span className="text-xs text-gray-500 dark:text-white/50 truncate">
               {rank.emoji} {rank.title} · Lvl {level}
             </span>
           )}

@@ -6,11 +6,12 @@
  */
 
 import React, { useState } from 'react'
-import { Heart, MessageCircle, Trash2, MoreHorizontal, Send, Loader2 } from 'lucide-react'
+import { Heart, MessageCircle, Trash2, Pencil, MoreHorizontal, Send, Loader2, X, Check } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import UserIdentity from './UserIdentity'
 import type { UserIdentityUser } from './UserIdentity'
+import DeleteConfirmModal from './DeleteConfirmModal'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
 
@@ -38,6 +39,7 @@ interface Props {
   onLike: (postId: number) => Promise<void>
   onUnlike: (postId: number) => Promise<void>
   onDelete?: (postId: number) => Promise<void>
+  onEdit?: (postId: number, content: string) => Promise<void>
   onComment?: (postId: number) => void
 }
 
@@ -59,6 +61,7 @@ const PostCard: React.FC<Props> = ({
   onLike,
   onUnlike,
   onDelete,
+  onEdit,
   onComment,
 }) => {
   const [liked, setLiked] = useState(post.is_liked)
@@ -71,6 +74,23 @@ const PostCard: React.FC<Props> = ({
   const [commentText, setCommentText] = useState('')
   const [loadingComments, setLoadingComments] = useState(false)
   const [sendingComment, setSendingComment] = useState(false)
+
+  // Post edit state
+  const [editing, setEditing] = useState(false)
+  const [editText, setEditText] = useState(post.content)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [displayContent, setDisplayContent] = useState(post.content)
+
+  // Delete confirm modal
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'post' | 'comment'; id: number } | null>(null)
+  const [deleting, setDeleting] = useState(false)
+
+  // Comment edit state
+  const [editingCommentId, setEditingCommentId] = useState<number | null>(null)
+  const [editCommentText, setEditCommentText] = useState('')
+  const [savingCommentEdit, setSavingCommentEdit] = useState(false)
+  const [showCommentMenu, setShowCommentMenu] = useState<number | null>(null)
+
   const navigate = useNavigate()
   const isOwner = currentUserId === post.author.telegram_id
 
@@ -120,8 +140,81 @@ const PostCard: React.FC<Props> = ({
     setSendingComment(false)
   }
 
+  // ── Post editing ────────────────────────────────────────────────────────
+  const handleStartEdit = () => {
+    setEditText(displayContent)
+    setEditing(true)
+    setShowMenu(false)
+  }
+
+  const handleSaveEdit = async () => {
+    const text = editText.trim()
+    if (!text || savingEdit) return
+    setSavingEdit(true)
+    try {
+      await onEdit?.(post.id, text)
+      setDisplayContent(text)
+      setEditing(false)
+    } catch (err) {
+      console.error('Failed to edit post:', err)
+    }
+    setSavingEdit(false)
+  }
+
+  const handleCancelEdit = () => {
+    setEditing(false)
+    setEditText(displayContent)
+  }
+
+  // ── Delete confirm flow ─────────────────────────────────────────────────
+  const handleRequestDelete = (type: 'post' | 'comment', id: number) => {
+    setDeleteTarget({ type, id })
+    setShowMenu(false)
+    setShowCommentMenu(null)
+  }
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      if (deleteTarget.type === 'post') {
+        await onDelete?.(deleteTarget.id)
+      } else {
+        await api.client.delete(`/api/v1/social/comments/${deleteTarget.id}`)
+        setComments(prev => prev.filter(c => c.id !== deleteTarget.id))
+        setCommentsCount(c => c - 1)
+      }
+    } catch (err) {
+      console.error('Delete failed:', err)
+    }
+    setDeleting(false)
+    setDeleteTarget(null)
+  }
+
+  // ── Comment editing ─────────────────────────────────────────────────────
+  const handleStartEditComment = (comment: Comment) => {
+    setEditingCommentId(comment.id)
+    setEditCommentText(comment.content)
+    setShowCommentMenu(null)
+  }
+
+  const handleSaveCommentEdit = async (commentId: number) => {
+    const text = editCommentText.trim()
+    if (!text || savingCommentEdit) return
+    setSavingCommentEdit(true)
+    try {
+      await api.client.patch(`/api/v1/social/comments/${commentId}`, { content: text })
+      setComments(prev => prev.map(c => c.id === commentId ? { ...c, content: text } : c))
+      setEditingCommentId(null)
+    } catch (err) {
+      console.error('Failed to edit comment:', err)
+    }
+    setSavingCommentEdit(false)
+  }
+
   return (
-    <article className="relative rounded-2xl border border-white/[0.06] bg-white/[0.04] backdrop-blur-md p-4 transition-all hover:bg-white/[0.06] shadow-bento hover:shadow-bento-hover">
+    <>
+    <article className="relative rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.04] backdrop-blur-md p-4 transition-all shadow-frost dark:shadow-bento hover:shadow-frost-hover dark:hover:shadow-bento-hover hover:bg-white/80 dark:hover:bg-white/[0.06]">
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <UserIdentity
@@ -131,20 +224,26 @@ const PostCard: React.FC<Props> = ({
           onClick={() => navigate(`/profile/${post.author.telegram_id}`)}
         />
         <div className="flex items-center gap-2">
-          <span className="text-xs text-white/40">{timeAgo(post.created_at)}</span>
+          <span className="text-xs text-gray-400 dark:text-white/40">{timeAgo(post.created_at)}</span>
           {isOwner && (
             <div className="relative">
               <button
                 onClick={() => setShowMenu(!showMenu)}
-                className="p-1 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/[0.06] transition-colors"
+                className="p-1 rounded-lg text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/60 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
               >
                 <MoreHorizontal className="w-4 h-4" />
               </button>
               {showMenu && (
-                <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-white/[0.08] bg-pitch-700/95 backdrop-blur-xl shadow-glass-lg py-1">
+                <div className="absolute right-0 top-8 z-20 w-36 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white/95 dark:bg-pitch-700/95 backdrop-blur-xl shadow-frost-lg dark:shadow-glass-lg py-1">
                   <button
-                    onClick={() => { setShowMenu(false); onDelete?.(post.id) }}
-                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-white/[0.06] transition-colors"
+                    onClick={handleStartEdit}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-gray-700 dark:text-white/70 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+                  >
+                    <Pencil className="w-3.5 h-3.5" /> Tahrirlash
+                  </button>
+                  <button
+                    onClick={() => { setShowMenu(false); handleRequestDelete('post', post.id) }}
+                    className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-white/[0.06] transition-colors"
                   >
                     <Trash2 className="w-3.5 h-3.5" /> O'chirish
                   </button>
@@ -155,18 +254,44 @@ const PostCard: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Content */}
-      {post.content && (
-        <p className="text-sm text-white/80 whitespace-pre-wrap leading-relaxed mb-3">
-          {linkify(post.content)}
+      {/* Content — view or edit mode */}
+      {post.content && !editing && (
+        <p className="text-sm text-gray-700 dark:text-white/80 whitespace-pre-wrap leading-relaxed mb-3">
+          {linkify(displayContent)}
         </p>
+      )}
+
+      {editing && (
+        <div className="mb-3">
+          <textarea
+            value={editText}
+            onChange={e => setEditText(e.target.value)}
+            rows={3}
+            className="w-full px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-sahifa-500/30 text-sm text-gray-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/25 outline-none resize-none focus:border-sahifa-500/50 transition-colors"
+          />
+          <div className="flex items-center justify-end gap-2 mt-2">
+            <button
+              onClick={handleCancelEdit}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 dark:text-white/50 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+            >
+              <X className="w-3 h-3" /> Bekor
+            </button>
+            <button
+              onClick={handleSaveEdit}
+              disabled={!editText.trim() || savingEdit}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-sahifa-500 hover:bg-sahifa-600 disabled:opacity-40 transition-colors active:scale-95"
+            >
+              {savingEdit ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />} Saqlash
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Image */}
       {post.image_url && (
-        <div className="relative rounded-xl overflow-hidden mb-3 bg-pitch-700">
+        <div className="relative rounded-xl overflow-hidden mb-3 bg-gray-100 dark:bg-pitch-700">
           {!imgLoaded && (
-            <div className="absolute inset-0 animate-pulse bg-white/[0.04]" />
+            <div className="absolute inset-0 animate-pulse bg-gray-200/50 dark:bg-white/[0.04]" />
           )}
           <img
             src={post.image_url}
@@ -185,7 +310,7 @@ const PostCard: React.FC<Props> = ({
           className={`flex items-center gap-1.5 text-sm transition-all active:scale-90 ${
             liked
               ? 'text-sahifa-500'
-              : 'text-white/40 hover:text-sahifa-400'
+              : 'text-gray-400 dark:text-white/40 hover:text-sahifa-400'
           }`}
         >
           <Heart className={`w-[18px] h-[18px] ${liked ? 'fill-sahifa-500' : ''}`} />
@@ -195,7 +320,7 @@ const PostCard: React.FC<Props> = ({
         <button
           onClick={handleToggleComments}
           className={`flex items-center gap-1.5 text-sm transition-colors active:scale-90 ${
-            showComments ? 'text-blue-400' : 'text-white/40 hover:text-blue-400'
+            showComments ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-white/40 hover:text-blue-500 dark:hover:text-blue-400'
           }`}
         >
           <MessageCircle className={`w-[18px] h-[18px] ${showComments ? 'fill-blue-400/20' : ''}`} />
@@ -213,7 +338,7 @@ const PostCard: React.FC<Props> = ({
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="overflow-hidden"
           >
-            <div className="mt-3 pt-3 border-t border-white/[0.06]">
+            <div className="mt-3 pt-3 border-t border-gray-200/60 dark:border-white/[0.06]">
               {/* Comment input */}
               <div className="flex items-center gap-2 mb-3">
                 <input
@@ -222,7 +347,7 @@ const PostCard: React.FC<Props> = ({
                   onChange={e => setCommentText(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleSendComment() }}
                   placeholder="Izoh yozing..."
-                  className="flex-1 px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white placeholder:text-white/25 outline-none focus:border-sahifa-500/30 transition-colors"
+                  className="flex-1 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/25 outline-none focus:border-sahifa-500/40 dark:focus:border-sahifa-500/30 transition-colors"
                 />
                 <button
                   onClick={handleSendComment}
@@ -239,21 +364,75 @@ const PostCard: React.FC<Props> = ({
                   <Loader2 className="w-4 h-4 animate-spin text-white/20" />
                 </div>
               ) : comments.length === 0 ? (
-                <p className="text-xs text-white/20 text-center py-3">Hali izohlar yo'q</p>
+                <p className="text-xs text-gray-400 dark:text-white/20 text-center py-3">Hali izohlar yo'q</p>
               ) : (
                 <div className="space-y-2.5 max-h-60 overflow-y-auto pr-1">
-                  {comments.map(comment => (
-                    <div key={comment.id} className="flex gap-2">
+                  {comments.map(comment => {
+                    const isCommentOwner = currentUserId === comment.author.telegram_id
+                    const isEditingThis = editingCommentId === comment.id
+
+                    return (
+                    <div key={comment.id} className="group flex gap-2">
                       <UserIdentity user={comment.author} size="xs" showName={false} onClick={() => navigate(`/profile/${comment.author.telegram_id}`)} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-baseline gap-1.5">
-                          <span className="text-xs font-semibold text-white/70 truncate">{comment.author.full_name || comment.author.username || 'Foydalanuvchi'}</span>
-                          <span className="text-[10px] text-white/25 flex-shrink-0">{timeAgo(comment.created_at)}</span>
+                          <span className="text-xs font-semibold text-gray-700 dark:text-white/70 truncate">{comment.author.full_name || comment.author.username || 'Foydalanuvchi'}</span>
+                          <span className="text-[10px] text-gray-400 dark:text-white/25 flex-shrink-0">{timeAgo(comment.created_at)}</span>
+                          {isCommentOwner && !isEditingThis && (
+                            <div className="relative ml-auto">
+                              <button
+                                onClick={() => setShowCommentMenu(showCommentMenu === comment.id ? null : comment.id)}
+                                className="p-0.5 rounded text-gray-300 dark:text-white/20 hover:text-gray-500 dark:hover:text-white/50 opacity-0 group-hover:opacity-100 transition-all"
+                              >
+                                <MoreHorizontal className="w-3.5 h-3.5" />
+                              </button>
+                              {showCommentMenu === comment.id && (
+                                <div className="absolute right-0 top-5 z-20 w-32 rounded-lg border border-gray-200 dark:border-white/[0.08] bg-white/95 dark:bg-pitch-700/95 backdrop-blur-xl shadow-frost dark:shadow-glass-lg py-1">
+                                  <button
+                                    onClick={() => handleStartEditComment(comment)}
+                                    className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-xs text-gray-700 dark:text-white/70 hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+                                  >
+                                    <Pencil className="w-3 h-3" /> Tahrirlash
+                                  </button>
+                                  <button
+                                    onClick={() => handleRequestDelete('comment', comment.id)}
+                                    className="flex items-center gap-1.5 w-full px-2.5 py-1.5 text-xs text-red-500 dark:text-red-400 hover:bg-red-50 dark:hover:bg-white/[0.06] transition-colors"
+                                  >
+                                    <Trash2 className="w-3 h-3" /> O'chirish
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        <p className="text-xs text-white/60 leading-relaxed mt-0.5">{linkify(comment.content)}</p>
+                        {isEditingThis ? (
+                          <div className="mt-1">
+                            <input
+                              type="text"
+                              value={editCommentText}
+                              onChange={e => setEditCommentText(e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') handleSaveCommentEdit(comment.id); if (e.key === 'Escape') setEditingCommentId(null) }}
+                              className="w-full px-2 py-1 rounded-lg bg-gray-50 dark:bg-white/[0.04] border border-sahifa-500/30 text-xs text-gray-800 dark:text-white outline-none focus:border-sahifa-500/50 transition-colors"
+                              autoFocus
+                            />
+                            <div className="flex gap-1.5 mt-1">
+                              <button onClick={() => setEditingCommentId(null)} className="text-[10px] text-gray-400 dark:text-white/30 hover:text-gray-600 dark:hover:text-white/50">Bekor</button>
+                              <button
+                                onClick={() => handleSaveCommentEdit(comment.id)}
+                                disabled={!editCommentText.trim() || savingCommentEdit}
+                                className="text-[10px] text-sahifa-500 font-semibold hover:text-sahifa-600 disabled:opacity-40"
+                              >
+                                {savingCommentEdit ? 'Saqlanmoqda...' : 'Saqlash'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-600 dark:text-white/60 leading-relaxed mt-0.5">{linkify(comment.content)}</p>
+                        )}
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -261,6 +440,17 @@ const PostCard: React.FC<Props> = ({
         )}
       </AnimatePresence>
     </article>
+
+    {/* Delete confirm modal */}
+    <DeleteConfirmModal
+      open={!!deleteTarget}
+      title={deleteTarget?.type === 'post' ? "Postni o'chirish" : "Izohni o'chirish"}
+      description={deleteTarget?.type === 'post' ? "Bu post butunlay o'chiriladi. Ortga qaytarib bo'lmaydi." : "Bu izoh butunlay o'chiriladi."}
+      loading={deleting}
+      onConfirm={handleConfirmDelete}
+      onCancel={() => setDeleteTarget(null)}
+    />
+    </>
   )
 }
 

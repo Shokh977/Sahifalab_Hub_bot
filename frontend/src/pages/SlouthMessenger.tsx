@@ -9,12 +9,13 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, Loader2, MessageSquare, Check, CheckCheck, Search } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, MessageSquare, Check, CheckCheck, Search, Trash2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
 import UserIdentity from '../components/social/UserIdentity'
 import LinkPreview, { extractUrls } from '../components/social/LinkPreview'
+import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 import { linkify } from '../utils/linkify'
 import type { UserIdentityUser } from '../components/social/UserIdentity'
 import { supabase } from '../lib/supabase'
@@ -71,31 +72,31 @@ const ConversationList: React.FC<{
       {/* Search bar */}
       <div className="px-4 py-3">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/25" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-white/25" />
           <input
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Suhbat qidirish..."
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white placeholder:text-white/25 outline-none focus:border-sahifa-500/30 transition-colors"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/25 outline-none focus:border-sahifa-500/40 dark:focus:border-sahifa-500/30 transition-colors"
           />
         </div>
       </div>
 
       {filtered.length === 0 && !loading ? (
         <div className="text-center py-16 px-4">
-          <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-            <MessageSquare className="w-8 h-8 text-white/10" />
+          <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gray-100 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/[0.06] flex items-center justify-center">
+            <MessageSquare className="w-8 h-8 text-gray-300 dark:text-white/10" />
           </div>
-          <p className="text-white/30 text-sm font-medium">
+          <p className="text-gray-500 dark:text-white/30 text-sm font-medium">
             {searchQuery ? "Hech narsa topilmadi" : "Hali xabarlar yo'q"}
           </p>
-          <p className="text-white/15 text-xs mt-1">
+          <p className="text-gray-400 dark:text-white/15 text-xs mt-1">
             {searchQuery ? "Boshqa so'z bilan qidiring" : "Profildan xabar yuboring"}
           </p>
         </div>
       ) : (
-        <div className="divide-y divide-white/[0.04]">
+        <div className="divide-y divide-gray-200/60 dark:divide-white/[0.04]">
           {filtered.map(conv => {
             const lastMsg = conv.last_message
             const isActive = activeId === conv.id
@@ -109,17 +110,17 @@ const ConversationList: React.FC<{
                 className={`w-full flex items-center gap-3 p-4 transition-all text-left relative ${
                   isActive
                     ? 'bg-sahifa-500/[0.08] border-l-2 border-sahifa-500'
-                    : 'hover:bg-white/[0.03] border-l-2 border-transparent'
+                    : 'hover:bg-gray-50 dark:hover:bg-white/[0.03] border-l-2 border-transparent'
                 }`}
               >
                 <UserIdentity user={conv.other_user} size="md" showName={false} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
                     <UserIdentity user={conv.other_user} size="xs" showName showBadge className="!gap-1.5" />
-                    <span className="text-[10px] text-white/30 flex-shrink-0">{timeStr}</span>
+                    <span className="text-[10px] text-gray-400 dark:text-white/30 flex-shrink-0">{timeStr}</span>
                   </div>
                   <div className="flex items-center justify-between mt-0.5">
-                    <p className="text-xs text-white/40 truncate max-w-[200px]">
+                    <p className="text-xs text-gray-500 dark:text-white/40 truncate max-w-[200px]">
                       {lastMsg?.content || 'Yangi suhbat'}
                     </p>
                     {conv.unread_count > 0 && (
@@ -150,6 +151,8 @@ const ChatView: React.FC<{
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const [deleteMessageId, setDeleteMessageId] = useState<number | null>(null)
+  const [deletingMessage, setDeletingMessage] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -245,11 +248,24 @@ const ChatView: React.FC<{
     }
   }
 
+  const handleDeleteMessage = async () => {
+    if (!deleteMessageId) return
+    setDeletingMessage(true)
+    try {
+      await api.client.delete(`/api/v1/messenger/messages/${deleteMessageId}`)
+      setMessages(prev => prev.filter(m => m.id !== deleteMessageId))
+    } catch (err) {
+      console.error('Failed to delete message:', err)
+    }
+    setDeletingMessage(false)
+    setDeleteMessageId(null)
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Chat header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/[0.04] bg-pitch/80 backdrop-blur-xl">
-        <button onClick={onBack} className="p-1.5 rounded-lg text-white/50 hover:text-white hover:bg-white/[0.06] transition-colors">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.04] bg-white/80 dark:bg-pitch/80 backdrop-blur-xl">
+        <button onClick={onBack} className="p-1.5 rounded-lg text-gray-400 dark:text-white/50 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <UserIdentity user={otherUser} size="sm" showRank showBadge />
@@ -280,12 +296,22 @@ const ChatView: React.FC<{
               <React.Fragment key={msg.id}>
                 {showTime && (
                   <div className="text-center py-2">
-                    <span className="text-[10px] text-white/20 px-2 py-0.5 rounded-full bg-white/[0.03]">
+                    <span className="text-[10px] text-gray-400 dark:text-white/20 px-2 py-0.5 rounded-full bg-gray-100 dark:bg-white/[0.03]">
                       {new Date(msg.created_at).toLocaleTimeString('uz-UZ', { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
                 )}
-                <div className={`flex ${isMine ? 'justify-end' : 'justify-start'} ${!isFirstInGroup ? (isMine ? 'pr-0' : 'pl-10') : ''}`}>
+                <div className={`group/msg flex ${isMine ? 'justify-end' : 'justify-start'} ${!isFirstInGroup ? (isMine ? 'pr-0' : 'pl-10') : ''}`}>
+                  {/* Delete button for own messages — hover reveal */}
+                  {isMine && (
+                    <button
+                      onClick={() => setDeleteMessageId(msg.id)}
+                      className="self-center mr-1.5 p-1 rounded-lg text-gray-300 dark:text-white/15 hover:text-red-400 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 opacity-0 group-hover/msg:opacity-100 transition-all"
+                      title="O'chirish"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   {/* Avatar for received messages — only first in group */}
                   {!isMine && isFirstInGroup && (
                     <div className="flex-shrink-0 mr-2 self-end mb-1">
@@ -296,7 +322,7 @@ const ChatView: React.FC<{
                     className={`max-w-[75%] rounded-2xl px-3.5 py-2 ${
                       isMine
                         ? 'bg-sahifa-500/90 text-white rounded-br-md shadow-[0_2px_12px_rgba(241,89,41,0.25)]'
-                        : 'bg-white/[0.06] backdrop-blur-sm text-white/80 border border-white/[0.06] rounded-bl-md'
+                        : 'bg-gray-100 dark:bg-white/[0.06] dark:backdrop-blur-sm text-gray-800 dark:text-white/80 border border-gray-200/60 dark:border-white/[0.06] rounded-bl-md'
                     }`}
                   >
                     <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
@@ -330,7 +356,7 @@ const ChatView: React.FC<{
       </div>
 
       {/* Input bar */}
-      <div className="px-4 py-3 border-t border-white/[0.04] bg-pitch/80 backdrop-blur-xl">
+      <div className="px-4 py-3 border-t border-gray-200/60 dark:border-white/[0.04] bg-white/80 dark:bg-pitch/80 backdrop-blur-xl">
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
@@ -339,7 +365,7 @@ const ChatView: React.FC<{
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder="Xabar yozing..."
-            className="flex-1 px-4 py-2.5 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white placeholder:text-white/30 outline-none focus:border-sahifa-500/30 transition-colors"
+            className="flex-1 px-4 py-2.5 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/30 outline-none focus:border-sahifa-500/40 dark:focus:border-sahifa-500/30 transition-colors"
           />
           <button
             onClick={handleSend}
@@ -350,6 +376,16 @@ const ChatView: React.FC<{
           </button>
         </div>
       </div>
+
+      {/* Delete message confirmation */}
+      <DeleteConfirmModal
+        open={!!deleteMessageId}
+        title="Xabarni o'chirish"
+        description="Bu xabar butunlay o'chiriladi."
+        loading={deletingMessage}
+        onConfirm={handleDeleteMessage}
+        onCancel={() => setDeleteMessageId(null)}
+      />
     </div>
   )
 }
@@ -397,7 +433,7 @@ const SlouthMessenger: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-pitch flex flex-col" style={{ height: '100dvh' }}>
+    <div className="min-h-screen bg-[#F8F9FA] dark:bg-pitch flex flex-col" style={{ height: '100dvh' }}>
       {activeConv ? (
         <ChatView
           conversationId={activeConv.id}
@@ -408,10 +444,10 @@ const SlouthMessenger: React.FC = () => {
       ) : (
         <>
           {/* Header */}
-          <div className="sticky top-0 z-30 bg-pitch/80 backdrop-blur-xl border-b border-white/[0.04]">
+          <div className="sticky top-0 z-30 bg-white/80 dark:bg-pitch/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-white/[0.04]">
             <div className="max-w-2xl mx-auto px-4 py-3">
-              <h1 className="text-lg font-bold text-white tracking-tight">Xabarlar</h1>
-              <p className="text-xs text-white/30">Shaxsiy xabarlar</p>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">Xabarlar</h1>
+              <p className="text-xs text-gray-400 dark:text-white/30">Shaxsiy xabarlar</p>
             </div>
           </div>
 

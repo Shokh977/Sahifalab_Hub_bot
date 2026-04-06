@@ -40,7 +40,15 @@ class PostCreate(BaseModel):
     image_url: Optional[str] = None
 
 
+class PostUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=2000)
+
+
 class CommentCreate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=1000)
+
+
+class CommentUpdate(BaseModel):
     content: str = Field(..., min_length=1, max_length=1000)
 
 

@@ -71,6 +71,11 @@ export default {
         'elevation-1': '0 1px 3px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.24)',
         'elevation-2': '0 3px 6px rgba(0,0,0,0.15), 0 2px 4px rgba(0,0,0,0.12)',
         'elevation-3': '0 10px 20px rgba(0,0,0,0.15), 0 3px 6px rgba(0,0,0,0.10)',
+        /* ── Light mode soft shadows ──────────────────────────────── */
+        'frost':       '0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.06)',
+        'frost-hover': '0 2px 6px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.08)',
+        'frost-lg':    '0 4px 12px rgba(0,0,0,0.05), 0 12px 40px rgba(0,0,0,0.08)',
+        'frost-xl':    '0 8px 24px rgba(0,0,0,0.06), 0 20px 60px rgba(0,0,0,0.10)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
