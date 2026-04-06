@@ -37,6 +37,10 @@ import CourseCreatePage from './pages/CourseCreatePage'
 import LessonCreatePage from './pages/LessonCreatePage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
+import SocialFeed from './pages/SocialFeed'
+import SlouthMessenger from './pages/SlouthMessenger'
+import PublicProfile from './pages/PublicProfile'
+import DiscoverUsers from './pages/DiscoverUsers'
 
 const HomePage: React.FC = () => {
   const { user } = useAuth()
@@ -210,6 +214,13 @@ const AppRoutes: React.FC = () => (
       <Route path="/ai-companion" element={<AICompanionPage />} />
       <Route path="/courses" element={<CoursesPage />} />
       <Route path="/courses/:id" element={<CourseDetailPage />} />
+
+      {/* Social ecosystem */}
+      <Route path="/social" element={<SocialFeed />} />
+      <Route path="/discover" element={<DiscoverUsers />} />
+      <Route path="/profile/:userId" element={<PublicProfile />} />
+      <Route path="/messenger" element={<SlouthMessenger />} />
+      <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
       {/* Public teacher profile page — no auth required */}
       <Route path="/teacher/:id" element={<TeacherPublicPage />} />

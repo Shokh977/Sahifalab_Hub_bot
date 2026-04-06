@@ -14,11 +14,14 @@ import {
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  ChatBubbleLeftRightIcon,
   ChevronRightIcon,
   ClockIcon,
   CpuChipIcon,
+  GlobeAltIcon,
   HomeIcon,
   LinkIcon,
+  MagnifyingGlassIcon,
   RectangleStackIcon,
   ShieldCheckIcon,
   SparklesIcon,
@@ -57,6 +60,8 @@ interface NavItem {
 
 const NAV_MAIN: NavItem[] = [
   { icon: HomeIcon, label: 'Bosh sahifa', path: '/' },
+  { icon: GlobeAltIcon, label: 'Lenta', path: '/social' },
+  { icon: ChatBubbleLeftRightIcon, label: 'Slooth', path: '/messenger' },
   { icon: AcademicCapIcon, label: 'Kurslar', path: '/courses' },
   { icon: ClockIcon, label: "O'qish", path: '/study' },
   { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
@@ -66,6 +71,7 @@ const NAV_MAIN: NavItem[] = [
 ]
 
 const NAV_SECONDARY: NavItem[] = [
+  { icon: MagnifyingGlassIcon, label: 'Kashfiyot',    path: '/discover' },
   { icon: Squares2X2Icon, label: 'Kabinet',       path: '/cabinet' },
   { icon: TrophyIcon,     label: 'Reyting',       path: '/leaderboard' },
   { icon: UserGroupIcon,  label: "O'qituvchilar", path: '/teachers' },
@@ -75,9 +81,9 @@ const NAV_SECONDARY: NavItem[] = [
 // Shown in the mobile bottom tab bar (max 5 items for readability)
 const BOTTOM_NAV: NavItem[] = [
   { icon: HomeIcon, label: 'Home', path: '/' },
-  { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
-  { icon: ClockIcon, label: "O'qish", path: '/study' },
-  { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
+  { icon: GlobeAltIcon, label: 'Lenta', path: '/social' },
+  { icon: ChatBubbleLeftRightIcon, label: 'Slooth', path: '/messenger' },
+  { icon: MagnifyingGlassIcon, label: 'Kashfiyot', path: '/discover' },
   { icon: Squares2X2Icon, label: 'Kabinet', path: '/cabinet' },
 ]
 

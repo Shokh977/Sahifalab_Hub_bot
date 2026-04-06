@@ -64,10 +64,17 @@ export default {
         'card-dark':   '0 4px 24px rgba(0, 0, 0, 0.28)',
         'hero':        '0 20px 60px rgba(241, 89, 41, 0.20)',
         'inner-light': 'inset 0 1px 0 rgba(255,255,255,0.10)',
+        'glass':       '0 8px 32px rgba(0, 0, 0, 0.18)',
+        'glass-lg':    '0 12px 48px rgba(0, 0, 0, 0.24)',
       },
       backgroundImage: {
         'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
         'hero-mesh': 'linear-gradient(135deg, rgba(242,103,34,0.12) 0%, rgba(234,88,12,0.06) 50%, transparent 100%)',
+        'glass-card': 'linear-gradient(135deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)',
+        'glass-card-hover': 'linear-gradient(135deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.04) 100%)',
+      },
+      backdropBlur: {
+        'xs': '2px',
       },
       animation: {
         'shimmer':    'shimmer 2.5s ease-in-out infinite',

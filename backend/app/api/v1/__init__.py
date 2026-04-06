@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import auth
 from app.api.v1.endpoints import users, products, orders, cart, hero, quizzes, books, resources, admin, payments, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles
+from app.api.v1 import social_routes, messenger_routes
 
 api_router = APIRouter()
 
@@ -28,3 +29,7 @@ api_router.include_router(enrollments.router, prefix="/enrollments", tags=["enro
 api_router.include_router(upload.router,  prefix="/upload",  tags=["upload"])
 api_router.include_router(pay.router,    prefix="/pay",     tags=["pay"])
 api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"])
+
+# Social ecosystem
+api_router.include_router(social_routes.router)
+api_router.include_router(messenger_routes.router)

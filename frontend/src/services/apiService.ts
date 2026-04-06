@@ -49,6 +49,15 @@ class ApiService {
     )
   }
 
+  /**
+   * Public accessor for the underlying Axios instance.
+   * Useful for ad-hoc requests (social, messenger, etc.) that don't
+   * have dedicated wrapper methods yet.
+   */
+  get client(): AxiosInstance {
+    return this.axiosInstance
+  }
+
   // User endpoints
   async getUserProfile(userId: number) {
     return this.axiosInstance.get(`/api/users/${userId}`)

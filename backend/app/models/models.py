@@ -30,6 +30,10 @@ class Profile(Base):
     app_created_at    = Column(DateTime(timezone=True), nullable=True)
     app_last_login    = Column(DateTime(timezone=True), nullable=True)
     app_online_at     = Column(DateTime(timezone=True), nullable=True)
+    # Social ecosystem columns
+    followers_count   = Column(Integer, default=0)
+    following_count   = Column(Integer, default=0)
+    bio               = Column(Text, nullable=True)
 
 
 class AuthCode(Base):
