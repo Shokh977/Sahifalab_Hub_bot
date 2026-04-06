@@ -841,7 +841,7 @@ const CourseDetailPage: React.FC = () => {
 
           {/* Teacher chip */}
           {teacherProfile && (
-            <Link to={`/teacher/${course.teacher_id}`}
+            <Link to={`/profile/${course.teacher_id}?tab=courses`}
               className="inline-flex items-center gap-3 group p-2.5 rounded-2xl hover:bg-white/[0.06] transition-all -ml-2.5">
               {teacherProfile.photo_url ? (
                 <img src={teacherProfile.photo_url} alt={teacherProfile.first_name ?? ''}

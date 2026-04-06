@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BookOpenIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
@@ -29,7 +29,6 @@ import RoleGuard from './components/RoleGuard'
 import TeacherDashboardPage from './pages/TeacherDashboardPage'
 import TeacherApplyPage from './pages/TeacherApplyPage'
 import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
-import TeacherPublicPage from './pages/TeacherPublicPage'
 import TeachersGalleryPage from './pages/TeachersGalleryPage'
 import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
@@ -41,6 +40,12 @@ import SocialFeed from './pages/SocialFeed'
 import SlouthMessenger from './pages/SlouthMessenger'
 import PublicProfile from './pages/PublicProfile'
 import DiscoverUsers from './pages/DiscoverUsers'
+
+/** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
+const TeacherRedirect: React.FC = () => {
+  const { id } = useParams<{ id: string }>()
+  return <Navigate to={`/profile/${id}?tab=courses`} replace />
+}
 
 const HomePage: React.FC = () => {
   const { user } = useAuth()
@@ -232,8 +237,8 @@ const AppRoutes: React.FC = () => {
             <Route path="/messenger" element={<SlouthMessenger />} />
             <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
-            {/* Public teacher profile page — no auth required */}
-            <Route path="/teacher/:id" element={<TeacherPublicPage />} />
+            {/* Legacy teacher profile → redirects to unified profile */}
+            <Route path="/teacher/:id" element={<TeacherRedirect />} />
 
             {/* Teachers gallery — all active instructors */}
             <Route path="/teachers" element={<TeachersGalleryPage />} />

@@ -74,7 +74,15 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   if (m === 'get' && u === '/api/courses/categories') return ok(MOCK_CATEGORIES, config)
 
   // ── Courses ───────────────────────────────────────────────────────────────
-  if (m === 'get'  && u === '/api/courses')           return ok({ courses: MOCK_COURSES, total: MOCK_COURSES.length }, config)
+  if (m === 'get'  && u === '/api/courses') {
+    const teacherIdParam = config.params?.teacher_id
+    let filtered = MOCK_COURSES
+    if (teacherIdParam) {
+      const tid = Number(teacherIdParam)
+      filtered = MOCK_COURSES.filter(c => c.teacher_id === tid)
+    }
+    return ok({ courses: filtered, total: filtered.length }, config)
+  }
   if (m === 'get'  && u === '/api/courses/mine')      return ok(MOCK_COURSES.slice(0, 2), config)
   if (m === 'post' && u === '/api/courses')           return ok({ ...MOCK_COURSES[0], id: 99, title: 'Yangi kurs' }, config)
   if (m === 'get'  && u.match(/^\/api\/courses\/\d+\/reviews/)) {
@@ -168,7 +176,11 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   if (m === 'get'   && u === '/api/teacher/profile')             return ok(MOCK_TEACHER_PROFILE, config)
   if (m === 'patch' && u === '/api/teacher/profile')             return ok(MOCK_TEACHER_PROFILE, config)
   if (m === 'get'   && u === '/api/teacher/analytics')           return ok(MOCK_TEACHER_ANALYTICS, config)
-  if (m === 'get'   && u.match(/^\/api\/teacher\/profile\/\d+/)) return ok(MOCK_TEACHERS[0], config)
+  if (m === 'get'   && u.match(/^\/api\/teacher\/profile\/\d+/)) {
+    const tid = seg(url, '/api/teacher/profile')
+    const teacher = MOCK_TEACHERS.find(t => t.telegram_id === tid) ?? MOCK_TEACHERS[0]
+    return ok(teacher, config)
+  }
 
   // ── Admin stats ───────────────────────────────────────────────────────────
   if (m === 'get' && u === '/api/admin/dashboard/stats')    return ok(MOCK_ADMIN_STATS, config)

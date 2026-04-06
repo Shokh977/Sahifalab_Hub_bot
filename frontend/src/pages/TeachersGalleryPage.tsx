@@ -222,7 +222,7 @@ const InstructorCard: React.FC<InstructorCardProps> = ({ teacher, index }) => {
 
         {/* View Profile CTA */}
         <Link
-          to={`/teacher/${teacher.telegram_id}`}
+          to={`/profile/${teacher.telegram_id}?tab=courses`}
           className="block w-full text-center py-2.5 rounded-[14px] bg-[#F15929] hover:bg-orange-600 text-white text-sm font-bold shadow-[0_8px_20px_rgba(241,89,41,0.25)] hover:shadow-[0_10px_28px_rgba(241,89,41,0.38)] active:scale-95 transition-all duration-200"
         >
           Profilni ko'rish →

@@ -606,7 +606,27 @@ export const MOCK_POSTS = [
 // ── Public profiles (for /api/v1/social/users/:id/profile) ───────────────────
 export function MOCK_PUBLIC_PROFILE(targetId: number, myId: number) {
   const u = _socialUser(targetId)
-  if (!u) return null
+
+  // If not found in social users, try to find in MOCK_TEACHERS (for teacher profiles)
+  if (!u) {
+    const teacher = MOCK_TEACHERS.find(t => t.telegram_id === targetId)
+    if (!teacher) return null
+    return {
+      telegram_id: targetId,
+      full_name: `${teacher.first_name} ${teacher.last_name ?? ''}`.trim(),
+      first_name: teacher.first_name,
+      username: teacher.username,
+      photo_url: teacher.photo_url,
+      role: 'teacher' as const,
+      level: 10,
+      xp: 9600,
+      bio: teacher.bio ?? null,
+      followers_count: Math.floor(Math.random() * 80) + 20,
+      following_count: Math.floor(Math.random() * 15) + 5,
+      is_following: false,
+    }
+  }
+
   return {
     telegram_id: targetId,
     full_name: u.first_name,
