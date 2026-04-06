@@ -533,3 +533,197 @@ export const MOCK_LEADERBOARD: Array<{
   { telegram_id: 100_008, first_name: "Mohira",   username: "mohira_22",       photo_url: "https://ui-avatars.com/api/?name=Mohira&background=3B82F6&color=fff",           total_xp: 800,   focus_seconds: 12000, level: 2,  quizzes_completed: 1,  app_online_at: null },
   { telegram_id: 100_009, first_name: "Sherzod",  username: null,              photo_url: null,                                                                            total_xp: 500,   focus_seconds:  8000, level: 2,  quizzes_completed: 1,  app_online_at: null },
 ]
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SOCIAL ECOSYSTEM MOCK DATA
+// ══════════════════════════════════════════════════════════════════════════════
+
+// ── Social user profiles (UserIdentityUser shape) ────────────────────────────
+const _socialUser = (id: number) => MOCK_LEADERBOARD.find(u => u.telegram_id === id)
+
+/** Helper — build an author object matching PostData.author shape */
+function mkAuthor(tid: number): {
+  telegram_id: number; full_name: string; username: string | null
+  photo_url: string | null; role: string; level: number; xp: number
+} {
+  const u = _socialUser(tid)
+  return {
+    telegram_id: tid,
+    full_name: u?.first_name ?? 'Unknown',
+    username: u?.username ?? null,
+    photo_url: u?.photo_url ?? null,
+    role: tid === 999_001 ? 'admin' : tid === 100_001 ? 'teacher' : 'student',
+    level: u?.level ?? 1,
+    xp: u?.total_xp ?? 0,
+  }
+}
+
+// ── Posts ─────────────────────────────────────────────────────────────────────
+let _postId = 0
+function mkPost(
+  authorId: number, content: string, imageUrl?: string,
+  likes = 0, comments = 0, hoursAgo = 1, isLiked = false,
+) {
+  return {
+    id: ++_postId,
+    author: mkAuthor(authorId),
+    content,
+    image_url: imageUrl ?? null,
+    likes_count: likes,
+    comments_count: comments,
+    is_liked: isLiked,
+    created_at: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(),
+  }
+}
+
+export const MOCK_POSTS = [
+  mkPost(100_001, "Bugun yangi React 19 hujjatlarini o'qib chiqdim. Server Components haqiqatan ham kuchli ekan! 🚀\n\nhttps://react.dev/blog/2024/12/05/react-19",
+    undefined, 14, 3, 2, true),
+  mkPost(999_001, "SAHIFALAB yangi social funksiya ishga tushdi! Endi bir-biringiz bilan bog'lanishingiz mumkin 🎉",
+    "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&q=80", 28, 7, 5),
+  mkPost(100_002, "Python bilan machine learning loyihamni tugatdim. Accuracy 94% ga yetdi! 🤖\n\n#machinelearning #python #datascience",
+    "https://images.unsplash.com/photo-1555949963-aa79dcee981c?w=800&q=80", 21, 5, 8, true),
+  mkPost(100_004, "IELTS Writing Task 2 uchun yangi strategiya topdim — OREO metodi:\n\n📌 Opinion\n📌 Reason\n📌 Example\n📌 Opinion (repeat)\n\nJuda samarali!",
+    undefined, 35, 12, 12),
+  mkPost(100_003, "Matematika olimpiadasi natijalarim chiqdi — 2-o'rin! 🏆 Tayyorgarlik jarayoni juda qiyin bo'ldi lekin natija juda yaxshi.",
+    undefined, 18, 4, 18),
+  mkPost(100_006, "Bugungi kitob tavsiyam: \"Deep Work\" — Cal Newport. Chuqur diqqat to'plash san'ati haqida eng yaxshi kitob! 📚",
+    "https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=800&q=80", 9, 2, 24),
+  mkPost(100_007, "FastAPI + PostgreSQL bilan REST API yozdim. Swagger dokumentatsiya avtomatik generatsiya bo'lyapti — ajoyib! 💪",
+    undefined, 11, 3, 30),
+  mkPost(100_001, "Yangi loyihamni open-source qildim!\n\nhttps://github.com/example/uzbek-nlp\n\nO'zbek tili uchun NLP kutubxonasi. Tokenizer, stemmer, va sentiment analysis.",
+    undefined, 42, 8, 48, true),
+  mkPost(100_005, "DSA o'rganish uchun roadmap:\n\n1️⃣ Arrays & Strings\n2️⃣ Linked Lists\n3️⃣ Trees & Graphs\n4️⃣ Dynamic Programming\n5️⃣ System Design\n\nHar kuniga 2 ta masala hal qiling!",
+    undefined, 27, 6, 60),
+  mkPost(100_008, "Birinchi Python dasturim ishga tushdi! 'Hello World' dan boshlab, endi hisob-kitob dasturi yozdim 😄\n\n#beginner #python",
+    undefined, 15, 4, 72),
+  mkPost(100_002, "Tailwind CSS 4.0 alpha chiqqan ekan! Yangi @theme directive va zero-config — juda kuchli yangilanish.",
+    "https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=800&q=80", 19, 3, 96),
+  mkPost(100_009, "Fizika fanidan 85 ball oldim! Kvant mexanikasi qismi eng qiyin bo'ldi ⚛️",
+    undefined, 7, 1, 120),
+]
+
+// ── Public profiles (for /api/v1/social/users/:id/profile) ───────────────────
+export function MOCK_PUBLIC_PROFILE(targetId: number, myId: number) {
+  const u = _socialUser(targetId)
+  if (!u) return null
+  return {
+    telegram_id: targetId,
+    full_name: u.first_name,
+    first_name: u.first_name,
+    username: u.username,
+    photo_url: u.photo_url,
+    role: targetId === 999_001 ? 'admin' : targetId === 100_001 ? 'teacher' : 'student',
+    level: u.level,
+    xp: u.total_xp,
+    bio: targetId === 100_001
+      ? "10 yillik tajriba. Python, FastAPI, React, DevOps. Open-source loyihalar muallifi."
+      : targetId === 100_002
+        ? "Data Science & ML enthusiast. Python, TensorFlow, PyTorch. Barno codes 💻"
+        : targetId === 100_004
+          ? "IELTS 7.5 | Ingliz tili o'qituvchisi | Study tips & motivation 📝"
+          : "SAHIFALAB foydalanuvchisi",
+    followers_count: Math.floor(Math.random() * 50) + 5,
+    following_count: Math.floor(Math.random() * 30) + 3,
+    is_following: [100_001, 100_002, 100_004].includes(targetId) && myId === 999_001,
+  }
+}
+
+// ── Discover users (users the current user does NOT follow) ──────────────────
+export function MOCK_DISCOVER_USERS(myId: number) {
+  return MOCK_LEADERBOARD
+    .filter(u => u.telegram_id !== myId)
+    .map(u => ({
+      telegram_id: u.telegram_id,
+      full_name: u.first_name,
+      first_name: u.first_name,
+      username: u.username,
+      photo_url: u.photo_url,
+      role: u.telegram_id === 999_001 ? 'admin' : u.telegram_id === 100_001 ? 'teacher' : 'student',
+      level: u.level,
+      xp: u.total_xp,
+    }))
+}
+
+// ── Conversations ────────────────────────────────────────────────────────────
+export const MOCK_CONVERSATIONS = [
+  {
+    id: 1,
+    other_user: mkAuthor(100_001),
+    last_message: {
+      id: 105,
+      conversation_id: 1,
+      sender_id: 100_001,
+      content: "FastAPI loyihangni ko'rdim, juda yaxshi yozilgan! 👏",
+      is_read: false,
+      created_at: new Date(Date.now() - 1_800_000).toISOString(), // 30 min ago
+    },
+    unread_count: 2,
+    last_message_at: new Date(Date.now() - 1_800_000).toISOString(),
+  },
+  {
+    id: 2,
+    other_user: mkAuthor(100_002),
+    last_message: {
+      id: 204,
+      conversation_id: 2,
+      sender_id: 999_001,
+      content: "ML loyihang uchun qaysi dataset ishlatding?",
+      is_read: true,
+      created_at: new Date(Date.now() - 7_200_000).toISOString(), // 2h ago
+    },
+    unread_count: 0,
+    last_message_at: new Date(Date.now() - 7_200_000).toISOString(),
+  },
+  {
+    id: 3,
+    other_user: mkAuthor(100_004),
+    last_message: {
+      id: 301,
+      conversation_id: 3,
+      sender_id: 100_004,
+      content: "IELTS Writing strategiyasi haqida gaplashamizmi?",
+      is_read: true,
+      created_at: new Date(Date.now() - 86_400_000).toISOString(), // 1 day ago
+    },
+    unread_count: 0,
+    last_message_at: new Date(Date.now() - 86_400_000).toISOString(),
+  },
+]
+
+// ── Direct Messages (per conversation) ───────────────────────────────────────
+const MY_ID = 999_001
+
+function mkMsg(id: number, convId: number, senderId: number, content: string, hoursAgo: number, isRead = true) {
+  return {
+    id,
+    conversation_id: convId,
+    sender_id: senderId,
+    content,
+    is_read: isRead,
+    created_at: new Date(Date.now() - hoursAgo * 3_600_000).toISOString(),
+  }
+}
+
+export const MOCK_MESSAGES: Record<number, ReturnType<typeof mkMsg>[]> = {
+  // Conversation 1: Dev ↔ Alisher
+  1: [
+    mkMsg(101, 1, MY_ID,    "Salom Alisher! React 19 haqidagi postingni o'qidim, juda foydali ekan 🔥", 3),
+    mkMsg(102, 1, 100_001,  "Rahmat! Hozir Server Components ustida ishlayapman, natijalar ajoyib", 2.5),
+    mkMsg(103, 1, MY_ID,    "Men ham sinab ko'rmoqchiman. Qaysi tutorial ishlatding?", 2),
+    mkMsg(104, 1, 100_001,  "React rasmiy hujjatlaridan boshla:\nhttps://react.dev/reference/rsc/server-components", 1),
+    mkMsg(105, 1, 100_001,  "FastAPI loyihangni ko'rdim, juda yaxshi yozilgan! 👏", 0.5, false),
+  ],
+  // Conversation 2: Dev ↔ Barno
+  2: [
+    mkMsg(201, 2, 100_002,  "Salom! ML loyiham haqida yozdim, ko'rdingmi?", 5),
+    mkMsg(202, 2, MY_ID,    "Ha, 94% accuracy — juda yaxshi! Qaysi model ishlatding?", 4),
+    mkMsg(203, 2, 100_002,  "Random Forest + XGBoost ensemble. Feature engineering ko'p yordam berdi", 3),
+    mkMsg(204, 2, MY_ID,    "ML loyihang uchun qaysi dataset ishlatding?", 2),
+  ],
+  // Conversation 3: Dev ↔ Kamola
+  3: [
+    mkMsg(301, 3, 100_004,  "IELTS Writing strategiyasi haqida gaplashamizmi?", 24),
+  ],
+}
+

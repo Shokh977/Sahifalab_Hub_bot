@@ -19,6 +19,8 @@ import {
   MOCK_RESOURCES, MOCK_AMBIENT_SOUNDS, MOCK_HEATMAP, MOCK_TEACHERS,
   MOCK_TEACHER_PROFILE, MOCK_TEACHER_ANALYTICS, MOCK_ADMIN_STATS,
   MOCK_PLATFORM_ANALYTICS, MOCK_HERO, MOCK_PAYMENT_ORDER, MOCK_LEADERBOARD,
+  MOCK_POSTS, MOCK_PUBLIC_PROFILE, MOCK_DISCOVER_USERS,
+  MOCK_CONVERSATIONS, MOCK_MESSAGES,
 } from './mockData'
 
 export const DEV_MOCK = import.meta.env.VITE_DEV_MOCK === 'true'
@@ -190,6 +192,124 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   if (m === 'get' && u.startsWith('/api/products')) return ok({ items: [], total: 0 }, config)
   if (m === 'get' && u.startsWith('/api/cart'))     return ok({ items: [], total: 0 }, config)
   if (m === 'get' && u.startsWith('/api/users'))    return ok(MOCK_USER, config)
+
+  // ── Social — Feed & Explore ───────────────────────────────────────────────
+  if (m === 'get' && u === '/api/v1/social/posts/feed') {
+    // Feed: posts from "followed" users (mock = first 6 posts)
+    return ok({ posts: MOCK_POSTS.slice(0, 6), total: 6 }, config)
+  }
+  if (m === 'get' && u === '/api/v1/social/posts/explore') {
+    // Explore: all posts
+    return ok({ posts: MOCK_POSTS, total: MOCK_POSTS.length }, config)
+  }
+
+  // ── Social — Create post ──────────────────────────────────────────────────
+  if (m === 'post' && u === '/api/v1/social/posts') {
+    const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    const newPost = {
+      id: Date.now(),
+      author: {
+        telegram_id: MOCK_USER.telegram_id,
+        full_name: MOCK_USER.first_name,
+        username: MOCK_USER.username,
+        photo_url: MOCK_USER.photo_url,
+        role: MOCK_USER.role,
+        level: MOCK_USER.level,
+        xp: MOCK_USER.total_xp,
+      },
+      content: body?.content ?? '',
+      image_url: body?.image_url ?? null,
+      likes_count: 0,
+      comments_count: 0,
+      is_liked: false,
+      created_at: new Date().toISOString(),
+    }
+    return ok(newPost, config)
+  }
+
+  // ── Social — Upload file ──────────────────────────────────────────────────
+  if (m === 'post' && u === '/api/v1/upload/file') {
+    return ok({ url: 'https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=800&q=80' }, config)
+  }
+
+  // ── Social — Like / Unlike ────────────────────────────────────────────────
+  if (m === 'post' && u.match(/^\/api\/v1\/social\/posts\/\d+\/like$/)) return ok({ success: true }, config)
+  if (m === 'delete' && u.match(/^\/api\/v1\/social\/posts\/\d+\/like$/)) return ok({ success: true }, config)
+
+  // ── Social — Delete post ──────────────────────────────────────────────────
+  if (m === 'delete' && u.match(/^\/api\/v1\/social\/posts\/\d+$/)) return ok({ success: true }, config)
+
+  // ── Social — User profile ─────────────────────────────────────────────────
+  if (m === 'get' && u.match(/^\/api\/v1\/social\/users\/\d+\/profile$/)) {
+    const targetId = seg(url, '/api/v1/social/users')
+    const profile = MOCK_PUBLIC_PROFILE(targetId ?? 0, MOCK_USER.telegram_id)
+    return ok(profile ?? { error: 'not found' }, config, profile ? 200 : 404)
+  }
+
+  // ── Social — User posts ───────────────────────────────────────────────────
+  if (m === 'get' && u.match(/^\/api\/v1\/social\/users\/\d+\/posts$/)) {
+    const targetId = seg(url, '/api/v1/social/users')
+    const userPosts = MOCK_POSTS.filter(p => p.author.telegram_id === targetId)
+    return ok({ posts: userPosts, total: userPosts.length }, config)
+  }
+
+  // ── Social — Follow / Unfollow ────────────────────────────────────────────
+  if (m === 'post' && u.match(/^\/api\/v1\/social\/users\/\d+\/follow$/)) return ok({ success: true }, config)
+  if (m === 'delete' && u.match(/^\/api\/v1\/social\/users\/\d+\/follow$/)) return ok({ success: true }, config)
+
+  // ── Social — Discover users ───────────────────────────────────────────────
+  if (m === 'get' && u === '/api/v1/social/discover') {
+    return ok({ users: MOCK_DISCOVER_USERS(MOCK_USER.telegram_id) }, config)
+  }
+
+  // ── Social — Search users ─────────────────────────────────────────────────
+  if (m === 'get' && u === '/api/v1/social/search') {
+    const q = (config.params?.q ?? '').toString().toLowerCase()
+    const all = MOCK_DISCOVER_USERS(MOCK_USER.telegram_id)
+    const filtered = all.filter(u =>
+      (u.full_name ?? '').toLowerCase().includes(q) ||
+      (u.username ?? '').toLowerCase().includes(q)
+    )
+    return ok({ users: filtered }, config)
+  }
+
+  // ── Messenger — List conversations ────────────────────────────────────────
+  if (m === 'get' && u === '/api/v1/messenger/conversations') {
+    return ok(MOCK_CONVERSATIONS, config)
+  }
+
+  // ── Messenger — Create / get conversation ─────────────────────────────────
+  if (m === 'post' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+$/)) {
+    const targetId = seg(url, '/api/v1/messenger/conversations')
+    const existing = MOCK_CONVERSATIONS.find(c => c.other_user.telegram_id === targetId)
+    return ok({ id: existing?.id ?? 99 }, config)
+  }
+
+  // ── Messenger — Get messages ──────────────────────────────────────────────
+  if (m === 'get' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/messages$/)) {
+    const convId = seg(url, '/api/v1/messenger/conversations')
+    return ok(MOCK_MESSAGES[convId ?? 0] ?? [], config)
+  }
+
+  // ── Messenger — Send message ──────────────────────────────────────────────
+  if (m === 'post' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/messages$/)) {
+    const convId = seg(url, '/api/v1/messenger/conversations')
+    const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
+    const newMsg = {
+      id: Date.now(),
+      conversation_id: convId ?? 0,
+      sender_id: MOCK_USER.telegram_id,
+      content: body?.content ?? '',
+      is_read: false,
+      created_at: new Date().toISOString(),
+    }
+    return ok(newMsg, config)
+  }
+
+  // ── Messenger — Mark read ─────────────────────────────────────────────────
+  if (m === 'patch' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/read$/)) {
+    return ok({ success: true }, config)
+  }
 
   // ── Fallback ──────────────────────────────────────────────────────────────
   console.warn(`[mockAdapter] ⚠️  Unmatched ${m.toUpperCase()} ${url} — returning {}`)
