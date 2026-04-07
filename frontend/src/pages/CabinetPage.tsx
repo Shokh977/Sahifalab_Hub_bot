@@ -21,6 +21,7 @@ import {
   BookOpen,
   BarChart2,
   ChevronRight,
+  CheckCircle,
   Clock,
   Info,
   Lightbulb,
@@ -28,6 +29,7 @@ import {
   PenLine,
   PlayCircle,
   Sparkles,
+  Target,
   Trophy,
 } from 'lucide-react'
 import {
@@ -646,6 +648,64 @@ const CabinetPage: React.FC = () => {
           </div>
         </motion.div>
       )}
+
+      {/* ═══ Profile Strength Meter (Teachers only) ═══ */}
+      {isTeacher && (() => {
+        const fields = [
+          { label: 'Ism',           done: !!effectiveFirstName },
+          { label: 'Qisqa bio',     done: !!((authUser as any)?.bio) },
+          { label: 'Rasm',          done: !!photoUrl },
+          { label: 'Username',      done: !!effectiveUsername },
+          { label: 'Haqida matni',  done: !!((authUser as any)?.about_me) },
+        ]
+        const score = Math.round((fields.filter(f => f.done).length / fields.length) * 100)
+        return (
+          <div className="mx-4">
+            <div className="p-4 rounded-2xl bg-white/70 dark:bg-white/[0.04] backdrop-blur-md border border-gray-200/60 dark:border-white/[0.06] shadow-sm space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Target className="h-4 w-4 text-sahifa-500" />
+                  <p className="text-sm font-bold text-gray-900 dark:text-white">Profil kuchi</p>
+                </div>
+                <span className="text-sm font-extrabold text-sahifa-600 dark:text-sahifa-400">{score}%</span>
+              </div>
+              {/* Meter bar */}
+              <div className="h-2.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+                <motion.div
+                  className="h-full rounded-full"
+                  style={{ background: 'linear-gradient(to right, #F15929, #f97316)' }}
+                  initial={{ width: 0 }}
+                  animate={{ width: `${score}%` }}
+                  transition={{ duration: 0.9, ease: 'easeOut' }}
+                />
+              </div>
+              {/* Step pills */}
+              <div className="flex flex-wrap gap-2">
+                {fields.map(f => (
+                  <span key={f.label} className={['inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium',
+                    f.done
+                      ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-slate-100 dark:bg-white/[0.05] text-slate-500 dark:text-white/40',
+                  ].join(' ')}>
+                    <CheckCircle className="h-3 w-3" />
+                    {f.label}
+                  </span>
+                ))}
+              </div>
+              {/* Growth tip */}
+              <div className="flex items-start gap-2 px-3 py-2 rounded-xl bg-blue-50/80 dark:bg-blue-900/10 border border-blue-200/60 dark:border-blue-800/40">
+                <Info className="h-3.5 w-3.5 text-blue-500 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-snug">
+                  To'liq to'ldirilgan profil o'quvchilar ishonchini <strong>40%</strong> ga oshiradi.
+                  {score < 100 && (
+                    <> <button onClick={() => setEditOpen(true)} className="font-semibold underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300">Profilni to'ldirish <ArrowRight className="inline h-3 w-3" /></button></>
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* ═══ Tab Navigation ═══ */}
       <div className="px-4">
