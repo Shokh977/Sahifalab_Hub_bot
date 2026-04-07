@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
-from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, CommentUpdate
+from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, CommentUpdate, BulkViewRequest
 from app.services import social_service as svc
 
 router = APIRouter(prefix="/social", tags=["social"])
@@ -98,6 +98,32 @@ def delete_post(
 
 
 # ── Views / Reposts / Shares ─────────────────────────────────────────────────
+@router.post("/posts/views/bulk")
+def bulk_view(
+    body: BulkViewRequest,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Batch increment views_count for all supplied post IDs in one DB UPDATE.
+
+    Called by the client-side view-buffer every 10 s or when the buffer hits 10 IDs.
+    """
+    svc.increment_views_bulk(db, body.post_ids)
+    return {"ok": True}
+
+
+@router.post("/simulate-growth")
+def simulate_growth(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Trigger one tick of organic view simulation.
+
+    Safe to call from any authenticated user; called once per session by the
+    Lenta page to make the platform feel naturally active.
+    """
+    svc.simulate_organic_growth(db)
+    return {"ok": True}
 
 @router.post("/posts/{post_id}/view")
 def increment_view(

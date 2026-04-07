@@ -4,7 +4,7 @@ Social service — posts, likes, comments, follows, feed, discovery.
 
 from __future__ import annotations
 from typing import Optional, List, Tuple
-from sqlalchemy import desc, func, and_, or_, exists
+from sqlalchemy import desc, func, and_, or_, exists, text
 from sqlalchemy.orm import Session
 
 from app.models.social_models import Post, PostLike, PostComment, Follow, Repost
@@ -42,6 +42,7 @@ def _enrich_post(
         "views_count": getattr(post, "views_count", 0) or 0,
         "reposts_count": getattr(post, "reposts_count", 0) or 0,
         "shares_count": getattr(post, "shares_count", 0) or 0,
+        "base_views_added": getattr(post, "base_views_added", 0) or 0,
         "is_liked": is_liked,
         "is_reposted": is_reposted,
         "created_at": post.created_at,
@@ -311,6 +312,31 @@ def increment_post_shares(db: Session, post_id: int) -> None:
         {Post.shares_count: Post.shares_count + 1}
     )
     db.commit()
+
+
+def increment_views_bulk(db: Session, post_ids: List[int]) -> None:
+    """Atomically bump views_count for multiple posts in one UPDATE.
+
+    Called by the frontend view-buffer flush (every 10 s or 10-item batch).
+    """
+    if not post_ids:
+        return
+    db.execute(
+        text("UPDATE posts SET views_count = views_count + 1 WHERE id = ANY(:ids)"),
+        {"ids": post_ids},
+    )
+    db.commit()
+
+
+def simulate_organic_growth(db: Session) -> None:
+    """Invoke the simulate_organic_growth() SQL function.
+
+    Picks up to 5 recent posts with remaining view budget and increments
+    base_views_added by 1-3.  Called lazily from the frontend (once per session).
+    """
+    db.execute(text("SELECT simulate_organic_growth()"))
+    db.commit()
+
 
 # ── Likes ────────────────────────────────────────────────────────────────────
 

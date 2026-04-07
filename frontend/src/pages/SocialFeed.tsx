@@ -49,6 +49,11 @@ const SocialFeed: React.FC = () => {
       setPosts(prev => reset ? fetched : [...prev, ...fetched])
       setHasMore(fetched.length >= 20)
       setPage(pg)
+      // Trigger one organic-growth tick once per browser session
+      if (reset && pg === 1 && !sessionStorage.getItem('sahifa_growth_ticked')) {
+        sessionStorage.setItem('sahifa_growth_ticked', '1')
+        api.client.post('/api/v1/social/simulate-growth').catch(() => {})
+      }
     } catch (err) {
       console.error('Feed fetch error:', err)
     }

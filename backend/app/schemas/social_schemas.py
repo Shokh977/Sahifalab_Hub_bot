@@ -131,3 +131,9 @@ class PaginatedPosts(BaseModel):
     total: int
     page: int
     page_size: int
+
+
+# ── Bulk view increment ──────────────────────────────────────────────────────
+
+class BulkViewRequest(BaseModel):
+    post_ids: List[int]

@@ -21,10 +21,12 @@ class Post(Base):
     image_url      = Column(Text, nullable=True)
     likes_count    = Column(Integer, nullable=False, default=0)
     comments_count = Column(Integer, nullable=False, default=0)
-    views_count    = Column(Integer, nullable=False, default=0)   # raw view counter (not unique)
-    reposts_count  = Column(Integer, nullable=False, default=0)
-    shares_count   = Column(Integer, nullable=False, default=0)
-    created_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    views_count         = Column(Integer, nullable=False, default=0)   # real unique-ish view counter
+    reposts_count       = Column(Integer, nullable=False, default=0)
+    shares_count        = Column(Integer, nullable=False, default=0)
+    target_base_views   = Column(Integer, nullable=False, default=0)   # randomised on insert (10-50)
+    base_views_added    = Column(Integer, nullable=False, default=0)   # organic simulation budget used
+    created_at          = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

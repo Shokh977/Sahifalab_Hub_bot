@@ -4,8 +4,11 @@
  * Action bar: Comment | Repost | Like | 👁 Views | Share
  *
  * Features:
- *  • View tracking: IntersectionObserver fires after 2 s of ≥50% visibility
- *    (once per post per page-load, via module-level Set — no DB hammering)
+ *  • View tracking: IntersectionObserver fires after 0.5 s of ≥50% visibility
+ *    → adds to a module-level Set (optimistic UI, once per mount)
+ *    → calls markViewed() which batches to /posts/views/bulk every 10 s
+ *    → sessionStorage dedup prevents re-counting across navigations
+ *  • Displayed views = views_count (real) + base_views_added (simulated)
  *  • Repost toggle with framer-motion rotation spring animation
  *  • Like toggle with framer-motion pop/scale spring animation
  *  • Share: Web Share API on mobile, Copy Link clipboard fallback on desktop
@@ -30,6 +33,7 @@ import UnifiedComment from './UnifiedComment'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
 import { showToast } from '../ErrorBoundary'
+import { markViewed } from '../../utils/viewBuffer'
 
 // ── Module-level view tracker — resets on page reload, survives re-renders ───
 const _viewedPostIds = new Set<number>()
@@ -52,6 +56,8 @@ export interface PostData {
   views_count?: number
   reposts_count?: number
   shares_count?: number
+  /** Simulated organic views added by simulate_organic_growth() */
+  base_views_added?: number
   is_liked: boolean
   is_reposted?: boolean
   created_at: string
@@ -99,7 +105,9 @@ const PostCard: React.FC<Props> = ({
   const [liked, setLiked] = useState(post.is_liked)
   const [likesCount, setLikesCount] = useState(post.likes_count)
   const [commentsCount, setCommentsCount] = useState(post.comments_count)
-  const [viewsCount, setViewsCount] = useState(post.views_count ?? 0)
+  const [viewsCount, setViewsCount] = useState(
+    (post.views_count ?? 0) + (post.base_views_added ?? 0),
+  )
   const [repostsCount, setRepostsCount] = useState(post.reposts_count ?? 0)
   const [reposted, setReposted] = useState(post.is_reposted ?? false)
   const [imgLoaded, setImgLoaded] = useState(false)
@@ -127,7 +135,7 @@ const PostCard: React.FC<Props> = ({
   const isOwner = currentUserId === post.author.telegram_id
   const articleRef = useRef<HTMLElement>(null)
 
-  // ── View tracking: IntersectionObserver (2 s dwell, once per post) ───────────
+  // ── View tracking: 500 ms dwell → optimistic UI + batched network call ────────
   useEffect(() => {
     if (_viewedPostIds.has(post.id)) return
     const el = articleRef.current
@@ -140,9 +148,9 @@ const PostCard: React.FC<Props> = ({
             timer = setTimeout(() => {
               if (_viewedPostIds.has(post.id)) return
               _viewedPostIds.add(post.id)
-              setViewsCount(c => c + 1)
-              api.client.post(`/api/v1/social/posts/${post.id}/view`).catch(() => {})
-            }, 2000)
+              setViewsCount(c => c + 1)   // optimistic UI
+              markViewed(post.id)          // queued for bulk flush
+            }, 500)
           }
         } else {
           if (timer) { clearTimeout(timer); timer = null }
