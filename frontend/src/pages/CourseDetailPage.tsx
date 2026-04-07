@@ -16,11 +16,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { Helmet } from 'react-helmet-async'
 import {
   GraduationCap, ArrowLeft, RefreshCw, ArrowUp,
   Banknote, BarChart2, CheckCircle2, ChevronDown, Clock,
   FileText, AlertCircle, Globe, Lock,
-  PenLine, Play, HelpCircle, Star, Tag,
+  PenLine, Play, HelpCircle, Star, Tag, Share2,
   Users, Video, Zap, Award, ChevronRight, Flame,
 } from 'lucide-react'
 import VideoPlayer from '../components/VideoPlayer'
@@ -175,6 +176,9 @@ const CourseDetailPage: React.FC = () => {
 
   // Scroll-to-top
   const [showScrollTop, setShowScrollTop] = useState(false)
+
+  // Share button feedback
+  const [shareCopied, setShareCopied] = useState(false)
 
   // Review menu & delete (UnifiedComment)
   const [showReviewMenu,     setShowReviewMenu]     = useState<number | null>(null)
@@ -368,6 +372,21 @@ const CourseDetailPage: React.FC = () => {
     if (next.has(key)) next.delete(key); else next.add(key)
     return next
   }), [])
+
+  const handleShareCourse = useCallback(async () => {
+    if (!course) return
+    const url  = `${window.location.origin}/courses/${course.id}`
+    const text = `${course.title} — SAHIFALAB da o'rganing!`
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({ title: course.title, text, url })
+      } else {
+        await navigator.clipboard.writeText(url)
+        setShareCopied(true)
+        setTimeout(() => setShareCopied(false), 2500)
+      }
+    } catch { /* user cancelled */ }
+  }, [course])
 
   const ratingWidgetProps: RatingWidgetProps = {
     myRating, myReview, hoverStar, ratingLoading,
@@ -647,11 +666,38 @@ const CourseDetailPage: React.FC = () => {
     </div>
   )
 
+  // ── OG / share derivations (course is non-null past the error guard) ─────
+  const ogDesc   = course.description
+    ? course.description.replace(/\n+/g, ' ').slice(0, 160).trimEnd() +
+      (course.description.length > 160 ? '\u2026' : '')
+    : `SAHIFALAB — ${levelLabel(course.level)} daraja kursi. ${course.total_lessons} ta dars.`
+  const courseUrl = `${window.location.origin}/courses/${course.id}`
+  const ogImage   = course.thumbnail_url || 'https://sahifalab-hub-bot.vercel.app/sahifalab.jpg'
+  const ogTitle   = `${course.title} — SAHIFALAB`
+
   // ════════════════════════════════════════════════════════════════════════
   // MAIN RENDER — Focus Mode
   // ════════════════════════════════════════════════════════════════════════
   return (
     <div ref={scrollRef} className="min-h-screen bg-[#F8F9FA] dark:bg-[#1C1C22] transition-colors duration-300">
+
+      {/* ── Dynamic OG / Twitter meta tags ──────────────────────────── */}
+      <Helmet>
+        <title>{ogTitle}</title>
+        <meta name="description" content={ogDesc} />
+        {/* Open Graph */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="SAHIFALAB" />
+        <meta property="og:title" content={ogTitle} />
+        <meta property="og:description" content={ogDesc} />
+        <meta property="og:image" content={ogImage} />
+        <meta property="og:url" content={courseUrl} />
+        {/* Twitter / X card */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={ogTitle} />
+        <meta name="twitter:description" content={ogDesc} />
+        <meta name="twitter:image" content={ogImage} />
+      </Helmet>
 
       {/* ── STICKY TOP NAV ─────────────────────────────────────────────── */}
       <div className="sticky top-0 z-40 bg-white/80 dark:bg-[#1C1C22]/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-white/[0.06]">
@@ -684,6 +730,24 @@ const CourseDetailPage: React.FC = () => {
               <Star className="w-3 h-3 fill-amber-400 text-amber-400" /> {avgRating.toFixed(1)}
             </span>
           )}
+
+          {/* Share button — glassmorphism light / orange-glow dark */}
+          <button
+            onClick={handleShareCourse}
+            title="Kursni ulashish"
+            className={[
+              'shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all active:scale-95',
+              'border border-gray-200/70 bg-white/60 backdrop-blur-sm',
+              'hover:bg-white/90 hover:border-gray-300/70',
+              'dark:border-white/[0.08] dark:bg-white/[0.04]',
+              shareCopied
+                ? 'text-emerald-600 dark:text-emerald-400 border-emerald-300/60 dark:border-emerald-500/25 dark:shadow-none'
+                : 'text-gray-400 dark:text-white/30 hover:text-gray-700 dark:hover:text-[#F15929] dark:hover:border-[#F15929]/25 dark:hover:shadow-[0_0_14px_rgba(241,89,41,0.18)]',
+            ].join(' ')}
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{shareCopied ? '\u2713 Nusxalandi' : 'Ulashish'}</span>
+          </button>
         </div>
       </div>
 

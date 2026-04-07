@@ -1,6 +1,7 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { Analytics } from '@vercel/analytics/react'
+import { HelmetProvider } from 'react-helmet-async'
 import App from './App'
 import './styles/globals.css'
 import { DEV_MOCK, initMockAuth, seedSupabaseCache } from './lib/mockAdapter'
@@ -30,7 +31,9 @@ declare global {
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <HelmetProvider>
+      <App />
+    </HelmetProvider>
     <Analytics />
   </React.StrictMode>
 )
