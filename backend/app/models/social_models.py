@@ -21,6 +21,9 @@ class Post(Base):
     image_url      = Column(Text, nullable=True)
     likes_count    = Column(Integer, nullable=False, default=0)
     comments_count = Column(Integer, nullable=False, default=0)
+    views_count    = Column(Integer, nullable=False, default=0)   # raw view counter (not unique)
+    reposts_count  = Column(Integer, nullable=False, default=0)
+    shares_count   = Column(Integer, nullable=False, default=0)
     created_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
@@ -71,6 +74,22 @@ class Follow(Base):
         CheckConstraint("follower_id != following_id", name="chk_no_self_follow"),
         Index("ix_follows_follower", "follower_id"),
         Index("ix_follows_following", "following_id"),
+    )
+
+
+class Repost(Base):
+    """User reposts of posts — mirrors the 'reposts' table."""
+    __tablename__ = "reposts"
+
+    id               = Column(Integer, primary_key=True, autoincrement=True)
+    user_id          = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    original_post_id = Column(Integer,    ForeignKey("posts.id",             ondelete="CASCADE"), nullable=False)
+    created_at       = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "original_post_id", name="uq_repost"),
+        Index("ix_reposts_user", "user_id"),
+        Index("ix_reposts_post", "original_post_id"),
     )
 
 

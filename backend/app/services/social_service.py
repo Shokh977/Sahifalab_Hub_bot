@@ -7,7 +7,7 @@ from typing import Optional, List, Tuple
 from sqlalchemy import desc, func, and_, or_, exists
 from sqlalchemy.orm import Session
 
-from app.models.social_models import Post, PostLike, PostComment, Follow
+from app.models.social_models import Post, PostLike, PostComment, Follow, Repost
 from app.models.models import Profile
 
 
@@ -25,18 +25,31 @@ def _profile_to_author(p: Profile) -> dict:
     }
 
 
-def _enrich_post(post: Post, author: Profile, is_liked: bool) -> dict:
-    return {
+def _enrich_post(
+    post: Post,
+    author: Profile,
+    is_liked: bool,
+    is_reposted: bool = False,
+    repost_by: Optional[Profile] = None,
+) -> dict:
+    result = {
         "id": post.id,
         "author": _profile_to_author(author),
         "content": post.content,
         "image_url": post.image_url,
         "likes_count": post.likes_count,
         "comments_count": post.comments_count,
+        "views_count": getattr(post, "views_count", 0) or 0,
+        "reposts_count": getattr(post, "reposts_count", 0) or 0,
+        "shares_count": getattr(post, "shares_count", 0) or 0,
         "is_liked": is_liked,
+        "is_reposted": is_reposted,
         "created_at": post.created_at,
         "updated_at": post.updated_at,
     }
+    if repost_by is not None:
+        result["repost_by"] = _profile_to_author(repost_by)
+    return result
 
 
 # ── Posts CRUD ───────────────────────────────────────────────────────────────
@@ -95,23 +108,82 @@ def get_feed(
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
-    """Home feed: posts from followed users + own posts, newest first."""
-    following_ids = (
-        db.query(Follow.following_id)
-        .filter(Follow.follower_id == user_id)
-        .subquery()
+    """Home feed: own posts + followed users' posts + reposts by followed users, newest first."""
+    following_ids: List[int] = [
+        r[0] for r in
+        db.query(Follow.following_id).filter(Follow.follower_id == user_id).all()
+    ]
+    visible_ids = set(following_ids) | {user_id}
+
+    # 1. Regular posts by self + followed
+    regular_posts: List[Post] = (
+        db.query(Post).filter(Post.author_id.in_(visible_ids)).all()
     )
-    q = db.query(Post).filter(
-        or_(Post.author_id == user_id, Post.author_id.in_(following_ids))
-    )
-    total = q.count()
-    posts = (
-        q.order_by(desc(Post.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
-    return _enrich_posts_list(db, posts, user_id, total, page, page_size)
+    regular_post_ids = {p.id for p in regular_posts}
+
+    # 2. Reposts made by followed users (of posts not already in regular)
+    repost_rows: List[Tuple] = []
+    if following_ids:
+        repost_rows = (
+            db.query(Repost, Post)
+            .join(Post, Post.id == Repost.original_post_id)
+            .filter(Repost.user_id.in_(following_ids))
+            .filter(Post.id.notin_(regular_post_ids) if regular_post_ids else True)
+            .all()
+        )
+
+    # 3. Build reposter profile map
+    reposter_ids = {r.user_id for r, _ in repost_rows}
+    reposters_map: dict = {}
+    if reposter_ids:
+        reposters_map = {
+            p.telegram_id: p
+            for p in db.query(Profile).filter(Profile.telegram_id.in_(reposter_ids)).all()
+        }
+
+    # 4. Merge and sort by effective date (repost.created_at or post.created_at)
+    feed_items: List[Tuple] = [(p.created_at, p, None) for p in regular_posts]
+    for repost, post in repost_rows:
+        feed_items.append((repost.created_at, post, reposters_map.get(repost.user_id)))
+    feed_items.sort(key=lambda x: x[0], reverse=True)
+    total = len(feed_items)
+
+    paginated = feed_items[(page - 1) * page_size : page * page_size]
+    if not paginated:
+        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+
+    # 5. Batch-load authors + liked/reposted sets
+    paged_posts = [item[1] for item in paginated]
+    paged_post_ids = [p.id for p in paged_posts]
+    author_ids = list({p.author_id for p in paged_posts})
+    authors_map = {
+        p.telegram_id: p
+        for p in db.query(Profile).filter(Profile.telegram_id.in_(author_ids)).all()
+    }
+    liked_set: set = set()
+    reposted_set: set = set()
+    if paged_post_ids:
+        liked_set = {
+            r[0] for r in
+            db.query(PostLike.post_id)
+            .filter(PostLike.user_id == user_id, PostLike.post_id.in_(paged_post_ids))
+            .all()
+        }
+        reposted_set = {
+            r[0] for r in
+            db.query(Repost.original_post_id)
+            .filter(Repost.user_id == user_id, Repost.original_post_id.in_(paged_post_ids))
+            .all()
+        }
+
+    enriched = [
+        _enrich_post(
+            post, authors_map.get(post.author_id),
+            post.id in liked_set, post.id in reposted_set, reposter,
+        )
+        for _, post, reposter in paginated
+    ]
+    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
 
 
 def get_explore(
@@ -157,6 +229,7 @@ def _enrich_posts_list(
     total: int,
     page: int,
     page_size: int,
+    repost_by_map: Optional[dict] = None,
 ) -> dict:
     if not posts:
         return {"posts": [], "total": total, "page": page, "page_size": page_size}
@@ -166,7 +239,8 @@ def _enrich_posts_list(
         p.telegram_id: p
         for p in db.query(Profile).filter(Profile.telegram_id.in_(author_ids)).all()
     }
-    liked_set = set()
+    liked_set: set = set()
+    reposted_set: set = set()
     if viewer_id:
         post_ids = [p.id for p in posts]
         liked_rows = (
@@ -175,13 +249,68 @@ def _enrich_posts_list(
             .all()
         )
         liked_set = {r[0] for r in liked_rows}
+        reposted_rows = (
+            db.query(Repost.original_post_id)
+            .filter(Repost.user_id == viewer_id, Repost.original_post_id.in_(post_ids))
+            .all()
+        )
+        reposted_set = {r[0] for r in reposted_rows}
 
+    rb_map = repost_by_map or {}
     enriched = [
-        _enrich_post(p, authors_map.get(p.author_id), p.id in liked_set)
+        _enrich_post(
+            p, authors_map.get(p.author_id),
+            p.id in liked_set, p.id in reposted_set, rb_map.get(p.id),
+        )
         for p in posts
     ]
     return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
 
+# ── Views / Reposts / Shares ───────────────────────────────────────────────────────
+
+def increment_post_views(db: Session, post_id: int) -> None:
+    """Atomically bump view counter. Raw count, uniqueness not enforced."""
+    db.query(Post).filter(Post.id == post_id).update(
+        {Post.views_count: Post.views_count + 1}
+    )
+    db.commit()
+
+
+def repost_post(db: Session, post_id: int, user_id: int) -> bool:
+    """Create a repost record and bump reposts_count. Returns False if already reposted."""
+    if db.query(Repost).filter(
+        Repost.user_id == user_id, Repost.original_post_id == post_id
+    ).first():
+        return False
+    db.add(Repost(user_id=user_id, original_post_id=post_id))
+    db.query(Post).filter(Post.id == post_id).update(
+        {Post.reposts_count: Post.reposts_count + 1}
+    )
+    db.commit()
+    return True
+
+
+def unrepost_post(db: Session, post_id: int, user_id: int) -> bool:
+    """Delete repost record and decrement reposts_count (floor 0)."""
+    row = db.query(Repost).filter(
+        Repost.user_id == user_id, Repost.original_post_id == post_id
+    ).first()
+    if not row:
+        return False
+    db.delete(row)
+    db.query(Post).filter(Post.id == post_id).update(
+        {Post.reposts_count: func.greatest(Post.reposts_count - 1, 0)}
+    )
+    db.commit()
+    return True
+
+
+def increment_post_shares(db: Session, post_id: int) -> None:
+    """Bump shares_count when user successfully completes a share action."""
+    db.query(Post).filter(Post.id == post_id).update(
+        {Post.shares_count: Post.shares_count + 1}
+    )
+    db.commit()
 
 # ── Likes ────────────────────────────────────────────────────────────────────
 

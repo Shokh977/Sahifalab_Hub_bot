@@ -1,12 +1,26 @@
 /**
- * PostCard — Glassmorphism post card for the social feed.
+ * PostCard — X.com-style social post card.
  *
- * Shows author identity (rank ring + badge), content, optional image,
- * like/comment counts with optimistic updates.
+ * Action bar: Comment | Repost | Like | 👁 Views | Share
+ *
+ * Features:
+ *  • View tracking: IntersectionObserver fires after 2 s of ≥50% visibility
+ *    (once per post per page-load, via module-level Set — no DB hammering)
+ *  • Repost toggle with framer-motion rotation spring animation
+ *  • Like toggle with framer-motion pop/scale spring animation
+ *  • Share: Web Share API on mobile, Copy Link clipboard fallback on desktop
+ *    → shares_count only increments on a successful share
+ *  • Compact counters: 1200 → "1.2K", 1500000 → "1.5M"
+ *  • Repost banner at top of card when post.repost_by is set
+ *  • Optimistic UI on all interactive counters
+ *  • Full Light + Dark mode contrast using Tailwind slate/white tokens
  */
 
-import React, { useState } from 'react'
-import { Heart, MessageCircle, Trash2, Pencil, MoreHorizontal, Send, Loader2, X, Check } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import {
+  Heart, MessageCircle, Trash2, Pencil, MoreHorizontal,
+  Send, Loader2, X, Check, Repeat2, Eye, Share2,
+} from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import UserIdentity from './UserIdentity'
@@ -15,6 +29,18 @@ import DeleteConfirmModal from './DeleteConfirmModal'
 import UnifiedComment from './UnifiedComment'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
+import { showToast } from '../ErrorBoundary'
+
+// ── Module-level view tracker — resets on page reload, survives re-renders ───
+const _viewedPostIds = new Set<number>()
+
+// ── Compact number formatter ──────────────────────────────────────────────────
+function fmtCount(n: number): string {
+  if (n <= 0) return ''
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`
+  return String(n)
+}
 
 export interface PostData {
   id: number
@@ -23,8 +49,14 @@ export interface PostData {
   image_url?: string | null
   likes_count: number
   comments_count: number
+  views_count?: number
+  reposts_count?: number
+  shares_count?: number
   is_liked: boolean
+  is_reposted?: boolean
   created_at: string
+  /** Set when this post appears in a feed because someone the viewer follows reposted it */
+  repost_by?: UserIdentityUser | null
 }
 
 interface Comment {
@@ -63,11 +95,13 @@ const PostCard: React.FC<Props> = ({
   onUnlike,
   onDelete,
   onEdit,
-  onComment,
 }) => {
   const [liked, setLiked] = useState(post.is_liked)
   const [likesCount, setLikesCount] = useState(post.likes_count)
   const [commentsCount, setCommentsCount] = useState(post.comments_count)
+  const [viewsCount, setViewsCount] = useState(post.views_count ?? 0)
+  const [repostsCount, setRepostsCount] = useState(post.reposts_count ?? 0)
+  const [reposted, setReposted] = useState(post.is_reposted ?? false)
   const [imgLoaded, setImgLoaded] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
   const [showComments, setShowComments] = useState(false)
@@ -91,7 +125,67 @@ const PostCard: React.FC<Props> = ({
 
   const navigate = useNavigate()
   const isOwner = currentUserId === post.author.telegram_id
+  const articleRef = useRef<HTMLElement>(null)
 
+  // ── View tracking: IntersectionObserver (2 s dwell, once per post) ───────────
+  useEffect(() => {
+    if (_viewedPostIds.has(post.id)) return
+    const el = articleRef.current
+    if (!el) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          if (!_viewedPostIds.has(post.id)) {
+            timer = setTimeout(() => {
+              if (_viewedPostIds.has(post.id)) return
+              _viewedPostIds.add(post.id)
+              setViewsCount(c => c + 1)
+              api.client.post(`/api/v1/social/posts/${post.id}/view`).catch(() => {})
+            }, 2000)
+          }
+        } else {
+          if (timer) { clearTimeout(timer); timer = null }
+        }
+      },
+      { threshold: 0.5 },
+    )
+    observer.observe(el)
+    return () => { observer.disconnect(); if (timer) clearTimeout(timer) }
+  }, [post.id])
+
+  // ── Repost toggle ───────────────────────────────────────────────────────────
+  const handleRepostToggle = async () => {
+    if (reposted) {
+      setReposted(false); setRepostsCount(c => Math.max(0, c - 1))
+      try { await api.client.delete(`/api/v1/social/posts/${post.id}/repost`) }
+      catch { setReposted(true); setRepostsCount(c => c + 1) }
+    } else {
+      setReposted(true); setRepostsCount(c => c + 1)
+      try { await api.client.post(`/api/v1/social/posts/${post.id}/repost`) }
+      catch { setReposted(false); setRepostsCount(c => Math.max(0, c - 1)) }
+    }
+  }
+
+  // ── Share ───────────────────────────────────────────────────────────────────
+  const handleShare = async () => {
+    const url = `${window.location.origin}/social?post=${post.id}`
+    const text = post.content.slice(0, 120) + (post.content.length > 120 ? '…' : '')
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({ title: 'SAHIFALAB Post', text, url })
+      } else {
+        await navigator.clipboard.writeText(url)
+        showToast('Havola nusxalandi!', 'success')
+      }
+      // Only increment on successful share action
+      api.client.post(`/api/v1/social/posts/${post.id}/share`).catch(() => {})
+    } catch {
+      // User cancelled — no increment
+    }
+  }
+
+  // ── Like toggle ─────────────────────────────────────────────────────────────
   const handleLikeToggle = async () => {
     // Optimistic update
     if (liked) {
@@ -197,7 +291,17 @@ const PostCard: React.FC<Props> = ({
 
   return (
     <>
-    <article className="relative rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.04] backdrop-blur-md p-4 transition-all shadow-frost dark:shadow-bento hover:shadow-frost-hover dark:hover:shadow-bento-hover hover:bg-white/80 dark:hover:bg-white/[0.06]">
+    <article ref={articleRef} className="relative rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.04] backdrop-blur-md p-4 transition-all shadow-frost dark:shadow-bento hover:shadow-frost-hover dark:hover:shadow-bento-hover hover:bg-white/80 dark:hover:bg-white/[0.06]">
+      {/* Repost banner */}
+      {post.repost_by && (
+        <button
+          onClick={() => navigate(`/profile/${post.repost_by!.telegram_id}`)}
+          className="flex items-center gap-1.5 mb-3 text-xs font-medium text-emerald-600/80 dark:text-emerald-400/60 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+        >
+          <Repeat2 className="w-3.5 h-3.5" />
+          <span>{post.repost_by.full_name || post.repost_by.username} repost qildi</span>
+        </button>
+      )}
       {/* Header */}
       <div className="flex items-start justify-between mb-3">
         <UserIdentity
@@ -286,28 +390,75 @@ const PostCard: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Actions */}
-      <div className="flex items-center gap-5 pt-1">
-        <button
-          onClick={handleLikeToggle}
-          className={`flex items-center gap-1.5 text-sm transition-all active:scale-90 ${
-            liked
-              ? 'text-sahifa-500'
-              : 'text-gray-400 dark:text-white/40 hover:text-sahifa-400'
-          }`}
-        >
-          <Heart className={`w-[18px] h-[18px] ${liked ? 'fill-sahifa-500' : ''}`} />
-          <span className="tabular-nums">{likesCount || ''}</span>
-        </button>
-
+      {/* X-style Action Bar: Comment | Repost | Like | Views | Share */}
+      <div className="flex items-center justify-between pt-2 mt-0.5">
+        {/* Comment */}
         <button
           onClick={handleToggleComments}
           className={`flex items-center gap-1.5 text-sm transition-colors active:scale-90 ${
-            showComments ? 'text-blue-500 dark:text-blue-400' : 'text-gray-400 dark:text-white/40 hover:text-blue-500 dark:hover:text-blue-400'
+            showComments
+              ? 'text-blue-500 dark:text-blue-400'
+              : 'text-slate-400 dark:text-white/30 hover:text-blue-500 dark:hover:text-blue-400'
           }`}
         >
-          <MessageCircle className={`w-[18px] h-[18px] ${showComments ? 'fill-blue-400/20' : ''}`} />
-          <span className="tabular-nums">{commentsCount || ''}</span>
+          <MessageCircle className={`w-[17px] h-[17px] ${showComments ? 'fill-blue-400/20' : ''}`} />
+          <span className="tabular-nums text-xs">{fmtCount(commentsCount)}</span>
+        </button>
+
+        {/* Repost — rotation spring */}
+        <motion.button
+          onClick={handleRepostToggle}
+          whileTap={{ scale: 0.82 }}
+          className={`flex items-center gap-1.5 text-sm transition-colors ${
+            reposted
+              ? 'text-emerald-500 dark:text-emerald-400'
+              : 'text-slate-400 dark:text-white/30 hover:text-emerald-500 dark:hover:text-emerald-400'
+          }`}
+        >
+          <motion.div
+            key={String(reposted)}
+            initial={{ rotate: reposted ? -30 : 0, scale: 0.8 }}
+            animate={{ rotate: 0, scale: 1 }}
+            transition={{ type: 'spring', stiffness: 520, damping: 22 }}
+          >
+            <Repeat2 className="w-[17px] h-[17px]" />
+          </motion.div>
+          <span className="tabular-nums text-xs">{fmtCount(repostsCount)}</span>
+        </motion.button>
+
+        {/* Like — pop scale spring */}
+        <motion.button
+          onClick={handleLikeToggle}
+          whileTap={{ scale: 0.82 }}
+          className={`flex items-center gap-1.5 text-sm transition-colors ${
+            liked
+              ? 'text-sahifa-500'
+              : 'text-slate-400 dark:text-white/30 hover:text-sahifa-400'
+          }`}
+        >
+          <motion.div
+            key={String(liked)}
+            initial={{ scale: 0.7 }}
+            animate={{ scale: 1 }}
+            transition={{ type: 'spring', stiffness: 600, damping: 18 }}
+          >
+            <Heart className={`w-[17px] h-[17px] ${liked ? 'fill-sahifa-500' : ''}`} />
+          </motion.div>
+          <span className="tabular-nums text-xs">{fmtCount(likesCount)}</span>
+        </motion.button>
+
+        {/* Views — read-only */}
+        <div className="flex items-center gap-1.5 text-slate-300 dark:text-white/20 select-none">
+          <Eye className="w-[17px] h-[17px]" />
+          <span className="tabular-nums text-xs">{fmtCount(viewsCount)}</span>
+        </div>
+
+        {/* Share */}
+        <button
+          onClick={handleShare}
+          className="flex items-center gap-1.5 text-sm text-slate-400 dark:text-white/30 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors active:scale-90"
+        >
+          <Share2 className="w-[17px] h-[17px]" />
         </button>
       </div>
 

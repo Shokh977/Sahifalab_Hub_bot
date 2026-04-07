@@ -97,6 +97,51 @@ def delete_post(
     return {"ok": True}
 
 
+# ── Views / Reposts / Shares ─────────────────────────────────────────────────
+
+@router.post("/posts/{post_id}/view")
+def increment_view(
+    post_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Raw view counter increment — called after 2s IntersectionObserver dwell."""
+    svc.increment_post_views(db, post_id)
+    return {"ok": True}
+
+
+@router.post("/posts/{post_id}/repost")
+def repost(
+    post_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    if not svc.repost_post(db, post_id, user_id):
+        raise HTTPException(400, "Already reposted or post not found")
+    return {"ok": True}
+
+
+@router.delete("/posts/{post_id}/repost")
+def unrepost(
+    post_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    svc.unrepost_post(db, post_id, user_id)
+    return {"ok": True}
+
+
+@router.post("/posts/{post_id}/share")
+def share_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Increment shares_count — called only when share action completes."""
+    svc.increment_post_shares(db, post_id)
+    return {"ok": True}
+
+
 @router.patch("/posts/{post_id}")
 def edit_post(
     post_id: int,
