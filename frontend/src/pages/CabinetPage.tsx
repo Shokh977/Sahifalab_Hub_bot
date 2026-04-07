@@ -12,7 +12,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   GraduationCap,
   Download,
@@ -25,6 +25,8 @@ import {
   Info,
   Lightbulb,
   Link,
+  PenLine,
+  PlayCircle,
   Sparkles,
   Trophy,
 } from 'lucide-react'
@@ -42,6 +44,10 @@ import type { ProfileHeaderData } from '../components/ProfileHeaderCard'
 import { showToast } from '../components/ErrorBoundary'
 import PageWrapper from '../components/PageWrapper'
 import apiService from '../services/apiService'
+import PostCard from '../components/social/PostCard'
+import type { PostData } from '../components/social/PostCard'
+import CourseCard from '../components/CourseCard'
+import type { CourseData } from '../components/CourseCard'
 import {
   fetchMyCompletedQuizzes,
   fetchQuizTitles,
@@ -262,6 +268,7 @@ const CabinetPage: React.FC = () => {
   const effectiveFocusSeconds = focusSeconds
   const effectiveIsLoading    = isLoading
   const effectiveQuizCount    = quizzesCompleted
+  const isTeacher = authUser?.role === 'teacher' && authUser?.status === 'active'
 
   const [photoError, setPhotoError] = useState(false)
   const [photoSaving, setPhotoSaving] = useState(false)
@@ -344,6 +351,17 @@ const CabinetPage: React.FC = () => {
   const [loadingCourseCerts, setLoadingCourseCerts] = useState(true)
   const [heatmap,        setHeatmap]        = useState<{ date: string; count: number }[]>([])
   const [heatmapLoading, setHeatmapLoading] = useState(false)
+
+  // ── Tabs ─────────────────────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState<'lenta' | 'kurslar' | 'haqida'>('haqida')
+
+  // ── Lenta tab: own posts ──────────────────────────────────────────────────
+  const [ownPosts,        setOwnPosts]        = useState<PostData[]>([])
+  const [ownPostsLoading, setOwnPostsLoading] = useState(false)
+
+  // ── Kurslar tab: teacher own courses ──────────────────────────────────────
+  const [ownCourses,        setOwnCourses]        = useState<CourseData[]>([])
+  const [ownCoursesLoading, setOwnCoursesLoading] = useState(false)
 
   const displayName = localFirstName || effectiveFirstName || 'Foydalanuvchi'
   const focusHours = (effectiveFocusSeconds / 3600).toFixed(1)
@@ -438,6 +456,47 @@ const CabinetPage: React.FC = () => {
       .finally(() => setHeatmapLoading(false))
   }, [effectiveTelegramId])
 
+  // ── Fetch own posts for Lenta tab ─────────────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'lenta' || !effectiveTelegramId) return
+    if (ownPosts.length > 0) return
+    setOwnPostsLoading(true)
+    apiService.client
+      .get(`/api/v1/social/users/${effectiveTelegramId}/posts`, { params: { page: 1, page_size: 50 } })
+      .then(r => setOwnPosts(r.data?.posts ?? (Array.isArray(r.data) ? r.data : [])))
+      .catch(() => {})
+      .finally(() => setOwnPostsLoading(false))
+  }, [activeTab, effectiveTelegramId])
+
+  // ── Fetch teacher own courses for Kurslar tab ─────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'kurslar' || !effectiveTelegramId || !isTeacher) return
+    if (ownCourses.length > 0) return
+    setOwnCoursesLoading(true)
+    apiService.getCourses({ teacher_id: effectiveTelegramId })
+      .then(r => setOwnCourses(Array.isArray(r.data) ? r.data : []))
+      .catch(() => {})
+      .finally(() => setOwnCoursesLoading(false))
+  }, [activeTab, effectiveTelegramId, isTeacher])
+
+  // ── Post handlers for Lenta tab ───────────────────────────────────────────
+  const handleLikePost = useCallback(async (postId: number) => {
+    await apiService.client.post(`/api/v1/social/posts/${postId}/like`)
+  }, [])
+
+  const handleUnlikePost = useCallback(async (postId: number) => {
+    await apiService.client.delete(`/api/v1/social/posts/${postId}/like`)
+  }, [])
+
+  const handleDeletePost = useCallback(async (postId: number) => {
+    await apiService.client.delete(`/api/v1/social/posts/${postId}`)
+    setOwnPosts(prev => prev.filter(p => p.id !== postId))
+  }, [])
+
+  const handleEditPost = useCallback(async (postId: number, content: string) => {
+    await apiService.client.patch(`/api/v1/social/posts/${postId}`, { content })
+    setOwnPosts(prev => prev.map(p => p.id === postId ? { ...p, content } : p))
+  }, [])
 
   // ── Open certificate modal ──────────────────────────────────────────────
   const openCertificate = useCallback((quiz: CompletedQuiz) => {
@@ -587,6 +646,145 @@ const CabinetPage: React.FC = () => {
           </div>
         </motion.div>
       )}
+
+      {/* ═══ Tab Navigation ═══ */}
+      <div className="px-4">
+        <div className="flex gap-1 p-1 rounded-2xl bg-gray-100/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06]">
+          {(['lenta', ...(isTeacher ? ['kurslar'] : []), 'haqida'] as const).map(tab => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab as 'lenta' | 'kurslar' | 'haqida')}
+              className={`relative flex-1 py-2 px-3 text-xs font-semibold rounded-xl transition-colors ${
+                activeTab === tab
+                  ? 'text-gray-900 dark:text-white'
+                  : 'text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60'
+              }`}
+            >
+              {activeTab === tab && (
+                <motion.div
+                  layoutId="cabinet-tab-pill"
+                  className="absolute inset-0 rounded-xl bg-white dark:bg-white/[0.08] shadow-sm border border-gray-200/60 dark:border-white/[0.06]"
+                  transition={{ type: 'spring', stiffness: 500, damping: 38 }}
+                />
+              )}
+              <span className="relative z-10">
+                {tab === 'lenta' ? 'Lenta' : tab === 'kurslar' ? 'Kurslar' : 'Haqida'}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <AnimatePresence mode="wait" initial={false}>
+
+        {/* ── Lenta tab ─────────────────────────────────────────────────────── */}
+        {activeTab === 'lenta' && (
+          <motion.div
+            key="tab-lenta"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="px-4 space-y-4"
+          >
+            {ownPostsLoading ? (
+              <div className="flex justify-center py-16">
+                <RefreshCw className="h-8 w-8 text-slate-400 animate-spin" />
+              </div>
+            ) : ownPosts.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gray-100 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/[0.06] flex items-center justify-center">
+                  <PenLine className="w-7 h-7 text-gray-300 dark:text-white/10" />
+                </div>
+                <p className="text-gray-400 dark:text-white/30 text-sm font-medium">Hali postlar yo'q</p>
+                <p className="text-gray-300 dark:text-white/15 text-xs mt-1">Birinchi postingizni yozing!</p>
+                <button
+                  onClick={() => navigate('/social')}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sahifa-500 text-white text-sm font-semibold hover:bg-sahifa-600 transition-colors active:scale-95"
+                >
+                  <PenLine className="w-4 h-4" /> Post yozish
+                </button>
+              </div>
+            ) : (
+              ownPosts.map((post) => (
+                <PostCard
+                  key={post.id}
+                  post={post}
+                  currentUserId={effectiveTelegramId ?? undefined}
+                  onLike={handleLikePost}
+                  onUnlike={handleUnlikePost}
+                  onDelete={handleDeletePost}
+                  onEdit={handleEditPost}
+                />
+              ))
+            )}
+          </motion.div>
+        )}
+
+        {/* ── Kurslar tab (teacher only) ─────────────────────────────────────── */}
+        {activeTab === 'kurslar' && (
+          <motion.div
+            key="tab-kurslar"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="px-4"
+          >
+            {ownCoursesLoading ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="bg-white/90 dark:bg-[#1A1A1A] rounded-[24px] border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden animate-pulse">
+                    <div className="h-44 bg-slate-100 dark:bg-slate-800" />
+                    <div className="p-4 space-y-2">
+                      <div className="h-4 bg-slate-100 dark:bg-slate-700 rounded w-3/4" />
+                      <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : ownCourses.length === 0 ? (
+              <div className="text-center py-16">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gray-100 dark:bg-white/[0.03] border border-gray-200/60 dark:border-white/[0.06] flex items-center justify-center">
+                  <PlayCircle className="w-8 h-8 text-gray-300 dark:text-white/10" />
+                </div>
+                <p className="text-gray-400 dark:text-white/30 text-sm font-medium">Hali kurslar yo'q</p>
+                <p className="text-gray-300 dark:text-white/15 text-xs mt-1">Birinchi kursingizni yarating!</p>
+                <button
+                  onClick={() => navigate('/teacher')}
+                  className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-sahifa-500 text-white text-sm font-semibold hover:bg-sahifa-600 transition-colors active:scale-95"
+                >
+                  <PlayCircle className="w-4 h-4" /> Kurs yaratish
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {ownCourses.map((course, i) => (
+                  <div key={course.id} className="relative group/kcourse">
+                    <CourseCard course={course} index={i} hideTeacher />
+                    <button
+                      onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/teacher') }}
+                      className="absolute top-3 left-3 z-20 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-sm text-white text-xs font-semibold opacity-0 group-hover/kcourse:opacity-100 transition-all duration-200 hover:bg-sahifa-500/90 border border-white/10 active:scale-95"
+                    >
+                      <PenLine className="w-3.5 h-3.5" /> Tahrirlash
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {/* ── Haqida tab (existing content) ─────────────────────────────────── */}
+        {activeTab === 'haqida' && (
+          <motion.div
+            key="tab-haqida"
+            initial={{ opacity: 0, y: 6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.18 }}
+            className="space-y-3"
+          >
 
       {/* ═══ Stats Row ═══ */}
       <Section delay={0.05}>
@@ -1130,6 +1328,11 @@ const CabinetPage: React.FC = () => {
 
       {/* Spacer */}
       <div className="h-4" />
+
+          </motion.div>
+        )}
+
+      </AnimatePresence>
 
       {/* ═══ Certificate Modal ═══ */}
       {showCert && certData && (

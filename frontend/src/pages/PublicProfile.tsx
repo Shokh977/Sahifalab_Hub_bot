@@ -20,7 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Loader2,
   Grid3X3, List, BookOpen, GraduationCap,
-  Globe, ExternalLink, PlayCircle,
+  Globe, ExternalLink, PenLine, PlayCircle,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
@@ -296,7 +296,7 @@ const PublicProfile: React.FC = () => {
             )}
 
             {activeTab === 'courses' && isTeacher && (
-              <CoursesTab courses={courses} loading={coursesLoading} />
+              <CoursesTab courses={courses} loading={coursesLoading} isOwnProfile={isOwnProfile} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -524,9 +524,11 @@ const HaqidaTab: React.FC<HaqidaTabProps> = ({ profile, rank, teacherInfo, isTea
 interface CoursesTabProps {
   courses: CourseData[]
   loading: boolean
+  isOwnProfile?: boolean
 }
 
-const CoursesTab: React.FC<CoursesTabProps> = ({ courses, loading }) => {
+const CoursesTab: React.FC<CoursesTabProps> = ({ courses, loading, isOwnProfile = false }) => {
+  const navigate = useNavigate()
   if (loading) {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -559,7 +561,17 @@ const CoursesTab: React.FC<CoursesTabProps> = ({ courses, loading }) => {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {courses.map((course, i) => (
-        <CourseCard key={course.id} course={course} index={i} hideTeacher />
+        <div key={course.id} className="relative group/pcourse">
+          <CourseCard key={course.id} course={course} index={i} hideTeacher />
+          {isOwnProfile && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/teacher') }}
+              className="absolute top-3 left-3 z-20 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/60 backdrop-blur-sm text-white text-xs font-semibold opacity-0 group-hover/pcourse:opacity-100 transition-all duration-200 hover:bg-sahifa-500/90 border border-white/10 active:scale-95"
+            >
+              <PenLine className="w-3.5 h-3.5" /> Tahrirlash
+            </button>
+          )}
+        </div>
       ))}
     </div>
   )
