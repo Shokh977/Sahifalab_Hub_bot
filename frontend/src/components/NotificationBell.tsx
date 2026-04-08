@@ -104,15 +104,8 @@ const NotificationBell: React.FC = () => {
   }, [unreadCount])
 
   // ── Calculate dropdown position when opening ──────────────────────────────
-  useEffect(() => {
-    if (open && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect()
-      setPos({
-        top:   rect.bottom + 8,
-        right: window.innerWidth - rect.right,
-      })
-    }
-  }, [open])
+  // NOTE: intentionally removed - pos is now calculated synchronously in onClick
+  // so the dropdown renders at the correct position on the very first frame.
 
   // ── Click outside to close ────────────────────────────────────────────────
   useEffect(() => {
@@ -145,10 +138,10 @@ const NotificationBell: React.FC = () => {
 
   const badgeText = unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null
 
-  // ── Dropdown panel (portaled to document.body, position: fixed) ──────────
   const dropdownPanel = (
     <motion.div
       ref={dropdownRef}
+      key="notif-dropdown"
       initial={{ opacity: 0, y: -8, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }}
@@ -157,9 +150,7 @@ const NotificationBell: React.FC = () => {
       className="
         z-[9999]
         w-[calc(100vw-2rem)] sm:w-[380px]
-        flex flex-col
-        max-h-[min(70vh,520px)]
-        bg-white/90 dark:bg-[#1C1C22]/95
+        bg-white dark:bg-[#1C1C22]
         backdrop-blur-xl
         border border-gray-200/60 dark:border-white/[0.08]
         rounded-2xl
@@ -168,7 +159,7 @@ const NotificationBell: React.FC = () => {
       "
     >
       {/* Header */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.06]">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.06]">
         <h3 className="text-sm font-bold text-gray-900 dark:text-white">
           Bildirishnomalar
         </h3>
@@ -183,24 +174,28 @@ const NotificationBell: React.FC = () => {
         )}
       </div>
 
-      {/* List — fills remaining space, scrolls independently */}
-      <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-white/[0.04] min-h-0">
+      {/* List — explicit max-h so it never collapses to 0px */}
+      <div className="overflow-y-auto divide-y divide-gray-100 dark:divide-white/[0.04]"
+           style={{ maxHeight: '360px' }}>
         {loading && notifications.length === 0 ? (
-          <div className="flex items-center justify-center py-12">
+          <div className="flex items-center justify-center py-10">
             <Loader2 className="w-5 h-5 animate-spin text-gray-300 dark:text-gray-600" />
           </div>
         ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
             <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mb-3">
               <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600" />
             </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500">
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
               Hozircha bildirishnomalar yo'q
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+              Yangi faoliyat bo'lganda bu yerda ko'rinadi
             </p>
           </div>
         ) : (
           <>
-            {notifications.map(item => (
+            {notifications.slice(0, 5).map(item => (
               <NotifRow key={item.id} item={item} onClick={handleNotifClick} />
             ))}
             {notifications.length >= 30 && (
@@ -217,13 +212,13 @@ const NotificationBell: React.FC = () => {
       </div>
 
       {/* Footer — always visible */}
-      <div className="flex-shrink-0 border-t border-gray-200/60 dark:border-white/[0.06]">
+      <div className="border-t border-gray-200/60 dark:border-white/[0.06]">
         <button
           onClick={() => { setOpen(false); navigate('/notifications') }}
           className="w-full flex items-center justify-center gap-2 py-2.5 text-[11px] font-semibold text-sahifa-600 dark:text-sahifa-400 hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors"
         >
           <LayoutList className="w-3.5 h-3.5" />
-          Bildirishnomalar markaziga o'tish
+          Barchasini ko'rish →
         </button>
       </div>
     </motion.div>
@@ -250,6 +245,15 @@ const NotificationBell: React.FC = () => {
         onClick={(e) => {
           e.stopPropagation()
           console.log('🔔 Notification bell clicked! Modal/Dropdown triggered.')
+          // Calculate position BEFORE setOpen so the dropdown renders at
+          // the correct fixed coords on the very first frame (no pos flash).
+          if (buttonRef.current) {
+            const rect = buttonRef.current.getBoundingClientRect()
+            setPos({
+              top:   rect.bottom + 8,
+              right: window.innerWidth - rect.right,
+            })
+          }
           setOpen(prev => !prev)
         }}
         className={`
