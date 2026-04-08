@@ -93,14 +93,22 @@ async def get_unread_count(
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(
-                f"{SUPABASE_URL}/rest/v1/rpc/get_unread_notification_count",
+                f"{SUPABASE_URL}/rest/v1/rpc/get_unread_count_fast",
                 headers=_headers_rep(),
                 json={"p_user_id": tid},
             )
             if resp.status_code >= 400:
-                logger.error(f"get_unread_count RPC error: {resp.text}")
-                raise HTTPException(resp.status_code, "Failed to get unread count")
-            count = resp.json()
+                # Graceful fallback to the old RPC if 037 hasn't been applied yet
+                resp2 = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/rpc/get_unread_notification_count",
+                    headers=_headers_rep(),
+                    json={"p_user_id": tid},
+                )
+                if resp2.status_code >= 400:
+                    raise HTTPException(resp2.status_code, "Failed to get unread count")
+                count = resp2.json()
+            else:
+                count = resp.json()
             return {"count": count if isinstance(count, int) else 0}
     except HTTPException:
         raise

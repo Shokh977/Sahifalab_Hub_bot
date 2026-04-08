@@ -21,6 +21,7 @@ import {
   ArrowLeft, Loader2,
   Grid3X3, List, BookOpen, GraduationCap,
   Globe, ExternalLink, PenLine, PlayCircle,
+  UserPlus, X as XIcon,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
@@ -63,7 +64,7 @@ const TAB_COURSES = { key: 'courses' as TabKey, label: 'Kurslar', icon: PlayCirc
 // ── Main component ────────────────────────────────────────────────────────────
 const PublicProfile: React.FC = () => {
   const { userId } = useParams<{ userId: string }>()
-  const { user } = useAuth()
+  const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -83,6 +84,9 @@ const PublicProfile: React.FC = () => {
   const targetId = Number(userId)
   const isOwnProfile = myId === targetId
   const isTeacher = profile?.role === 'teacher'
+
+  // Guest-follow modal state
+  const [showFollowAuthModal, setShowFollowAuthModal] = useState(false)
 
   // ── Determine available tabs ────────────────────────────────────────────
   const tabs = useMemo(() => {
@@ -167,6 +171,11 @@ const PublicProfile: React.FC = () => {
   // ── Actions ─────────────────────────────────────────────────────────────
   const handleFollow = async () => {
     if (!profile) return
+    // Guest: show lead-magnet modal instead of API call
+    if (!isAuthenticated) {
+      setShowFollowAuthModal(true)
+      return
+    }
     setFollowLoading(true)
     try {
       if (profile.is_following) {
@@ -220,6 +229,66 @@ const PublicProfile: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-[#F8F9FA] dark:bg-pitch pb-24">
+
+      {/* ── Guest Follow Auth Modal ─────────────────────────────────────────── */}
+      <AnimatePresence>
+        {showFollowAuthModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+            onClick={() => setShowFollowAuthModal(false)}
+          >
+            <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+            <motion.div
+              initial={{ scale: 0.92, opacity: 0, y: 16 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.92, opacity: 0, y: 16 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+              onClick={e => e.stopPropagation()}
+              className="relative w-full max-w-sm bg-white dark:bg-[#1C1C22] rounded-3xl shadow-2xl p-6 border border-gray-200/60 dark:border-white/[0.08]"
+            >
+              {/* Close */}
+              <button
+                onClick={() => setShowFollowAuthModal(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-xl text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+              >
+                <XIcon className="w-4 h-4" />
+              </button>
+
+              {/* Icon */}
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center mx-auto mb-4 shadow-glow-sm">
+                <UserPlus className="w-7 h-7 text-white" />
+              </div>
+
+              {/* Text */}
+              <h2 className="text-base font-bold text-gray-900 dark:text-white text-center">
+                Kuzatish uchun kiring
+              </h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center mt-2 leading-relaxed">
+                Ushbu foydalanuvchini kuzatish va uning yangiliklaridan xabardor bo'lish uchun tizimga kiring.
+              </p>
+
+              {/* Buttons */}
+              <div className="flex flex-col gap-2.5 mt-5">
+                <button
+                  onClick={() => { setShowFollowAuthModal(false); navigate('/login') }}
+                  className="w-full py-2.5 rounded-xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 text-white text-sm font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all"
+                >
+                  Tizimga kirish
+                </button>
+                <button
+                  onClick={() => { setShowFollowAuthModal(false); navigate('/register') }}
+                  className="w-full py-2.5 rounded-xl bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-white/70 text-sm font-semibold border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] active:scale-95 transition-all"
+                >
+                  Ro'yxatdan o'tish
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── Sticky header bar ──────────────────────────────────────────────── */}
       <div className="sticky top-0 z-30 bg-white/80 dark:bg-pitch/80 backdrop-blur-xl border-b border-gray-200/60 dark:border-white/[0.04]">

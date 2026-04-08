@@ -22,6 +22,7 @@ import {
   MOCK_POSTS, MOCK_PUBLIC_PROFILE, MOCK_DISCOVER_USERS,
   MOCK_CONVERSATIONS, MOCK_MESSAGES,
 } from './mockData'
+import { MOCK_NOTIFICATIONS, computeUniqueSenderCount } from './mock_notifications'
 
 export const DEV_MOCK = import.meta.env.VITE_DEV_MOCK === 'true'
 
@@ -378,6 +379,22 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   // ── Messenger — Mark read ─────────────────────────────────────────────────
   if (m === 'patch' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/read$/)) {
     return ok({ success: true }, config)
+  }
+
+  // ── Notifications — unread count (unique senders) ────────────────────────
+  if (m === 'get' && u === '/api/notifications/unread-count') {
+    const count = computeUniqueSenderCount(MOCK_NOTIFICATIONS)
+    return ok({ count }, config)
+  }
+
+  // ── Notifications — mark as read ──────────────────────────────────
+  if (m === 'post' && u === '/api/notifications/read') {
+    return ok({ updated: 0 }, config)
+  }
+
+  // ── Notifications — paginated feed ────────────────────────────────
+  if (m === 'get' && u === '/api/notifications') {
+    return ok({ notifications: MOCK_NOTIFICATIONS, next_cursor: null }, config)
   }
 
   // ── Fallback ──────────────────────────────────────────────────────────────

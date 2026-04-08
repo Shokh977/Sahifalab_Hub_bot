@@ -116,6 +116,7 @@ export function useNotifications(userId: number | null) {
             meta: row.meta ?? {},
             is_read: false,
             created_at: row.created_at ?? new Date().toISOString(),
+            sender_id: row.sender_id ?? (row.meta?.actor_id ?? null),
           }
 
           // If payload is partial (Realtime might only send id + type),
@@ -132,14 +133,39 @@ export function useNotifications(userId: number | null) {
             if (prev.some(n => n.id === item.id)) return prev
             return [item, ...prev]
           })
-          setUnreadCount(prev => {
-            const next = prev + 1
-            localStorage.setItem('sahifa:notif_count', String(next))
-            return next
-          })
+
+          // Re-fetch the authoritative unique-sender count from the server.
+          // (We can't reliably compute DISTINCT sender_id locally when we only
+          //  have a partial payload, so let the RPC do the math.)
+          fetchUnreadCount()
 
           // Fire toast callback
           if (_toastCallback) _toastCallback([item])
+        },
+      )
+      // ── Realtime UPDATE: notification marked as read elsewhere ──────────
+      // E.g. user reads on mobile → badge decrements on desktop instantly.
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        async (payload) => {
+          const row = payload.new as any
+          if (!row?.id) return
+
+          // Optimistic local update
+          setNotifications(prev =>
+            prev.map(n => n.id === row.id ? { ...n, is_read: row.is_read } : n),
+          )
+
+          // Re-fetch unique-sender count so the badge is authoritative
+          if (row.is_read === true) {
+            fetchUnreadCount()
+          }
         },
       )
       .subscribe()
@@ -156,27 +182,28 @@ export function useNotifications(userId: number | null) {
   const markRead = useCallback(async (ids?: number[]) => {
     if (!userId) return
     try {
-      // Optimistic update
+      // Optimistic local update (UI feels instant)
       setNotifications(prev =>
         prev.map(n =>
           (!ids || ids.includes(n.id)) ? { ...n, is_read: true } : n,
         ),
       )
+
+      // Optimistic counter: zeroing immediately when "mark all"
       const idsToMark = ids ?? null
       if (!idsToMark) {
         setUnreadCount(0)
         localStorage.setItem('sahifa:notif_count', '0')
-      } else {
-        setUnreadCount(prev => {
-          const next = Math.max(0, prev - idsToMark.length)
-          localStorage.setItem('sahifa:notif_count', String(next))
-          return next
-        })
       }
+      // For partial mark-read: don't guess the new unique-sender count locally;
+      // let the server recount. We'll re-fetch once the API call succeeds.
 
       await apiService.client.post('/api/notifications/read', {
         notification_ids: idsToMark,
       })
+
+      // Re-fetch authoritative unique-sender count (handles partial marks correctly)
+      await fetchUnreadCount()
     } catch (err) {
       console.warn('[Notifications] mark-read error:', err)
       fetchUnreadCount()

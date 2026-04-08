@@ -31,6 +31,8 @@ export interface NotificationItem {
   meta: Record<string, any>
   is_read: boolean
   created_at: string
+  /** Explicit sender: 0 = SAHIFALAB system, >0 = real user telegram_id, null = unknown */
+  sender_id?: number | null
 }
 
 export interface NotifDef {
@@ -186,6 +188,16 @@ const dict: Record<string, NotifDef> = {
   },
 
   // ─────────────────────────── GROWTH ───────────────────────────────────────
+
+  welcome: {
+    icon: Zap,
+    label: 'Xush kelibsiz! 🚀',
+    color: 'text-sahifa-600 dark:text-sahifa-400',
+    bgColor: 'bg-sahifa-100 dark:bg-sahifa-900/30',
+    message: (m) =>
+      `Ilm yo'liga qadam qo'yganingiz muborak! Sahifalab platformasida nafaqat kitob xulosalarini o'qiysiz, balki 'Deep Work' orqali o'z diqqatingizni charxlaysiz. Biz sizga birinchi qadamingiz uchun ${m.xp_reward ?? 100} XP taqdim etdik. Fokusni yo'qotmang!`,
+    route: () => '/cabinet',
+  },
 
   level_up: {
     icon: TrendingUp,
