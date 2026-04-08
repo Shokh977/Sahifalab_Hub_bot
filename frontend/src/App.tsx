@@ -41,6 +41,7 @@ import SocialFeed from './pages/SocialFeed'
 import SlouthMessenger from './pages/SlouthMessenger'
 import PublicProfile from './pages/PublicProfile'
 import DiscoverUsers from './pages/DiscoverUsers'
+import NotificationsPage from './pages/NotificationsPage'
 
 /** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
 const TeacherRedirect: React.FC = () => {
@@ -235,6 +236,7 @@ const AppRoutes: React.FC = () => {
             <Route path="/social" element={<SocialFeed />} />
             <Route path="/discover" element={<DiscoverUsers />} />
             <Route path="/profile/:userId" element={<PublicProfile />} />
+            <Route path="/notifications" element={<NotificationsPage />} />
             <Route path="/messenger" element={<SlouthMessenger />} />
             <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 

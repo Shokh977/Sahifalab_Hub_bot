@@ -13,7 +13,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Check, CheckCheck, Loader2, ChevronDown } from 'lucide-react'
+import { Bell, Check, CheckCheck, Loader2, ChevronDown, LayoutList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../hooks/useNotifications'
 import { getNotifDef, type NotificationItem, type NotifCategory, CATEGORY_COLORS } from '../utils/notificationDictionary'
@@ -224,6 +224,17 @@ const NotificationBell: React.FC = () => {
                   )}
                 </>
               )}
+            </div>
+
+            {/* Footer: view all link */}
+            <div className="border-t border-gray-200/60 dark:border-white/[0.06]">
+              <button
+                onClick={() => { setOpen(false); navigate('/notifications') }}
+                className="w-full flex items-center justify-center gap-2 py-3 text-[11px] font-semibold text-sahifa-600 dark:text-sahifa-400 hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors rounded-b-2xl"
+              >
+                <LayoutList className="w-3.5 h-3.5" />
+                Bildirishnomalar markaziga o'tish
+              </button>
             </div>
           </motion.div>
         )}
