@@ -147,6 +147,7 @@ const ChatView: React.FC<{
   myId: number
   onBack: () => void
 }> = ({ conversationId, otherUser, myId, onBack }) => {
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(true)
@@ -268,7 +269,12 @@ const ChatView: React.FC<{
         <button onClick={onBack} className="p-1.5 rounded-lg text-gray-400 dark:text-white/50 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors">
           <ArrowLeft className="w-5 h-5" />
         </button>
-        <UserIdentity user={otherUser} size="sm" showRank showBadge />
+        <button
+          onClick={() => navigate(`/profile/${otherUser.telegram_id}`)}
+          className="flex items-center gap-2 min-w-0 hover:opacity-80 active:scale-95 transition-all cursor-pointer rounded-xl px-1 -mx-1"
+        >
+          <UserIdentity user={otherUser} size="sm" showRank showBadge />
+        </button>
       </div>
 
       {/* Messages area */}
@@ -312,11 +318,15 @@ const ChatView: React.FC<{
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   )}
-                  {/* Avatar for received messages — only first in group */}
+                  {/* Avatar for received messages — only first in group, clickable */}
                   {!isMine && isFirstInGroup && (
-                    <div className="flex-shrink-0 mr-2 self-end mb-1">
+                    <button
+                      onClick={() => navigate(`/profile/${otherUser.telegram_id}`)}
+                      className="flex-shrink-0 mr-2 self-end mb-1 hover:opacity-75 active:scale-90 transition-all"
+                      title={otherUser.full_name ?? otherUser.username ?? 'Profil'}
+                    >
                       <UserIdentity user={otherUser} size="xs" showName={false} />
-                    </div>
+                    </button>
                   )}
                   <div
                     className={`max-w-[75%] rounded-2xl px-3.5 py-2 ${

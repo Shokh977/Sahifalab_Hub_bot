@@ -87,7 +87,9 @@ END;
 $$;
 
 -- ─── 6. Update get_notifications_page to expose sender_id ──────────────────
--- Add sender_id to the existing page-fetch RPC so the frontend can show avatars.
+-- Must DROP first: Postgres cannot change the return type of an existing function.
+DROP FUNCTION IF EXISTS get_notifications_page(BIGINT, INTEGER, BIGINT);
+
 CREATE OR REPLACE FUNCTION get_notifications_page(
     p_user_id  BIGINT,
     p_limit    INTEGER DEFAULT 30,

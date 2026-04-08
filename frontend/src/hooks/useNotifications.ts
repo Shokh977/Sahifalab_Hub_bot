@@ -189,21 +189,23 @@ export function useNotifications(userId: number | null) {
         ),
       )
 
-      // Optimistic counter: zeroing immediately when "mark all"
       const idsToMark = ids ?? null
+
       if (!idsToMark) {
+        // Mark ALL: we know for certain the new count is 0 — no need to re-fetch.
         setUnreadCount(0)
         localStorage.setItem('sahifa:notif_count', '0')
       }
-      // For partial mark-read: don't guess the new unique-sender count locally;
-      // let the server recount. We'll re-fetch once the API call succeeds.
 
       await apiService.client.post('/api/notifications/read', {
         notification_ids: idsToMark,
       })
 
-      // Re-fetch authoritative unique-sender count (handles partial marks correctly)
-      await fetchUnreadCount()
+      // For partial mark-read: re-fetch the authoritative unique-sender count
+      // (we can't compute DISTINCT sender_id locally for a subset of ids)
+      if (idsToMark) {
+        await fetchUnreadCount()
+      }
     } catch (err) {
       console.warn('[Notifications] mark-read error:', err)
       fetchUnreadCount()

@@ -32,48 +32,13 @@ function timeAgo(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString('uz-UZ', { day: 'numeric', month: 'short' })
 }
 
-// ── Sender avatar helper ─────────────────────────────────────────────────────
-function SenderAvatar({ item }: { item: NotificationItem }) {
-  const [imgErr, setImgErr] = React.useState(false)
-  const photoUrl = !imgErr ? (item.meta.actor_photo ?? item.meta.actor_photo_url ?? null) : null
-  const isSystem = item.sender_id === 0 || item.type === 'welcome'
-
-  if (isSystem) {
-    // SAHIFALAB platform account — use logo
-    return (
-      <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center shadow-sm">
-        <span className="text-white text-[10px] font-black tracking-tight">SL</span>
-      </div>
-    )
-  }
-
-  if (photoUrl) {
-    return (
-      <img
-        src={photoUrl}
-        alt="sender"
-        onError={() => setImgErr(true)}
-        className="flex-shrink-0 w-9 h-9 rounded-xl object-cover ring-1 ring-gray-200 dark:ring-white/[0.08]"
-      />
-    )
-  }
-
-  // Fallback: coloured icon circle
-  const def = getNotifDef(item.type)
-  const Icon = def.icon
-  return (
-    <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${def.bgColor}`}>
-      <Icon className={`w-4 h-4 ${def.color}`} />
-    </div>
-  )
-}
-
 // ── Notification row ──────────────────────────────────────────────────────────
 const NotifRow: React.FC<{
   item: NotificationItem
   onClick: (item: NotificationItem) => void
 }> = ({ item, onClick }) => {
   const def = getNotifDef(item.type)
+  const Icon = def.icon
 
   return (
     <motion.button
@@ -86,8 +51,10 @@ const NotifRow: React.FC<{
         ${!item.is_read ? 'bg-sahifa-50/50 dark:bg-sahifa-500/[0.04]' : ''}
       `}
     >
-      {/* Sender avatar (replaces icon-only circle) */}
-      <SenderAvatar item={item} />
+      {/* Icon circle — type-based, zero network requests */}
+      <div className={`flex-shrink-0 w-9 h-9 rounded-xl flex items-center justify-center ${def.bgColor}`}>
+        <Icon className={`w-4 h-4 ${def.color}`} />
+      </div>
 
       {/* Content */}
       <div className="flex-1 min-w-0">
