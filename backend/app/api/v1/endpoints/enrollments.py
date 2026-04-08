@@ -192,6 +192,14 @@ async def enroll_course(body: EnrollRequest, authorization: Optional[str] = Head
         raise HTTPException(status_code=502, detail=f"Failed to enroll: {res.text}")
 
     await _sync_enrolled_count(body.course_id)
+    # Notify teacher about new student
+    teacher_id = course.get("teacher_id")
+    if teacher_id and teacher_id != caller_id:
+        from app.api.v1.endpoints.notifications import send_notification
+        await send_notification(
+            teacher_id, "new_student", "BUSINESS",
+            {"actor_id": caller_id, "course_id": body.course_id},
+        )
     return {"ok": True, "already_enrolled": False}
 
 

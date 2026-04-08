@@ -10,10 +10,15 @@
  * a semantic boundary so AppShell can cleanly switch between layouts.
  */
 import React from 'react'
+import NotificationBell from './NotificationBell'
 
 const TelegramLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return (
     <div className="min-h-screen premium-shell transition-colors duration-300">
+      {/* Floating notification bell — top-right corner */}
+      <div className="fixed top-2 right-2 z-[90]">
+        <NotificationBell />
+      </div>
       {children}
     </div>
   )

@@ -49,7 +49,7 @@ RETURNS TABLE (
     source_external   BIGINT,
     source_direct     BIGINT
 ) LANGUAGE sql STABLE AS $$
-    WITH window AS (
+    WITH evt AS (
         SELECT *
         FROM   analytics_events
         WHERE  teacher_id = p_teacher_id
@@ -67,7 +67,7 @@ RETURNS TABLE (
         COALESCE(SUM(CASE WHEN event_type = 'course_view' AND source = 'search'   THEN 1 END), 0)     AS source_search,
         COALESCE(SUM(CASE WHEN event_type = 'course_view' AND source = 'external' THEN 1 END), 0)     AS source_external,
         COALESCE(SUM(CASE WHEN event_type = 'course_view' AND source = 'direct'   THEN 1 END), 0)     AS source_direct
-    FROM window;
+    FROM evt;
 $$;
 
 
@@ -92,7 +92,7 @@ RETURNS TABLE (
     daily_posts AS (
         SELECT created_at::DATE AS d, COUNT(*) AS n
         FROM   posts
-        WHERE  user_id = p_teacher_id
+        WHERE  author_id = p_teacher_id
           AND  created_at >= (CURRENT_DATE - (p_days - 1))
         GROUP BY 1
     ),

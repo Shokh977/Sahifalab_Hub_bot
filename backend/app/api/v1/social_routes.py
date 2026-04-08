@@ -2,13 +2,24 @@
 Social API routes — posts, likes, comments, follows, feed, discovery.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import asyncio
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, CommentUpdate, BulkViewRequest
 from app.services import social_service as svc
+from app.api.v1.endpoints.notifications import send_notification
+
+
+def _fire_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: dict = {}):
+    """Fire-and-forget notification from sync context."""
+    try:
+        loop = asyncio.get_event_loop()
+        loop.create_task(send_notification(user_id, notif_type, category, meta))
+    except RuntimeError:
+        pass  # no event loop — skip silently
 
 router = APIRouter(prefix="/social", tags=["social"])
 
@@ -190,6 +201,10 @@ def like_post(
     user_id: int = Depends(get_current_user_id),
 ):
     svc.like_post(db, post_id, user_id)
+    # Notify post author (skip if liking own post)
+    post = svc.get_post(db, post_id, user_id)
+    if post and post.get("author", {}).get("telegram_id") and post["author"]["telegram_id"] != user_id:
+        _fire_notification(post["author"]["telegram_id"], "like", "SOCIAL", {"actor_id": user_id, "post_id": post_id})
     return {"ok": True}
 
 
@@ -222,7 +237,12 @@ def create_comment(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    return svc.create_comment(db, post_id, user_id, body.content.strip())
+    result = svc.create_comment(db, post_id, user_id, body.content.strip())
+    # Notify post author (skip if commenting on own post)
+    post = svc.get_post(db, post_id, user_id)
+    if post and post.get("author", {}).get("telegram_id") and post["author"]["telegram_id"] != user_id:
+        _fire_notification(post["author"]["telegram_id"], "comment", "SOCIAL", {"actor_id": user_id, "post_id": post_id})
+    return result
 
 
 @router.delete("/comments/{comment_id}")
@@ -259,6 +279,8 @@ def follow_user(
 ):
     if not svc.follow_user(db, user_id, target_id):
         raise HTTPException(400, "Cannot follow (already following or self)")
+    if user_id != target_id:
+        _fire_notification(target_id, "follow", "SOCIAL", {"actor_id": user_id})
     return {"ok": True}
 
 

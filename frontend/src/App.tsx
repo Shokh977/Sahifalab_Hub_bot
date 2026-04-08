@@ -23,6 +23,7 @@ import ProgressProvider from './components/ProgressProvider'
 import TelegramLayout from './components/TelegramLayout'
 import WebLayout from './components/WebLayout'
 import AuthGuard from './components/AuthGuard'
+import NotificationToast from './components/NotificationToast'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import LoginPage from './pages/LoginPage'
 import RoleGuard from './components/RoleGuard'
@@ -349,6 +350,7 @@ const App: React.FC = () => {
         <AuthProvider>
           <ProgressProvider>
             <AppShell />
+            <NotificationToast />
           </ProgressProvider>
         </AuthProvider>
         <ToastContainer />

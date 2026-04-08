@@ -31,6 +31,7 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import ThemeToggle from './ThemeToggle'
+import NotificationBell from './NotificationBell'
 import GlobalProgressBar from './GlobalProgressBar'
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
@@ -320,7 +321,10 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
           <span className="text-[11px] text-slate-400 dark:text-slate-500">
             @Sahifalab_hub_bot
           </span>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
     </>
@@ -407,7 +411,10 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             </span>
           </Link>
 
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <NotificationBell />
+            <ThemeToggle />
+          </div>
         </header>
 
         {/* XP Progress bar — sticky to top of content column */}
