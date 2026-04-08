@@ -11,9 +11,10 @@
  *   • Responsive: full-width on mobile, 380px on desktop
  */
 import React, { useState, useEffect, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Bell, Check, CheckCheck, Loader2, ChevronDown, LayoutList } from 'lucide-react'
+import { Bell, CheckCheck, Loader2, ChevronDown, LayoutList } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useNotifications } from '../hooks/useNotifications'
 import { getNotifDef, type NotificationItem, type NotifCategory, CATEGORY_COLORS } from '../utils/notificationDictionary'
@@ -85,6 +86,10 @@ const NotificationBell: React.FC = () => {
 
   const [open, setOpen] = useState(false)
   const [wiggle, setWiggle] = useState(false)
+  // Position of the fixed dropdown, calculated from the button's bounding rect
+  const [pos, setPos] = useState({ top: 0, right: 0 })
+
+  const buttonRef  = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const prevUnread = useRef(unreadCount)
 
@@ -97,13 +102,25 @@ const NotificationBell: React.FC = () => {
     prevUnread.current = unreadCount
   }, [unreadCount])
 
+  // ── Calculate dropdown position when opening ──────────────────────────────
+  useEffect(() => {
+    if (open && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect()
+      setPos({
+        top:   rect.bottom + 8,
+        right: window.innerWidth - rect.right,
+      })
+    }
+  }, [open])
+
   // ── Click outside to close ────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return
     const handler = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setOpen(false)
-      }
+      const target = e.target as Node
+      const inButton   = buttonRef.current?.contains(target)
+      const inDropdown = dropdownRef.current?.contains(target)
+      if (!inButton && !inDropdown) setOpen(false)
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -127,10 +144,108 @@ const NotificationBell: React.FC = () => {
 
   const badgeText = unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null
 
+  // ── Dropdown panel (portaled to document.body, position: fixed) ──────────
+  const dropdownPanel = (
+    <motion.div
+      ref={dropdownRef}
+      initial={{ opacity: 0, y: -8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.97 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+      style={{ position: 'fixed', top: pos.top, right: pos.right }}
+      className="
+        z-[9999]
+        w-[calc(100vw-2rem)] sm:w-[380px]
+        flex flex-col
+        max-h-[min(70vh,520px)]
+        bg-white/90 dark:bg-[#1C1C22]/95
+        backdrop-blur-xl
+        border border-gray-200/60 dark:border-white/[0.08]
+        rounded-2xl
+        shadow-xl shadow-black/10 dark:shadow-black/30
+        overflow-hidden
+      "
+    >
+      {/* Header */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.06]">
+        <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+          Bildirishnomalar
+        </h3>
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllRead}
+            className="inline-flex items-center gap-1 text-[11px] font-medium text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-700 dark:hover:text-sahifa-300 transition-colors"
+          >
+            <CheckCheck className="w-3.5 h-3.5" />
+            Barchasini o'qish
+          </button>
+        )}
+      </div>
+
+      {/* List — fills remaining space, scrolls independently */}
+      <div className="flex-1 overflow-y-auto divide-y divide-gray-100 dark:divide-white/[0.04] min-h-0">
+        {loading && notifications.length === 0 ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-5 h-5 animate-spin text-gray-300 dark:text-gray-600" />
+          </div>
+        ) : notifications.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mb-3">
+              <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600" />
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Hozircha bildirishnomalar yo'q
+            </p>
+          </div>
+        ) : (
+          <>
+            {notifications.map(item => (
+              <NotifRow key={item.id} item={item} onClick={handleNotifClick} />
+            ))}
+            {notifications.length >= 30 && (
+              <button
+                onClick={loadMore}
+                className="w-full flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
+              >
+                <ChevronDown className="w-3.5 h-3.5" />
+                Ko'proq yuklash
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Footer — always visible */}
+      <div className="flex-shrink-0 border-t border-gray-200/60 dark:border-white/[0.06]">
+        <button
+          onClick={() => { setOpen(false); navigate('/notifications') }}
+          className="w-full flex items-center justify-center gap-2 py-2.5 text-[11px] font-semibold text-sahifa-600 dark:text-sahifa-400 hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors"
+        >
+          <LayoutList className="w-3.5 h-3.5" />
+          Bildirishnomalar markaziga o'tish
+        </button>
+      </div>
+    </motion.div>
+  )
+
   return (
-    <div className="relative" ref={dropdownRef}>
+    <>
+      {/* Wiggle keyframes (injected once via global style) */}
+      <style>{`
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          15% { transform: rotate(12deg); }
+          30% { transform: rotate(-10deg); }
+          45% { transform: rotate(8deg); }
+          60% { transform: rotate(-6deg); }
+          75% { transform: rotate(3deg); }
+        }
+        .animate-wiggle { animation: wiggle 0.6s ease-in-out; }
+      `}</style>
+
       {/* ── Bell button ──────────────────────────────────────────────────── */}
       <button
+        ref={buttonRef}
         onClick={() => setOpen(prev => !prev)}
         className={`
           relative w-10 h-10 flex items-center justify-center rounded-2xl
@@ -156,105 +271,11 @@ const NotificationBell: React.FC = () => {
         )}
       </button>
 
-      {/* ── Dropdown ─────────────────────────────────────────────────────── */}
+      {/* ── Dropdown portaled to document.body ───────────────────────────── */}
       <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: -8, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.97 }}
-            transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-            className="
-              absolute right-0 top-full mt-2 z-[100]
-              w-[calc(100vw-2rem)] sm:w-[380px]
-              max-h-[70vh] overflow-hidden
-              bg-white/80 dark:bg-[#1C1C22]/90
-              backdrop-blur-xl
-              border border-gray-200/60 dark:border-white/[0.08]
-              rounded-2xl
-              shadow-xl shadow-black/10 dark:shadow-black/30
-            "
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.06]">
-              <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-                Bildirishnomalar
-              </h3>
-              {unreadCount > 0 && (
-                <button
-                  onClick={handleMarkAllRead}
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-700 dark:hover:text-sahifa-300 transition-colors"
-                >
-                  <CheckCheck className="w-3.5 h-3.5" />
-                  Barchasini o'qish
-                </button>
-              )}
-            </div>
-
-            {/* List */}
-            <div className="overflow-y-auto max-h-[calc(70vh-56px)] divide-y divide-gray-100 dark:divide-white/[0.04]">
-              {loading && notifications.length === 0 ? (
-                <div className="flex items-center justify-center py-12">
-                  <Loader2 className="w-5 h-5 animate-spin text-gray-300 dark:text-gray-600" />
-                </div>
-              ) : notifications.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-                  <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mb-3">
-                    <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600" />
-                  </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">
-                    Hozircha bildirishnomalar yo'q
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {notifications.map(item => (
-                    <NotifRow key={item.id} item={item} onClick={handleNotifClick} />
-                  ))}
-
-                  {/* Load more */}
-                  {notifications.length >= 30 && (
-                    <button
-                      onClick={loadMore}
-                      className="w-full flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
-                    >
-                      <ChevronDown className="w-3.5 h-3.5" />
-                      Ko'proq yuklash
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-
-            {/* Footer: view all link */}
-            <div className="border-t border-gray-200/60 dark:border-white/[0.06]">
-              <button
-                onClick={() => { setOpen(false); navigate('/notifications') }}
-                className="w-full flex items-center justify-center gap-2 py-3 text-[11px] font-semibold text-sahifa-600 dark:text-sahifa-400 hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors rounded-b-2xl"
-              >
-                <LayoutList className="w-3.5 h-3.5" />
-                Bildirishnomalar markaziga o'tish
-              </button>
-            </div>
-          </motion.div>
-        )}
+        {open && createPortal(dropdownPanel, document.body)}
       </AnimatePresence>
-
-      {/* Wiggle keyframes injected via style tag (once) */}
-      <style>{`
-        @keyframes wiggle {
-          0%, 100% { transform: rotate(0deg); }
-          15% { transform: rotate(12deg); }
-          30% { transform: rotate(-10deg); }
-          45% { transform: rotate(8deg); }
-          60% { transform: rotate(-6deg); }
-          75% { transform: rotate(3deg); }
-        }
-        .animate-wiggle {
-          animation: wiggle 0.6s ease-in-out;
-        }
-      `}</style>
-    </div>
+    </>
   )
 }
 
