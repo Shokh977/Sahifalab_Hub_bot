@@ -13,7 +13,7 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ChevronRightIcon, ClockIcon, TrophyIcon } from '@heroicons/react/24/outline'
+import { ChevronRightIcon, ClockIcon, TrophyIcon, UserIcon } from '@heroicons/react/24/outline'
 import {
   useProgressStore,
   levelBounds,
@@ -52,11 +52,54 @@ const GlobalProgressBar: React.FC = () => {
   const { totalXP, level, focusSeconds, isInitialized, isSyncing } =
     useProgressStore()
 
-  const { user: authUser } = useAuth()
+  const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth()
   const [photoError, setPhotoError] = useState(false)
   // Telegram mode: use WebApp photo. Web mode: fall back to auth profile photo.
   const rawPhoto = tgUser?.photo_url ?? authUser?.photo_url ?? null
   const photoUrl = (!photoError && rawPhoto) ? rawPhoto : null
+
+  // ── Guest mode: unauthenticated, not loading ───────────────────────────
+  if (!authLoading && !isAuthenticated) {
+    return (
+      <div className="sticky top-0 z-50 bg-gradient-to-r from-sahifa-50/90 via-purple-50/60 to-blue-50/90 dark:from-[#1a0808]/95 dark:via-[#0f0818]/95 dark:to-[#08101a]/95 backdrop-blur-xl border-b border-sahifa-200/40 dark:border-[#2A2A2A] px-4 py-2.5">
+        <div className="max-w-[1200px] mx-auto flex items-center gap-3">
+          {/* Gradient guest avatar */}
+          <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-gradient-to-br from-sahifa-400 via-purple-500 to-blue-500 flex items-center justify-center shadow-glow-sm">
+            <UserIcon className="w-[18px] h-[18px] text-white" />
+          </div>
+
+          {/* Greeting + blurred placeholder stats */}
+          <div className="flex-1 min-w-0 space-y-1">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-semibold text-gray-900 dark:text-white">
+                Assalomu alaykum, <span className="text-sahifa-500">Mehmon!</span> 👋
+              </span>
+              <span className="text-[10px] text-gray-400 dark:text-slate-500 select-none tabular-nums blur-sm">
+                0&nbsp;/&nbsp;100&nbsp;XP
+              </span>
+            </div>
+            <div className="h-2 bg-gray-100 dark:bg-[#1A1A1A] rounded-full overflow-hidden relative border border-gray-200/70 dark:border-[#2A2A2A]">
+              <div className="h-full w-[8%] rounded-full bg-gradient-to-r from-sahifa-200 to-sahifa-300 dark:from-sahifa-900/40 dark:to-sahifa-800/40" />
+            </div>
+          </div>
+
+          {/* Blurred Lvl / Fokus badges */}
+          <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 dark:text-slate-500 select-none blur-sm">
+            <ClockIcon className="w-3.5 h-3.5" />
+            <span className="font-mono font-semibold">00:00</span>
+          </div>
+
+          {/* CTA button */}
+          <button
+            onClick={() => navigate('/login')}
+            className="flex-shrink-0 px-3 py-1.5 rounded-xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 text-white text-[11px] font-bold shadow-sm hover:opacity-90 active:scale-95 transition-all"
+          >
+            O'sishni boshlash 🚀
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   // Don't render until profile is loaded (avoids flash of level 1)
   // SWR: read cached XP/level for instant render (no flash of empty bar)

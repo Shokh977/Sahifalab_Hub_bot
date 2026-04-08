@@ -212,48 +212,46 @@ const AppRoutes: React.FC = () => {
         transition={{ duration: 0.2, ease: 'easeOut' }}
       >
         <Routes location={location}>
-          {/* Public — accessible without authentication */}
+          {/* ── Auth page ─────────────────────────────────────────── */}
           <Route path="/login" element={<LoginPage />} />
 
-          {/* Protected — AuthGuard checks JWT in web mode; passes through in Telegram */}
-          <Route element={<AuthGuard />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/study" element={<StudyWithMe />} />
-            <Route path="/quiz" element={<QuizPage />} />
-            <Route path="/kitoblar" element={<KitoblarPage />} />
-            <Route path="/kitoblar/:id" element={<BookDetailPage />} />
-            <Route path="/resources" element={<ResourcesPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/admin" element={<AdminRoute />} />
-            <Route path="/cabinet" element={<CabinetPage />} />
-            <Route path="/leaderboard" element={<LeaderboardPage />} />
-            <Route path="/book-summarizer" element={<BookSummarizerPage />} />
-            <Route path="/ai-companion" element={<AICompanionPage />} />
-            <Route path="/courses" element={<CoursesPage />} />
-            <Route path="/courses/:id" element={<CourseDetailPage />} />
+          {/* ── Fully public — guests welcome, actions guarded in-component ── */}
+          <Route path="/"                element={<HomePage />} />
+          <Route path="/social"          element={<SocialFeed />} />
+          <Route path="/discover"        element={<DiscoverUsers />} />
+          <Route path="/courses"         element={<CoursesPage />} />
+          <Route path="/courses/:id"     element={<CourseDetailPage />} />
+          <Route path="/profile/:userId" element={<PublicProfile />} />
+          <Route path="/teachers"        element={<TeachersGalleryPage />} />
+          <Route path="/about"           element={<AboutPage />} />
+          <Route path="/leaderboard"     element={<LeaderboardPage />} />
 
-            {/* Social ecosystem */}
-            <Route path="/social" element={<SocialFeed />} />
-            <Route path="/discover" element={<DiscoverUsers />} />
-            <Route path="/profile/:userId" element={<PublicProfile />} />
-            <Route path="/notifications" element={<NotificationsPage />} />
-            <Route path="/messenger" element={<SlouthMessenger />} />
+          {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
+          <Route element={<AuthGuard />}>
+            <Route path="/study"          element={<StudyWithMe />} />
+            <Route path="/quiz"           element={<QuizPage />} />
+            <Route path="/kitoblar"       element={<KitoblarPage />} />
+            <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
+            <Route path="/resources"      element={<ResourcesPage />} />
+            <Route path="/admin"          element={<AdminRoute />} />
+            <Route path="/cabinet"        element={<CabinetPage />} />
+            <Route path="/book-summarizer" element={<BookSummarizerPage />} />
+            <Route path="/ai-companion"   element={<AICompanionPage />} />
+            <Route path="/notifications"  element={<NotificationsPage />} />
+            <Route path="/messenger"      element={<SlouthMessenger />} />
             <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
             {/* Legacy teacher profile → redirects to unified profile */}
             <Route path="/teacher/:id" element={<TeacherRedirect />} />
 
-            {/* Teachers gallery — all active instructors */}
-            <Route path="/teachers" element={<TeachersGalleryPage />} />
-
             {/* Teacher & Admin role-gated routes */}
             <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
-              <Route path="/teacher" element={<TeacherDashboardPage />} />
+              <Route path="/teacher"       element={<TeacherDashboardPage />} />
               <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
-              <Route path="/courses/create" element={<CourseCreatePage />} />
-              <Route path="/courses/:id/edit" element={<CourseCreatePage />} />
-              <Route path="/courses/:courseId/lessons/add" element={<LessonCreatePage />} />
-              <Route path="/courses/:courseId/lessons/:lessonId/edit" element={<LessonCreatePage />} />
+              <Route path="/courses/create"      element={<CourseCreatePage />} />
+              <Route path="/courses/:id/edit"    element={<CourseCreatePage />} />
+              <Route path="/courses/:courseId/lessons/add"                    element={<LessonCreatePage />} />
+              <Route path="/courses/:courseId/lessons/:lessonId/edit"         element={<LessonCreatePage />} />
             </Route>
 
             {/* Teacher application — any authenticated user */}

@@ -32,6 +32,7 @@ import UserIdentity from '../components/social/UserIdentity'
 import type { UserIdentityUser } from '../components/social/UserIdentity'
 import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 import { useAuth } from '../context/AuthContext'
+import { useGuestGuard } from '../hooks/useGuestGuard'
 import { usePlatform } from '../hooks/usePlatform'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import apiService from '../services/apiService'
@@ -142,6 +143,7 @@ const CourseDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const { user } = useAuth()
+  const { withAuth } = useGuestGuard()
   const { isTelegram } = usePlatform()
   useTelegramWebApp()
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -463,7 +465,7 @@ const CourseDetailPage: React.FC = () => {
         )}
 
         {!isOwner ? (
-          <button onClick={handleEnroll} disabled={isEnrolled || enrollLoading}
+          <button onClick={withAuth(handleEnroll)} disabled={isEnrolled || enrollLoading}
             className={[
               'w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-[.98] flex items-center justify-center gap-2',
               isEnrolled
@@ -848,7 +850,7 @@ const CourseDetailPage: React.FC = () => {
             <div className="lg:hidden mt-5">
               <div className="p-4 rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md">
                 {!isOwner ? (
-                  <button onClick={handleEnroll} disabled={isEnrolled || enrollLoading}
+                  <button onClick={withAuth(handleEnroll)} disabled={isEnrolled || enrollLoading}
                     className={[
                       'w-full py-3 rounded-xl font-bold text-sm transition-all active:scale-[.98] flex items-center justify-center gap-2',
                       isEnrolled

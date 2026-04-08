@@ -28,6 +28,7 @@ import {
   Squares2X2Icon,
   TrophyIcon,
   UserGroupIcon,
+  UserIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import ThemeToggle from './ThemeToggle'
@@ -315,6 +316,24 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
             </div>
             <LogoutButton />
           </div>
+        )}
+
+        {/* Guest login CTA — shown when not authenticated */}
+        {!user && (
+          <Link
+            to="/login"
+            onClick={onNavClick}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-2xl bg-gradient-to-r from-sahifa-500/10 to-purple-500/5 border border-sahifa-500/20 dark:border-sahifa-500/15 hover:from-sahifa-500/15 hover:to-purple-500/10 transition-colors group"
+          >
+            <div className="w-8 h-8 rounded-2xl bg-gradient-to-br from-sahifa-400 via-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 shadow-glow-sm">
+              <UserIcon className="w-4 h-4 text-white" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-sahifa-600 dark:text-sahifa-400 leading-tight">Tizimga kirish</p>
+              <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-tight mt-0.5">To'liq imkoniyatlardan foydalaning</p>
+            </div>
+            <ChevronRightIcon className="w-3.5 h-3.5 text-sahifa-400 group-hover:translate-x-0.5 transition-transform" />
+          </Link>
         )}
         <div className="flex items-center justify-between">
           <span className="text-[11px] text-slate-400 dark:text-slate-500">

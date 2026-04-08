@@ -34,6 +34,7 @@ import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
 import { showToast } from '../ErrorBoundary'
 import { markViewed } from '../../utils/viewBuffer'
+import { useGuestGuard } from '../../hooks/useGuestGuard'
 
 // ── Module-level view tracker — resets on page reload, survives re-renders ───
 const _viewedPostIds = new Set<number>()
@@ -133,6 +134,7 @@ const PostCard: React.FC<Props> = ({
 
   const navigate = useNavigate()
   const isOwner = currentUserId === post.author.telegram_id
+  const { withAuth } = useGuestGuard()
   const articleRef = useRef<HTMLElement>(null)
 
   // ── View tracking: 500 ms dwell → optimistic UI + batched network call ────────
@@ -415,7 +417,7 @@ const PostCard: React.FC<Props> = ({
 
         {/* Repost — rotation spring */}
         <motion.button
-          onClick={handleRepostToggle}
+          onClick={withAuth(handleRepostToggle)}
           whileTap={{ scale: 0.82 }}
           className={`flex items-center gap-1.5 text-sm transition-colors ${
             reposted
@@ -436,7 +438,7 @@ const PostCard: React.FC<Props> = ({
 
         {/* Like — pop scale spring */}
         <motion.button
-          onClick={handleLikeToggle}
+          onClick={withAuth(handleLikeToggle)}
           whileTap={{ scale: 0.82 }}
           className={`flex items-center gap-1.5 text-sm transition-colors ${
             liked
@@ -492,7 +494,7 @@ const PostCard: React.FC<Props> = ({
                   className="flex-1 px-3 py-2 rounded-xl bg-gray-50 dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.06] text-sm text-gray-800 dark:text-white placeholder:text-gray-400 dark:placeholder:text-white/25 outline-none focus:border-sahifa-500/40 dark:focus:border-sahifa-500/30 transition-colors"
                 />
                 <button
-                  onClick={handleSendComment}
+                  onClick={withAuth(handleSendComment)}
                   disabled={!commentText.trim() || sendingComment}
                   className="p-2 rounded-xl bg-sahifa-500/10 text-sahifa-400 hover:bg-sahifa-500/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
                 >

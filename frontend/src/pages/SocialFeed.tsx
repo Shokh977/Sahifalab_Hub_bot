@@ -161,12 +161,14 @@ const SocialFeed: React.FC = () => {
 
       {/* Content */}
       <div className="max-w-2xl mx-auto px-4 pt-4 space-y-4">
-        {/* Post composer */}
-        <CreatePost
-          user={identityUser}
-          onSubmit={handleCreatePost}
-          uploadImage={handleUploadImage}
-        />
+        {/* Post composer — only for authenticated users */}
+        {user && (
+          <CreatePost
+            user={identityUser}
+            onSubmit={handleCreatePost}
+            uploadImage={handleUploadImage}
+          />
+        )}
 
         {/* Posts — fade-in on tab switch */}
         <AnimatePresence mode="wait">
