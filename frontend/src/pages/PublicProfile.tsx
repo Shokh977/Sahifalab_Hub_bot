@@ -120,6 +120,18 @@ const PublicProfile: React.FC = () => {
     fetchProfile()
   }, [targetId])
 
+  // ── Track profile_visit event (only for other people's profiles) ────────
+  useEffect(() => {
+    if (!profile || isOwnProfile) return
+    const teacherId = profile.role === 'teacher' ? targetId : 0
+    apiService.trackAnalyticsEvents([{
+      event_type: 'profile_visit',
+      target_id: targetId,
+      teacher_id: teacherId,
+      source: 'direct',
+    }]).catch(() => {})
+  }, [profile?.telegram_id])
+
   // ── Fetch teacher extras when role is teacher ───────────────────────────
   useEffect(() => {
     if (!profile || profile.role !== 'teacher') return
@@ -562,7 +574,7 @@ const CoursesTab: React.FC<CoursesTabProps> = ({ courses, loading, isOwnProfile 
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       {courses.map((course, i) => (
         <div key={course.id} className="relative group/pcourse">
-          <CourseCard key={course.id} course={course} index={i} hideTeacher />
+          <CourseCard key={course.id} course={course} index={i} hideTeacher analyticsRef="profile" />
           {isOwnProfile && (
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); navigate('/teacher') }}

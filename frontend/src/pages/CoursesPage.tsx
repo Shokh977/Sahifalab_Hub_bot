@@ -277,7 +277,7 @@ const CoursesPage: React.FC = () => {
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {courses.map((c, i) => <CourseCard key={c.id} course={c} index={i} teacher={teacherProfiles[c.teacher_id]} />)}
+            {courses.map((c, i) => <CourseCard key={c.id} course={c} index={i} teacher={teacherProfiles[c.teacher_id]} analyticsRef="search" />)}
           </div>
 
           {hasMore && (

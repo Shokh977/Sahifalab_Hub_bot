@@ -4,10 +4,11 @@
  * Renders thumbnail, price badge, level pill, teacher avatar, title,
  * category, lesson/duration counts, rating, and enrollment count.
  */
-import React from 'react'
+import React, { useRef, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { BookOpenIcon, VideoCameraIcon, UsersIcon } from '@heroicons/react/24/outline'
+import { trackImpression } from '../utils/impressionBuffer'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface CourseData {
@@ -62,21 +63,46 @@ interface CourseCardProps {
   teacher?: TeacherMini
   /** Hide the teacher avatar overlay (e.g. when rendered inside a teacher's own profile) */
   hideTeacher?: boolean
+  /** Analytics ref source appended as ?ref= to course link */
+  analyticsRef?: string
 }
 
-const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hideTeacher = false }) => {
+const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hideTeacher = false, analyticsRef }) => {
   const navigate = useNavigate()
+  const cardRef = useRef<HTMLDivElement>(null)
   const cat = course.categories
   const teacherName = teacher?.first_name
     || (teacher?.username ? `@${teacher.username}` : null)
+  const courseLink = analyticsRef ? `/courses/${course.id}?ref=${analyticsRef}` : `/courses/${course.id}`
+
+  // Track course_impression when card enters viewport for 1 s
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) {
+        timer = setTimeout(() => {
+          trackImpression('course_impression', course.id, course.teacher_id, analyticsRef || 'direct')
+          io.disconnect()
+        }, 1000)
+      } else if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+    }, { threshold: 0.5 })
+    io.observe(el)
+    return () => { io.disconnect(); if (timer) clearTimeout(timer) }
+  }, [course.id, course.teacher_id, analyticsRef])
 
   return (
     <motion.div
+      ref={cardRef}
       initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.04 }}
     >
-      <Link to={`/courses/${course.id}`} className="group block">
+      <Link to={courseLink} className="group block">
         <div className="bg-white/90 dark:bg-[#1A1A1A] rounded-[24px] border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden hover:shadow-card-hover hover:-translate-y-0.5 transition-all duration-300">
           {/* Thumbnail */}
           <div className="relative h-44 bg-gradient-to-br from-sahifa-100 to-orange-50 dark:from-slate-800 dark:to-slate-900 overflow-hidden">

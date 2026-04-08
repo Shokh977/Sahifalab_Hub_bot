@@ -15,10 +15,18 @@ import {
   Eye, EyeOff, PenSquare, Plus, RefreshCw, Trash2, Video,
   BarChart3, ArrowRight, GraduationCap, Wrench,
   Target, Percent, Wallet, Award, Info,
+  MousePointerClick, Globe, Search, Rss, PieChart as PieChartIcon,
+  UserCheck, Layers,
 } from 'lucide-react'
 import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
+import {
+  InsightCard, Tooltip, CHART_COLORS,
+  DonutChart, DonutLegend, type DonutSlice,
+  DualAxisChart, type DualAxisData,
+  HBarChart, type HBarItem,
+} from '../components/charts/AnalyticsCharts'
 
 const ADMIN_IDS = [807466591]
 const PLATFORM_FEE = 0.30   // 30 % platform commission
@@ -52,6 +60,20 @@ interface TeacherAnalytics {
     student_id: number; first_name: string; username?: string | null
     total_xp: number; level: number; completed_lessons: number
   }>
+}
+
+interface TrafficFunnel {
+  impressions: number; course_views: number; enrollments: number
+  ctr: number; conversion_rate: number
+  sources: { lenta: number; search: number; external: number; direct: number }
+}
+
+interface GrowthSeries {
+  day: string; posts_count: number; profile_visits: number
+}
+
+interface DemoBucket {
+  bucket: string; count: number
 }
 
 type DashTab = 'overview' | 'analytics' | 'courses' | 'students'
@@ -191,6 +213,12 @@ const TeacherDashboardPage: React.FC = () => {
   const [deletingId,       setDeletingId]       = useState<number | null>(null)
   const [confirmDeleteId,  setConfirmDeleteId]  = useState<number | null>(null)
 
+  // YT-Studio advanced analytics
+  const [funnel,      setFunnel]      = useState<TrafficFunnel | null>(null)
+  const [growth,      setGrowth]      = useState<GrowthSeries[]>([])
+  const [demographics, setDemographics] = useState<DemoBucket[]>([])
+  const [advLoading,  setAdvLoading]  = useState(true)
+
   useEffect(() => {
     apiService.getTeacherProfile().then(r => setTeacherProfile(r.data)).catch(() => {}).finally(() => setProfileLoading(false))
   }, [])
@@ -200,6 +228,16 @@ const TeacherDashboardPage: React.FC = () => {
   useEffect(() => {
     apiService.getTeacherAnalytics().then(r => setAnalytics(r.data)).catch(() => {}).finally(() => setAnalyticsLoading(false))
   }, [])
+  // Fetch advanced analytics when Analytics tab is activated
+  useEffect(() => {
+    if (activeTab !== 'analytics') return
+    setAdvLoading(true)
+    Promise.all([
+      apiService.getTeacherFunnel(30).then(r => setFunnel(r.data)).catch(() => {}),
+      apiService.getTeacherGrowth(30).then(r => setGrowth(r.data?.series ?? [])).catch(() => {}),
+      apiService.getTeacherDemographics().then(r => setDemographics(r.data?.level_distribution ?? [])).catch(() => {}),
+    ]).finally(() => setAdvLoading(false))
+  }, [activeTab])
 
   const handleTogglePublish = async (courseId: number, current: boolean) => {
     setTogglingId(courseId)
@@ -418,6 +456,124 @@ const TeacherDashboardPage: React.FC = () => {
               <BentoTile Icon={BadgeDollarSign}  label="Sof daromad"   value={`${(netUZS / 1000).toFixed(0)}K`}   sub="so'm (70%)" accent="emerald" loading={analyticsLoading} />
               <BentoTile Icon={Star}             label="Jami Stars"    value={analytics?.gross_stars?.toLocaleString() ?? '0'} sub={`komisyon: ${(commUZS / 1000).toFixed(0)}K`} accent="amber" loading={analyticsLoading} />
               <BentoTile Icon={Target}           label="Konversiya"    value={`${convRate}%`} sub={`${analytics?.completed_orders ?? 0} / ${analytics?.total_students ?? 0} talaba`} accent="violet" loading={analyticsLoading} />
+            </div>
+
+            {/* ═══ YT STUDIO: Traffic & Conversion ═══ */}
+            <div>
+              <div className="flex items-center gap-2 mb-3">
+                <MousePointerClick className="h-4 w-4 text-sahifa-500" />
+                <p className="text-[11px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">Traffic & konversiya</p>
+              </div>
+
+              {advLoading ? <Skeleton n={2} h="h-24" /> : (
+                <>
+                  {/* Insight cards row */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <InsightCard
+                      icon={<Eye className="h-4 w-4" />}
+                      label="CTR"
+                      value={`${funnel?.ctr?.toFixed(1) ?? '0.0'}%`}
+                      sub={`${funnel?.impressions ?? 0} taassurot → ${funnel?.course_views ?? 0} ko'rish`}
+                      tooltip="Click-Through Rate: Lenta va qidiruvda ko'rilgan kurs kartalaringiz nechta marta bosilganini o'lchaydi. Yuqori CTR = yaxshi thumbnail va sarlavha."
+                      accent="text-blue-500"
+                    />
+                    <InsightCard
+                      icon={<UserCheck className="h-4 w-4" />}
+                      label="Konversiya"
+                      value={`${funnel?.conversion_rate?.toFixed(1) ?? '0.0'}%`}
+                      sub={`${funnel?.course_views ?? 0} ko'rish → ${funnel?.enrollments ?? 0} yozilish`}
+                      tooltip="Kurs sahifangizni ochgan odamlardan necha foizi haqiqatan yozilgan. Yuqori bo'lsa — kurs tavsifi va narx yaxshi ishlayapti."
+                      accent="text-emerald-500"
+                    />
+                  </div>
+
+                  {/* Traffic Source Donut */}
+                  <div className="p-4 rounded-2xl bg-white/70 dark:bg-white/[0.03] backdrop-blur-md border border-gray-200/60 dark:border-white/[0.06] shadow-sm">
+                    <div className="flex items-center gap-2 mb-3">
+                      <PieChartIcon className="h-4 w-4 text-sahifa-500" />
+                      <p className="text-sm font-bold text-gray-900 dark:text-white flex-1">Traffic manbalari</p>
+                      <Tooltip text="Talabalar kurslaringizni qayerdan topmoqda: Lenta (postlardan), Kashfiyot (qidiruvdan), Tashqi (havoladan), yoki To'g'ridan." />
+                    </div>
+                    {(() => {
+                      const slices: DonutSlice[] = [
+                        { label: 'Lenta (ijtimoiy)',  value: funnel?.sources?.lenta ?? 0,    color: CHART_COLORS.orange },
+                        { label: 'Kashfiyot (qidiruv)', value: funnel?.sources?.search ?? 0, color: CHART_COLORS.blue },
+                        { label: 'Tashqi havola',     value: funnel?.sources?.external ?? 0,  color: CHART_COLORS.emerald },
+                        { label: "To'g'ridan",        value: funnel?.sources?.direct ?? 0,    color: CHART_COLORS.slate },
+                      ]
+                      const total = slices.reduce((s, sl) => s + sl.value, 0)
+                      return total > 0 ? (
+                        <div className="flex items-center gap-6">
+                          <DonutChart slices={slices} size={110} thickness={22} />
+                          <DonutLegend slices={slices} />
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-xs text-gray-400 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                          <Globe className="h-6 w-6 mx-auto mb-2 text-gray-300" />
+                          Hali traffic ma'lumotlari yig'ilmoqda…
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ═══ YT STUDIO: Growth Correlation ═══ */}
+            <div className="p-4 rounded-2xl bg-white/70 dark:bg-white/[0.03] backdrop-blur-md border border-gray-200/60 dark:border-white/[0.06] shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <Rss className="h-4 w-4 text-sahifa-500" />
+                <p className="text-sm font-bold text-gray-900 dark:text-white flex-1">O'sish korrelyatsiyasi</p>
+                <Tooltip text="Ko'proq post yozsangiz, profil tashriflari va kurs sotuvlari ortadi. Bu grafik postlar soni (tulalari) va profil tashriflari (chiziq) o'rtasidagi bog'liqlikni ko'rsatadi." />
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-3">Postlar → profil tashriflari (so'nggi 30 kun)</p>
+              {advLoading ? <Skeleton n={1} h="h-32" /> : (
+                growth.length > 0 ? (
+                  <DualAxisChart
+                    data={growth.map((g, i) => ({
+                      label: i % 5 === 4 ? g.day.slice(5) : '',
+                      barValue: g.posts_count,
+                      lineValue: g.profile_visits,
+                    }))}
+                    barColor={CHART_COLORS.orange}
+                    lineColor={CHART_COLORS.blue}
+                    barLabel="Postlar"
+                    lineLabel="Profil tashriflari"
+                    height={130}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-xs text-gray-400 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                    <Rss className="h-6 w-6 mx-auto mb-2 text-gray-300" />
+                    Post yozing va profil tashriflari o'sishini kuzating!
+                  </div>
+                )
+              )}
+            </div>
+
+            {/* ═══ YT STUDIO: Student Demographics ═══ */}
+            <div className="p-4 rounded-2xl bg-white/70 dark:bg-white/[0.03] backdrop-blur-md border border-gray-200/60 dark:border-white/[0.06] shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <Layers className="h-4 w-4 text-violet-500" />
+                <p className="text-sm font-bold text-gray-900 dark:text-white flex-1">Talabalar demografiyasi</p>
+                <Tooltip text="Talabalaringiz XP darajasi bo'yicha taqsimlanishi. Bu sizga kurs qiyinchiligini moslashtirishga yordam beradi." />
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-3">XP daraja bo'yicha taqsimot</p>
+              {advLoading ? <Skeleton n={4} h="h-8" /> : (
+                demographics.length > 0 ? (
+                  <HBarChart
+                    items={demographics.map((d, i) => ({
+                      label: d.bucket,
+                      value: d.count,
+                      color: [CHART_COLORS.emerald, CHART_COLORS.blue, CHART_COLORS.orange, CHART_COLORS.violet][i % 4],
+                    }))}
+                  />
+                ) : (
+                  <div className="text-center py-8 text-xs text-gray-400 rounded-xl border-2 border-dashed border-slate-200 dark:border-slate-700">
+                    <Users className="h-6 w-6 mx-auto mb-2 text-gray-300" />
+                    Hali talabalar demografiya ma'lumotlari yo'q
+                  </div>
+                )
+              )}
             </div>
 
             {/* Revenue sparkline chart */}

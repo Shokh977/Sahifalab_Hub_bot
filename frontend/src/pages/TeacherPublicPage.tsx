@@ -75,7 +75,7 @@ const MiniCourseCard: React.FC<{ course: Course; index: number }> = ({ course, i
     animate={{ opacity: 1, y: 0 }}
     transition={{ delay: 0.3 + index * 0.05 }}
   >
-    <Link to={`/courses/${course.id}`} className="group block">
+    <Link to={`/courses/${course.id}?ref=profile`} className="group block">
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-lg hover:border-sahifa-300 dark:hover:border-sahifa-600 transition-all">
         {/* Thumbnail */}
         <div className="relative h-32 bg-gradient-to-br from-sahifa-100 to-sahifa-200 dark:from-sahifa-900/30 dark:to-sahifa-900/20 overflow-hidden">

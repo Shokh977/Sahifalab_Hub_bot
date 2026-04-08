@@ -461,6 +461,30 @@ class ApiService {
     return this.axiosInstance.get('/api/teacher/analytics')
   }
 
+  // ─── Analytics (YT Studio) ────────────────────────────────────────────────
+
+  /** Track analytics events (course_view, profile_visit, etc.) */
+  async trackAnalyticsEvents(events: Array<{
+    event_type: string; target_id: number; teacher_id?: number; source?: string; meta?: Record<string, unknown>
+  }>) {
+    return this.axiosInstance.post('/api/analytics/track', { events })
+  }
+
+  /** Teacher: traffic & conversion funnel (impressions → views → enrollments) */
+  async getTeacherFunnel(days = 30) {
+    return this.axiosInstance.get('/api/analytics/teacher/funnel', { params: { days } })
+  }
+
+  /** Teacher: growth correlation (daily posts vs profile visits) */
+  async getTeacherGrowth(days = 30) {
+    return this.axiosInstance.get('/api/analytics/teacher/growth', { params: { days } })
+  }
+
+  /** Teacher: student demographics (level distribution) */
+  async getTeacherDemographics() {
+    return this.axiosInstance.get('/api/analytics/teacher/demographics')
+  }
+
   // ─── Categories ───────────────────────────────────────────────────────────
 
   /** Public: list all course categories */

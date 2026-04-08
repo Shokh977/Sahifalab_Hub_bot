@@ -456,7 +456,7 @@ const CourseCard: React.FC<{ course: CourseItem; index: number }> = ({ course, i
       initial={{ opacity: 0, x: 30 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ delay: 0.08 + index * 0.07, type: 'spring', stiffness: 260, damping: 24 }}
-      onClick={() => navigate(`/courses/${course.id}`)}
+      onClick={() => navigate(`/courses/${course.id}?ref=lenta`)}
       className="course-card group"
     >
       <div className="relative h-44 bg-gradient-to-br from-sahifa-100 to-orange-50 dark:from-[#2A2A38] dark:to-[#1C1C2A] overflow-hidden">

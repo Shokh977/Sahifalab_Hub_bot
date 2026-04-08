@@ -14,7 +14,7 @@
  *   Dark:  #1C1C22 bg + deep slate glass containers
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Helmet } from 'react-helmet-async'
 import {
@@ -140,6 +140,7 @@ const RatingWidget: React.FC<RatingWidgetProps> = ({
 const CourseDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { user } = useAuth()
   const { isTelegram } = usePlatform()
   useTelegramWebApp()
@@ -228,6 +229,18 @@ const CourseDetailPage: React.FC = () => {
       .catch(() => setError("Kurs yuklanmadi. Iltimos, qayta urinib ko'ring."))
       .finally(() => setLoading(false))
   }, [courseId, user])
+
+  // ── Track course_view event ─────────────────────────────────────────────
+  useEffect(() => {
+    if (!course) return
+    const ref = searchParams.get('ref') || 'direct'
+    apiService.trackAnalyticsEvents([{
+      event_type: 'course_view',
+      target_id: course.id,
+      teacher_id: course.teacher_id,
+      source: ref,
+    }]).catch(() => {})
+  }, [course?.id])
 
   // ── Lesson progress ───────────────────────────────────────────────────────
   useEffect(() => {
