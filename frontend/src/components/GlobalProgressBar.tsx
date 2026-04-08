@@ -23,6 +23,7 @@ import {
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
 import { getLevelTitle } from '../utils/levelTitles'
+import NotificationBell from './NotificationBell'
 
 // ── Level colour tiers (orange-forward) ───────────────────────────────────────
 function levelGradient(level: number): string {
@@ -130,6 +131,14 @@ const GlobalProgressBar: React.FC = () => {
           <span className="font-mono font-semibold tabular-nums text-sahifa-500/80 dark:text-sahifa-400/80">
             {formatFocusTime(focusSeconds)}
           </span>
+        </div>
+
+        {/* ── Notification Bell — stopPropagation prevents cabinet nav ─── */}
+        <div
+          className="flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <NotificationBell />
         </div>
 
         <ChevronRightIcon className="w-4 h-4 text-gray-300 dark:text-gray-600" />

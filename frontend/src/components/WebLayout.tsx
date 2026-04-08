@@ -31,7 +31,6 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import ThemeToggle from './ThemeToggle'
-import NotificationBell from './NotificationBell'
 import GlobalProgressBar from './GlobalProgressBar'
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
@@ -322,7 +321,6 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
             @Sahifalab_hub_bot
           </span>
           <div className="flex items-center gap-1">
-            <NotificationBell />
             <ThemeToggle />
           </div>
         </div>
@@ -412,7 +410,6 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </Link>
 
           <div className="flex items-center gap-1">
-            <NotificationBell />
             <ThemeToggle />
           </div>
         </header>

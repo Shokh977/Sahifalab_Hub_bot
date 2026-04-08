@@ -100,6 +100,7 @@ const NotificationBell: React.FC = () => {
       setTimeout(() => setWiggle(false), 600)
     }
     prevUnread.current = unreadCount
+    console.log('🔔 Unread count:', unreadCount)
   }, [unreadCount])
 
   // ── Calculate dropdown position when opening ──────────────────────────────
@@ -246,9 +247,14 @@ const NotificationBell: React.FC = () => {
       {/* ── Bell button ──────────────────────────────────────────────────── */}
       <button
         ref={buttonRef}
-        onClick={() => setOpen(prev => !prev)}
+        onClick={(e) => {
+          e.stopPropagation()
+          console.log('🔔 Notification bell clicked! Modal/Dropdown triggered.')
+          setOpen(prev => !prev)
+        }}
         className={`
           relative w-10 h-10 flex items-center justify-center rounded-2xl
+          cursor-pointer
           text-slate-500 dark:text-slate-400
           hover:bg-slate-100 dark:hover:bg-[#1A1A1A]
           hover:text-slate-700 dark:hover:text-slate-200
