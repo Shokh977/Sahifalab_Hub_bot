@@ -86,8 +86,6 @@ const NotificationBell: React.FC = () => {
 
   const [open, setOpen] = useState(false)
   const [wiggle, setWiggle] = useState(false)
-  // Position of the fixed dropdown, calculated from the button's bounding rect
-  const [pos, setPos] = useState({ top: 0, right: 0 })
 
   const buttonRef  = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
@@ -103,10 +101,7 @@ const NotificationBell: React.FC = () => {
     console.log('🔔 Unread count:', unreadCount)
   }, [unreadCount])
 
-  // ── Calculate dropdown position when opening ──────────────────────────────
-  // NOTE: intentionally removed - pos is now calculated synchronously in onClick
-  // so the dropdown renders at the correct position on the very first frame.
-
+  // ── Dropdown uses fixed viewport position for reliability ─────────────────
   // ── Click outside to close ────────────────────────────────────────────────
   useEffect(() => {
     if (!open) return
@@ -142,11 +137,12 @@ const NotificationBell: React.FC = () => {
     <motion.div
       ref={dropdownRef}
       key="notif-dropdown"
+      onMouseDown={(e) => e.stopPropagation()}
       initial={{ opacity: 0, y: -8, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-      style={{ position: 'fixed', top: pos.top, right: pos.right }}
+      style={{ position: 'fixed', top: 64, right: 12 }}
       className="
         z-[9999]
         w-[calc(100vw-2rem)] sm:w-[380px]
@@ -242,18 +238,10 @@ const NotificationBell: React.FC = () => {
       {/* ── Bell button ──────────────────────────────────────────────────── */}
       <button
         ref={buttonRef}
+        onMouseDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation()
           console.log('🔔 Notification bell clicked! Modal/Dropdown triggered.')
-          // Calculate position BEFORE setOpen so the dropdown renders at
-          // the correct fixed coords on the very first frame (no pos flash).
-          if (buttonRef.current) {
-            const rect = buttonRef.current.getBoundingClientRect()
-            setPos({
-              top:   rect.bottom + 8,
-              right: window.innerWidth - rect.right,
-            })
-          }
           setOpen(prev => !prev)
         }}
         className={`
