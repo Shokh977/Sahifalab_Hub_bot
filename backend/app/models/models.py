@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, UTC
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
 from sqlalchemy.orm import relationship
 from app.db.session import Base
@@ -31,10 +31,14 @@ class Profile(Base):
     app_last_login    = Column(DateTime(timezone=True), nullable=True)
     app_online_at     = Column(DateTime(timezone=True), nullable=True)
     # Social ecosystem columns
-    followers_count   = Column(Integer, default=0)
-    following_count   = Column(Integer, default=0)
-    bio               = Column(Text, nullable=True)
-    about_me          = Column(Text, nullable=True)
+    followers_count         = Column(Integer, default=0)
+    following_count         = Column(Integer, default=0)
+    bio                     = Column(Text, nullable=True)
+    about_me                = Column(Text, nullable=True)
+    # New gamification columns (038_xp_gamification)
+    total_focus_minutes     = Column(Integer, default=0)
+    daily_quiz_xp           = Column(Integer, default=0)
+    daily_quiz_xp_reset_at  = Column(DateTime(timezone=True), nullable=True)
 
 
 class AuthCode(Base):
@@ -50,6 +54,30 @@ class AuthCode(Base):
     used        = Column(Boolean, default=False)
     expires_at  = Column(DateTime(timezone=True), nullable=False)
     created_at  = Column(DateTime(timezone=True), nullable=True)
+
+
+class XpLog(Base):
+    """XP audit trail — every XP award is logged here for anti-cheat tracking."""
+    __tablename__ = "xp_logs"
+
+    id           = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id      = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    amount       = Column(Integer, nullable=False)
+    source       = Column(String(20), nullable=False)    # DEEP_WORK | QUIZ | COURSE
+    reference_id = Column(BigInteger, nullable=True)     # course_id for COURSE
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class UserBadge(Base):
+    """Earned badges — unique per (user_id, badge_key)."""
+    __tablename__ = "user_badges"
+
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    badge_key  = Column(String(100), nullable=False)
+    granted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("user_id", "badge_key", name="uq_user_badge"),)
 
 
 class TeacherProfile(Base):

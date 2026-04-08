@@ -50,6 +50,7 @@ import PostCard from '../components/social/PostCard'
 import type { PostData } from '../components/social/PostCard'
 import CourseCard from '../components/CourseCard'
 import type { CourseData } from '../components/CourseCard'
+import XPProgressBar from '../components/XPProgressBar'
 import {
   fetchMyCompletedQuizzes,
   fetchQuizTitles,
@@ -172,9 +173,10 @@ function coverGradient(category?: string) {
   return COVER_GRADIENTS[category?.toLowerCase() ?? ''] ?? COVER_GRADIENTS.default
 }
 
-// ── XP needed for a target level ──────────────────────────────────────────────
+// ── XP threshold to reach a target level (100 × Level^2.5) ──────────────────
 function xpNeededForLevel(targetLevel: number): number {
-  return Math.max(0, (targetLevel - 1) ** 2 * 100)
+  if (targetLevel <= 1) return 0
+  return Math.round(100 * Math.pow(targetLevel, 2.5))
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -252,7 +254,7 @@ const CabinetPage: React.FC = () => {
   const { user: tgUser } = useTelegramWebApp()
   const {
     telegramId, firstName, username,
-    totalXP, focusSeconds, level, quizzesCompleted,
+    totalXP, focusSeconds, level, quizzesCompleted, dailyQuizXP, totalFocusMinutes,
     isLoading,
   } = useProgressStore()
 
@@ -565,6 +567,16 @@ const CabinetPage: React.FC = () => {
           onAvatarUpload={(file) => handlePhotoFileUpload(file)}
           avatarUploading={photoSaving}
           onEditClick={() => setEditOpen(prev => !prev)}
+        />
+      </div>
+
+      {/* ═══ XP Progress Bento ═══ */}
+      <div className="px-4">
+        <XPProgressBar
+          totalXP={effectiveTotalXP}
+          level={effectiveLevel}
+          dailyQuizXP={dailyQuizXP}
+          totalFocusMinutes={totalFocusMinutes || Math.floor((focusSeconds || 0) / 60)}
         />
       </div>
 

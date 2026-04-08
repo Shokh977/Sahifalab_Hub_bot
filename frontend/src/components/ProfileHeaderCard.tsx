@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import UserIdentity, { getRankInfo } from './social/UserIdentity'
 import type { UserIdentityUser } from './social/UserIdentity'
+import { levelProgress, levelBounds } from '../context/progressStore'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -230,17 +231,24 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
           </div>
 
           {/* ── XP Progress (Kabinet mode) ───────────────────────────────── */}
-          {editMode && profile.xp !== undefined && (
-            <div className="mt-3">
-              <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-gradient-to-r from-sahifa-400 to-sahifa-500 transition-all duration-500"
-                  style={{ width: `${Math.min(((profile.xp || 0) % 1200) / 12, 100)}%` }}
-                />
+          {editMode && profile.xp !== undefined && (() => {
+            const xp = profile.xp || 0
+            const pct = Math.round(levelProgress(xp) * 100)
+            const { end } = levelBounds(profile.level || 1)
+            return (
+              <div className="mt-3">
+                <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">
+                  {xp.toLocaleString()} / {end.toLocaleString()} XP · {pct}%
+                </p>
               </div>
-              <p className="text-[10px] text-gray-300 dark:text-white/20 mt-1">{profile.xp || 0} XP</p>
-            </div>
-          )}
+            )
+          })()}
 
           {/* ── Action buttons ───────────────────────────────────────────── */}
           <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">

@@ -29,14 +29,15 @@ class ProfileUpsertRequest(BaseModel):
 
 
 class ProgressSyncRequest(BaseModel):
-    telegram_id:       int
-    first_name:        Optional[str] = None
-    username:          Optional[str] = None
-    total_xp:          Optional[int] = None
-    focus_seconds:     Optional[int] = None
-    level:             Optional[int] = None
-    quizzes_completed: Optional[int] = None
-    app_online_at:     Optional[str] = None   # ISO-8601
+    telegram_id:          int
+    first_name:           Optional[str] = None
+    username:             Optional[str] = None
+    total_xp:             Optional[int] = None
+    focus_seconds:        Optional[int] = None
+    total_focus_minutes:  Optional[int] = None   # new: derived from focus_seconds
+    level:                Optional[int] = None
+    quizzes_completed:    Optional[int] = None
+    app_online_at:        Optional[str] = None   # ISO-8601
 
 
 # ── Endpoints ──────────────────────────────────────────────────────────────────
@@ -154,13 +155,14 @@ async def sync_progress(body: ProgressSyncRequest, db: Session = Depends(get_db)
         )
         db.add(profile)
 
-    if body.first_name        is not None: profile.first_name        = body.first_name
-    if body.username          is not None: profile.username          = body.username
-    if body.total_xp          is not None: profile.total_xp          = body.total_xp
-    if body.focus_seconds     is not None: profile.focus_seconds     = body.focus_seconds
-    if body.level             is not None: profile.level             = body.level
-    if body.quizzes_completed is not None: profile.quizzes_completed = body.quizzes_completed
-    if body.app_online_at     is not None:
+    if body.first_name           is not None: profile.first_name           = body.first_name
+    if body.username             is not None: profile.username             = body.username
+    if body.total_xp             is not None: profile.total_xp             = body.total_xp
+    if body.focus_seconds        is not None: profile.focus_seconds        = body.focus_seconds
+    if body.total_focus_minutes  is not None: profile.total_focus_minutes  = body.total_focus_minutes
+    if body.level                is not None: profile.level                = body.level
+    if body.quizzes_completed    is not None: profile.quizzes_completed    = body.quizzes_completed
+    if body.app_online_at        is not None:
         try:
             profile.app_online_at = datetime.fromisoformat(
                 body.app_online_at.replace("Z", "+00:00")
@@ -269,16 +271,18 @@ async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     if not profile:
         return None
     return {
-        "telegram_id":       profile.telegram_id,
-        "total_xp":          profile.total_xp          or 0,
-        "focus_seconds":     profile.focus_seconds      or 0,
-        "level":             profile.level              or 1,
-        "quizzes_completed": profile.quizzes_completed  or 0,
-        "first_name":        profile.first_name,
-        "username":          profile.username,
-        "photo_url":         profile.photo_url,
-        "role":              profile.role   or "student",
-        "status":            profile.status or "active",
+        "telegram_id":          profile.telegram_id,
+        "total_xp":             profile.total_xp          or 0,
+        "focus_seconds":        profile.focus_seconds      or 0,
+        "total_focus_minutes":  profile.total_focus_minutes or 0,
+        "daily_quiz_xp":        profile.daily_quiz_xp      or 0,
+        "level":                profile.level              or 1,
+        "quizzes_completed":    profile.quizzes_completed  or 0,
+        "first_name":           profile.first_name,
+        "username":             profile.username,
+        "photo_url":            profile.photo_url,
+        "role":                 profile.role   or "student",
+        "status":               profile.status or "active",
     }
 
 
