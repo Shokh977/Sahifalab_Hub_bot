@@ -54,11 +54,28 @@ const GlobalProgressBar: React.FC = () => {
 
   const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth()
   const [photoError, setPhotoError] = useState(false)
+
+  // ── SWR: read cached XP/level for instant render (all hooks must be at top) ─
+  const cached = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('sahifa:xp_cache')
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  }, [])
+
+  // Persist live values to localStorage when store initializes
+  useEffect(() => {
+    if (isInitialized) {
+      localStorage.setItem('sahifa:xp_cache', JSON.stringify({ totalXP, level, focusSeconds }))
+    }
+  }, [isInitialized, totalXP, level, focusSeconds])
+
   // Telegram mode: use WebApp photo. Web mode: fall back to auth profile photo.
   const rawPhoto = tgUser?.photo_url ?? authUser?.photo_url ?? null
   const photoUrl = (!photoError && rawPhoto) ? rawPhoto : null
 
-  // ── Guest mode: unauthenticated, not loading ───────────────────────────
+  // ── Guest mode: unauthenticated, not loading ─────────────────────────────
+  // (ALL hooks are above this point — safe to return early here)
   if (!authLoading && !isAuthenticated) {
     return (
       <div className="sticky top-0 z-50 bg-gradient-to-r from-sahifa-50/90 via-purple-50/60 to-blue-50/90 dark:from-[#1a0808]/95 dark:via-[#0f0818]/95 dark:to-[#08101a]/95 backdrop-blur-xl border-b border-sahifa-200/40 dark:border-[#2A2A2A] px-4 py-2.5">
@@ -83,7 +100,7 @@ const GlobalProgressBar: React.FC = () => {
             </div>
           </div>
 
-          {/* Blurred Lvl / Fokus badges */}
+          {/* Blurred focus clock */}
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-gray-400 dark:text-slate-500 select-none blur-sm">
             <ClockIcon className="w-3.5 h-3.5" />
             <span className="font-mono font-semibold">00:00</span>
@@ -101,28 +118,12 @@ const GlobalProgressBar: React.FC = () => {
     )
   }
 
-  // Don't render until profile is loaded (avoids flash of level 1)
-  // SWR: read cached XP/level for instant render (no flash of empty bar)
-  const cached = useMemo(() => {
-    try {
-      const raw = localStorage.getItem('sahifa:xp_cache')
-      return raw ? JSON.parse(raw) : null
-    } catch { return null }
-  }, [])
-
-  // Persist live values to localStorage when store initializes
-  useEffect(() => {
-    if (isInitialized) {
-      localStorage.setItem('sahifa:xp_cache', JSON.stringify({ totalXP, level, focusSeconds }))
-    }
-  }, [isInitialized, totalXP, level, focusSeconds])
-
   // Display values: use live data when ready, otherwise cached
-  const displayXP    = isInitialized ? totalXP       : (cached?.totalXP ?? 0)
-  const displayLevel = isInitialized ? level         : (cached?.level ?? 1)
-  const displayFocus = isInitialized ? focusSeconds  : (cached?.focusSeconds ?? 0)
+  const displayXP    = isInitialized ? totalXP      : (cached?.totalXP ?? 0)
+  const displayLevel = isInitialized ? level        : (cached?.level ?? 1)
+  const displayFocus = isInitialized ? focusSeconds : (cached?.focusSeconds ?? 0)
 
-  // Skeleton when no data at all (first-ever visit)
+  // Skeleton when no data at all (first-ever visit, authenticated)
   if (!isInitialized && !cached) {
     return (
       <div className="sticky top-0 z-50 bg-white/88 dark:bg-[#0F0F0F]/92 backdrop-blur-xl border-b border-gray-200/70 dark:border-[#2A2A2A] px-4 py-2.5">
