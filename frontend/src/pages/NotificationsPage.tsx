@@ -13,7 +13,7 @@
  *   • Smooth AnimatePresence transitions
  */
 
-import React, { useState, useCallback, useMemo } from 'react'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -187,7 +187,12 @@ const NotificationsPage: React.FC = () => {
   const navigate = useNavigate()
   const userId = (user as any)?.id ?? (user as any)?.telegram_id ?? null
 
-  const { notifications, unreadCount, loading, markRead, loadMore } = useNotifications(userId)
+  const { notifications, unreadCount, loading, markRead, loadMore, fetchNotifications } = useNotifications(userId)
+
+  // Fetch full notification list on page mount
+  useEffect(() => {
+    fetchNotifications()
+  }, [fetchNotifications])
 
   const [activeTab, setActiveTab] = useState<TabKey>('ALL')
 

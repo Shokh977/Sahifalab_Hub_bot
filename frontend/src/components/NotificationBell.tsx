@@ -82,14 +82,22 @@ const NotificationBell: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
   const userId = (user as any)?.id ?? (user as any)?.telegram_id ?? null
-  const { notifications, unreadCount, loading, markRead, loadMore } = useNotifications(userId)
+  const {
+    notifications, unreadCount, loading,
+    markRead, loadMore, fetchNotifications,
+  } = useNotifications(userId)
 
   const [open, setOpen] = useState(false)
   const [wiggle, setWiggle] = useState(false)
-
-  const buttonRef  = useRef<HTMLButtonElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const prevUnread = useRef(unreadCount)
+
+  // ── Debug: log mount lifecycle ────────────────────────────────────────────
+  useEffect(() => {
+    console.log('🔔 NotificationBell mounted in DOM')
+    return () => console.log('🔔 NotificationBell unmounted from DOM')
+  }, [])
 
   // ── Wiggle on new unread ──────────────────────────────────────────────────
   useEffect(() => {
@@ -98,21 +106,22 @@ const NotificationBell: React.FC = () => {
       setTimeout(() => setWiggle(false), 600)
     }
     prevUnread.current = unreadCount
-    console.log('🔔 Unread count:', unreadCount)
   }, [unreadCount])
 
-  // ── Dropdown uses fixed viewport position for reliability ─────────────────
-  // ── Click outside to close ────────────────────────────────────────────────
+  // ── Fetch full notification list on first dropdown open ───────────────────
   useEffect(() => {
-    if (!open) return
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node
-      const inButton   = buttonRef.current?.contains(target)
-      const inDropdown = dropdownRef.current?.contains(target)
-      if (!inButton && !inDropdown) setOpen(false)
+    if (open) {
+      console.log('🔔 Dropdown opened — fetching notification list')
+      fetchNotifications()
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+  }, [open, fetchNotifications])
+
+  // ── Handle bell click ─────────────────────────────────────────────────────
+  const handleBellClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    e.preventDefault()
+    console.log('🔔 Notification bell clicked! open →', !open)
+    setOpen(prev => !prev)
   }, [open])
 
   // ── Handle notification click ─────────────────────────────────────────────
@@ -125,104 +134,15 @@ const NotificationBell: React.FC = () => {
   }, [markRead, navigate])
 
   // ── Handle mark all read ──────────────────────────────────────────────────
-  const handleMarkAllRead = useCallback(() => {
-    markRead()
-  }, [markRead])
+  const handleMarkAllRead = useCallback(() => markRead(), [markRead])
 
   if (!userId) return null
 
   const badgeText = unreadCount > 99 ? '99+' : unreadCount > 0 ? String(unreadCount) : null
 
-  const dropdownPanel = (
-    <motion.div
-      ref={dropdownRef}
-      key="notif-dropdown"
-      onMouseDown={(e) => e.stopPropagation()}
-      initial={{ opacity: 0, y: -8, scale: 0.97 }}
-      animate={{ opacity: 1, y: 0, scale: 1 }}
-      exit={{ opacity: 0, y: -8, scale: 0.97 }}
-      transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-      style={{ position: 'fixed', top: 64, right: 12 }}
-      className="
-        z-[9999]
-        w-[calc(100vw-2rem)] sm:w-[380px]
-        bg-white dark:bg-[#1C1C22]
-        backdrop-blur-xl
-        border border-gray-200/60 dark:border-white/[0.08]
-        rounded-2xl
-        shadow-xl shadow-black/10 dark:shadow-black/30
-        overflow-hidden
-      "
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.06]">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-white">
-          Bildirishnomalar
-        </h3>
-        {unreadCount > 0 && (
-          <button
-            onClick={handleMarkAllRead}
-            className="inline-flex items-center gap-1 text-[11px] font-medium text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-700 dark:hover:text-sahifa-300 transition-colors"
-          >
-            <CheckCheck className="w-3.5 h-3.5" />
-            Barchasini o'qish
-          </button>
-        )}
-      </div>
-
-      {/* List — explicit max-h so it never collapses to 0px */}
-      <div className="overflow-y-auto divide-y divide-gray-100 dark:divide-white/[0.04]"
-           style={{ maxHeight: '360px' }}>
-        {loading && notifications.length === 0 ? (
-          <div className="flex items-center justify-center py-10">
-            <Loader2 className="w-5 h-5 animate-spin text-gray-300 dark:text-gray-600" />
-          </div>
-        ) : notifications.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-            <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mb-3">
-              <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600" />
-            </div>
-            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
-              Hozircha bildirishnomalar yo'q
-            </p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-              Yangi faoliyat bo'lganda bu yerda ko'rinadi
-            </p>
-          </div>
-        ) : (
-          <>
-            {notifications.slice(0, 5).map(item => (
-              <NotifRow key={item.id} item={item} onClick={handleNotifClick} />
-            ))}
-            {notifications.length >= 30 && (
-              <button
-                onClick={loadMore}
-                className="w-full flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
-              >
-                <ChevronDown className="w-3.5 h-3.5" />
-                Ko'proq yuklash
-              </button>
-            )}
-          </>
-        )}
-      </div>
-
-      {/* Footer — always visible */}
-      <div className="border-t border-gray-200/60 dark:border-white/[0.06]">
-        <button
-          onClick={() => { setOpen(false); navigate('/notifications') }}
-          className="w-full flex items-center justify-center gap-2 py-2.5 text-[11px] font-semibold text-sahifa-600 dark:text-sahifa-400 hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors"
-        >
-          <LayoutList className="w-3.5 h-3.5" />
-          Barchasini ko'rish →
-        </button>
-      </div>
-    </motion.div>
-  )
-
   return (
     <>
-      {/* Wiggle keyframes (injected once via global style) */}
+      {/* Wiggle keyframes */}
       <style>{`
         @keyframes wiggle {
           0%, 100% { transform: rotate(0deg); }
@@ -235,15 +155,11 @@ const NotificationBell: React.FC = () => {
         .animate-wiggle { animation: wiggle 0.6s ease-in-out; }
       `}</style>
 
-      {/* ── Bell button ──────────────────────────────────────────────────── */}
+      {/* ── Bell button ─────────────────────────────────────────────── */}
       <button
         ref={buttonRef}
         onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => {
-          e.stopPropagation()
-          console.log('🔔 Notification bell clicked! Modal/Dropdown triggered.')
-          setOpen(prev => !prev)
-        }}
+        onClick={handleBellClick}
         className={`
           relative w-10 h-10 flex items-center justify-center rounded-2xl
           cursor-pointer
@@ -257,22 +173,131 @@ const NotificationBell: React.FC = () => {
       >
         <Bell className="w-[18px] h-[18px]" />
 
-        {/* Badge */}
-        {badgeText && (
-          <motion.span
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-sahifa-500 text-white text-[9px] font-bold leading-none shadow-glow-sm"
-          >
-            {badgeText}
-          </motion.span>
-        )}
+        {/* Badge — pops in when count arrives */}
+        <AnimatePresence>
+          {badgeText && (
+            <motion.span
+              key="badge"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+              className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full bg-sahifa-500 text-white text-[9px] font-bold leading-none shadow-glow-sm"
+            >
+              {badgeText}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </button>
 
-      {/* ── Dropdown portaled to document.body ───────────────────────────── */}
-      <AnimatePresence>
-        {open && createPortal(dropdownPanel, document.body)}
-      </AnimatePresence>
+      {/* ── Portal: Backdrop + Dropdown (AnimatePresence INSIDE portal) ── */}
+      {createPortal(
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              key="notif-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="fixed inset-0 z-[9998]"
+            >
+              {/* Backdrop — semi-transparent, click to close */}
+              <div
+                className="absolute inset-0 bg-black/10"
+                onClick={() => setOpen(false)}
+              />
+
+              {/* Dropdown panel — glassmorphism */}
+              <motion.div
+                ref={dropdownRef}
+                initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                transition={{ type: 'spring', stiffness: 420, damping: 30 }}
+                className="
+                  absolute top-[60px] right-5
+                  w-[calc(100vw-2rem)] sm:w-[380px]
+                  bg-white/80 dark:bg-[#1C1C22]/90
+                  backdrop-blur-xl
+                  border border-gray-200/60 dark:border-white/[0.12]
+                  rounded-2xl
+                  shadow-2xl shadow-black/15 dark:shadow-black/40
+                  overflow-hidden
+                "
+                onClick={(e) => e.stopPropagation()}
+              >
+                {/* Header */}
+                <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200/60 dark:border-white/[0.06]">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-white">
+                    Bildirishnomalar
+                  </h3>
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={handleMarkAllRead}
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-700 dark:hover:text-sahifa-300 transition-colors"
+                    >
+                      <CheckCheck className="w-3.5 h-3.5" />
+                      Barchasini o'qish
+                    </button>
+                  )}
+                </div>
+
+                {/* List */}
+                <div
+                  className="overflow-y-auto divide-y divide-gray-100 dark:divide-white/[0.04]"
+                  style={{ maxHeight: '360px' }}
+                >
+                  {loading && notifications.length === 0 ? (
+                    <div className="flex items-center justify-center py-10">
+                      <Loader2 className="w-5 h-5 animate-spin text-gray-300 dark:text-gray-600" />
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                      <div className="w-12 h-12 rounded-2xl bg-gray-100 dark:bg-white/[0.04] flex items-center justify-center mb-3">
+                        <Bell className="w-5 h-5 text-gray-300 dark:text-gray-600" />
+                      </div>
+                      <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                        Hozircha bildirishnomalar yo'q
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                        Yangi faoliyat bo'lganda bu yerda ko'rinadi
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      {notifications.slice(0, 5).map(item => (
+                        <NotifRow key={item.id} item={item} onClick={handleNotifClick} />
+                      ))}
+                      {notifications.length > 5 && (
+                        <button
+                          onClick={loadMore}
+                          className="w-full flex items-center justify-center gap-1.5 py-3 text-[11px] font-medium text-gray-500 dark:text-gray-400 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
+                        >
+                          <ChevronDown className="w-3.5 h-3.5" />
+                          Ko'proq yuklash
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="border-t border-gray-200/60 dark:border-white/[0.06]">
+                  <button
+                    onClick={() => { setOpen(false); navigate('/notifications') }}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 text-[11px] font-semibold text-sahifa-600 dark:text-sahifa-400 hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 transition-colors"
+                  >
+                    <LayoutList className="w-3.5 h-3.5" />
+                    Barchasini ko'rish →
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </>
   )
 }

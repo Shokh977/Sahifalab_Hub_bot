@@ -10,7 +10,7 @@
  * Tapping anywhere navigates to /cabinet.
  */
 
-import React, { useState } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ChevronRightIcon, ClockIcon, TrophyIcon } from '@heroicons/react/24/outline'
@@ -59,19 +59,54 @@ const GlobalProgressBar: React.FC = () => {
   const photoUrl = (!photoError && rawPhoto) ? rawPhoto : null
 
   // Don't render until profile is loaded (avoids flash of level 1)
-  if (!isInitialized) return null
+  // SWR: read cached XP/level for instant render (no flash of empty bar)
+  const cached = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('sahifa:xp_cache')
+      return raw ? JSON.parse(raw) : null
+    } catch { return null }
+  }, [])
 
-  const progress        = levelProgress(totalXP)
-  const { start, end }  = levelBounds(level)
-  const xpInLevel       = totalXP - start
+  // Persist live values to localStorage when store initializes
+  useEffect(() => {
+    if (isInitialized) {
+      localStorage.setItem('sahifa:xp_cache', JSON.stringify({ totalXP, level, focusSeconds }))
+    }
+  }, [isInitialized, totalXP, level, focusSeconds])
+
+  // Display values: use live data when ready, otherwise cached
+  const displayXP    = isInitialized ? totalXP       : (cached?.totalXP ?? 0)
+  const displayLevel = isInitialized ? level         : (cached?.level ?? 1)
+  const displayFocus = isInitialized ? focusSeconds  : (cached?.focusSeconds ?? 0)
+
+  // Skeleton when no data at all (first-ever visit)
+  if (!isInitialized && !cached) {
+    return (
+      <div className="sticky top-0 z-50 bg-white/88 dark:bg-[#0F0F0F]/92 backdrop-blur-xl border-b border-gray-200/70 dark:border-[#2A2A2A] px-4 py-2.5">
+        <div className="max-w-[1200px] mx-auto flex items-center gap-3">
+          <div className="w-10 h-10 rounded-2xl bg-gray-200 dark:bg-[#2A2A2A] animate-pulse" />
+          <div className="flex-1 space-y-1.5">
+            <div className="h-3 w-24 bg-gray-200 dark:bg-[#2A2A2A] rounded animate-pulse" />
+            <div className="h-2 w-full bg-gray-100 dark:bg-[#1A1A1A] rounded-full" />
+          </div>
+          <div className="hidden sm:block w-16 h-8 rounded-2xl bg-gray-100 dark:bg-[#1A1A1A] animate-pulse" />
+          <div className="w-10 h-10 rounded-2xl bg-gray-100 dark:bg-[#1A1A1A] animate-pulse" />
+        </div>
+      </div>
+    )
+  }
+
+  const progress        = levelProgress(displayXP)
+  const { start, end }  = levelBounds(displayLevel)
+  const xpInLevel       = displayXP - start
   const xpForLevel      = end - start
-  const grad            = levelGradient(level)
+  const grad            = levelGradient(displayLevel)
 
   return (
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Daraja ${level} — kabinetni ochish`}
+      aria-label={`Daraja ${displayLevel} — kabinetni ochish`}
       className="sticky top-0 z-50 bg-white/88 dark:bg-[#0F0F0F]/92 backdrop-blur-xl border-b border-gray-200/70 dark:border-[#2A2A2A] px-4 py-2.5 cursor-pointer select-none active:opacity-80 transition-all duration-300"
       onClick={() => navigate('/cabinet')}
       onKeyDown={(e) => e.key === 'Enter' && navigate('/cabinet')}
@@ -98,7 +133,7 @@ const GlobalProgressBar: React.FC = () => {
             <div
               className="absolute -bottom-1 -right-1 min-w-[20px] h-5 px-1 rounded-full bg-sahifa-500 flex items-center justify-center shadow-sm text-white text-[9px] font-black border border-white dark:border-[#0F0F0F]"
             >
-              {level}
+              {displayLevel}
             </div>
           )}
         </div>
@@ -107,8 +142,8 @@ const GlobalProgressBar: React.FC = () => {
         <div className="flex-1 min-w-0 space-y-1">
           <div className="flex justify-between items-center">
             <span className="text-xs font-semibold text-gray-900 dark:text-white truncate flex items-center gap-1.5">
-              <span className="text-sahifa-500">Level {level}</span>
-              <span className="text-gray-400 dark:text-gray-500 font-medium truncate">{levelLabel(level)}</span>
+              <span className="text-sahifa-500">Level {displayLevel}</span>
+              <span className="text-gray-400 dark:text-gray-500 font-medium truncate">{levelLabel(displayLevel)}</span>
             </span>
             <span className="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums ml-2 flex-shrink-0">
               {xpInLevel.toLocaleString()}&nbsp;/&nbsp;{xpForLevel.toLocaleString()}&nbsp;XP
@@ -129,7 +164,7 @@ const GlobalProgressBar: React.FC = () => {
         <div className="hidden sm:flex flex-shrink-0 items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 rounded-2xl px-3 py-2 bg-gray-50 dark:bg-[#1A1A1A] border border-gray-200/70 dark:border-[#2A2A2A]">
           <ClockIcon className="w-3.5 h-3.5" />
           <span className="font-mono font-semibold tabular-nums text-sahifa-500/80 dark:text-sahifa-400/80">
-            {formatFocusTime(focusSeconds)}
+            {formatFocusTime(displayFocus)}
           </span>
         </div>
 

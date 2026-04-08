@@ -31,27 +31,46 @@ export function onNewNotifications(cb: ToastCallback) {
 
 export function useNotifications(userId: number | null) {
   const [notifications, setNotifications] = useState<NotificationItem[]>([])
-  const [unreadCount, setUnreadCount] = useState(0)
+  const [unreadCount, setUnreadCount] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem('sahifa:notif_count') || '0', 10) }
+    catch { return 0 }
+  })
   const [loading, setLoading] = useState(false)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null)
+  const listFetchedRef = useRef(false)
 
-  // ── Fetch initial data ────────────────────────────────────────────────────
-  const fetchInitial = useCallback(async () => {
+  // ── Fetch just unread count (lightweight — single integer) ────────────────
+  const fetchUnreadCount = useCallback(async () => {
     if (!userId) return
-    setLoading(true)
+    console.time('⏱️ NotifCount_Fetch')
     try {
-      const [notifRes, countRes] = await Promise.all([
-        apiService.client.get('/api/notifications', { params: { limit: 30 } }),
-        apiService.client.get('/api/notifications/unread-count'),
-      ])
-      const items: NotificationItem[] = notifRes.data?.notifications ?? []
+      const res = await apiService.client.get('/api/notifications/unread-count')
+      const count: number = res.data?.count ?? 0
+      setUnreadCount(count)
+      localStorage.setItem('sahifa:notif_count', String(count))
+    } catch (err) {
+      console.warn('[Notifications] count fetch error:', err)
+    }
+    console.timeEnd('⏱️ NotifCount_Fetch')
+  }, [userId])
+
+  // ── Fetch full notification list (on demand — called when dropdown opens) ─
+  const fetchNotifications = useCallback(async () => {
+    if (!userId || listFetchedRef.current) return
+    listFetchedRef.current = true
+    setLoading(true)
+    console.time('⏱️ NotifList_Fetch')
+    try {
+      const res = await apiService.client.get('/api/notifications', { params: { limit: 30 } })
+      const items: NotificationItem[] = res.data?.notifications ?? []
       items.forEach(n => _cache.set(n.id, n))
       setNotifications(items)
-      setUnreadCount(countRes.data?.count ?? 0)
     } catch (err) {
-      console.warn('[Notifications] fetch error:', err)
+      console.warn('[Notifications] list fetch error:', err)
+      listFetchedRef.current = false
     }
     setLoading(false)
+    console.timeEnd('⏱️ NotifList_Fetch')
   }, [userId])
 
   // ── Fetch single notification by id (post-fetch for Realtime INSERT) ──────
@@ -69,10 +88,11 @@ export function useNotifications(userId: number | null) {
     }
   }, [])
 
-  // ── Subscribe to Supabase Realtime ────────────────────────────────────────
+  // ── On mount: fetch count + subscribe to Realtime ─────────────────────────
   useEffect(() => {
     if (!userId || !isSupabaseConfigured) return
-    fetchInitial()
+    console.time('⏱️ StatusBar_Fetch')
+    fetchUnreadCount().then(() => console.timeEnd('⏱️ StatusBar_Fetch'))
 
     const channel = supabase
       .channel(`notif:${userId}`)
@@ -112,7 +132,11 @@ export function useNotifications(userId: number | null) {
             if (prev.some(n => n.id === item.id)) return prev
             return [item, ...prev]
           })
-          setUnreadCount(prev => prev + 1)
+          setUnreadCount(prev => {
+            const next = prev + 1
+            localStorage.setItem('sahifa:notif_count', String(next))
+            return next
+          })
 
           // Fire toast callback
           if (_toastCallback) _toastCallback([item])
@@ -126,7 +150,7 @@ export function useNotifications(userId: number | null) {
       channel.unsubscribe()
       channelRef.current = null
     }
-  }, [userId, fetchInitial, fetchById])
+  }, [userId, fetchUnreadCount, fetchById])
 
   // ── Mark as read ──────────────────────────────────────────────────────────
   const markRead = useCallback(async (ids?: number[]) => {
@@ -141,8 +165,13 @@ export function useNotifications(userId: number | null) {
       const idsToMark = ids ?? null
       if (!idsToMark) {
         setUnreadCount(0)
+        localStorage.setItem('sahifa:notif_count', '0')
       } else {
-        setUnreadCount(prev => Math.max(0, prev - idsToMark.length))
+        setUnreadCount(prev => {
+          const next = Math.max(0, prev - idsToMark.length)
+          localStorage.setItem('sahifa:notif_count', String(next))
+          return next
+        })
       }
 
       await apiService.client.post('/api/notifications/read', {
@@ -150,10 +179,9 @@ export function useNotifications(userId: number | null) {
       })
     } catch (err) {
       console.warn('[Notifications] mark-read error:', err)
-      // Revert on failure
-      fetchInitial()
+      fetchUnreadCount()
     }
-  }, [userId, fetchInitial])
+  }, [userId, fetchUnreadCount])
 
   // ── Load more (keyset pagination) ─────────────────────────────────────────
   const loadMore = useCallback(async () => {
@@ -175,6 +203,7 @@ export function useNotifications(userId: number | null) {
     loading,
     markRead,
     loadMore,
-    refetch: fetchInitial,
+    fetchNotifications,
+    refetch: fetchUnreadCount,
   }
 }

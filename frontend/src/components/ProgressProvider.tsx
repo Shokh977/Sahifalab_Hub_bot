@@ -25,7 +25,10 @@ const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children })
   // ── 1. Initialize store when Telegram user is available ─────────────────
   useEffect(() => {
     if (user?.id) {
-      init(user.id, user.first_name, user.username)
+      console.time('⏱️ ProgressStore_Init')
+      init(user.id, user.first_name, user.username).then(() => {
+        console.timeEnd('⏱️ ProgressStore_Init')
+      })
     }
   }, [user?.id])  // re-run only if the user id changes
 
