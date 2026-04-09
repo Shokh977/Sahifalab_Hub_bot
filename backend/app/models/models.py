@@ -80,6 +80,36 @@ class UserBadge(Base):
     __table_args__ = (UniqueConstraint("user_id", "badge_key", name="uq_user_badge"),)
 
 
+class PlannerTask(Base):
+    """Kanban task card — per-user workspace planner."""
+    __tablename__ = "planner_tasks"
+
+    id               = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id          = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    title            = Column(Text, nullable=False)
+    description      = Column(Text, nullable=True)
+    status           = Column(String(20), default="todo")       # todo | in_progress | done
+    priority         = Column(String(10), default="medium")     # low | medium | high
+    sort_order       = Column(Integer, default=0)
+    linked_course_id = Column(Integer, nullable=True)
+    linked_lesson_id = Column(Integer, nullable=True)
+    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class PlannerNote(Base):
+    """Simple markdown note — per-user workspace planner."""
+    __tablename__ = "planner_notes"
+
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    title      = Column(Text, default="")
+    content    = Column(Text, default="")
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
 class TeacherProfile(Base):
     """Teacher application data — mirrors the Supabase 'teacher_profiles' table."""
     __tablename__ = "teacher_profiles"
