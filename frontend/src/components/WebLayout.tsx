@@ -336,9 +336,17 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
           </Link>
         )}
         <div className="flex items-center justify-between">
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            @Sahifalab_hub_bot
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              @Sahifalab_hub_bot
+            </span>
+            <Link
+              to="/terms"
+              className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
+            >
+              Foydalanish shartlari
+            </Link>
+          </div>
           <div className="flex items-center gap-1">
             <ThemeToggle />
           </div>

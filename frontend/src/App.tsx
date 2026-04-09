@@ -12,6 +12,7 @@ import KitoblarPage from './pages/KitoblarPage'
 import BookDetailPage from './pages/BookDetailPage'
 import ResourcesPage from './pages/ResourcesPage'
 import AboutPage from './pages/AboutPage'
+import TermsPage from './pages/TermsPage'
 import AdminPage from './pages/AdminPage'
 import CabinetPage from './pages/CabinetPage'
 import LeaderboardPage from './pages/LeaderboardPage'
@@ -151,6 +152,14 @@ const HomePage: React.FC = () => {
         <p className="text-[10px] text-slate-500 dark:text-slate-600">
           Powered by SAHIFALAB · 2026
         </p>
+        <p className="text-[10px]">
+          <a
+            href="/terms"
+            className="text-slate-400 dark:text-slate-500 hover:text-sahifa-500 transition-colors"
+          >
+            Foydalanish shartlari
+          </a>
+        </p>
       </motion.footer>
     </main>
   )
@@ -224,6 +233,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/profile/:userId" element={<PublicProfile />} />
           <Route path="/teachers"        element={<TeachersGalleryPage />} />
           <Route path="/about"           element={<AboutPage />} />
+          <Route path="/terms"           element={<TermsPage />} />
           <Route path="/leaderboard"     element={<LeaderboardPage />} />
 
           {/* ── Protected — AuthGuard redirects guests to /login ──────── */}

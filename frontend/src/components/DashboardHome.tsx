@@ -644,7 +644,15 @@ const DashboardHome: React.FC = () => {
       
       <footer className="text-center space-y-1.5 pb-2">
         <p className="text-[11px] text-slate-400 dark:text-slate-500">@Sahifalab_hub_bot</p>
-        <p className="text-[10px] text-slate-500 dark:text-slate-600">Powered by SAHIFALAB Â· 2026</p>
+        <p className="text-[10px] text-slate-500 dark:text-slate-600">Powered by SAHIFALAB · 2026</p>
+        <p className="text-[10px]">
+          <a
+            href="/terms"
+            className="text-slate-400 dark:text-slate-500 hover:text-sahifa-500 transition-colors"
+          >
+            Foydalanish shartlari
+          </a>
+        </p>
       </footer>
     </div>
   )
