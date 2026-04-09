@@ -1,11 +1,12 @@
 /**
  * BookDetailPage — /kitoblar/:id
  * Shows full book info.
- * Free books → direct download.
- * Paid books → Telegram Stars / Click / Payme payment flow with purchase check.
+ * Free books  → "O'qish" (reader) + "Yuklab olish" (download).
+ * Paid+bought → "O'qish" (reader) + "Yuklab olish" (download).
+ * Paid+locked → PaymentSection (buy flow).
  */
 import React, { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import apiService from '@services/apiService'
 import { fetchBook, fetchMyRating } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
@@ -13,6 +14,7 @@ import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
 import { usePlatform } from '../hooks/usePlatform'
 import { ArrowDownTrayIcon, ArrowLeftIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import { BookOpen } from 'lucide-react'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -296,15 +298,21 @@ const BookDetailPage: React.FC = () => {
             purchaseChecking ? (
               <div className="h-12 bg-gray-100 dark:bg-gray-700 rounded-2xl animate-pulse" />
             ) : purchased ? (
-              /* Already purchased → show download */
-              <div className="space-y-2">
+              /* Already purchased → O’qish + Download */
+              <div className="space-y-2.5">
                 <div className="text-center text-xs text-green-600 dark:text-green-400 font-medium bg-green-50 dark:bg-green-900/20 rounded-xl py-2">
                   Siz bu kitobni sotib olgansiz
                 </div>
+                <Link
+                  to={`/read/${book.id}`}
+                  className="w-full flex items-center justify-center gap-2 bg-[#F15929] hover:bg-orange-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow-md transition-all"
+                >
+                  <BookOpen className="w-4 h-4" /> O‘qishni boshlash
+                </Link>
                 <button
                   onClick={handleDownload}
                   disabled={downloading || !book.file_url}
-                  className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 active:scale-95 text-slate-700 dark:text-slate-200 font-medium py-3 rounded-2xl transition-all disabled:opacity-50 text-sm"
                 >
                   {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
                 </button>
@@ -314,18 +322,24 @@ const BookDetailPage: React.FC = () => {
               <PaymentSection book={book} telegramId={effectiveUserId ?? 0} isTelegram={isTelegram} onPurchased={() => setPurchased(true)} />
             )
           ) : (
-            /* Free book → download */
-            <div>
+            /* Free book → O’qish (primary) + Download (secondary) */
+            <div className="space-y-2.5">
+              <Link
+                to={`/read/${book.id}`}
+                className="w-full flex items-center justify-center gap-2 bg-[#F15929] hover:bg-orange-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow-md transition-all"
+              >
+                <BookOpen className="w-4 h-4" /> O‘qishni boshlash
+              </Link>
               <button
                 onClick={handleDownload}
                 disabled={downloading || !book.file_url}
-                className="w-full flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all disabled:opacity-50"
+                className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 active:scale-95 text-slate-700 dark:text-slate-200 font-medium py-3 rounded-2xl transition-all disabled:opacity-50 text-sm"
               >
                 {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
               </button>
               {!book.file_url && (
-                <p className="text-xs text-center text-gray-400 dark:text-gray-500 mt-2">
-                  Fayl hali qo'shilmagan
+                <p className="text-xs text-center text-gray-400 dark:text-gray-500">
+                  Fayl hali qo’shilmagan
                 </p>
               )}
             </div>

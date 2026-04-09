@@ -261,6 +261,13 @@ class BookRateRequest(BaseModel):
     telegram_id: int
     rating: int  # 1-5
 
+
+class BookProgressRequest(BaseModel):
+    telegram_id: int
+    page_number: int = 1
+    cfi: Optional[str] = None
+    percent: float = 0
+
 class BookResponse(BaseModel):
     id: int
     title: str

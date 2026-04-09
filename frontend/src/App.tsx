@@ -43,6 +43,8 @@ import PublicProfile from './pages/PublicProfile'
 import DiscoverUsers from './pages/DiscoverUsers'
 import NotificationsPage from './pages/NotificationsPage'
 import WorkspacePage from './pages/WorkspacePage'
+import { lazy, Suspense } from 'react'
+const BookReaderPage = lazy(() => import('./pages/BookReaderPage'))
 
 /** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
 const TeacherRedirect: React.FC = () => {
@@ -240,6 +242,11 @@ const AppRoutes: React.FC = () => {
           <Route element={<AuthGuard />}>
             <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
             <Route path="/workspace"      element={<WorkspacePage />} />
+            <Route path="/read/:bookId"   element={
+              <Suspense fallback={<div className="fixed inset-0 z-[200] bg-white dark:bg-[#0f0f18] flex items-center justify-center"><div className="w-9 h-9 border-2 border-[#F15929]/25 border-t-[#F15929] rounded-full animate-spin" /></div>}>
+                <BookReaderPage />
+              </Suspense>
+            } />
             <Route path="/quiz"           element={<QuizPage />} />
             <Route path="/kitoblar"       element={<KitoblarPage />} />
             <Route path="/kitoblar/:id"   element={<BookDetailPage />} />

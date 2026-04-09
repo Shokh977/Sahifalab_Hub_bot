@@ -154,7 +154,18 @@ class ApiService {
     })
   }
 
-  // Resources endpoints
+  async getBookProgress(bookId: number, telegramId: number) {
+    return this.axiosInstance.get(`/api/books/${bookId}/progress`, {
+      params: { telegram_id: telegramId },
+    })
+  }
+
+  async saveBookProgress(
+    bookId: number,
+    data: { telegram_id: number; page_number: number; cfi?: string | null; percent: number },
+  ) {
+    return this.axiosInstance.post(`/api/books/${bookId}/progress`, data)
+  }
   async getResources() {
     return this.axiosInstance.get('/api/resources')
   }

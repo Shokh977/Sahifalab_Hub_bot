@@ -332,6 +332,21 @@ class BookRating(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class BookReadProgress(Base):
+    """Tracks per-user reading position for the in-app book reader."""
+    __tablename__ = "book_read_progress"
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    book_id     = Column(Integer, ForeignKey("book.id", ondelete="CASCADE"), nullable=False, index=True)
+    telegram_id = Column(BigInteger, nullable=False, index=True)
+    page_number = Column(Integer, default=1)      # PDF: last read page number
+    cfi         = Column(Text, nullable=True)      # EPUB: epub.js CFI string
+    percent     = Column(Float, default=0)         # 0–100
+    updated_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("book_id", "telegram_id", name="uq_book_read_progress"),)
+
+
 class Resource(Base):
     __tablename__ = "resource"
     

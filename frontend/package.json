@@ -27,6 +27,8 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-helmet-async": "^3.0.0",
+    "react-pdf": "^7.7.3",
+    "react-reader": "^2.0.15",
     "react-router-dom": "^6.20.0",
     "zustand": "^4.4.0"
   },

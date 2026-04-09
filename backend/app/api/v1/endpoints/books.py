@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import func
 from sqlalchemy.orm import Session
-from datetime import datetime
+from datetime import datetime, UTC
 from app.db.session import get_db
-from app.models.models import Book, BookRating
-from app.schemas.schemas import BookResponse, BookCreate, BookRateRequest
+from app.models.models import Book, BookRating, BookReadProgress
+from app.schemas.schemas import BookResponse, BookCreate, BookRateRequest, BookProgressRequest
 
 router = APIRouter()
 
@@ -117,6 +117,50 @@ async def create_book(book_data: BookCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_book)
     return db_book
+
+
+@router.get("/{book_id}/progress")
+async def get_book_progress(
+    book_id: int,
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+):
+    """Return the user's saved reading position for a book."""
+    row = db.query(BookReadProgress).filter(
+        BookReadProgress.book_id == book_id,
+        BookReadProgress.telegram_id == telegram_id,
+    ).first()
+    if not row:
+        return {"page_number": 1, "cfi": None, "percent": 0}
+    return {"page_number": row.page_number, "cfi": row.cfi, "percent": row.percent}
+
+
+@router.post("/{book_id}/progress")
+async def save_book_progress(
+    book_id: int,
+    body: BookProgressRequest,
+    db: Session = Depends(get_db),
+):
+    """Upsert the user's reading position for a book."""
+    existing = db.query(BookReadProgress).filter(
+        BookReadProgress.book_id == book_id,
+        BookReadProgress.telegram_id == body.telegram_id,
+    ).first()
+    if existing:
+        existing.page_number = body.page_number
+        existing.cfi = body.cfi
+        existing.percent = body.percent
+        existing.updated_at = datetime.now(UTC)
+    else:
+        db.add(BookReadProgress(
+            book_id=book_id,
+            telegram_id=body.telegram_id,
+            page_number=body.page_number,
+            cfi=body.cfi,
+            percent=body.percent,
+        ))
+    db.commit()
+    return {"success": True}
 
 @router.put("/{book_id}", response_model=BookResponse)
 async def update_book(
