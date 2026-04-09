@@ -7,7 +7,6 @@ import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
 import DashboardHome from './components/DashboardHome'
 import ThemeToggle from './components/ThemeToggle'
-import StudyWithMe from './pages/StudyPage'
 import QuizPage from './pages/QuizPage'
 import KitoblarPage from './pages/KitoblarPage'
 import BookDetailPage from './pages/BookDetailPage'
@@ -42,6 +41,7 @@ import SlouthMessenger from './pages/SlouthMessenger'
 import PublicProfile from './pages/PublicProfile'
 import DiscoverUsers from './pages/DiscoverUsers'
 import NotificationsPage from './pages/NotificationsPage'
+import WorkspacePage from './pages/WorkspacePage'
 
 /** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
 const TeacherRedirect: React.FC = () => {
@@ -228,7 +228,8 @@ const AppRoutes: React.FC = () => {
 
           {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
           <Route element={<AuthGuard />}>
-            <Route path="/study"          element={<StudyWithMe />} />
+            <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
+            <Route path="/workspace"      element={<WorkspacePage />} />
             <Route path="/quiz"           element={<QuizPage />} />
             <Route path="/kitoblar"       element={<KitoblarPage />} />
             <Route path="/kitoblar/:id"   element={<BookDetailPage />} />

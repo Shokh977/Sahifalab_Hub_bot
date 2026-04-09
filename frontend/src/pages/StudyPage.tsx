@@ -308,7 +308,34 @@ function playAlarm() {
   } catch {}
 }
 
-export const StudyWithMe: React.FC = () => {
+// ── Exported timer state type for mini-indicator in WorkspacePage ─────────────
+export interface StudyTimerState {
+  isRunning: boolean
+  isBreak:   boolean
+  formatted: string
+  remaining: number
+  sessionXP: number
+}
+
+/**
+ * StudyTimer — the full-featured "Study with me" experience.
+ *
+ * Can run as a standalone page (embedded=false, default) or embedded inside
+ * another page like WorkspacePage (embedded=true — skips page-level chrome).
+ *
+ * onTimerStateChange fires on every tick so the parent can show a mini-indicator.
+ */
+export interface StudyTimerProps {
+  /** When true, renders without page header / PageWrapper */
+  embedded?: boolean
+  /** Callback with live timer state for mini-indicator in parent */
+  onTimerStateChange?: (state: StudyTimerState) => void
+}
+
+export const StudyTimer: React.FC<StudyTimerProps> = ({
+  embedded = false,
+  onTimerStateChange,
+}) => {
   const sound = useAmbientSound()
 
   const [sounds, setSounds]             = useState<SoundFromDB[]>([])
@@ -332,6 +359,11 @@ export const StudyWithMe: React.FC = () => {
   // -- Focus XP tracking ----------------------------------------------------
   const { addFocusSeconds, syncToSupabase, pingPresence } = useProgressStore()
   const [motivBurst, setMotivBurst]   = useState(false)
+
+  // Session-local XP counter (+1 XP per minute of focus)
+  const [sessionXP, setSessionXP]     = useState(0)
+  const sessionStartRef = useRef<number | null>(null)
+
   const focusStartRef    = useRef<number | null>(null)
   const prevIsRunningRef = useRef(timer.isRunning)
   const prevIsBreakRef   = useRef(timer.isBreak)
@@ -342,9 +374,12 @@ export const StudyWithMe: React.FC = () => {
     prevIsRunningRef.current = timer.isRunning
     prevIsBreakRef.current   = timer.isBreak
 
+    // Focus started
     if (!wasRunning && timer.isRunning && !timer.isBreak) {
       focusStartRef.current = Date.now()
+      if (!sessionStartRef.current) sessionStartRef.current = Date.now()
     }
+    // Focus paused/stopped → sync XP
     if (wasRunning && !timer.isRunning && !wasBreak) {
       if (focusStartRef.current) {
         const elapsed = Math.floor((Date.now() - focusStartRef.current) / 1000)
@@ -353,6 +388,26 @@ export const StudyWithMe: React.FC = () => {
       }
     }
   }, [timer.isRunning, timer.isBreak, addFocusSeconds, syncToSupabase])
+
+  // Live session XP: +1 XP per minute of active (non-break) focus
+  useEffect(() => {
+    if (!timer.isRunning || timer.isBreak) return
+    const iv = setInterval(() => {
+      setSessionXP(prev => prev + 1) // +1 XP per minute
+    }, 60_000)
+    return () => clearInterval(iv)
+  }, [timer.isRunning, timer.isBreak])
+
+  // Notify parent of timer state changes (for mini-indicator)
+  useEffect(() => {
+    onTimerStateChange?.({
+      isRunning:  timer.isRunning,
+      isBreak:    timer.isBreak,
+      formatted:  timer.formatted,
+      remaining:  timer.remaining,
+      sessionXP,
+    })
+  }, [timer.isRunning, timer.isBreak, timer.formatted, timer.remaining, sessionXP, onTimerStateChange])
 
   const handleComplete = useCallback(() => {
     if (!timer.isBreak) { timer.completeSession(); timer.startBreak() }
@@ -398,38 +453,41 @@ export const StudyWithMe: React.FC = () => {
 
   const activeSound = sound.isPlaying ? sounds.find(s => String(s.id) === sound.activeSound) : null
 
-  return (
-    <PageWrapper topPadding="" className="!px-0">
+  // ── Inner content (shared between embedded & standalone modes) ──────────
+  const timerContent = (
+    <>
       {/* Motivation Burst overlay */}
       <AnimatePresence>
         {motivBurst && <MotivationBurst onDone={() => setMotivBurst(false)} />}
       </AnimatePresence>
 
-      <div className="min-h-screen bg-slate-50 dark:bg-[#0A0A14] transition-colors">
-        <div className="max-w-5xl mx-auto px-4 sm:px-8 pt-6 pb-10 space-y-5">
+      <div className={embedded ? '' : 'min-h-screen bg-slate-50 dark:bg-[#0A0A14] transition-colors'}>
+        <div className={embedded ? 'space-y-5' : 'max-w-5xl mx-auto px-4 sm:px-8 pt-6 pb-10 space-y-5'}>
 
-          {/* ── Page header ─────────────────────────────────────────────────────────────── */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2.5">
-                <GraduationCap className="w-5 h-5 text-[#F15929]" />
-                Study With Sahifalab
-              </h1>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {timer.isBreak ? '🌿 Dam olish vaqti — biroz nafas ol' : '🎯 Diqqatni jamlang — sen uddalaysan'}
-              </p>
+          {/* ── Page header (standalone mode only) ──────────────────────────────── */}
+          {!embedded && (
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2.5">
+                  <GraduationCap className="w-5 h-5 text-[#F15929]" />
+                  Study With Sahifalab
+                </h1>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {timer.isBreak ? '🌿 Dam olish vaqti — biroz nafas ol' : '🎯 Diqqatni jamlang — sen uddalaysan'}
+                </p>
+              </div>
+              {timer.sessionsCompleted > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F15929]/10 border border-[#F15929]/25 text-[#F15929] text-xs font-bold"
+                >
+                  <Flame className="w-3 h-3" />
+                  {timer.sessionsCompleted} sessiya
+                </motion.div>
+              )}
             </div>
-            {timer.sessionsCompleted > 0 && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#F15929]/10 border border-[#F15929]/25 text-[#F15929] text-xs font-bold"
-              >
-                <Flame className="w-3 h-3" />
-                {timer.sessionsCompleted} sessiya
-              </motion.div>
-            )}
-          </div>
+          )}
 
           {/* ── Live Pulse banner ─────────────────────────────────────────────────────── */}
           <LivePulseBanner onMotivationReceived={() => { if (!motivBurst) setMotivBurst(true) }} />
@@ -694,10 +752,41 @@ export const StudyWithMe: React.FC = () => {
             </div>
           </div>
 
+          {/* ── Session XP counter — always visible ───────────────────────────── */}
+          <AnimatePresence>
+            {sessionXP > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 8 }}
+                className="flex items-center justify-center"
+              >
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-500/10 border border-emerald-500/25">
+                  <span className="text-emerald-500 text-sm">⚡</span>
+                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                    Ushbu sessiyada: +{sessionXP} XP
+                  </span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
         </div>
       </div>
+    </>
+  )
+
+  // ── Return: embedded mode skips PageWrapper chrome ─────────────────────
+  if (embedded) return timerContent
+
+  return (
+    <PageWrapper topPadding="" className="!px-0">
+      {timerContent}
     </PageWrapper>
   )
 }
+
+/** Page-level wrapper (legacy default export) — redirects /study to /workspace?tab=focus */
+export const StudyWithMe: React.FC = () => <StudyTimer embedded={false} />
 
 export default StudyWithMe

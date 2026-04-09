@@ -14,9 +14,9 @@ import {
   ArrowLeftOnRectangleIcon,
   Bars3Icon,
   BookOpenIcon,
+  BriefcaseIcon,
   ChatBubbleLeftRightIcon,
   ChevronRightIcon,
-  ClockIcon,
   CpuChipIcon,
   GlobeAltIcon,
   HomeIcon,
@@ -65,8 +65,8 @@ const NAV_HOME: NavItem[] = [
 
 const NAV_LEARNING: NavItem[] = [
   { icon: AcademicCapIcon, label: 'Kurslar', path: '/courses' },
+  { icon: BriefcaseIcon,   label: 'Ish joyi', path: '/workspace' },
   { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
-  { icon: ClockIcon, label: "O'qish", path: '/study' },
   { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
   { icon: LinkIcon, label: 'Resurslar', path: '/resources' },
   { icon: CpuChipIcon, label: 'SAHIFALAB AI', path: '/ai-companion' },

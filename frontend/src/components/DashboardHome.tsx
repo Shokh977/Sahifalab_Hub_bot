@@ -99,7 +99,7 @@ const HeroBanner: React.FC<{
   const navigate = useNavigate()
 
   const PILLS = [
-    { icon: Clock,          label: "O'qish",   path: '/study',        },
+    { icon: Clock,          label: "O'qish",   path: '/workspace?tab=focus', },
     { icon: LayoutList, label: 'Test',     path: '/quiz',         },
     { icon: Cpu,        label: 'AI',       path: '/ai-companion', },
     { icon: BookOpen,       label: 'Kitoblar', path: '/kitoblar',     },
@@ -347,7 +347,7 @@ const FocusGoalCell: React.FC<{
       <div className="grid grid-cols-2 gap-4 mb-5">
         
         <button
-          onClick={() => navigate('/study')}
+          onClick={() => navigate('/workspace?tab=focus')}
           className="flex flex-col items-center gap-2 p-3 rounded-[16px] bg-slate-50 dark:bg-[#1A1A28] border border-slate-100 dark:border-[#2E2E3A] hover:border-sahifa-300 dark:hover:border-sahifa-800 transition-all"
         >
           <div className="relative w-20 h-20">

@@ -1160,7 +1160,7 @@ const CabinetPage: React.FC = () => {
           icon={Clock}
           label="O'qish sessiyasi"
           sublabel="Fokus timer + ambient sounds"
-          onClick={() => navigate('/study')}
+          onClick={() => navigate('/workspace?tab=focus')}
         />
         <MenuRow
           icon={Sparkles}

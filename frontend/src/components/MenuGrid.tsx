@@ -43,7 +43,7 @@ const MENU_ITEMS: MenuItem[] = [
     title: "Study",
     titleUz: "O'qish",
     description: 'Focus timer + ambient sounds',
-    path: '/study',
+    path: '/workspace?tab=focus',
   },
   {
     id: 'quiz',
