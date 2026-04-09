@@ -6,10 +6,14 @@
  */
 import React from 'react'
 import { motion } from 'framer-motion'
-import { BookOpen, ArrowRight, GraduationCap, Sparkles } from 'lucide-react'
-import { Link } from 'react-router-dom'
+import { BookOpen, ArrowRight, GraduationCap, Timer } from 'lucide-react'
 
-const CoursesTab: React.FC = () => {
+interface CoursesTabProps {
+  /** Called when the user clicks the Focus Room shortcut — switches tab in-place */
+  onFocusClick?: () => void
+}
+
+const CoursesTab: React.FC<CoursesTabProps> = ({ onFocusClick }) => {
   return (
     <div className="flex flex-col items-center py-8">
       {/* Hero illustration */}
@@ -61,19 +65,20 @@ const CoursesTab: React.FC = () => {
           <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-sahifa-500 group-hover:translate-x-0.5 transition-all" />
         </Link>
 
-        <Link
-          to="/workspace?tab=focus"
-          className="flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-[#222230] border border-slate-200/60 dark:border-white/5 shadow-sm hover:shadow-md hover:border-emerald-400/30 dark:hover:border-emerald-500/20 transition-all group"
+        <button
+          type="button"
+          onClick={onFocusClick}
+          className="w-full flex items-center gap-3 p-4 rounded-2xl bg-white dark:bg-[#222230] border border-slate-200/60 dark:border-white/5 shadow-sm hover:shadow-md hover:border-emerald-400/30 dark:hover:border-emerald-500/20 transition-all group text-left"
         >
           <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-500/20 transition-colors">
-            <Sparkles className="w-5 h-5 text-emerald-500" />
+            <Timer className="w-5 h-5 text-emerald-500" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-bold text-slate-800 dark:text-white">O'qish xonasi</p>
-            <p className="text-xs text-slate-400 dark:text-slate-500">Birga o'qish va ambient tovushlar</p>
+            <p className="text-sm font-bold text-slate-800 dark:text-white">Fokus xonasi</p>
+            <p className="text-xs text-slate-400 dark:text-slate-500">Birga o‘qish va ambient tovushlar</p>
           </div>
           <ArrowRight className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-emerald-500 group-hover:translate-x-0.5 transition-all" />
-        </Link>
+        </button>
       </motion.div>
 
       {/* Tip */}

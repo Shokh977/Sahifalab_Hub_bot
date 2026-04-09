@@ -6,7 +6,7 @@
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, X, FileText, Save, Edit3, Loader2 } from 'lucide-react'
+import { Plus, Trash2, X, FileText, Save, Edit3 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 
 const API = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
@@ -83,8 +83,30 @@ const NotesTab: React.FC = () => {
   // ── Render ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-sahifa-500" />
+      <div className="space-y-3 animate-pulse">
+        {/* Header skeleton */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-4 w-20 rounded-full bg-slate-200 dark:bg-slate-700" />
+          <div className="h-8 w-24 rounded-xl bg-slate-200 dark:bg-slate-700" />
+        </div>
+        {/* Note card skeletons */}
+        {[0, 1, 2].map(i => (
+          <div key={i} className="rounded-2xl bg-white dark:bg-[#222230] border border-slate-200/60 dark:border-white/5 shadow-sm p-4">
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <div className="h-4 w-1/2 rounded-full bg-slate-200 dark:bg-slate-700" />
+              <div className="flex gap-1">
+                <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800" />
+                <div className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <div className="h-3 rounded-full bg-slate-100 dark:bg-slate-800" />
+              <div className="h-3 w-4/5 rounded-full bg-slate-100 dark:bg-slate-800" />
+              <div className="h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800" />
+            </div>
+            <div className="h-3 w-16 rounded-full bg-slate-100 dark:bg-slate-800 mt-3" />
+          </div>
+        ))}
       </div>
     )
   }

@@ -321,7 +321,6 @@ const CabinetPage: React.FC = () => {
   }, [])
 
   const handleSaveProfile = useCallback(async () => {
-    if (!isWeb) return
     try {
       setProfileSaving(true)
       await apiService.updateMyProfile({
@@ -581,7 +580,8 @@ const CabinetPage: React.FC = () => {
       </div>
 
       {/* ═══ Bento Settings Form ═══ */}
-      {isWeb && editOpen && (
+      <AnimatePresence>
+      {editOpen && (
         <motion.div
           initial={{ opacity: 0, y: -8, height: 0 }}
           animate={{ opacity: 1, y: 0, height: 'auto' }}
@@ -660,6 +660,7 @@ const CabinetPage: React.FC = () => {
           </div>
         </motion.div>
       )}
+      </AnimatePresence>
 
       {/* ═══ Profile Strength Meter (Teachers only) ═══ */}
       {isTeacher && (() => {

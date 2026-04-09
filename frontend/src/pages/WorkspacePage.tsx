@@ -93,7 +93,7 @@ const WorkspacePage: React.FC = () => {
   const showMiniTimer = timerState.isRunning && activeTab !== 'focus'
 
   return (
-    <PageWrapper className="space-y-0">
+    <PageWrapper className="">
       {/* ── Header ────────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -193,62 +193,37 @@ const WorkspacePage: React.FC = () => {
       </div>
 
       {/* ── Tab content ───────────────────────────────────────────────── */}
-      <div className="relative min-h-[400px]">
-        {/*
-          StudyTimer is ALWAYS mounted to preserve timer + ambient sound state.
-          We toggle visibility with CSS so React doesn't unmount it.
-        */}
+      {/*
+        All tabs are lazy-mounted (mounted on first visit, never unmounted).
+        CSS 'hidden' keeps components alive — data, scroll and timer persist
+        across tab switches with 0 ms delay. No AnimatePresence needed.
+      */}
+      <div className="relative mt-6">
+        {/* Focus — always mounted so the timer + audio never stop */}
         <div className={activeTab === 'focus' ? '' : 'hidden'}>
-          <StudyTimer
-            embedded
-            onTimerStateChange={handleTimerStateChange}
-          />
+          <StudyTimer embedded onTimerStateChange={handleTimerStateChange} />
         </div>
 
-        {/* Other tabs use AnimatePresence for enter/exit transitions */}
-        <AnimatePresence mode="wait" custom={direction}>
-          {activeTab === 'kanban' && (
-            <motion.div
-              key="kanban"
-              custom={direction}
-              variants={tabVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              <KanbanBoard onPlayTask={handlePlayTask} />
-            </motion.div>
-          )}
+        {/* Kanban — mounted on first visit, kept alive thereafter */}
+        {mountedTabs.has('kanban') && (
+          <div className={activeTab === 'kanban' ? '' : 'hidden'}>
+            <KanbanBoard onPlayTask={handlePlayTask} />
+          </div>
+        )}
 
-          {activeTab === 'courses' && (
-            <motion.div
-              key="courses"
-              custom={direction}
-              variants={tabVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              <CoursesTab />
-            </motion.div>
-          )}
+        {/* Courses — mounted on first visit, kept alive thereafter */}
+        {mountedTabs.has('courses') && (
+          <div className={activeTab === 'courses' ? '' : 'hidden'}>
+            <CoursesTab onFocusClick={() => switchTab('focus')} />
+          </div>
+        )}
 
-          {activeTab === 'notes' && (
-            <motion.div
-              key="notes"
-              custom={direction}
-              variants={tabVariants}
-              initial="enter"
-              animate="center"
-              exit="exit"
-              transition={{ duration: 0.2, ease: 'easeOut' }}
-            >
-              <NotesTab />
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Notes — mounted on first visit, kept alive thereafter */}
+        {mountedTabs.has('notes') && (
+          <div className={activeTab === 'notes' ? '' : 'hidden'}>
+            <NotesTab />
+          </div>
+        )}
       </div>
     </PageWrapper>
   )
