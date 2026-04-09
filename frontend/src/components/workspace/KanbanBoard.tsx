@@ -21,7 +21,7 @@ import {
 import confetti from 'canvas-confetti'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Plus, GripVertical, Play, Trash2, X, Loader2,
+  Plus, GripVertical, Play, Trash2, X,
   ChevronDown, Sparkles,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
@@ -87,7 +87,7 @@ const Column: React.FC<ColumnProps> = ({ column, tasks, onPlayTask, onDeleteTask
         ${column.bg}
         ${isOver
           ? 'border-sahifa-400 dark:border-sahifa-500 ring-2 ring-sahifa-500/20 scale-[1.01]'
-          : 'border-slate-200/60 dark:border-white/5'
+          : 'border-slate-200/60 dark:border-white/10'
         }
       `}
     >
@@ -475,8 +475,35 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onPlayTask }) => {
   // ── Render ─────────────────────────────────────────────────────────────
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="w-6 h-6 animate-spin text-sahifa-500" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 animate-pulse">
+        {COLUMNS.map(col => (
+          <div key={col.id} className={`rounded-2xl p-3 min-h-[180px] border border-slate-200/60 dark:border-white/10 ${col.bg}`}>
+            {/* Column header skeleton */}
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <div className="w-5 h-5 rounded-md bg-slate-200 dark:bg-slate-700" />
+              <div className="h-4 w-20 rounded-full bg-slate-200 dark:bg-slate-700" />
+              <div className="ml-auto h-4 w-6 rounded-full bg-slate-200 dark:bg-slate-700" />
+            </div>
+            {/* Card skeletons */}
+            <div className="space-y-2">
+              {[0, 1].map(j => (
+                <div key={j} className="rounded-xl p-3 bg-white dark:bg-[#222230] border border-slate-200/70 dark:border-white/5 shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <div className="w-4 h-4 rounded mt-0.5 bg-slate-200 dark:bg-slate-700 flex-shrink-0" />
+                    <div className="flex-1 space-y-1.5">
+                      <div className="h-4 rounded-full bg-slate-200 dark:bg-slate-700" />
+                      <div className="h-3 w-2/3 rounded-full bg-slate-100 dark:bg-slate-800" />
+                    </div>
+                  </div>
+                  <div className="flex justify-between mt-2.5 pt-2 border-t border-slate-100 dark:border-white/5">
+                    <div className="h-4 w-10 rounded-full bg-slate-100 dark:bg-slate-800" />
+                    <div className="h-4 w-12 rounded-full bg-slate-100 dark:bg-slate-800" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     )
   }

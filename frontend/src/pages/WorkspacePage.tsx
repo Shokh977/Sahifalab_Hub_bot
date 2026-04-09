@@ -17,7 +17,7 @@
  *   • ?tab=focus URL param support (for /study → /workspace?tab=focus redirect).
  *   • Framer Motion horizontal slide transitions between other tabs.
  */
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { LayoutGrid, BookOpen, Timer, StickyNote, Briefcase, Pause, Zap } from 'lucide-react'
@@ -38,15 +38,6 @@ const TABS = [
 
 type TabKey = typeof TABS[number]['key']
 
-// Slide direction based on tab index
-const getDirection = (from: number, to: number) => (to > from ? 1 : -1)
-
-const tabVariants = {
-  enter: (dir: number) => ({ x: dir * 40, opacity: 0 }),
-  center: { x: 0, opacity: 1 },
-  exit: (dir: number) => ({ x: dir * -40, opacity: 0 }),
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 const WorkspacePage: React.FC = () => {
@@ -61,20 +52,18 @@ const WorkspacePage: React.FC = () => {
   }
 
   const [activeTab, setActiveTab] = useState<TabKey>(initialTab)
-  const prevTabIdx = useRef(TABS.findIndex(t => t.key === initialTab()))
+  // Tracks which tabs have ever been opened — they stay mounted once visited
+  const [mountedTabs, setMountedTabs] = useState<Set<TabKey>>(() => new Set([initialTab()]))
 
   // Live timer state from StudyTimer (for mini-indicator)
   const [timerState, setTimerState] = useState<StudyTimerState>({
     isRunning: false, isBreak: false, formatted: '25:00', remaining: 1500, sessionXP: 0,
   })
 
-  const activeIdx = TABS.findIndex(t => t.key === activeTab)
-  const direction = getDirection(prevTabIdx.current, activeIdx)
-
   const switchTab = useCallback((key: TabKey) => {
-    prevTabIdx.current = TABS.findIndex(t => t.key === activeTab)
     setActiveTab(key)
-  }, [activeTab])
+    setMountedTabs(prev => { const s = new Set(prev); s.add(key); return s })
+  }, [])
 
   // Sync ?tab= URL param on tab switch (replaceState, no re-render)
   useEffect(() => {

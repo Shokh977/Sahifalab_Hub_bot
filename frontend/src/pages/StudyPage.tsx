@@ -197,18 +197,19 @@ const LivePulseBanner: React.FC<LivePulseBannerProps> = ({ onMotivationReceived 
   const sendMotivation = async () => {
     if (sending || cooldown > 0) return
     setSending(true)
+    // Fire the burst + cooldown immediately — don't wait for the server.
+    // This makes the button feel instant and works even when offline.
+    onMotivRef.current()
+    setCooldown(30)
+    const tick = setInterval(() => {
+      setCooldown(c => {
+        if (c <= 1) { clearInterval(tick); return 0 }
+        return c - 1
+      })
+    }, 1_000)
     try {
       await fetch(`${API_BASE}/api/profiles/motivation`, { method: 'POST' })
-      onMotivRef.current()          // trigger locally right away
-      // Start 30-second cooldown
-      setCooldown(30)
-      const tick = setInterval(() => {
-        setCooldown(c => {
-          if (c <= 1) { clearInterval(tick); return 0 }
-          return c - 1
-        })
-      }, 1_000)
-    } catch { /* fail silently */ } finally {
+    } catch { /* fail silently — local burst already shown */ } finally {
       setSending(false)
     }
   }
@@ -466,7 +467,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
 
           {/* ── Page header (standalone mode only) ──────────────────────────────── */}
           {!embedded && (
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between p-8">
               <div>
                 <h1 className="text-xl font-extrabold text-gray-900 dark:text-white flex items-center gap-2.5">
                   <GraduationCap className="w-5 h-5 text-[#F15929]" />
