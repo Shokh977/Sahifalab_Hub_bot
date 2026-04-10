@@ -73,6 +73,7 @@ type BuilderLesson = {
   duration_minutes: number
   video_source: 'youtube' | 'bunny' | 'none'
   video_url: string
+  bunny_video_id: string
   material_url: string
   material_name: string
   quiz_question_count: number
@@ -136,6 +137,7 @@ const createLesson = (type: LessonType = 'video'): BuilderLesson => ({
   duration_minutes: 0,
   video_source: type === 'video' ? 'youtube' : 'none',
   video_url: '',
+  bunny_video_id: '',
   material_url: '',
   material_name: '',
   quiz_question_count: type === 'quiz' ? 0 : 0,
@@ -168,14 +170,14 @@ const getLessonTypeMeta = (type: LessonType) => {
 const getLessonSyncLabel = (lesson: BuilderLesson) => {
   if (lesson.status === 'syncing') return 'Sinxronlanmoqda'
   if (lesson.status === 'synced') return 'Sync qilingan'
-  if (lesson.type === 'video') return lesson.video_url ? 'Tayyor' : 'Video kutilmoqda'
+  if (lesson.type === 'video') return (lesson.video_url || lesson.bunny_video_id) ? 'Tayyor' : 'Video kutilmoqda'
   if (lesson.type === 'material') return lesson.material_url ? 'Material tayyor' : 'Material draft'
   return lesson.quiz_questions.length > 0 ? `${lesson.quiz_questions.length} savol` : 'Savollar kutilmoqda'
 }
 
 const isLessonReady = (lesson: BuilderLesson) => {
   if (!lesson.title.trim()) return false
-  if (lesson.type === 'video') return !!lesson.video_url.trim()
+  if (lesson.type === 'video') return !!(lesson.video_url.trim() || lesson.bunny_video_id.trim())
   if (lesson.type === 'material') return !!lesson.material_url.trim() || !!lesson.material_name.trim()
   return lesson.quiz_questions.length > 0 && lesson.quiz_questions.every(q => q.text.trim() && q.options.filter(o => o.text.trim()).length >= 2 && q.options.some(o => o.is_correct && o.text.trim()))
 }
@@ -300,6 +302,7 @@ const CourseCreatePage: React.FC = () => {
               duration_minutes: lesson.duration_minutes ?? 0,
               video_source: (lesson.video_source ?? 'bunny') as 'youtube' | 'bunny' | 'none',
               video_url: '',
+              bunny_video_id: lesson.bunny_video_id ?? '',
               material_url: '',
               material_name: '',
               quiz_question_count: 0,
@@ -400,7 +403,7 @@ const CourseCreatePage: React.FC = () => {
         ...section,
         id: uid('section'),
         title: `${section.title} copy`,
-        lessons: section.lessons.map(lesson => ({ ...lesson, id: uid('lesson'), backendId: undefined, status: lesson.type === 'video' && lesson.video_url ? 'ready' : 'draft' })),
+        lessons: section.lessons.map(lesson => ({ ...lesson, id: uid('lesson'), backendId: undefined, status: lesson.type === 'video' && (lesson.video_url || lesson.bunny_video_id) ? 'ready' : 'draft' })),
       }
       return [...prev, duplicated]
     })
@@ -526,6 +529,7 @@ const CourseCreatePage: React.FC = () => {
           description:      lesson.description.trim(),
           video_url:        lesson.type === 'video' ? lesson.video_url : '',
           video_source:     lesson.type === 'video' ? lesson.video_source : 'none',
+          bunny_video_id:   lesson.type === 'video' ? lesson.bunny_video_id : '',
           duration_minutes: lesson.duration_minutes,
           order_index:      orderIndex,
           is_free:          lesson.is_free,
@@ -1126,8 +1130,9 @@ const CourseCreatePage: React.FC = () => {
                         courseId={courseId}
                         source={lessonLookup.lesson.video_source}
                         videoUrl={lessonLookup.lesson.video_url}
-                        onSourceChange={source => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_source: source, video_url: '', status: 'draft' })}
-                        onVideoChange={(url, durationSeconds) => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_url: url, duration_minutes: durationSeconds > 0 ? Math.ceil(durationSeconds / 60) : lessonLookup.lesson.duration_minutes, status: url ? 'ready' : 'draft' })}
+                        bunnyVideoId={lessonLookup.lesson.bunny_video_id}
+                        onSourceChange={source => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_source: source, video_url: '', bunny_video_id: '', status: 'draft' })}
+                        onVideoChange={(url, durationSeconds, videoId) => updateLesson(lessonLookup.section.id, lessonLookup.lesson.id, { video_url: url, bunny_video_id: videoId ?? lessonLookup.lesson.bunny_video_id, duration_minutes: durationSeconds > 0 ? Math.ceil(durationSeconds / 60) : lessonLookup.lesson.duration_minutes, status: (url || videoId) ? 'ready' : 'draft' })}
                         disabled={status === 'saving'}
                       />
                     </Field>

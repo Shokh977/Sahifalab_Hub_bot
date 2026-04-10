@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     # Frontend URL for return after payment
     PAYMENT_RETURN_URL: str = "https://sahifalab-hub-bot.vercel.app"
 
-    # Bunny.net CDN — video storage (Step 10)
+    # Bunny.net CDN — file storage (images, PDFs, audio)
     # BUNNY_STORAGE_ZONE   → Storage zone name in Bunny.net panel
     # BUNNY_API_KEY        → Storage zone FTP / API password (Read/Write)
     # BUNNY_CDN_HOSTNAME   → Pull-zone hostname, e.g. sahifalab.b-cdn.net
@@ -51,6 +51,16 @@ class Settings(BaseSettings):
     BUNNY_API_KEY:        str = ""
     BUNNY_CDN_HOSTNAME:   str = ""
     BUNNY_STORAGE_REGION: str = "de"
+
+    # Bunny Stream — video streaming (adaptive HLS, signed embed URLs)
+    # BUNNY_STREAM_LIBRARY_ID → Video Library ID from Bunny.net Stream panel
+    # BUNNY_STREAM_API_KEY    → API key for the Stream library (Library → API → API Key)
+    # BUNNY_STREAM_TOKEN_KEY  → Token authentication key (Library → Security → Token Authentication Key)
+    # BUNNY_STREAM_CDN_HOST   → CDN hostname for the stream library (e.g. vz-abc12345-678.b-cdn.net)
+    BUNNY_STREAM_LIBRARY_ID: int = 0
+    BUNNY_STREAM_API_KEY:    str = ""
+    BUNNY_STREAM_TOKEN_KEY:  str = ""
+    BUNNY_STREAM_CDN_HOST:   str = ""
 
     # Google OAuth — Web Client ID (same value the frontend sends tokens against)
     GOOGLE_CLIENT_ID:     str = ""

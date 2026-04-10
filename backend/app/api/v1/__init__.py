@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import users, products, orders, cart, hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet
+from app.api.v1.endpoints import users, products, orders, cart, hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream
 from app.api.v1 import social_routes, messenger_routes
 
 api_router = APIRouter()
@@ -26,6 +26,7 @@ api_router.include_router(courses.router, prefix="/courses", tags=["courses"])
 api_router.include_router(lessons.router, prefix="/lessons", tags=["lessons"])
 api_router.include_router(enrollments.router, prefix="/enrollments", tags=["enrollments"])
 api_router.include_router(upload.router,  prefix="/upload",  tags=["upload"])
+api_router.include_router(stream.router, prefix="/stream",  tags=["stream"])
 api_router.include_router(pay.router,    prefix="/pay",     tags=["pay"])
 api_router.include_router(profiles.router, prefix="/profiles", tags=["profiles"])
 api_router.include_router(xp.router, prefix="/xp", tags=["xp"])

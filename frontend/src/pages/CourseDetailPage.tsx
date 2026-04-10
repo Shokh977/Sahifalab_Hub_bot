@@ -54,6 +54,12 @@ interface Lesson {
   lesson_type?: 'video' | 'material' | 'quiz'
   section_title?: string
   material_url?: string; material_name?: string
+  // Bunny Stream fields (injected by get_lesson when bunny_video_id is set)
+  bunny_video_id?: string
+  embed_url?: string
+  hls_url?: string
+  thumbnail_url?: string
+  encoding_status?: string
 }
 interface Review {
   id: number; student_id: number; rating: number; review: string; created_at: string
@@ -287,13 +293,19 @@ const CourseDetailPage: React.FC = () => {
       const d = res.data
       const updated = {
         ...lesson,
-        video_url:    d?.video_url    ?? '',
-        video_source: d?.video_source ?? lesson.video_source,
-        description:  d?.description  ?? lesson.description,
+        video_url:       d?.video_url    ?? '',
+        video_source:    d?.video_source ?? lesson.video_source,
+        description:     d?.description  ?? lesson.description,
+        // Bunny Stream signed URLs (injected by backend when bunny_video_id is set)
+        bunny_video_id:  d?.bunny_video_id  ?? '',
+        embed_url:       d?.embed_url       ?? '',
+        hls_url:         d?.hls_url         ?? '',
+        thumbnail_url:   d?.thumbnail_url   ?? '',
+        encoding_status: d?.encoding_status ?? '',
       }
       setLessons(prev => prev.map(l => l.id === lesson.id ? updated : l))
       setActiveLesson(updated)
-      if (d?.video_url || lesson.video_source === 'youtube') {
+      if (d?.video_url || d?.embed_url || lesson.video_source === 'youtube') {
         apiService.completeLesson(lesson.id)
           .then(() => setCompletedIds(prev => new Set([...prev, lesson.id])))
           .catch(() => {})
@@ -775,11 +787,15 @@ const CourseDetailPage: React.FC = () => {
 
             {/* Video player — rounded-[24px] */}
             <div className="rounded-[24px] overflow-hidden bg-black shadow-bento dark:shadow-glass-lg">
-              {activeLesson?.video_url ? (
+              {(activeLesson?.video_url || activeLesson?.embed_url) ? (
                 <div className="aspect-video">
                   <VideoPlayer
                     videoSource={activeLesson.video_source ?? 'bunny'}
                     videoUrl={activeLesson.video_url}
+                    embedUrl={activeLesson.embed_url}
+                    hlsUrl={activeLesson.hls_url}
+                    thumbnailUrl={activeLesson.thumbnail_url}
+                    encodingStatus={activeLesson.encoding_status}
                     title={activeLesson.title}
                   />
                 </div>

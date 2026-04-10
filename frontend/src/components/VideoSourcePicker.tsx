@@ -1,14 +1,15 @@
 /**
  * VideoSourcePicker
  *
- * Tab-based toggle: 📺 YouTube (unlisted embed) vs 🐇 Bunny.net (file upload)
+ * Tab-based toggle: 📺 YouTube (unlisted embed) vs 🐇 Bunny Stream (file upload)
  *
  * Props:
- *   courseId?       — for Bunny.net path organisation
- *   source          — controlled: 'youtube' | 'bunny' | 'none'
- *   videoUrl        — controlled: current URL / YouTube link
- *   onSourceChange  — (source) => void
- *   onVideoChange   — (url: string, durationSeconds: number) => void
+ *   courseId?        — for path organisation
+ *   source           — controlled: 'youtube' | 'bunny' | 'none'
+ *   videoUrl         — controlled: current URL / YouTube link
+ *   bunnyVideoId?    — existing Bunny Stream GUID (edit mode)
+ *   onSourceChange   — (source) => void
+ *   onVideoChange    — (url: string, durationSeconds: number, videoId?: string) => void
  *   disabled?
  */
 import React, { useState } from 'react'
@@ -19,12 +20,13 @@ import VideoUploadWidget from './VideoUploadWidget'
 type Source = 'youtube' | 'bunny' | 'none'
 
 interface Props {
-  courseId?:      number
-  source:         Source
-  videoUrl:       string
-  onSourceChange: (s: Source) => void
-  onVideoChange:  (url: string, durationSeconds: number) => void
-  disabled?:      boolean
+  courseId?:        number
+  source:           Source
+  videoUrl:         string
+  bunnyVideoId?:    string
+  onSourceChange:   (s: Source) => void
+  onVideoChange:    (url: string, durationSeconds: number, videoId?: string) => void
+  disabled?:        boolean
 }
 
 // ── YouTube helpers ───────────────────────────────────────────────────────────
@@ -68,6 +70,7 @@ const VideoSourcePicker: React.FC<Props> = ({
   courseId,
   source,
   videoUrl,
+  bunnyVideoId,
   onSourceChange,
   onVideoChange,
   disabled,
@@ -176,11 +179,13 @@ const VideoSourcePicker: React.FC<Props> = ({
             <VideoUploadWidget
               courseId={courseId}
               existingUrl={source === 'bunny' ? videoUrl : ''}
-              onUploaded={(url, dur) => onVideoChange(url, dur)}
+              existingVideoId={bunnyVideoId}
+              onUploaded={(urlOrId, dur) => onVideoChange(urlOrId, dur, urlOrId)}
+              onStreamUpload={({ videoId }) => onVideoChange('', 0, videoId)}
               disabled={disabled}
             />
             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">
-              Bunny.net CDN — faqat to'lov qilgan talabalar ko'radi.
+              Bunny Stream — adaptive HLS, faqat to'lov qilgan talabalar ko'radi.
             </p>
           </motion.div>
         )}

@@ -122,6 +122,8 @@ class LessonCreate(BaseModel):
     description:      Optional[str] = ""
     video_url:        Optional[str] = ""
     video_source:     Optional[str] = "bunny"   # 'youtube' | 'bunny' | 'none'
+    bunny_video_id:   Optional[str] = ""        # Bunny Stream GUID (new)
+    encoding_status:  Optional[str] = "none"    # Stream transcoding status
     duration_minutes: Optional[int] = 0
     order_index:      Optional[int] = 0
     is_free:          Optional[bool] = False
@@ -136,6 +138,8 @@ class LessonUpdate(BaseModel):
     description:      Optional[str] = None
     video_url:        Optional[str] = None
     video_source:     Optional[str] = None      # 'youtube' | 'bunny' | 'none'
+    bunny_video_id:   Optional[str] = None      # Bunny Stream GUID
+    encoding_status:  Optional[str] = None      # Stream transcoding status
     duration_minutes: Optional[int] = None
     order_index:      Optional[int] = None
     is_free:          Optional[bool] = None
@@ -165,7 +169,7 @@ async def list_lessons(course_id: int = Query(..., description="Course ID")):
             f"{SUPABASE_URL}/rest/v1/lessons",
             params={
                 "course_id": f"eq.{course_id}",
-                "select": "id, course_id, title, description, video_source, duration_minutes, order_index, is_free, lesson_type, section_title, material_url, material_name, created_at",
+                "select": "id, course_id, title, description, video_source, bunny_video_id, encoding_status, duration_minutes, order_index, is_free, lesson_type, section_title, material_url, material_name, created_at",
                 "order": "order_index.asc",
             },
             headers=_supabase_headers(),
@@ -224,8 +228,10 @@ async def my_course_certificates(authorization: Optional[str] = Header(None)):
 async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
     """
     Get a single lesson.
-    - is_free lessons: video_url visible to all
-    - paid lessons: video_url only for enrolled users (enrollment check in future step)
+    - is_free lessons: video visible to all
+    - paid lessons: video only for enrolled users / owner / admin
+    - Bunny Stream videos: returns signed embed_url + hls_url (no raw video_url leak)
+    - Legacy CDN videos: returns video_url as-is (backward compat)
     """
     _ensure_supabase()
     async with httpx.AsyncClient(timeout=10) as client:
@@ -241,26 +247,47 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
         raise HTTPException(status_code=404, detail="Lesson not found")
     lesson = rows[0]
 
-    # Hide video_url only for Bunny-hosted paid lessons (YouTube URLs are already public)
-    # Step 11: enrolled students (or owner/admin) can view paid Bunny URLs
+    # Determine access level
     is_bunny = lesson.get("video_source", "bunny") == "bunny"
-    if not lesson.get("is_free") and is_bunny:
-        caller_id: Optional[int] = None
-        if authorization:
-            try:
-                caller_id = await _resolve_caller(authorization)
-            except HTTPException:
-                pass
+    has_access = lesson.get("is_free", False)
 
-        if caller_id is None:
-            lesson = {**lesson, "video_url": ""}
+    caller_id: Optional[int] = None
+    if authorization:
+        try:
+            caller_id = await _resolve_caller(authorization)
+        except HTTPException:
+            pass
+
+    if caller_id is not None and not has_access:
+        teacher_id = await _get_course_teacher(lesson["course_id"])
+        is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
+        if is_owner_or_admin:
+            has_access = True
         else:
-            teacher_id = await _get_course_teacher(lesson["course_id"])
-            is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
-            if not is_owner_or_admin:
-                enrolled = await _is_enrolled(lesson["course_id"], caller_id)
-                if not enrolled:
-                    lesson = {**lesson, "video_url": ""}
+            enrolled = await _is_enrolled(lesson["course_id"], caller_id)
+            has_access = enrolled
+
+    # ── Bunny Stream video: inject signed URLs ────────────────────────────
+    bunny_vid = lesson.get("bunny_video_id") or ""
+    if bunny_vid and is_bunny:
+        if has_access:
+            try:
+                from app.services import bunny_stream_service as bss
+                lesson["embed_url"] = bss.signed_embed_url(bunny_vid, expires_seconds=14400)
+                lesson["hls_url"] = bss.signed_hls_url(bunny_vid, expires_seconds=14400)
+                lesson["thumbnail_url"] = bss.thumbnail_url(bunny_vid)
+            except Exception as e:
+                logger.warning("Failed to generate signed Stream URLs: %s", e)
+                lesson["embed_url"] = ""
+                lesson["hls_url"] = ""
+        else:
+            lesson["embed_url"] = ""
+            lesson["hls_url"] = ""
+        # Never expose the raw CDN video_url for Stream videos
+        lesson["video_url"] = ""
+    elif is_bunny and not has_access:
+        # Legacy CDN video — hide URL for non-enrolled
+        lesson = {**lesson, "video_url": ""}
 
     return lesson
 
@@ -278,6 +305,8 @@ async def create_lesson(body: LessonCreate, authorization: Optional[str] = Heade
         "description":      body.description or "",
         "video_url":        body.video_url or "",
         "video_source":     body.video_source or "bunny",
+        "bunny_video_id":   body.bunny_video_id or "",
+        "encoding_status":  body.encoding_status or "none",
         "duration_minutes": body.duration_minutes or 0,
         "order_index":      body.order_index or 0,
         "is_free":          bool(body.is_free),

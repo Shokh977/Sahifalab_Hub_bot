@@ -41,6 +41,7 @@ type FormState = {
   type: LessonType
   video_url: string
   video_source: VideoSource
+  bunny_video_id: string
   material_url: string
   material_name: string
   duration_minutes: number
@@ -54,6 +55,7 @@ const EMPTY: FormState = {
   type: 'video',
   video_url: '',
   video_source: 'bunny',
+  bunny_video_id: '',
   material_url: '',
   material_name: '',
   duration_minutes: 0,
@@ -115,6 +117,7 @@ const LessonCreatePage: React.FC = () => {
           type: l.material_url ? 'material' : 'video',
           video_url: l.video_url ?? '',
           video_source: (l.video_source ?? 'bunny') as VideoSource,
+          bunny_video_id: l.bunny_video_id ?? '',
           material_url: l.material_url ?? '',
           material_name: l.material_name ?? '',
           duration_minutes: l.duration_minutes ?? 0,
@@ -130,10 +133,11 @@ const LessonCreatePage: React.FC = () => {
   }, [isEdit, lessonId])
 
   // ── video picker callback ─────────────────────────────────────────────────
-  const onVideoChange = (url: string, durationSec: number) => {
+  const onVideoChange = (url: string, durationSec: number, videoId?: string) => {
     setForm((prev) => ({
       ...prev,
       video_url: url,
+      bunny_video_id: videoId ?? prev.bunny_video_id,
       duration_minutes: durationSec > 0 ? Math.ceil(durationSec / 60) : prev.duration_minutes,
     }))
   }
@@ -154,6 +158,7 @@ const LessonCreatePage: React.FC = () => {
       description: form.description.trim(),
       video_url: form.type === 'video' ? form.video_url : '',
       video_source: form.type === 'video' ? form.video_source : ('none' as VideoSource),
+      bunny_video_id: form.type === 'video' ? form.bunny_video_id : '',
       duration_minutes: form.duration_minutes,
       order_index: form.order_index,
       is_free: form.is_free,

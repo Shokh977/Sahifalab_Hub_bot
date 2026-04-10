@@ -674,6 +674,8 @@ class ApiService {
     section_title?:   string
     material_url?:    string
     material_name?:   string
+    bunny_video_id?:  string
+    encoding_status?: string
   }) {
     return this.axiosInstance.post('/api/lessons', data)
   }
@@ -691,6 +693,8 @@ class ApiService {
     section_title?:    string
     material_url?:     string
     material_name?:    string
+    bunny_video_id?:   string
+    encoding_status?:  string
   }) {
     return this.axiosInstance.patch(`/api/lessons/${lessonId}`, data)
   }
@@ -703,6 +707,28 @@ class ApiService {
   /** Teacher: bulk reorder lessons */
   async reorderLessons(lessons: { id: number; order_index: number }[]) {
     return this.axiosInstance.patch('/api/lessons/reorder', { lessons })
+  }
+
+  // ─── Bunny Stream ─────────────────────────────────────────────────────────
+
+  /** Create a Bunny Stream video placeholder (returns { video_id, library_id }) */
+  async createStreamVideo(title: string, courseId?: number) {
+    return this.axiosInstance.post('/api/stream/create-video', { title, course_id: courseId })
+  }
+
+  /** Get encoding status for a Stream video */
+  async getStreamStatus(videoId: string) {
+    return this.axiosInstance.get(`/api/stream/status/${videoId}`)
+  }
+
+  /** Get signed embed + HLS URLs for a Stream video */
+  async getStreamEmbed(videoId: string) {
+    return this.axiosInstance.get(`/api/stream/embed/${videoId}`)
+  }
+
+  /** Delete a video from Bunny Stream */
+  async deleteStreamVideo(videoId: string) {
+    return this.axiosInstance.delete(`/api/stream/delete/${videoId}`)
   }
 
   /** Heatmap — per-day activity count from quiz completions */
