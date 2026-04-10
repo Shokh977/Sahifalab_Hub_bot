@@ -117,8 +117,16 @@ const LoginPage: React.FC = () => {
   }, [loginWithCode, navigate])
 
   useEffect(() => {
-    if (tab !== 'google') return
+    if (tab !== 'google' || !GOOGLE_CLIENT_ID) return
+    // Script already loaded (preloaded from index.html or previous visit)
     if (window.google?.accounts?.id) { initGoogle(); return }
+    // Check if script tag is already in the document (preloaded but not yet executed)
+    const existing = document.querySelector('script[src*="accounts.google.com/gsi/client"]')
+    if (existing) {
+      existing.addEventListener('load', initGoogle)
+      return () => existing.removeEventListener('load', initGoogle)
+    }
+    // Fallback: inject dynamically
     const script = document.createElement('script')
     script.src = 'https://accounts.google.com/gsi/client'
     script.async = true; script.defer = true

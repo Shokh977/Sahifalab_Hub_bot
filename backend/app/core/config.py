@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     BUNNY_CDN_HOSTNAME:   str = ""
     BUNNY_STORAGE_REGION: str = "de"
 
+    # Google OAuth — Web Client ID (same value the frontend sends tokens against)
+    GOOGLE_CLIENT_ID:     str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+
     @field_validator('ADMIN_TELEGRAM_IDS', mode='before')
     @classmethod
     def parse_admin_ids(cls, v):

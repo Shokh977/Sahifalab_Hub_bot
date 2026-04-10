@@ -1,3 +1,13 @@
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from the project root (one level above backend/) or CWD
+_root_env = Path(__file__).resolve().parents[2] / ".env"
+if _root_env.is_file():
+    load_dotenv(_root_env)
+else:
+    load_dotenv()  # fallback: CWD/.env
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router

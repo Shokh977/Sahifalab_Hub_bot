@@ -52,7 +52,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 BOT_TOKEN        = os.getenv("TELEGRAM_BOT_TOKEN", "")
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
 BOT_USERNAME     = os.getenv("BOT_USERNAME", "Sahifalab_hub_bot")
 CODE_TTL_MINUTES = 10
 
