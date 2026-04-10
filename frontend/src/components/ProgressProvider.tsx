@@ -16,7 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
 
 const HEARTBEAT_MS = 5 * 60 * 1000   // 5 minutes
-const PRESENCE_MS = 45 * 1000        // 45 seconds
+const PRESENCE_MS = 180 * 1000       // 3 minutes
 
 const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth()
@@ -25,9 +25,9 @@ const ProgressProvider: React.FC<{ children: React.ReactNode }> = ({ children })
   // ── 1. Initialize store when Telegram user is available ─────────────────
   useEffect(() => {
     if (user?.id) {
-      console.time('⏱️ ProgressStore_Init')
+      if (import.meta.env.DEV) console.time('⏱️ ProgressStore_Init')
       init(user.id, user.first_name, user.username).then(() => {
-        console.timeEnd('⏱️ ProgressStore_Init')
+        if (import.meta.env.DEV) console.timeEnd('⏱️ ProgressStore_Init')
       })
     }
   }, [user?.id])  // re-run only if the user id changes

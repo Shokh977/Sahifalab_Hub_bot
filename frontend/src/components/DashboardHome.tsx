@@ -238,7 +238,7 @@ const ContinueLearningCell: React.FC = () => {
       >
         <div className="relative w-20 h-16 rounded-[14px] overflow-hidden bg-gradient-to-br from-sahifa-100 to-orange-50 dark:from-[#2A2A38] dark:to-[#1C1C2A] flex-shrink-0">
           {lesson.thumbnail_url ? (
-            <img src={lesson.thumbnail_url} alt={lesson.course_title} className="w-full h-full object-cover" />
+            <img src={lesson.thumbnail_url} alt={lesson.course_title} loading="lazy" className="w-full h-full object-cover" />
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <GraduationCap className="w-7 h-7 text-sahifa-400" />
@@ -463,6 +463,7 @@ const CourseCard: React.FC<{ course: CourseItem; index: number }> = ({ course, i
           <img
             src={course.thumbnail_url}
             alt={course.title}
+            loading="lazy"
             className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           />
         ) : (
@@ -485,7 +486,7 @@ const CourseCard: React.FC<{ course: CourseItem; index: number }> = ({ course, i
         </div>
         <div className="absolute bottom-3 right-3">
           {course.teacher_photo ? (
-            <img src={course.teacher_photo} alt="" className="w-8 h-8 rounded-full object-cover border-2 border-white/60 shadow" />
+            <img src={course.teacher_photo} alt="" loading="lazy" className="w-8 h-8 rounded-full object-cover border-2 border-white/60 shadow" />
           ) : (
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-sahifa-400 to-sahifa-600 border-2 border-white/60 flex items-center justify-center shadow">
               <span className="text-white text-xs font-bold">{(course.teacher_name ?? 'T').charAt(0).toUpperCase()}</span>

@@ -284,6 +284,24 @@ class BookResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
+class BookListResponse(BaseModel):
+    """Same as BookResponse but without file_url — used for public list endpoints
+    to avoid leaking direct download links."""
+    id: int
+    title: str
+    author: str
+    description: str
+    price: float
+    is_paid: bool
+    category: str
+    downloads: int
+    rating: float
+    thumbnail_url: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
 # Resource Schemas
 class ResourceCreate(BaseModel):
     title: str

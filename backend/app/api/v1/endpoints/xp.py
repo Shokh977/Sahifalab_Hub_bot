@@ -9,12 +9,13 @@ GET  /api/xp/badges/{uid}     — all earned badges for a user
 from datetime import datetime, UTC
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.services.auth_service import decode_token
 from app.services.xp_service import (
     add_xp,
     focus_minutes_to_xp,
@@ -24,6 +25,21 @@ from app.services.xp_service import (
 )
 
 router = APIRouter()
+
+
+# ── Auth helper ───────────────────────────────────────────────────────────────
+
+async def _require_token(authorization: Optional[str] = Header(None)) -> int:
+    """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    telegram_id = decode_token(parts[1])
+    if not telegram_id:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return telegram_id
 
 
 # ── Request / Response models ─────────────────────────────────────────────────
@@ -39,15 +55,22 @@ class AddXpRequest(BaseModel):
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.post("/add")
-async def award_xp(body: AddXpRequest, db: Session = Depends(get_db)):
+async def award_xp(
+    body: AddXpRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
     """
     Award XP through the server-side anti-cheat function.
+    telegram_id is taken from the JWT — body.telegram_id is ignored.
 
     Source rules:
       DEEP_WORK : send focus_minutes (XP = round(minutes × 1.66)) or explicit amount
       QUIZ      : flat 25 XP per quiz, hard-capped at 100 XP / UTC day
       COURSE    : flat 200 XP, one-time per reference_id (course_id)
     """
+    # Use JWT-derived identity, never trust client-supplied telegram_id
+    telegram_id = caller_id
     source = body.source.upper()
 
     if source not in ("DEEP_WORK", "QUIZ", "COURSE"):
@@ -80,7 +103,7 @@ async def award_xp(body: AddXpRequest, db: Session = Depends(get_db)):
     try:
         result = add_xp(
             db,
-            user_id=body.telegram_id,
+            user_id=telegram_id,
             source=source,
             amount=amount,
             reference_id=body.reference_id,

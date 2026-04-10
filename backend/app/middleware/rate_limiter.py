@@ -3,6 +3,13 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Dict, Tuple
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
+
+# Maximum unique IPs tracked before forced eviction
+_MAX_TRACKED_IPS = 50_000
+
 
 class RateLimiter:
     """
@@ -27,10 +34,44 @@ class RateLimiter:
         self.lock = asyncio.Lock()
     
     def get_client_id(self, request: Request) -> str:
-        """Extract client identifier from request (IP address)"""
-        client_host = request.client.host if request.client else "unknown"
-        return client_host
+        """
+        Extract client identifier from request.
+        Uses X-Forwarded-For header (set by Railway/proxy) with
+        fallback to request.client.host.
+        Takes the leftmost (original client) IP from X-Forwarded-For.
+        """
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            # X-Forwarded-For: client, proxy1, proxy2 — take the leftmost
+            client_ip = forwarded.split(",")[0].strip()
+            if client_ip:
+                return client_ip
+        return request.client.host if request.client else "unknown"
     
+    async def _evict_stale_entries(self):
+        """Remove stale IP entries and cap total tracked IPs to prevent unbounded memory growth."""
+        now = datetime.utcnow()
+        cutoff = now - timedelta(hours=24)
+        
+        # Remove all entries older than 24h
+        stale_keys = [
+            key for key, history in self.request_history.items()
+            if not history or history[-1][0] < cutoff
+        ]
+        for key in stale_keys:
+            del self.request_history[key]
+        
+        # If still over limit, evict oldest IPs
+        if len(self.request_history) > _MAX_TRACKED_IPS:
+            # Sort by most recent request, evict oldest
+            sorted_ips = sorted(
+                self.request_history.keys(),
+                key=lambda k: self.request_history[k][-1][0] if self.request_history[k] else datetime.min,
+            )
+            to_evict = len(self.request_history) - _MAX_TRACKED_IPS
+            for key in sorted_ips[:to_evict]:
+                del self.request_history[key]
+
     async def check_rate_limit(self, request: Request) -> bool:
         """
         Check if request exceeds rate limit.
@@ -40,6 +81,11 @@ class RateLimiter:
         now = datetime.utcnow()
         
         async with self.lock:
+            # Periodic cleanup: evict stale entries every 1000 requests
+            total_entries = sum(len(v) for v in self.request_history.values())
+            if total_entries > 5000 or len(self.request_history) > _MAX_TRACKED_IPS:
+                await self._evict_stale_entries()
+
             # Get request history for this client
             history = self.request_history[client_id]
             

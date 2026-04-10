@@ -68,11 +68,12 @@ def _sb_headers() -> dict:
 
 def is_webhook_duplicate(provider: str, transaction_id: str) -> bool:
     """
-    Check if a webhook has already been processed (in-memory dedup).
-    Returns True if duplicate, False if new. Marks as processed.
+    Fast-path L1 check (in-memory). Returns True if definitely a duplicate.
+    Returns False if not in memory — caller should also call
+    is_webhook_duplicate_db() for the authoritative DB check.
+    Marks as processed in the L1 cache.
     
     Bounded cache: evicts oldest entries when exceeding _MAX_WEBHOOK_CACHE.
-    For production with multiple workers, use the processed_webhooks DB table instead.
     """
     key = f"{provider}:{transaction_id}"
     if key in _processed_webhooks:
@@ -89,12 +90,53 @@ def is_webhook_duplicate(provider: str, transaction_id: str) -> bool:
     return False
 
 
+async def is_webhook_duplicate_db(provider: str, transaction_id: str) -> bool:
+    """
+    Authoritative DB-backed dedup check using processed_webhooks table.
+    Uses the composite unique key (provider, transaction_id) from migration 043.
+    Returns True if the webhook was already processed (row exists).
+    If not, inserts a new row to mark it as processed.
+    Falls back to in-memory-only if DB is unavailable.
+    """
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return False  # No DB configured, rely on in-memory only
+
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            # Check if already exists using composite key (provider + transaction_id)
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/processed_webhooks",
+                params={
+                    "provider": f"eq.{provider}",
+                    "transaction_id": f"eq.{transaction_id}",
+                    "select": "id",
+                    "limit": "1",
+                },
+                headers=_sb_headers(),
+            )
+            if res.status_code == 200 and res.json():
+                return True  # Already processed
+
+            # Insert the new entry (unique constraint prevents races)
+            await client.post(
+                f"{SUPABASE_URL}/rest/v1/processed_webhooks",
+                json={"provider": provider, "transaction_id": transaction_id},
+                headers=_sb_headers(),
+            )
+    except Exception as e:
+        logger.warning("[Dedup] DB check failed, relying on in-memory: %s", e)
+
+    return False
+
+
 # ── Order ID generation ─────────────────────────────────────────────────────
 
 def generate_order_id(item_type: str, item_id: int, user_id: int, provider: str) -> str:
-    """Generate a unique, descriptive order ID."""
-    short = uuid.uuid4().hex[:8]
-    return f"pay_{item_type}_{provider}_{item_id}_{user_id}_{short}"
+    """
+    Generate a unique, OPAQUE order ID.
+    Does NOT leak item_id or user_id — uses UUID only.
+    """
+    return f"pay_{uuid.uuid4().hex}"
 
 
 def generate_idempotency_key(item_type: str, item_id: int, user_id: int, provider: str) -> str:

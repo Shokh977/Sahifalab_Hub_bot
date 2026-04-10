@@ -313,9 +313,9 @@ async def click_prepare(
     ):
         return {"error": -1, "error_note": "SIGN CHECK FAILED!"}
 
-    # Webhook replay protection
+    # Webhook replay protection (L1: in-memory, L2: DB)
     if ps.is_webhook_duplicate("click_prepare", str(click_trans_id)):
-        logger.warning("[Click/Prepare] Duplicate webhook: trans=%s", click_trans_id)
+        logger.warning("[Click/Prepare] Duplicate webhook (L1): trans=%s", click_trans_id)
         payment = await ps.get_payment_by_order_id(merchant_trans_id)
         return {
             "click_trans_id": click_trans_id,
@@ -324,12 +324,16 @@ async def click_prepare(
             "error": 0,
             "error_note": "Already processed",
         }
-
-    # Verify signature
-    if not ps.verify_click_signature(
-        click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, sign_string
-    ):
-        return {"error": -1, "error_note": "SIGN CHECK FAILED!"}
+    if await ps.is_webhook_duplicate_db("click_prepare", str(click_trans_id)):
+        logger.warning("[Click/Prepare] Duplicate webhook (DB): trans=%s", click_trans_id)
+        payment = await ps.get_payment_by_order_id(merchant_trans_id)
+        return {
+            "click_trans_id": click_trans_id,
+            "merchant_trans_id": merchant_trans_id,
+            "merchant_prepare_id": payment.get("id", merchant_trans_id) if payment else merchant_trans_id,
+            "error": 0,
+            "error_note": "Already processed",
+        }
 
     # Find payment
     payment = await ps.get_payment_by_order_id(merchant_trans_id)
@@ -396,9 +400,9 @@ async def click_complete(
     ):
         return {"error": -1, "error_note": "SIGN CHECK FAILED!"}
 
-    # Webhook replay protection
+    # Webhook replay protection (L1: in-memory, L2: DB)
     if ps.is_webhook_duplicate("click_complete", str(click_trans_id)):
-        logger.warning("[Click/Complete] Duplicate webhook: trans=%s", click_trans_id)
+        logger.warning("[Click/Complete] Duplicate webhook (L1): trans=%s", click_trans_id)
         payment = await ps.get_payment_by_order_id(merchant_trans_id)
         return {
             "click_trans_id": click_trans_id,
@@ -407,12 +411,16 @@ async def click_complete(
             "error": 0,
             "error_note": "Already processed",
         }
-
-    # Verify signature
-    if not ps.verify_click_signature(
-        click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, sign_string
-    ):
-        return {"error": -1, "error_note": "SIGN CHECK FAILED!"}
+    if await ps.is_webhook_duplicate_db("click_complete", str(click_trans_id)):
+        logger.warning("[Click/Complete] Duplicate webhook (DB): trans=%s", click_trans_id)
+        payment = await ps.get_payment_by_order_id(merchant_trans_id)
+        return {
+            "click_trans_id": click_trans_id,
+            "merchant_trans_id": merchant_trans_id,
+            "merchant_confirm_id": payment.get("id", merchant_trans_id) if payment else merchant_trans_id,
+            "error": 0,
+            "error_note": "Already processed",
+        }
 
     # Find payment
     payment = await ps.get_payment_by_order_id(merchant_trans_id)
@@ -543,9 +551,16 @@ async def _payme_create(params: dict) -> dict:
     if abs(expected_tiyins - amount) > 1:
         return {"error": {"code": -31001, "message": {"uz": "Noto'g'ri summa", "ru": "Неверная сумма", "en": "Incorrect amount"}}}
 
-    # Webhook replay protection
+    # Webhook replay protection (L1: in-memory, L2: DB)
     if ps.is_webhook_duplicate("payme_create", payme_id):
-        logger.warning("[Payme/Create] Duplicate webhook: payme_id=%s", payme_id)
+        logger.warning("[Payme/Create] Duplicate webhook (L1): payme_id=%s", payme_id)
+        return {
+            "create_time": time_ms,
+            "transaction": str(payment.get("id", order_id)),
+            "state": 1,
+        }
+    if await ps.is_webhook_duplicate_db("payme_create", payme_id):
+        logger.warning("[Payme/Create] Duplicate webhook (DB): payme_id=%s", payme_id)
         return {
             "create_time": time_ms,
             "transaction": str(payment.get("id", order_id)),
@@ -708,14 +723,13 @@ async def _reverse_fulfillment(payment: dict):
         rows = res.json() if res.status_code == 200 else []
         if rows and rows[0].get("teacher_id"):
             teacher_id = int(rows[0]["teacher_id"])
-            # Use credit_wallet with negative amount or a dedicated debit RPC
-            # For now, use credit_wallet with negative to reverse
+            # Use dedicated refund_wallet RPC (safe reversal, guards against negative balance)
             async with httpx.AsyncClient(timeout=10) as client:
                 await client.post(
-                    f"{url}/rest/v1/rpc/credit_wallet",
+                    f"{url}/rest/v1/rpc/refund_wallet",
                     json={
                         "p_teacher_id": teacher_id,
-                        "p_amount": -teacher_amount,
+                        "p_amount": teacher_amount,
                         "p_reference": f"refund:{order_id}",
                         "p_note": f"Refund for cancelled {item_type}:{item_id}",
                     },

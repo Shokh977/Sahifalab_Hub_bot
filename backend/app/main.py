@@ -10,6 +10,7 @@ else:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.middleware.rate_limiter import rate_limit_middleware
@@ -34,6 +35,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip all responses ≥ 500 bytes — saves ~60-80% on JSON payloads
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 # Rate limiting — 100/min, 1000/hr, 10000/day per IP
 app.middleware("http")(rate_limit_middleware)

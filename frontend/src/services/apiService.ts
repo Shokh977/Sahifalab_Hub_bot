@@ -21,14 +21,14 @@ class ApiService {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
-      console.debug(`[API] → ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.params || '')
+      if (import.meta.env.DEV) console.debug(`[API] → ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.params || '')
       return config
     })
 
     // Log every response and handle errors with toasts
     this.axiosInstance.interceptors.response.use(
       (response) => {
-        console.debug(`[API] ← ${response.status} ${response.config.url}`, response.data)
+        if (import.meta.env.DEV) console.debug(`[API] ← ${response.status} ${response.config.url}`, response.data)
         return response
       },
       (error) => {

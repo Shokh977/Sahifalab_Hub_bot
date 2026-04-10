@@ -3,7 +3,7 @@ profiles.py — proxy endpoints for gamification progress and cabinet data.
 
 All queries use SQLAlchemy ORM (direct Postgres TCP), bypassing Supabase REST.
 """
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, UTC, timedelta
@@ -12,11 +12,43 @@ import time as _time
 
 from app.db.session import get_db
 from app.models.models import Profile, UserQuizCompletion, BookPurchase, BookRating
+from app.services.auth_service import decode_token, decode_token_payload
 
 router = APIRouter()
 
 # ── Module-level motivation state (single Railway dyno, ephemeral) ────────────
 # Resets on redeploy — motivation is intentionally ephemeral.
+_last_motivation_ts: float = 0.0
+
+
+# ── Auth helpers ───────────────────────────────────────────────────────────────
+
+async def _require_token(authorization: Optional[str] = Header(None)) -> int:
+    """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    tid = decode_token(parts[1])
+    if not tid:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return tid
+
+
+async def _require_admin(authorization: Optional[str] = Header(None)) -> int:
+    """Require JWT with role=admin or role=teacher. Returns telegram_id."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    payload = decode_token_payload(parts[1])
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    if payload.get("role") not in ("admin", "teacher"):
+        raise HTTPException(status_code=403, detail="Admin or teacher role required")
+    return payload["telegram_id"]
 _last_motivation_ts: float = 0.0
 
 
@@ -104,9 +136,10 @@ async def get_pulse(db: Session = Depends(get_db)):
 
 
 @router.post("/motivation")
-async def send_motivation():
+async def send_motivation(caller_id: int = Depends(_require_admin)):
     """
     Broadcast a motivation ping to all active study-page users.
+    Requires admin or teacher JWT.
     Sets a module-level timestamp that /pulse returns on every poll.
     The ephemeral nature is intentional — motivation is a real-time signal.
     """
@@ -116,12 +149,19 @@ async def send_motivation():
 
 
 @router.post("/upsert")
-async def upsert_profile(body: ProfileUpsertRequest, db: Session = Depends(get_db)):
-    """Create a new profile row if it doesn't exist yet."""
-    profile = db.query(Profile).filter(Profile.telegram_id == body.telegram_id).first()
+async def upsert_profile(
+    body: ProfileUpsertRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    """Create a new profile row if it doesn't exist yet. Requires JWT auth.
+    telegram_id is taken from JWT — body.telegram_id is ignored."""
+    # Use JWT-derived identity
+    telegram_id = caller_id
+    profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
         profile = Profile(
-            telegram_id=body.telegram_id,
+            telegram_id=telegram_id,
             first_name=body.first_name,
             username=body.username,
             app_created_at=datetime.now(UTC),
@@ -140,28 +180,38 @@ async def upsert_profile(body: ProfileUpsertRequest, db: Session = Depends(get_d
 
 
 @router.post("/sync")
-async def sync_progress(body: ProgressSyncRequest, db: Session = Depends(get_db)):
+async def sync_progress(
+    body: ProgressSyncRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
     """
-    Upsert XP / focus / level / presence data from the frontend.
-    Called by progressStore.syncToSupabase() and pingPresence().
+    Upsert presence / cosmetic data from the frontend. Requires JWT auth.
+    telegram_id is taken from JWT — body.telegram_id is ignored.
+
+    SECURITY: XP, level, and quizzes_completed are SERVER-AUTHORITATIVE
+    and can only be updated through the anti-cheat RPC in /api/xp/add.
+    This endpoint only accepts presence fields (online status, focus time,
+    first_name, username).
     """
-    profile = db.query(Profile).filter(Profile.telegram_id == body.telegram_id).first()
+    # Use JWT-derived identity
+    telegram_id = caller_id
+
+    profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
         profile = Profile(
-            telegram_id=body.telegram_id,
+            telegram_id=telegram_id,
             first_name=body.first_name or "Foydalanuvchi",
             username=body.username,
             app_created_at=datetime.now(UTC),
         )
         db.add(profile)
 
+    # Only allow cosmetic/presence fields — XP, level, quizzes are server-authoritative
     if body.first_name           is not None: profile.first_name           = body.first_name
     if body.username             is not None: profile.username             = body.username
-    if body.total_xp             is not None: profile.total_xp             = body.total_xp
     if body.focus_seconds        is not None: profile.focus_seconds        = body.focus_seconds
     if body.total_focus_minutes  is not None: profile.total_focus_minutes  = body.total_focus_minutes
-    if body.level                is not None: profile.level                = body.level
-    if body.quizzes_completed    is not None: profile.quizzes_completed    = body.quizzes_completed
     if body.app_online_at        is not None:
         try:
             profile.app_online_at = datetime.fromisoformat(
@@ -327,8 +377,15 @@ async def get_my_rating(telegram_id: int, book_id: int, db: Session = Depends(ge
 
 
 @router.get("/{telegram_id}/purchases")
-async def get_purchases(telegram_id: int, db: Session = Depends(get_db)):
-    """Fetch completed book purchases for a user (cabinet page)."""
+async def get_purchases(
+    telegram_id: int,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    """Fetch completed book purchases for a user (cabinet page). Requires JWT auth.
+    Users can only view their own purchases."""
+    if caller_id != telegram_id:
+        raise HTTPException(status_code=403, detail="Cannot view another user's purchases")
     rows = (
         db.query(BookPurchase)
         .filter(BookPurchase.telegram_id == telegram_id, BookPurchase.status == "completed")

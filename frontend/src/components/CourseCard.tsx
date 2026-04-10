@@ -110,6 +110,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hid
               <img
                 src={course.thumbnail_url}
                 alt={course.title}
+                loading="lazy"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
               />
             ) : (
@@ -146,7 +147,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hid
                   title={teacherName || undefined}
                 >
                   {teacher.photo_url ? (
-                    <img src={teacher.photo_url} alt={teacherName || ''} className="w-7 h-7 rounded-full border-2 border-white/60 object-cover shadow-md" />
+                    <img src={teacher.photo_url} alt={teacherName || ''} loading="lazy" className="w-7 h-7 rounded-full border-2 border-white/60 object-cover shadow-md" />
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-sahifa-500/80 border-2 border-white/60 flex items-center justify-center text-[9px] font-bold text-white">
                       {(teacherName || '?').charAt(0).toUpperCase()}
@@ -195,4 +196,4 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hid
   )
 }
 
-export default CourseCard
+export default React.memo(CourseCard)

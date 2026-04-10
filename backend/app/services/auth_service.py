@@ -44,8 +44,8 @@ def verify_telegram_auth(data: TelegramAuthData, bot_token: str) -> bool:
         hashlib.sha256
     ).hexdigest()
     
-    # Verify the hash matches
-    if computed_hash != data.hash:
+    # Verify the hash matches (timing-safe comparison to prevent side-channel attacks)
+    if not hmac.compare_digest(computed_hash, data.hash):
         return False
     
     # Check auth date (not older than 24 hours)

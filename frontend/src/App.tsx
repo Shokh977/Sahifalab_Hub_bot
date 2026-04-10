@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react'
+import React, { useCallback, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { BookOpenIcon, SparklesIcon } from '@heroicons/react/24/outline'
@@ -7,17 +7,6 @@ import HeroSection from './components/HeroSection'
 import MenuGrid from './components/MenuGrid'
 import DashboardHome from './components/DashboardHome'
 import ThemeToggle from './components/ThemeToggle'
-import QuizPage from './pages/QuizPage'
-import KitoblarPage from './pages/KitoblarPage'
-import BookDetailPage from './pages/BookDetailPage'
-import ResourcesPage from './pages/ResourcesPage'
-import AboutPage from './pages/AboutPage'
-import TermsPage from './pages/TermsPage'
-import AdminPage from './pages/AdminPage'
-import CabinetPage from './pages/CabinetPage'
-import LeaderboardPage from './pages/LeaderboardPage'
-import BookSummarizerPage from './pages/BookSummarizerPage'
-import AICompanionPage from './pages/AICompanionPage'
 import GlobalProgressBar from './components/GlobalProgressBar'
 import ProgressProvider from './components/ProgressProvider'
 import TelegramLayout from './components/TelegramLayout'
@@ -26,28 +15,50 @@ import AuthGuard from './components/AuthGuard'
 import NotificationToast from './components/NotificationToast'
 import EmailLinkPrompt from './components/EmailLinkPrompt'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import LoginPage from './pages/LoginPage'
 import RoleGuard from './components/RoleGuard'
-import TeacherDashboardPage from './pages/TeacherDashboardPage'
-import TeacherApplyPage from './pages/TeacherApplyPage'
-import TeacherProfileSetupPage from './pages/TeacherProfileSetupPage'
-import TeachersGalleryPage from './pages/TeachersGalleryPage'
-import CoursesPage from './pages/CoursesPage'
-import CourseDetailPage from './pages/CourseDetailPage'
-import CourseCreatePage from './pages/CourseCreatePage'
-import LessonCreatePage from './pages/LessonCreatePage'
-import TeacherWalletPage from './pages/TeacherWalletPage'
-import AdminPayoutsPage from './pages/AdminPayoutsPage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
-import SocialFeed from './pages/SocialFeed'
-import SlouthMessenger from './pages/SlouthMessenger'
-import PublicProfile from './pages/PublicProfile'
-import DiscoverUsers from './pages/DiscoverUsers'
-import NotificationsPage from './pages/NotificationsPage'
-import WorkspacePage from './pages/WorkspacePage'
-import { lazy, Suspense } from 'react'
+
+// ── Route-level code splitting ───────────────────────────────────────────────
+// All page-level components are lazy-loaded to minimize the initial JS bundle.
+// Only above-the-fold components (HeroSection, MenuGrid, DashboardHome, layouts)
+// are eagerly imported.
+
+const PageSpinner = () => (
+  <div className="fixed inset-0 z-[200] bg-white dark:bg-[#0f0f18] flex items-center justify-center">
+    <div className="w-9 h-9 border-2 border-[#F15929]/25 border-t-[#F15929] rounded-full animate-spin" />
+  </div>
+)
+
+const LoginPage = lazy(() => import('./pages/LoginPage'))
+const QuizPage = lazy(() => import('./pages/QuizPage'))
+const KitoblarPage = lazy(() => import('./pages/KitoblarPage'))
+const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
 const BookReaderPage = lazy(() => import('./pages/BookReaderPage'))
+const ResourcesPage = lazy(() => import('./pages/ResourcesPage'))
+const AboutPage = lazy(() => import('./pages/AboutPage'))
+const TermsPage = lazy(() => import('./pages/TermsPage'))
+const AdminPage = lazy(() => import('./pages/AdminPage'))
+const CabinetPage = lazy(() => import('./pages/CabinetPage'))
+const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
+const BookSummarizerPage = lazy(() => import('./pages/BookSummarizerPage'))
+const AICompanionPage = lazy(() => import('./pages/AICompanionPage'))
+const TeacherDashboardPage = lazy(() => import('./pages/TeacherDashboardPage'))
+const TeacherApplyPage = lazy(() => import('./pages/TeacherApplyPage'))
+const TeacherProfileSetupPage = lazy(() => import('./pages/TeacherProfileSetupPage'))
+const TeachersGalleryPage = lazy(() => import('./pages/TeachersGalleryPage'))
+const CoursesPage = lazy(() => import('./pages/CoursesPage'))
+const CourseDetailPage = lazy(() => import('./pages/CourseDetailPage'))
+const CourseCreatePage = lazy(() => import('./pages/CourseCreatePage'))
+const LessonCreatePage = lazy(() => import('./pages/LessonCreatePage'))
+const TeacherWalletPage = lazy(() => import('./pages/TeacherWalletPage'))
+const AdminPayoutsPage = lazy(() => import('./pages/AdminPayoutsPage'))
+const SocialFeed = lazy(() => import('./pages/SocialFeed'))
+const SlouthMessenger = lazy(() => import('./pages/SlouthMessenger'))
+const PublicProfile = lazy(() => import('./pages/PublicProfile'))
+const DiscoverUsers = lazy(() => import('./pages/DiscoverUsers'))
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
+const WorkspacePage = lazy(() => import('./pages/WorkspacePage'))
 
 /** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
 const TeacherRedirect: React.FC = () => {
@@ -225,6 +236,7 @@ const AppRoutes: React.FC = () => {
         exit={{ opacity: 0, y: -8 }}
         transition={{ duration: 0.2, ease: 'easeOut' }}
       >
+        <Suspense fallback={<PageSpinner />}>
         <Routes location={location}>
           {/* ── Auth page ─────────────────────────────────────────── */}
           <Route path="/login" element={<LoginPage />} />
@@ -245,11 +257,7 @@ const AppRoutes: React.FC = () => {
           <Route element={<AuthGuard />}>
             <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
             <Route path="/workspace"      element={<WorkspacePage />} />
-            <Route path="/read/:bookId"   element={
-              <Suspense fallback={<div className="fixed inset-0 z-[200] bg-white dark:bg-[#0f0f18] flex items-center justify-center"><div className="w-9 h-9 border-2 border-[#F15929]/25 border-t-[#F15929] rounded-full animate-spin" /></div>}>
-                <BookReaderPage />
-              </Suspense>
-            } />
+            <Route path="/read/:bookId"   element={<BookReaderPage />} />
             <Route path="/quiz"           element={<QuizPage />} />
             <Route path="/kitoblar"       element={<KitoblarPage />} />
             <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
@@ -287,6 +295,7 @@ const AppRoutes: React.FC = () => {
           {/* 404 — catch-all */}
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
+        </Suspense>
       </motion.div>
     </AnimatePresence>
   )
