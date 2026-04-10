@@ -91,6 +91,9 @@ class EmailLoginRequest(BaseModel):
     email:    EmailStr
     password: str
 
+class LinkEmailRequest(BaseModel):
+    email: EmailStr
+
 
 # ── ORM helpers ───────────────────────────────────────────────────────────────
 
@@ -187,6 +190,7 @@ async def get_current_user(
     return {
         "telegram_id": profile.telegram_id, "first_name": profile.first_name,
         "username": profile.username, "photo_url": profile.photo_url,
+        "email": profile.email,
         "role": profile.role or "student", "status": profile.status or "active",
         "level": profile.level or 1, "total_xp": profile.total_xp or 0,
         "bio": getattr(profile, "bio", None),
@@ -218,12 +222,13 @@ async def google_sign_in(body: GoogleSignInRequest, db: Session = Depends(get_db
 
     profile = _upsert_profile(
         db, telegram_id, first_name=first_name, username=username,
-        photo_url=photo_url, app_last_login=datetime.now(UTC),
+        photo_url=photo_url, email=email, app_last_login=datetime.now(UTC),
     )
     token_data = create_access_token(telegram_id, profile.role or "student")
     return {
         "status": "ok", "telegram_id": telegram_id,
         "first_name": first_name, "username": username, "photo_url": photo_url,
+        "email": profile.email,
         "role": profile.role or "student", "status_account": profile.status or "active",
         **token_data,
     }
@@ -380,6 +385,7 @@ async def verify_code(code: str, db: Session = Depends(get_db)):
     return {
         "status": "ok", "telegram_id": telegram_id,
         "first_name": first_name, "username": username, "photo_url": photo_url,
+        "email": profile.email,
         "role": profile.role or "student", "status_account": profile.status or "active",
         **token_data,
     }
@@ -595,5 +601,167 @@ async def email_login(body: EmailLoginRequest, db: Session = Depends(get_db)):
         "username": profile.username, "photo_url": profile.photo_url,
         "role": profile.role or "student", "status_account": profile.status or "active",
         **token_data,
+    }
+
+
+# ── Account linking ──────────────────────────────────────────────────────────
+
+# Tables whose FK column references profiles.telegram_id (i.e. user_id).
+# When merging an email-only profile into a Telegram profile we reassign
+# all rows from the old user_id to the Telegram telegram_id.
+_MERGEABLE_TABLES: list[tuple[type, str]] = []  # populated lazily below
+
+
+def _get_mergeable_tables():
+    """Import once to avoid circular-import issues."""
+    global _MERGEABLE_TABLES
+    if _MERGEABLE_TABLES:
+        return _MERGEABLE_TABLES
+    from app.models.models import (
+        XpLog, UserBadge, PlannerTask, PlannerNote,
+    )
+    _MERGEABLE_TABLES = [
+        (XpLog,        "user_id"),
+        (UserBadge,    "user_id"),
+        (PlannerTask,  "user_id"),
+        (PlannerNote,  "user_id"),
+    ]
+    # Optional tables — may not exist in older deployments
+    try:
+        from app.models.models import BookPurchase
+        _MERGEABLE_TABLES.append((BookPurchase, "user_id"))
+    except ImportError:
+        pass
+    try:
+        from app.models.models import BookReadProgress
+        _MERGEABLE_TABLES.append((BookReadProgress, "user_id"))
+    except ImportError:
+        pass
+    try:
+        from app.models.models import Order
+        _MERGEABLE_TABLES.append((Order, "user_id"))
+    except ImportError:
+        pass
+    try:
+        from app.models.models import UserQuizCompletion
+        _MERGEABLE_TABLES.append((UserQuizCompletion, "user_id"))
+    except ImportError:
+        pass
+    try:
+        from app.models.models import Enrollment
+        _MERGEABLE_TABLES.append((Enrollment, "user_id"))
+    except ImportError:
+        pass
+    return _MERGEABLE_TABLES
+
+
+def _merge_profiles(db: Session, primary_id: int, secondary_id: int) -> dict:
+    """
+    Merge *secondary_id* profile into *primary_id*.
+
+    All child rows (purchases, XP logs, badges, …) are reassigned to
+    *primary_id*.  XP / focus totals from the secondary profile are added
+    to the primary.  The secondary profile row is then deleted.
+
+    Returns a summary dict of how many rows were moved per table.
+    """
+    primary   = db.query(Profile).filter(Profile.telegram_id == primary_id).first()
+    secondary = db.query(Profile).filter(Profile.telegram_id == secondary_id).first()
+    if not primary or not secondary:
+        return {"moved": {}}
+
+    summary: dict[str, int] = {}
+    for model, col_name in _get_mergeable_tables():
+        col = getattr(model, col_name)
+        rows = db.query(model).filter(col == secondary_id).all()
+        for row in rows:
+            setattr(row, col_name, primary_id)
+        if rows:
+            summary[model.__tablename__] = len(rows)
+
+    # Accumulate gamification stats
+    primary.total_xp          = (primary.total_xp or 0) + (secondary.total_xp or 0)
+    primary.focus_seconds     = (primary.focus_seconds or 0) + (secondary.focus_seconds or 0)
+    primary.quizzes_completed = (primary.quizzes_completed or 0) + (secondary.quizzes_completed or 0)
+    primary.total_focus_minutes = (primary.total_focus_minutes or 0) + (secondary.total_focus_minutes or 0)
+    # Keep the higher level
+    if (secondary.level or 1) > (primary.level or 1):
+        primary.level = secondary.level
+
+    # Delete the secondary profile
+    db.delete(secondary)
+    return {"moved": summary}
+
+
+@router.post("/link-email")
+async def link_email(
+    body: LinkEmailRequest,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Link an email address to the currently-authenticated (Telegram / Google)
+    profile.  If the email already belongs to a standalone email-registered
+    account, merge that account's purchases, XP, and data into this profile.
+
+    The caller's telegram_id remains the canonical primary key for all data.
+    """
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile topilmadi")
+
+    email_lower = body.email.lower().strip()
+
+    # ── Already linked to this same profile? ──────────────────────────────
+    if profile.email and profile.email.lower() == email_lower:
+        return {"ok": True, "email": profile.email, "merged": False,
+                "message": "Bu email allaqachon sizning akkauntingizga ulangan"}
+
+    # ── Check if email is used by ANOTHER profile ─────────────────────────
+    existing = db.query(Profile).filter(
+        Profile.email == email_lower,
+        Profile.telegram_id != telegram_id,
+    ).first()
+
+    merged_summary: dict = {}
+    if existing:
+        # If the other profile has a real Telegram id (positive = real TG user),
+        # we cannot silently steal it — that would break the other user's access.
+        if existing.telegram_id > 0:
+            raise HTTPException(
+                status_code=409,
+                detail="Bu email boshqa Telegram akkauntiga ulangan. "
+                       "Agar bu sizning emailingiz bo'lsa, avval o'sha akkauntdan "
+                       "emailni ajrating yoki adminga murojaat qiling.",
+            )
+        # The other profile was created via email-register (negative synthetic id)
+        # → safe to merge into the Telegram profile.
+        merged_summary = _merge_profiles(db, primary_id=telegram_id, secondary_id=existing.telegram_id)
+
+    # ── Attach email to the primary profile ───────────────────────────────
+    profile.email = email_lower
+    try:
+        db.commit()
+        db.refresh(profile)
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+
+    merged = bool(merged_summary.get("moved"))
+    logger.info(
+        "link-email: user %s linked email %s (merged=%s, summary=%s)",
+        telegram_id, email_lower, merged, merged_summary,
+    )
+    return {
+        "ok": True,
+        "email": profile.email,
+        "merged": merged,
+        "merge_summary": merged_summary.get("moved", {}),
+        "message": (
+            "Akkauntlar muvaffaqiyatli birlashtirildi! Barcha xaridlaringiz saqlanadi."
+            if merged else
+            "Email muvaffaqiyatli ulandi"
+        ),
     }
 

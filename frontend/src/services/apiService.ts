@@ -433,6 +433,11 @@ class ApiService {
     return this.axiosInstance.post('/api/auth/email-login', { email, password })
   }
 
+  /** Link an email to the current (Telegram/Google) account — merges if email-only profile exists */
+  async linkEmail(email: string) {
+    return this.axiosInstance.post('/api/auth/link-email', { email })
+  }
+
   // ─── Teacher profile ──────────────────────────────────────────────────────
 
   /** Get calling teacher's own profile (auto-creates row if not yet present) */

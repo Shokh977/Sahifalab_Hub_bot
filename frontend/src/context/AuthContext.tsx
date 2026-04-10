@@ -28,6 +28,8 @@ export interface AuthUser {
   last_name?: string
   username?: string
   photo_url?: string
+  /** User email — null if not yet linked (Telegram-only users) */
+  email?: string | null
   /** 'student' | 'teacher' | 'admin' */
   role: 'student' | 'teacher' | 'admin'
   /** 'active' | 'suspended' | 'pending' */
@@ -61,6 +63,8 @@ interface AuthContextValue {
   loginWithTelegram: (data: TelegramWidgetData) => Promise<void>
   /** Web-only: call with data returned by GET /api/auth/verify-code → stores JWT + user */
   loginWithCode: (data: Record<string, any>) => void
+  /** Update the user email in-memory after a successful link-email call */
+  updateUserEmail: (email: string) => void
   /** Web-only: clears JWT and user */
   logout: () => void
 }
@@ -102,6 +106,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           first_name: res.data.first_name,
           username: res.data.username,
           photo_url: res.data.photo_url,
+          email: res.data.email ?? null,
           role: res.data.role ?? 'student',
           status: res.data.status ?? 'active',
           level: res.data.level ?? 1,
@@ -128,7 +133,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Web: login via bot-code verify response ───────────────────────────────
   const loginWithCode = useCallback((data: Record<string, any>) => {
-    const { access_token, telegram_id, first_name, username, photo_url, role, status_account, status } = data
+    const { access_token, telegram_id, first_name, username, photo_url, email, role, status_account, status } = data
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)
     setWebUser({
@@ -136,6 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       first_name,
       username,
       photo_url,
+      email: email ?? null,
       role: role ?? 'student',
       status: status_account ?? status ?? 'active',
       level: data.level ?? 1,
@@ -148,6 +154,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('auth_token')
     setToken(null)
     setWebUser(null)
+  }, [])
+
+  // ── Update email after link-email ──────────────────────────────────────────
+  const updateUserEmail = useCallback((email: string) => {
+    setWebUser(prev => prev ? { ...prev, email } : prev)
   }, [])
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -173,7 +184,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, logout }}
+      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, updateUserEmail, logout }}
     >
       {children}
     </AuthContext.Provider>
