@@ -3,17 +3,23 @@
  *
  * Renders the right player depending on video_source:
  *   'youtube' → YouTube iframe embed
- *   'bunny'   → native <video> with controls + Bunny CDN URL
+ *   'bunny'   → HLS adaptive streaming (.m3u8) or direct MP4 fallback
  *   'none'    → placeholder (no video yet)
  *   locked    → lock overlay (paid lesson, not enrolled)
  *
+ * HLS support:
+ *   If videoUrl ends with .m3u8 (Bunny Stream), we use hls.js for adaptive
+ *   bitrate streaming. On Safari (which supports HLS natively), we skip hls.js
+ *   and let the browser handle it. For plain .mp4 URLs from Bunny CDN Storage,
+ *   we fall back to a standard <video> tag with preload="metadata".
+ *
  * Props:
  *   videoSource  — 'youtube' | 'bunny' | 'none'
- *   videoUrl     — YouTube URL or Bunny CDN URL
+ *   videoUrl     — YouTube URL, .m3u8 URL, or direct .mp4 Bunny CDN URL
  *   title?       — shown in placeholder / locked state
  *   locked?      — show locked overlay instead of player
  */
-import React, { useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { ExclamationTriangleIcon, FilmIcon, LockClosedIcon } from '@heroicons/react/24/outline'
 import { toEmbedUrl } from './VideoSourcePicker'
 
@@ -32,6 +38,83 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     {children}
   </div>
 )
+
+// ── HLS / MP4 player ─────────────────────────────────────────────────────────
+const BunnyPlayer: React.FC<{ url: string; title?: string; onError: () => void }> = ({ url, title, onError }) => {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const hlsRef   = useRef<any>(null)
+  const isHLS    = url.endsWith('.m3u8') || url.includes('.m3u8?')
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    // If it's an HLS manifest, use hls.js (or native HLS on Safari)
+    if (isHLS) {
+      // Safari/iOS can play HLS natively
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url
+        return
+      }
+
+      // Dynamically import hls.js (code-split — only loaded when needed)
+      let cancelled = false
+      import('hls.js').then(({ default: Hls }) => {
+        if (cancelled) return
+        if (!Hls.isSupported()) {
+          // Fallback: try native
+          video.src = url
+          return
+        }
+        const hls = new Hls({
+          maxBufferLength:       30,
+          maxMaxBufferLength:    60,
+          enableWorker:          true,
+          lowLatencyMode:        false,
+          startLevel:            -1,         // auto quality
+          capLevelToPlayerSize:  true,        // don't fetch 4K on a 400px player
+        })
+        hls.loadSource(url)
+        hls.attachMedia(video)
+        hls.on(Hls.Events.ERROR, (_: any, data: any) => {
+          if (data.fatal) {
+            hls.destroy()
+            onError()
+          }
+        })
+        hlsRef.current = hls
+      }).catch(() => {
+        // If dynamic import fails, try native
+        video.src = url
+      })
+
+      return () => {
+        cancelled = true
+        hlsRef.current?.destroy()
+        hlsRef.current = null
+      }
+    }
+
+    // Plain MP4 — just set src
+    video.src = url
+    return undefined
+  }, [url, isHLS, onError])
+
+  return (
+    <video
+      ref={videoRef}
+      controls
+      controlsList="nodownload"
+      preload="metadata"
+      onContextMenu={e => e.preventDefault()}
+      onError={onError}
+      className="absolute inset-0 w-full h-full object-contain bg-black"
+      title={title}
+    >
+      Brauzeringiz video formatini qo'llab-quvvatlamaydi.
+    </video>
+  )
+}
 
 // ── Main component ────────────────────────────────────────────────────────────
 const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) => {
@@ -90,7 +173,7 @@ const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) 
     )
   }
 
-  // ── Bunny.net native player ───────────────────────────────────────────────
+  // ── Bunny.net player (HLS + MP4 fallback) ────────────────────────────────
   if (videoSource === 'bunny') {
     if (error) {
       return (
@@ -110,17 +193,7 @@ const VideoPlayer: React.FC<Props> = ({ videoSource, videoUrl, title, locked }) 
     }
     return (
       <Shell>
-        <video
-          src={videoUrl}
-          controls
-          controlsList="nodownload"
-          onContextMenu={e => e.preventDefault()}
-          onError={() => setError(true)}
-          className="absolute inset-0 w-full h-full object-contain bg-black"
-          title={title}
-        >
-          Brauzeringiz video formatini qo'llab-quvvatlamaydi.
-        </video>
+        <BunnyPlayer url={videoUrl} title={title} onError={() => setError(true)} />
       </Shell>
     )
   }

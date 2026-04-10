@@ -1,8 +1,8 @@
-import { defineConfig } from 'vite'
+import { defineConfig, type UserConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }): UserConfig => ({
   plugins: [react()],
   resolve: {
     alias: {
@@ -29,4 +29,11 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: true,
   },
-})
+  esbuild: {
+    // Option C: Build-time console & debugger removal.
+    // In production builds, esbuild strips ALL console.* calls and debugger
+    // statements at the AST level — zero runtime cost, completely clean F12.
+    // In dev mode, everything is preserved for debugging.
+    ...(mode === 'production' ? { drop: ['console', 'debugger'] } : {}),
+  },
+}))

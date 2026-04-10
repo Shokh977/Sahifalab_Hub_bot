@@ -442,7 +442,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
 
   const handleSoundSelect = useCallback((s: SoundFromDB) => {
     if (sound.activeSound === String(s.id) && sound.isPlaying) { sound.stop(); return }
-    const audioUrl = s.url?.includes('supabase.co/storage')
+    const audioUrl = s.url?.includes('supabase.co/storage') || s.url?.includes('.b-cdn.net')
       ? s.url
       : `${import.meta.env.VITE_API_URL || ''}/api/audio/proxy/${s.id}`
     setResolvingId(s.id)

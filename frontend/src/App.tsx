@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, useLocation, useNavigate, Navigate, useParams } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion } from 'framer-motion'
 import { BookOpenIcon, SparklesIcon } from '@heroicons/react/24/outline'
 import { ErrorBoundary, ToastContainer } from './components/ErrorBoundary'
 import HeroSection from './components/HeroSection'
@@ -24,9 +24,15 @@ import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 // Only above-the-fold components (HeroSection, MenuGrid, DashboardHome, layouts)
 // are eagerly imported.
 
-const PageSpinner = () => (
-  <div className="fixed inset-0 z-[200] bg-white dark:bg-[#0f0f18] flex items-center justify-center">
-    <div className="w-9 h-9 border-2 border-[#F15929]/25 border-t-[#F15929] rounded-full animate-spin" />
+const PageSkeleton = () => (
+  <div className="w-full animate-pulse px-6 pt-8 pb-16 space-y-5">
+    <div className="h-6 w-48 bg-slate-200 dark:bg-slate-800 rounded-lg" />
+    <div className="h-4 w-72 bg-slate-100 dark:bg-slate-800/60 rounded-lg" />
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-2">
+      {[1,2,3].map(i => (
+        <div key={i} className="h-48 rounded-2xl bg-slate-100 dark:bg-slate-800/50" />
+      ))}
+    </div>
   </div>
 )
 
@@ -224,80 +230,72 @@ const NotFoundPage: React.FC = () => {
   )
 }
 
-// All app routes — shared between both layout modes
+// All app routes — shared between both layout modes.
+// No AnimatePresence/motion.div wrapper — that was causing full-tree unmount/remount
+// on every navigation (the root cause of blinking). The layout shell (WebLayout/
+// TelegramLayout) is stable; only the page content swaps via React Router.
 const AppRoutes: React.FC = () => {
-  const location = useLocation()
   return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={location.pathname}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -8 }}
-        transition={{ duration: 0.2, ease: 'easeOut' }}
-      >
-        <Suspense fallback={<PageSpinner />}>
-        <Routes location={location}>
-          {/* ── Auth page ─────────────────────────────────────────── */}
-          <Route path="/login" element={<LoginPage />} />
+    <Suspense fallback={<PageSkeleton />}>
+      <Routes>
+        {/* ── Auth page ───────────────────────────────────────────── */}
+        <Route path="/login" element={<LoginPage />} />
 
-          {/* ── Fully public — guests welcome, actions guarded in-component ── */}
-          <Route path="/"                element={<HomePage />} />
-          <Route path="/social"          element={<SocialFeed />} />
-          <Route path="/discover"        element={<DiscoverUsers />} />
-          <Route path="/courses"         element={<CoursesPage />} />
-          <Route path="/courses/:id"     element={<CourseDetailPage />} />
-          <Route path="/profile/:userId" element={<PublicProfile />} />
-          <Route path="/teachers"        element={<TeachersGalleryPage />} />
-          <Route path="/about"           element={<AboutPage />} />
-          <Route path="/terms"           element={<TermsPage />} />
-          <Route path="/leaderboard"     element={<LeaderboardPage />} />
+        {/* ── Fully public — guests welcome, actions guarded in-component ── */}
+        <Route path="/"                element={<HomePage />} />
+        <Route path="/social"          element={<SocialFeed />} />
+        <Route path="/discover"        element={<DiscoverUsers />} />
+        <Route path="/courses"         element={<CoursesPage />} />
+        <Route path="/courses/:id"     element={<CourseDetailPage />} />
+        <Route path="/profile/:userId" element={<PublicProfile />} />
+        <Route path="/teachers"        element={<TeachersGalleryPage />} />
+        <Route path="/about"           element={<AboutPage />} />
+        <Route path="/terms"           element={<TermsPage />} />
+        <Route path="/leaderboard"     element={<LeaderboardPage />} />
 
-          {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
-          <Route element={<AuthGuard />}>
-            <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
-            <Route path="/workspace"      element={<WorkspacePage />} />
-            <Route path="/read/:bookId"   element={<BookReaderPage />} />
-            <Route path="/quiz"           element={<QuizPage />} />
-            <Route path="/kitoblar"       element={<KitoblarPage />} />
-            <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
-            <Route path="/resources"      element={<ResourcesPage />} />
-            <Route path="/admin"          element={<AdminRoute />} />
-            <Route path="/cabinet"        element={<CabinetPage />} />
-            {/* AI features temporarily disabled */}
-            <Route path="/book-summarizer" element={<Navigate to="/" replace />} />
-            <Route path="/ai-companion"   element={<Navigate to="/" replace />} />
-            <Route path="/notifications"  element={<NotificationsPage />} />
-            <Route path="/messenger"      element={<SlouthMessenger />} />
-            <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
+        {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
+        <Route element={<AuthGuard />}>
+          <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
+          <Route path="/workspace"      element={<WorkspacePage />} />
+          <Route path="/read/:bookId"   element={<BookReaderPage />} />
+          <Route path="/quiz"           element={<QuizPage />} />
+          <Route path="/kitoblar"       element={<KitoblarPage />} />
+          <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
+          <Route path="/resources"      element={<ResourcesPage />} />
+          <Route path="/admin"          element={<AdminRoute />} />
+          <Route path="/cabinet"        element={<CabinetPage />} />
+          {/* AI features temporarily disabled */}
+          <Route path="/book-summarizer" element={<Navigate to="/" replace />} />
+          <Route path="/ai-companion"   element={<Navigate to="/" replace />} />
+          <Route path="/notifications"  element={<NotificationsPage />} />
+          <Route path="/messenger"      element={<SlouthMessenger />} />
+          <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
-            {/* Legacy teacher profile → redirects to unified profile */}
-            <Route path="/teacher/:id" element={<TeacherRedirect />} />
+          {/* Legacy teacher profile → redirects to unified profile */}
+          <Route path="/teacher/:id" element={<TeacherRedirect />} />
 
-            {/* Teacher & Admin role-gated routes */}
-            <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
-              <Route path="/teacher"              element={<TeacherDashboardPage />} />
-              <Route path="/teacher/setup"        element={<TeacherProfileSetupPage />} />
-              <Route path="/teacher/wallet"       element={<TeacherWalletPage />} />
-              <Route path="/courses/create"       element={<CourseCreatePage />} />
-              <Route path="/courses/:id/edit"     element={<CourseCreatePage />} />
-              <Route path="/courses/:courseId/lessons/add"                    element={<LessonCreatePage />} />
-              <Route path="/courses/:courseId/lessons/:lessonId/edit"         element={<LessonCreatePage />} />
-            </Route>
-
-            {/* Admin payout management */}
-            <Route path="/admin/payouts" element={<AdminPayoutsPage />} />
-
-            {/* Teacher application — any authenticated user */}
-            <Route path="/become-teacher" element={<TeacherApplyPage />} />
+          {/* Teacher & Admin role-gated routes */}
+          <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
+            <Route path="/teacher"              element={<TeacherDashboardPage />} />
+            <Route path="/teacher/setup"        element={<TeacherProfileSetupPage />} />
+            <Route path="/teacher/wallet"       element={<TeacherWalletPage />} />
+            <Route path="/courses/create"       element={<CourseCreatePage />} />
+            <Route path="/courses/:id/edit"     element={<CourseCreatePage />} />
+            <Route path="/courses/:courseId/lessons/add"                    element={<LessonCreatePage />} />
+            <Route path="/courses/:courseId/lessons/:lessonId/edit"         element={<LessonCreatePage />} />
           </Route>
 
-          {/* 404 — catch-all */}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-        </Suspense>
-      </motion.div>
-    </AnimatePresence>
+          {/* Admin payout management */}
+          <Route path="/admin/payouts" element={<AdminPayoutsPage />} />
+
+          {/* Teacher application — any authenticated user */}
+          <Route path="/become-teacher" element={<TeacherApplyPage />} />
+        </Route>
+
+        {/* 404 — catch-all */}
+        <Route path="*" element={<NotFoundPage />} />
+      </Routes>
+    </Suspense>
   )
 }
 

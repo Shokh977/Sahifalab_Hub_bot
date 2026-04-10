@@ -10,7 +10,7 @@ else:
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.gzip import GZipMiddleware
+from brotli_asgi import BrotliMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.middleware.rate_limiter import rate_limit_middleware
@@ -36,11 +36,43 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# GZip all responses ≥ 500 bytes — saves ~60-80% on JSON payloads
-app.add_middleware(GZipMiddleware, minimum_size=500)
+# Brotli compression (falls back to GZip for older clients)
+# Brotli achieves ~15-20% better compression than GZip on JSON/text.
+app.add_middleware(BrotliMiddleware, minimum_size=500)
 
 # Rate limiting — 100/min, 1000/hr, 10000/day per IP
 app.middleware("http")(rate_limit_middleware)
+
+
+# ── CDN Cache-Control headers ──────────────────────────────────────────────────
+# These tell Bunny CDN edge nodes (and browsers) how long to cache each response.
+# Paths not listed here get the default "no explicit caching" behavior.
+_CACHE_RULES: list[tuple[str, str]] = [
+    # Static catalogs — rarely change (revalidate via CDN purge after admin edits)
+    ("/api/books",              "public, max-age=300, s-maxage=600, stale-while-revalidate=60"),
+    ("/api/quizzes",            "public, max-age=300, s-maxage=600, stale-while-revalidate=60"),
+    ("/api/resources",          "public, max-age=300, s-maxage=600, stale-while-revalidate=60"),
+    ("/api/hero/all",           "public, max-age=300, s-maxage=600, stale-while-revalidate=60"),
+    ("/api/audio/ambient",      "public, max-age=3600, s-maxage=3600"),
+    # Semi-dynamic
+    ("/api/courses/categories", "public, max-age=600, s-maxage=1800"),
+    ("/api/courses",            "public, max-age=60, s-maxage=120, stale-while-revalidate=30"),
+    ("/api/profiles/leaderboard", "public, max-age=60, s-maxage=120"),
+    ("/api/profiles/dashboard-stats", "public, max-age=60, s-maxage=120"),
+]
+
+
+@app.middleware("http")
+async def cache_control_middleware(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    # Only apply to GET requests
+    if request.method == "GET" and "Cache-Control" not in response.headers:
+        for prefix, header in _CACHE_RULES:
+            if path.startswith(prefix):
+                response.headers["Cache-Control"] = header
+                break
+    return response
 
 # Include API routes
 app.include_router(api_router, prefix="/api")

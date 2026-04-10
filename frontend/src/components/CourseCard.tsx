@@ -9,6 +9,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { BookOpenIcon, VideoCameraIcon, UsersIcon } from '@heroicons/react/24/outline'
 import { trackImpression } from '../utils/impressionBuffer'
+import { thumb } from '../utils/bunnyOptimize'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export interface CourseData {
@@ -108,7 +109,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hid
           <div className="relative h-44 bg-gradient-to-br from-sahifa-100 to-orange-50 dark:from-slate-800 dark:to-slate-900 overflow-hidden">
             {course.thumbnail_url ? (
               <img
-                src={course.thumbnail_url}
+                src={thumb.course(course.thumbnail_url)}
                 alt={course.title}
                 loading="lazy"
                 className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
@@ -147,7 +148,7 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hid
                   title={teacherName || undefined}
                 >
                   {teacher.photo_url ? (
-                    <img src={teacher.photo_url} alt={teacherName || ''} loading="lazy" className="w-7 h-7 rounded-full border-2 border-white/60 object-cover shadow-md" />
+                    <img src={thumb.avatarSmall(teacher.photo_url)} alt={teacherName || ''} loading="lazy" className="w-7 h-7 rounded-full border-2 border-white/60 object-cover shadow-md" />
                   ) : (
                     <div className="w-7 h-7 rounded-full bg-sahifa-500/80 border-2 border-white/60 flex items-center justify-center text-[9px] font-bold text-white">
                       {(teacherName || '?').charAt(0).toUpperCase()}
