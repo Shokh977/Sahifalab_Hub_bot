@@ -93,6 +93,7 @@ class PlannerTask(Base):
     sort_order       = Column(Integer, default=0)
     linked_course_id = Column(Integer, nullable=True)
     linked_lesson_id = Column(Integer, nullable=True)
+    xp_claimed       = Column(Boolean, default=False)   # prevents done→todo→done XP farming
     created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 

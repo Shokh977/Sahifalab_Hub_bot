@@ -20,6 +20,7 @@ import os
 import logging
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
@@ -87,6 +88,63 @@ def _ensure_stream():
         )
 
 
+async def _check_video_access(video_id: str, caller_id: int):
+    """Verify the caller can access the lesson that owns this Bunny video."""
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lessons",
+            params={
+                "bunny_video_id": f"eq.{video_id}",
+                "select": "id,course_id,is_free",
+                "limit": "1",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Video topilmadi")
+    lesson = rows[0]
+
+    # Free lessons are accessible to everyone
+    if lesson.get("is_free"):
+        return lesson
+
+    # Check if caller is the course teacher or admin
+    course_id = lesson["course_id"]
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}", "select": "teacher_id"},
+            headers=_supabase_headers(),
+        )
+    crows = res.json() if res.status_code == 200 else []
+    teacher_id = crows[0]["teacher_id"] if crows else None
+
+    if caller_id == teacher_id or caller_id in ADMIN_IDS:
+        return lesson
+
+    # Check active enrollment
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id": f"eq.{course_id}",
+                "student_id": f"eq.{caller_id}",
+                "is_active": "eq.true",
+                "select": "id",
+                "limit": "1",
+            },
+            headers=_supabase_headers(),
+        )
+    erows = res.json() if res.status_code == 200 else []
+    if not erows:
+        raise HTTPException(
+            status_code=403,
+            detail="Bu videoni ko'rish uchun kursga yozilishingiz kerak",
+        )
+    return lesson
+
+
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 class CreateVideoRequest(BaseModel):
@@ -119,7 +177,7 @@ async def create_video(
         data = await bss.create_video(title=body.title)
     except Exception as e:
         logger.error("Stream create_video error: %s", e)
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail="Video yaratishda xatolik yuz berdi")
 
     video_id = data.get("guid", "")
     if not video_id:
@@ -168,7 +226,7 @@ async def upload_video(
         result = await bss.upload_video(video_id, file_bytes)
     except Exception as e:
         logger.error("Stream upload error for %s: %s", video_id, e)
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail="Video yuklashda xatolik yuz berdi")
 
     return {
         "success": True,
@@ -196,7 +254,7 @@ async def get_video_status(
         data = await bss.get_video(video_id)
     except Exception as e:
         logger.error("Stream get_video error for %s: %s", video_id, e)
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail="Video holati tekshirishda xatolik")
 
     if data.get("error") == "not_found":
         raise HTTPException(status_code=404, detail="Video topilmadi")
@@ -228,19 +286,25 @@ async def get_embed_url(
     Get a time-limited signed embed URL for the Bunny Stream player.
     This is called by the frontend when rendering the video player.
     The signed URL is valid for 4 hours.
+
+    Security: verifies the caller is enrolled in (or owns) the course
+    that contains the lesson linked to this bunny_video_id.
     """
-    # Basic auth check (any logged-in user)
+    # Auth check — resolve caller identity
     if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization")
+        raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
     from app.services.auth_service import decode_token
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
-        raise HTTPException(status_code=401, detail="Invalid authorization")
+        raise HTTPException(status_code=401, detail="Noto'g'ri avtorizatsiya")
     tid = decode_token(parts[1])
     if not tid:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+        raise HTTPException(status_code=401, detail="Token muddati tugagan")
 
     _ensure_stream()
+
+    # Enrollment / ownership check — raises 403 if not authorized
+    await _check_video_access(video_id, tid)
 
     embed = bss.signed_embed_url(video_id, expires_seconds=14400)
     hls = bss.signed_hls_url(video_id, expires_seconds=14400)
@@ -270,7 +334,7 @@ async def delete_stream_video(
         result = await bss.delete_video(video_id)
     except Exception as e:
         logger.error("Stream delete error for %s: %s", video_id, e)
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail="Video o'chirishda xatolik yuz berdi")
 
     return {
         "deleted": True,

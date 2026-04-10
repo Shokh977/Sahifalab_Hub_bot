@@ -178,7 +178,7 @@ async def update_own_teacher_profile(
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Profil yangilashda xatolik")
 
     return await _get_profile_row(telegram_id)
 

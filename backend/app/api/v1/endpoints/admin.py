@@ -873,7 +873,7 @@ async def list_pending_payouts(
     try:
         return {"payouts": await ws.list_pending_payouts()}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="To'lovlarni olishda xatolik")
 
 
 @router.get("/payouts/all")
@@ -888,7 +888,7 @@ async def list_all_payouts(
     try:
         return {"payouts": await ws.list_all_payouts(status_filter=status_filter, limit=limit)}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="To'lovlar ro'yxatini olishda xatolik")
 
 
 @router.post("/payouts/{payout_id}/approve")
@@ -909,7 +909,7 @@ async def approve_payout(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="To'lovni tasdiqlashda xatolik")
 
 
 @router.post("/payouts/{payout_id}/reject")
@@ -930,4 +930,4 @@ async def reject_payout(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="To'lovni rad etishda xatolik")

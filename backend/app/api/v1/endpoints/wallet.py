@@ -72,7 +72,7 @@ async def get_wallet(authorization: Optional[str] = Header(None)):
         }
     except Exception as e:
         logger.error(f"get_wallet error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Hamyon ma'lumotlarini olishda xatolik")
 
 
 @router.post("/wallet/withdraw")
@@ -127,7 +127,7 @@ async def request_withdrawal(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"request_withdrawal error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Pul yechish so'rovida xatolik")
 
 
 @router.get("/wallet/history")
@@ -142,4 +142,4 @@ async def get_wallet_history(
         return {"history": history}
     except Exception as e:
         logger.error(f"get_wallet_history error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Hamyon tarixini olishda xatolik")

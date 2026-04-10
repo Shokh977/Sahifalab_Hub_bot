@@ -169,7 +169,7 @@ async def list_lessons(course_id: int = Query(..., description="Course ID")):
             f"{SUPABASE_URL}/rest/v1/lessons",
             params={
                 "course_id": f"eq.{course_id}",
-                "select": "id, course_id, title, description, video_source, bunny_video_id, encoding_status, duration_minutes, order_index, is_free, lesson_type, section_title, material_url, material_name, created_at",
+                "select": "id, course_id, title, description, video_source, encoding_status, duration_minutes, order_index, is_free, lesson_type, section_title, material_url, material_name, created_at",
                 "order": "order_index.asc",
             },
             headers=_supabase_headers(),

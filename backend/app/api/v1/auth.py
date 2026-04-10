@@ -425,7 +425,7 @@ async def apply_teacher(
         db.commit()
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasida xatolik")
     return {"success": True, "already_applied": False, "status": "pending"}
 
 

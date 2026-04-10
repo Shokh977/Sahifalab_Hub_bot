@@ -88,6 +88,7 @@ def _task_dict(t: PlannerTask) -> dict:
         "sort_order":       t.sort_order,
         "linked_course_id": t.linked_course_id,
         "linked_lesson_id": t.linked_lesson_id,
+        "xp_claimed":       t.xp_claimed,
         "created_at":       t.created_at.isoformat() if t.created_at else None,
         "updated_at":       t.updated_at.isoformat() if t.updated_at else None,
     }
@@ -152,9 +153,9 @@ async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_
     db.commit()
     db.refresh(task)
 
-    # ── Award 20 XP when task moves to "done" ────────────────────────────
+    # ── Award 20 XP when task moves to "done" (once only) ───────────────
     xp_awarded = 0
-    if old_status != "done" and task.status == "done":
+    if old_status != "done" and task.status == "done" and not task.xp_claimed:
         try:
             row = db.execute(
                 text("SELECT new_xp, new_level, xp_added FROM add_xp(:uid, 'DEEP_WORK', 20, NULL)"),
@@ -162,6 +163,7 @@ async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_
             ).fetchone()
             if row:
                 xp_awarded = int(row.xp_added)
+            task.xp_claimed = True
             db.commit()
         except Exception:
             db.rollback()
@@ -197,8 +199,8 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db)):
             task.status = item.status
             task.sort_order = item.sort_order
 
-            # Award XP on first move to "done"
-            if old_status != "done" and item.status == "done":
+            # Award XP on first move to "done" (once per task)
+            if old_status != "done" and item.status == "done" and not task.xp_claimed:
                 try:
                     row = db.execute(
                         text("SELECT xp_added FROM add_xp(:uid, 'DEEP_WORK', 20, NULL)"),
@@ -206,6 +208,7 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db)):
                     ).fetchone()
                     if row:
                         xp_awarded += int(row.xp_added)
+                    task.xp_claimed = True
                 except Exception:
                     pass
 

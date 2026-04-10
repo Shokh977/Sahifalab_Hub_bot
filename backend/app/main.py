@@ -129,6 +129,19 @@ async def _expire_stale_payments_loop():
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks on app startup."""
+    # ── SECRET_KEY guard ──────────────────────────────────────────────────
+    # Refuse to start if the operator forgot to set a real SECRET_KEY.
+    # Hardcoded default allows JWT forgery → full auth bypass.
+    _DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION-SET-SECRET_KEY-ENV"
+    if settings.SECRET_KEY == _DEFAULT_SECRET:
+        logger.critical(
+            "FATAL: SECRET_KEY is still the default placeholder. "
+            "Set a secure random SECRET_KEY environment variable before deploying."
+        )
+        raise SystemExit(
+            "Startup aborted: SECRET_KEY must be overridden via environment variable."
+        )
+
     asyncio.create_task(_expire_stale_payments_loop())
     logger.info("Background payment expiry task started")
 
