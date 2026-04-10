@@ -291,46 +291,11 @@ class ApiService {
 
   // ─── Payment endpoints ────────────────────────────────────────────────────
 
-  /** Check if user already purchased a paid book */
-  async checkPurchase(bookId: number, telegramId: number) {
-    return this.axiosInstance.get('/api/payments/check-purchase', {
-      params: { book_id: bookId, telegram_id: telegramId },
+  /** Check if user already purchased a paid book (JWT auth — no telegram_id param) */
+  async checkPurchase(bookId: number, _telegramId?: number) {
+    return this.axiosInstance.get('/api/pay/check-purchase', {
+      params: { book_id: bookId },
     })
-  }
-
-  /** Create payment order for any provider (telegram_stars | click | payme) */
-  async createPaymentOrder(bookId: number, telegramId: number, provider: string) {
-    return this.axiosInstance.post('/api/payments/create-order', {
-      book_id: bookId,
-      telegram_id: telegramId,
-      provider,
-    })
-  }
-
-  /** Create invoice link for WebApp.openInvoice() flow */
-  async createInvoiceLink(bookId: number, telegramId: number, provider: string) {
-    return this.axiosInstance.post('/api/payments/create-invoice-link', {
-      book_id: bookId,
-      telegram_id: telegramId,
-      provider,
-    })
-  }
-
-  /** Check order status */
-  async getOrderStatus(orderId: string) {
-    return this.axiosInstance.get(`/api/payments/order/${orderId}`)
-  }
-
-  /** Confirm payment from frontend (after openInvoice returns 'paid') */
-  async confirmPayment(orderId: string) {
-    return this.axiosInstance.post('/api/payments/confirm-payment', {
-      order_id: orderId,
-    })
-  }
-
-  /** Debug payment config */
-  async debugPaymentConfig() {
-    return this.axiosInstance.get('/api/payments/debug-config')
   }
 
   // ─── Audio / Ambient Sound endpoints ─────────────────────────────────────
@@ -644,50 +609,28 @@ class ApiService {
     return this.axiosInstance.get('/api/enrollments/mine')
   }
 
-  /** Paid course: create Telegram invoice link */
-  async createCourseInvoiceLink(courseId: number, provider: 'telegram_stars' | 'click' | 'payme' = 'telegram_stars') {
-    return this.axiosInstance.post('/api/enrollments/create-invoice-link', {
-      course_id: courseId,
-      provider,
-    })
-  }
-
-  /** Paid course: confirm payment from invoice callback */
-  async confirmCoursePayment(orderId: string) {
-    return this.axiosInstance.post('/api/enrollments/confirm-payment', { order_id: orderId })
-  }
-
-  /** Paid course: read payment order status */
-  async getCoursePaymentOrder(orderId: string) {
-    return this.axiosInstance.get(`/api/enrollments/order/${orderId}`)
-  }
-
-  // ─── Unified Payments (Click/Payme/Stars for any item) ────────────────────
+  // ─── Unified Payments (Click/Payme for any item) ───────────────────────────
 
   /** Initialize payment for any item type via the unified /pay/init endpoint */
-  async initPayment(itemType: 'book' | 'course', itemId: number, provider: 'telegram_stars' | 'click' | 'payme', returnUrl = '', userId?: number) {
+  async initPayment(itemType: 'book' | 'course', itemId: number, provider: 'click' | 'payme', returnUrl = '') {
     return this.axiosInstance.post('/api/pay/init', {
       item_type: itemType,
       item_id: itemId,
       provider,
       return_url: returnUrl,
-      ...(userId ? { user_id: userId } : {}),
     })
   }
 
-  /** Confirm payment after openInvoice callback returns 'paid' */
-  async confirmUnifiedPayment(orderId: string, userId?: number) {
+  /** Confirm payment after webhook has set status to processing */
+  async confirmUnifiedPayment(orderId: string) {
     return this.axiosInstance.post('/api/pay/confirm', {
       order_id: orderId,
-      ...(userId ? { user_id: userId } : {}),
     })
   }
 
   /** Poll payment status */
-  async getPaymentStatus(orderId: string, userId?: number) {
-    return this.axiosInstance.get(`/api/pay/${orderId}`, {
-      params: userId ? { user_id: userId } : undefined,
-    })
+  async getPaymentStatus(orderId: string) {
+    return this.axiosInstance.get(`/api/pay/${orderId}`)
   }
 
   // ─── Lessons ──────────────────────────────────────────────────────────────

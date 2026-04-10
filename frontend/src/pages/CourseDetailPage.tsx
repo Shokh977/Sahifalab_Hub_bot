@@ -1148,7 +1148,6 @@ const CourseDetailPage: React.FC = () => {
           itemId={course.id}
           itemTitle={course.title}
           priceUzs={course.price}
-          userId={user?.id}
         />
       )}
       <DeleteConfirmModal

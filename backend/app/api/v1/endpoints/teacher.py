@@ -245,7 +245,7 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
     published_courses = sum(1 for c in courses if c.get("is_published"))
     paid_courses = sum(1 for c in courses if c.get("is_paid"))
 
-    gross_stars = 0
+    total_revenue_uzs = 0.0
     completed_orders = 0
     recent_orders: list[dict] = []
     course_performance: list[dict] = []
@@ -385,11 +385,8 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
 
         orders = res.json() if isinstance(res.json(), list) else []
         completed_orders = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
-        gross_stars = sum(int(o.get("amount") or 0) for o in orders if o.get("currency") == "XTR")
+        total_revenue_uzs = sum(float(o.get("amount") or 0) for o in orders)
         recent_orders = orders[:20]
-
-    # Approximate conversion (same as payments module): 1 Star ≈ 250 UZS
-    estimated_revenue_uzs = gross_stars * 250
 
     return {
         "teacher_id": teacher_id,
@@ -398,8 +395,7 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
         "paid_courses": paid_courses,
         "total_students": total_students,
         "completed_orders": completed_orders,
-        "gross_stars": gross_stars,
-        "estimated_revenue_uzs": estimated_revenue_uzs,
+        "total_revenue_uzs": total_revenue_uzs,
         "course_performance": course_performance,
         "top_students": top_students,
         "recent_orders": recent_orders,

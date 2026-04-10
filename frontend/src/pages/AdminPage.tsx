@@ -103,8 +103,7 @@ interface PlatformSummary {
   total_enrollments: number
   total_teachers: number
   total_completed_orders: number
-  gross_stars: number
-  estimated_revenue_uzs: number
+  total_revenue_uzs: number
 }
 
 interface TopCourse {
@@ -122,8 +121,7 @@ interface TeacherLeaderboardItem {
   username: string | null
   courses_count: number
   total_students: number
-  total_stars: number
-  estimated_uzs: number
+  total_revenue_uzs: number
   completed_orders: number
 }
 
@@ -2231,7 +2229,7 @@ const AdminPage: React.FC = () => {
             )}
 
             {platformAnalytics && (() => {
-              const grossUZS = platformAnalytics.summary.estimated_revenue_uzs
+              const grossUZS = platformAnalytics.summary.total_revenue_uzs
               const netUZS   = Math.round(grossUZS * 0.70)
               const commUZS  = grossUZS - netUZS
               return (
@@ -2243,7 +2241,7 @@ const AdminPage: React.FC = () => {
                       { Icon: CheckCircle,     label: 'Nashr qilingan',      value: platformAnalytics.summary.published_courses,         accent: 'emerald' },
                       { Icon: Users,           label: 'Jami yozilishlar',    value: platformAnalytics.summary.total_enrollments,         accent: 'blue' },
                       { Icon: BookOpen,        label: "O'qituvchilar",       value: platformAnalytics.summary.total_teachers,            accent: 'violet' },
-                      { Icon: Star,            label: 'Jami Stars',          value: platformAnalytics.summary.gross_stars,               accent: 'amber' },
+                      { Icon: Star,            label: "To'lovlar",           value: platformAnalytics.summary.total_completed_orders,    accent: 'amber' },
                       { Icon: Wallet,          label: 'Brut daromad',        value: `${(grossUZS / 1000).toFixed(0)}K so'm`,            accent: 'sahifa' },
                       { Icon: BadgeDollarSign, label: "O'qituvchi ulushi",   value: `${(netUZS / 1000).toFixed(0)}K so'm`,             accent: 'emerald' },
                       { Icon: Lock,            label: 'Pullik kurslar',      value: platformAnalytics.summary.paid_courses,              accent: 'amber' },
@@ -2336,8 +2334,8 @@ const AdminPage: React.FC = () => {
                               </p>
                             </div>
                             <div className="text-right shrink-0">
-                              <p className="text-sm font-bold text-amber-500 inline-flex items-center gap-0.5"><Star className="h-3.5 w-3.5" />{t.total_stars}</p>
-                              <p className="text-xs text-gray-400">{t.estimated_uzs.toLocaleString('uz-UZ')} so'm</p>
+                              <p className="text-sm font-bold text-emerald-500">{t.total_revenue_uzs.toLocaleString('uz-UZ')} so'm</p>
+                              <p className="text-xs text-gray-400">{t.completed_orders} to'lov</p>
                             </div>
                           </div>
                         ))}

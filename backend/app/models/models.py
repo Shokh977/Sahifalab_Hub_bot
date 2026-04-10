@@ -310,7 +310,7 @@ class BookPurchase(Base):
     id = Column(Integer, primary_key=True, index=True)
     book_id = Column(Integer, ForeignKey("book.id"), index=True)
     telegram_id = Column(Integer, index=True)                   # buyer
-    provider = Column(String(30), index=True)                   # telegram_stars | click | payme
+    provider = Column(String(30), index=True)                   # click | payme
     provider_transaction_id = Column(String(255), nullable=True) # external tx id
     order_id = Column(String(100), unique=True, index=True)     # our internal ref
     amount = Column(Float)

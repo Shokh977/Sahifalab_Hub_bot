@@ -12,9 +12,9 @@ import { fetchBook, fetchMyRating } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
-import { usePlatform } from '../hooks/usePlatform'
 import { ArrowDownTrayIcon, ArrowLeftIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { BookOpen } from 'lucide-react'
+import PaymentModal from '../components/PaymentModal'
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -64,7 +64,6 @@ const BookDetailPage: React.FC = () => {
   const navigate = useNavigate()
   const { user } = useTelegramWebApp()
   const { user: authUser } = useAuth()
-  const { isTelegram } = usePlatform()
   const effectiveUserId = user?.id ?? authUser?.id ?? null
 
   const [book, setBook] = useState<Book | null>(null)
@@ -78,6 +77,7 @@ const BookDetailPage: React.FC = () => {
   // Purchase state (paid books)
   const [purchased, setPurchased] = useState(false)
   const [purchaseChecking, setPurchaseChecking] = useState(false)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
 
   // Rating state
   const [myRating, setMyRating] = useState(0)
@@ -318,8 +318,24 @@ const BookDetailPage: React.FC = () => {
                 </button>
               </div>
             ) : (
-              /* Not purchased → payment options */
-              <PaymentSection book={book} telegramId={effectiveUserId ?? 0} isTelegram={isTelegram} onPurchased={() => setPurchased(true)} />
+              /* Not purchased → payment button + modal */
+              <>
+                <button
+                  onClick={() => setShowPaymentModal(true)}
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all"
+                >
+                  💳 Sotib olish — {book.price.toLocaleString()} UZS
+                </button>
+                <PaymentModal
+                  open={showPaymentModal}
+                  onClose={() => setShowPaymentModal(false)}
+                  onSuccess={() => setPurchased(true)}
+                  itemType="book"
+                  itemId={book.id}
+                  itemTitle={book.title}
+                  priceUzs={book.price}
+                />
+              </>
             )
           ) : (
             /* Free book → O’qish (primary) + Download (secondary) */
@@ -360,186 +376,5 @@ const Spinner: React.FC = () => (
     Yuklanmoqda…
   </>
 )
-
-// ── Payment Section ─────────────────────────────────────────────────────────
-interface PaymentSectionProps {
-  book: Book
-  telegramId: number
-  onPurchased: () => void
-  isTelegram?: boolean
-}
-
-const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPurchased, isTelegram = false }) => {
-  const [open, setOpen] = useState(false)
-  const [loading, setLoading] = useState('')       // which provider is loading
-  const [msg, setMsg] = useState('')
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null)
-  const [polling, setPolling] = useState(false)
-
-  // Safety-net: poll order status
-  useEffect(() => {
-    if (!pendingOrderId || !polling) return
-    const interval = setInterval(async () => {
-      try {
-        const res = await apiService.getOrderStatus(pendingOrderId)
-        if (res.data?.status === 'completed') {
-          clearInterval(interval)
-          setPolling(false)
-          setPendingOrderId(null)
-          setMsg('✅ To\'lov muvaffaqiyatli amalga oshirildi!')
-          onPurchased()
-        }
-      } catch { /* continue polling */ }
-    }, 3000)
-    return () => clearInterval(interval)
-  }, [pendingOrderId, polling, onPurchased])
-
-  // ── Pay handler — uses WebApp.openInvoice for native in-app payment ─────
-  const handlePay = async (provider: 'telegram_stars' | 'click' | 'payme') => {
-    if (!telegramId) { setMsg('❌ Telegram ID topilmadi'); return }
-    setLoading(provider)
-    setMsg('')
-    try {
-      // 1. Create order + get invoice link from backend
-      setMsg('⏳ Buyurtma yaratilmoqda...')
-      const res = await apiService.createInvoiceLink(book.id, telegramId, provider)
-      if (res.data.already_purchased) { onPurchased(); return }
-
-      const orderId = res.data.order_id as string
-      const invoiceUrl = res.data.invoice_url as string
-
-      if (!invoiceUrl) {
-        setMsg('❌ Invoice URL olinmadi. Backend konfiguratsiyasini tekshiring.')
-        return
-      }
-
-      setPendingOrderId(orderId)
-
-      // 2. Open payment
-      if (isTelegram && window.Telegram?.WebApp?.openInvoice) {
-        // Native Telegram mini-app invoice sheet
-        setMsg('')
-        window.Telegram.WebApp.openInvoice(invoiceUrl, async (status) => {
-          console.log('[Payment] openInvoice callback:', status)
-          if (status === 'paid') {
-            try { await apiService.confirmPayment(orderId) } catch { /* bot backs up */ }
-            setPolling(false)
-            setPendingOrderId(null)
-            setMsg('✅ To\'lov muvaffaqiyatli amalga oshirildi!')
-            onPurchased()
-          } else if (status === 'failed') {
-            setMsg('❌ To\'lov amalga oshmadi')
-            setPolling(false)
-          } else if (status === 'cancelled') {
-            setMsg('')
-            setPolling(false)
-            setPendingOrderId(null)
-          } else {
-            setPolling(true)
-          }
-        })
-      } else {
-        // Web browser — open payment page in a new tab, poll for completion
-        setMsg('⏳ To\'lov sahifasi ochilmoqda…')
-        setPolling(true)
-        window.open(invoiceUrl, '_blank', 'noopener')
-      }
-    } catch (err: any) {
-      console.error('[Payment] Error:', err?.response?.data?.detail || err?.message, err)
-      setMsg('❌ To\'lov amalga oshmadi. Iltimos, qayta urinib ko\'ring.')
-    } finally {
-      setLoading('')
-    }
-  }
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-semibold py-3.5 rounded-2xl shadow transition-all"
-      >
-        💳 Sotib olish — {book.price.toLocaleString()} UZS
-      </button>
-    )
-  }
-
-  return (
-    <div className="space-y-2.5">
-      <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 text-center">
-        To'lov usulini tanlang
-      </p>
-
-      {/* Feedback */}
-      {msg && (
-        <div className={`text-xs px-3 py-2.5 rounded-xl font-medium text-center ${
-          msg.startsWith('✅') ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-          : msg.startsWith('⏳') ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
-          : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
-        }`}>
-          {msg}
-        </div>
-      )}
-
-      {/* Polling indicator */}
-      {polling && (
-        <div className="flex items-center justify-center gap-2 text-xs text-amber-600 dark:text-amber-400">
-          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-          </svg>
-          To'lov kutilmoqda…
-        </div>
-      )}
-
-      {/* ⭐ Telegram Stars — only available inside Telegram Mini App */}
-      {isTelegram ? (
-        <button
-          onClick={() => handlePay('telegram_stars')}
-          disabled={loading === 'telegram_stars'}
-          className="flex items-center gap-3 w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.97] text-white px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-md transition-all disabled:opacity-60"
-        >
-          <span className="text-xl">⭐</span>
-          <span className="flex-1 text-left">Telegram Stars</span>
-          <span className="text-xs opacity-80">{Math.max(1, Math.round(book.price / 250))} ⭐</span>
-        </button>
-      ) : (
-        <div className="flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-400 dark:text-slate-500">
-          <span className="text-lg">⭐</span>
-          <span>Telegram Stars faqat Telegram ilovasida mavjud</span>
-        </div>
-      )}
-
-      {/* 💳 Click */}
-      <button
-        onClick={() => handlePay('click')}
-        disabled={loading === 'click'}
-        className="flex items-center gap-3 w-full bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-[0.97] border border-gray-200 dark:border-gray-600 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
-      >
-        <span className="text-xl">🟢</span>
-        <span className="flex-1 text-left text-gray-800 dark:text-white">Click</span>
-        <span className="text-xs text-gray-400">{book.price.toLocaleString()} UZS</span>
-      </button>
-
-      {/* 💙 Payme */}
-      <button
-        onClick={() => handlePay('payme')}
-        disabled={loading === 'payme'}
-        className="flex items-center gap-3 w-full bg-white dark:bg-gray-700 hover:bg-gray-50 dark:hover:bg-gray-600 active:scale-[0.97] border border-gray-200 dark:border-gray-600 px-4 py-3.5 rounded-2xl text-sm font-semibold shadow-sm transition-all disabled:opacity-60"
-      >
-        <span className="text-xl">💙</span>
-        <span className="flex-1 text-left text-gray-800 dark:text-white">Payme</span>
-        <span className="text-xs text-gray-400">{book.price.toLocaleString()} UZS</span>
-      </button>
-
-      {/* Cancel */}
-      <button
-        onClick={() => { setOpen(false); setMsg(''); setPolling(false) }}
-        className="w-full text-xs text-gray-400 dark:text-gray-500 py-1.5"
-      >
-        Bekor qilish
-      </button>
-    </div>
-  )
-}
 
 export default BookDetailPage

@@ -1,13 +1,15 @@
 import hashlib
 import hmac
-import os
 from datetime import datetime, UTC, timedelta
 from typing import Optional
 import jwt
 from pydantic import BaseModel
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-me")
-ALGORITHM = "HS256"
+from app.core.config import settings
+
+# Single source of truth — always reads from Settings (env → default)
+SECRET_KEY = settings.SECRET_KEY
+ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_DAYS = 30
 
 class TelegramAuthData(BaseModel):

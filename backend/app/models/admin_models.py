@@ -33,7 +33,7 @@ class PaymentConfig(Base):
     __tablename__ = "payment_config"
     
     id = Column(Integer, primary_key=True, index=True)
-    provider = Column(String(50))  # telegram_stars, click, payme
+    provider = Column(String(50))  # click, payme
     api_key = Column(String(500), nullable=True)
     merchant_id = Column(String(500), nullable=True)
     is_enabled = Column(Boolean, default=False)

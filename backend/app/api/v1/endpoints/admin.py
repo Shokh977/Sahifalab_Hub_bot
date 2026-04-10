@@ -2,8 +2,9 @@ import json
 import os
 import httpx
 from datetime import datetime, timezone, timedelta
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Header
 from sqlalchemy.orm import Session
+from typing import Optional
 from app.db.session import get_db
 from app.core.config import settings
 from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating, User
@@ -15,14 +16,13 @@ from app.schemas.admin_schemas import (
     PaymentConfigCreate, PaymentConfigUpdate, PaymentConfigResponse,
     AdminStats, AuditLogResponse
 )
+from app.services.auth_service import decode_token_payload
 
 router = APIRouter()
 
-# ── Supabase helpers (for course/enrollment/payment data) ─────────────────────
+# â”€â”€ Supabase helpers (for course/enrollment/payment data) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-
-STARS_RATE = 250  # 1 Star ≈ 250 UZS
 
 
 def _supabase_headers() -> dict:
@@ -42,8 +42,36 @@ def _ensure_supabase():
         )
 
 
-# Helper function to verify admin
-async def verify_admin(telegram_id: int, db: Session = Depends(get_db)):
+# Helper function to verify admin -- NOW uses JWT (Bearer token)
+async def verify_admin(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Extract telegram_id from JWT Bearer token and verify admin role.
+    No more client-supplied telegram_id query param -- that was a security hole.
+    """
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header required",
+        )
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format",
+        )
+
+    payload = decode_token_payload(parts[1])
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    telegram_id = payload["telegram_id"]
+
     # 1. Check the hardcoded env-var list first (works even with an empty DB)
     if telegram_id in settings.ADMIN_TELEGRAM_IDS:
         # Return or upsert a real AdminUser row so FK references work
@@ -76,7 +104,7 @@ async def verify_admin(telegram_id: int, db: Session = Depends(get_db)):
 @router.post("/hero", response_model=HeroContentResponse, status_code=status.HTTP_201_CREATED)
 async def create_hero_content(
     content: HeroContentCreate,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -94,7 +122,7 @@ async def create_hero_content(
 async def update_hero_content(
     hero_id: int,
     content: HeroContentUpdate,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -127,7 +155,7 @@ async def list_hero_content(
 @router.delete("/hero/{hero_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_hero_content(
     hero_id: int,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -148,7 +176,7 @@ async def delete_hero_content(
 async def list_quizzes_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -171,7 +199,7 @@ async def list_quizzes_admin(
 @router.post("/quizzes/upload", response_model=QuizUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_quiz(
     quiz_data: QuizUpload,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -223,7 +251,7 @@ async def upload_quiz(
 @router.delete("/quizzes/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_quiz(
     quiz_id: int,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -247,7 +275,7 @@ async def delete_quiz(
 @router.post("/books", response_model=BookManagementResponse, status_code=status.HTTP_201_CREATED)
 async def create_book(
     book_data: BookManagementCreate,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -273,7 +301,7 @@ async def create_book(
 async def update_book(
     book_id: int,
     book_data: BookManagementUpdate,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -314,7 +342,7 @@ async def update_book(
 @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_book(
     book_id: int,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -340,7 +368,7 @@ async def delete_book(
 async def list_books_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -351,7 +379,7 @@ async def list_books_admin(
 @router.post("/payments", response_model=PaymentConfigResponse, status_code=status.HTTP_201_CREATED)
 async def configure_payment(
     payment_config: PaymentConfigCreate,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -378,7 +406,7 @@ async def configure_payment(
 
 @router.get("/payments", response_model=list[PaymentConfigResponse])
 async def list_payment_configs(
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -388,7 +416,7 @@ async def list_payment_configs(
 @router.get("/payments/{provider}", response_model=PaymentConfigResponse)
 async def get_payment_config(
     provider: str,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -406,11 +434,21 @@ async def get_payment_config(
 # Debug endpoint — tests DB connectivity and returns diagnostics
 @router.get("/debug")
 async def debug_db(
-    telegram_id: int = Query(...),
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
-    """Returns DB connection status and table counts. Auth: admin only."""
+    """Returns DB connection status and table counts. Auth: admin only (JWT)."""
     import traceback
+
+    # Extract telegram_id from JWT for diagnostic output
+    telegram_id = 0
+    if authorization:
+        parts = authorization.split()
+        if len(parts) == 2 and parts[0] == "Bearer":
+            payload = decode_token_payload(parts[1])
+            if payload:
+                telegram_id = payload["telegram_id"]
+
     result: dict = {
         "telegram_id": telegram_id,
         "admin_ids_in_config": settings.ADMIN_TELEGRAM_IDS,
@@ -433,7 +471,7 @@ async def debug_db(
 # Admin Dashboard
 @router.get("/dashboard/stats", response_model=AdminStats)
 async def get_admin_stats(
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -443,7 +481,7 @@ async def get_admin_stats(
     total_resources = total_books  # same source for now
     active_payments = db.query(PaymentConfig).filter(PaymentConfig.is_enabled == True).count()
 
-    # ── Pull real user counts from Supabase ───────────────────────────────
+    # â”€â”€ Pull real user counts from Supabase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     total_users = db.query(User).count()  # Railway fallback
     active_1h   = 0
     active_24h  = 0
@@ -513,7 +551,7 @@ async def get_book_audit_logs(
     book_id: int = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -530,7 +568,7 @@ async def get_quiz_audit_logs(
     quiz_id: int = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
 ):
@@ -543,13 +581,13 @@ async def get_quiz_audit_logs(
     return query.order_by(QuizAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Platform Analytics (Step 15) — admin-only, Supabase data
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Platform Analytics (Step 15) -- admin-only, Supabase data
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("/platform-analytics")
 async def get_platform_analytics(
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -563,7 +601,7 @@ async def get_platform_analytics(
     _ensure_supabase()
 
     async with httpx.AsyncClient(timeout=15) as client:
-        # All courses (public + unpublished — admin sees everything)
+        # All courses (public + unpublished -- admin sees everything)
         courses_res = await client.get(
             f"{SUPABASE_URL}/rest/v1/courses",
             params={"select": "id,teacher_id,title,is_published,is_paid,enrolled_count,price"},
@@ -590,29 +628,28 @@ async def get_platform_analytics(
     teachers: list[dict] = teachers_res.json() if teachers_res.status_code == 200 else []
     completed_orders: list[dict] = orders_res.json() if orders_res.status_code == 200 else []
 
-    # ── Summary aggregation ──────────────────────────────────────────────────
+    # â”€â”€ Summary aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     total_courses = len(courses)
     published_courses = sum(1 for c in courses if c.get("is_published"))
     paid_courses_count = sum(1 for c in courses if c.get("is_paid"))
     total_enrollments = sum(int(c.get("enrolled_count") or 0) for c in courses)
     total_teachers = len(teachers)
-    gross_stars = sum(int(o.get("amount") or 0) for o in completed_orders)
-    estimated_revenue_uzs = gross_stars * STARS_RATE
+    total_revenue_uzs = sum(float(o.get("amount") or 0) for o in completed_orders)
 
-    # ── Per-teacher aggregation ──────────────────────────────────────────────
+    # â”€â”€ Per-teacher aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     course_to_teacher: dict[int, int] = {
         int(c["id"]): int(c.get("teacher_id") or 0)
         for c in courses if c.get("id") and c.get("teacher_id")
     }
 
-    teacher_stars:   dict[int, int] = {}
-    teacher_orders:  dict[int, int] = {}
+    teacher_revenue: dict[int, float] = {}
+    teacher_orders:  dict[int, int]   = {}
     for o in completed_orders:
         cid = o.get("course_id")
         tid = course_to_teacher.get(int(cid)) if cid else None
         if tid:
-            teacher_stars[tid]  = teacher_stars.get(tid, 0)  + int(o.get("amount") or 0)
-            teacher_orders[tid] = teacher_orders.get(tid, 0) + 1
+            teacher_revenue[tid] = teacher_revenue.get(tid, 0) + float(o.get("amount") or 0)
+            teacher_orders[tid]  = teacher_orders.get(tid, 0) + 1
 
     teacher_courses_count: dict[int, int] = {}
     teacher_students:      dict[int, int] = {}
@@ -640,17 +677,16 @@ async def get_platform_analytics(
                 "username": teacher_info.get(tid, {}).get("username"),
                 "courses_count": teacher_courses_count.get(tid, 0),
                 "total_students": teacher_students.get(tid, 0),
-                "total_stars": teacher_stars.get(tid, 0),
-                "estimated_uzs": teacher_stars.get(tid, 0) * STARS_RATE,
+                "total_revenue_uzs": teacher_revenue.get(tid, 0),
                 "completed_orders": teacher_orders.get(tid, 0),
             }
             for tid in all_teacher_ids
         ],
-        key=lambda x: x["total_stars"],
+        key=lambda x: x["total_revenue_uzs"],
         reverse=True,
     )
 
-    # ── Top 10 courses by enrollment ─────────────────────────────────────────
+    # â”€â”€ Top 10 courses by enrollment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     top_courses = sorted(
         [
             {
@@ -675,8 +711,7 @@ async def get_platform_analytics(
             "total_enrollments": total_enrollments,
             "total_teachers": total_teachers,
             "total_completed_orders": len(completed_orders),
-            "gross_stars": gross_stars,
-            "estimated_revenue_uzs": estimated_revenue_uzs,
+            "total_revenue_uzs": total_revenue_uzs,
         },
         "top_courses": top_courses,
         "teacher_leaderboard": teacher_leaderboard,
@@ -684,13 +719,13 @@ async def get_platform_analytics(
     }
 
 
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Admin Courses Management (Step 20)
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @router.get("/courses")
 async def admin_list_courses(
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -742,7 +777,7 @@ async def admin_list_courses(
             "teacher_name": prof.get("first_name") or f"Teacher {tid}",
             "teacher_username": prof.get("username"),
             "category_name": cat.get("name") or "",
-            "category_icon": cat.get("icon") or "📚",
+            "category_icon": cat.get("icon") or "ðŸ“š",
             "is_published": bool(c.get("is_published")),
             "is_paid": bool(c.get("is_paid")),
             "price": float(c.get("price") or 0),
@@ -761,7 +796,7 @@ async def admin_list_courses(
 @router.patch("/courses/{course_id}/publish")
 async def admin_toggle_course_publish(
     course_id: int,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -797,7 +832,7 @@ async def admin_toggle_course_publish(
 @router.delete("/courses/{course_id}")
 async def admin_delete_course(
     course_id: int,
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -816,9 +851,9 @@ async def admin_delete_course(
     return {"ok": True, "deleted_id": course_id}
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Payout Management — Teacher Wallet Admin Endpoints
-# ─────────────────────────────────────────────────────────────────────────────
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# Payout Management -- Teacher Wallet Admin Endpoints
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 from app.services import wallet_service as ws
 from pydantic import BaseModel as _PayoutBase
@@ -830,7 +865,7 @@ class _PayoutActionBody(_PayoutBase):
 
 @router.get("/payouts/pending")
 async def list_pending_payouts(
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -843,7 +878,7 @@ async def list_pending_payouts(
 
 @router.get("/payouts/all")
 async def list_all_payouts(
-    telegram_id: int = Query(...),
+
     status_filter: str = Query(None, alias="status"),
     limit: int = Query(100, ge=1, le=500),
     db: Session = Depends(get_db),
@@ -860,13 +895,13 @@ async def list_all_payouts(
 async def approve_payout(
     payout_id: int,
     body: _PayoutActionBody = _PayoutActionBody(),
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
     """
     Admin: mark a pending payout as PAID.
-    Moves money from pending_withdrawal → withdrawn_total.
+    Moves money from pending_withdrawal â†’ withdrawn_total.
     """
     try:
         result = await ws.approve_payout(payout_id, admin_note=body.admin_note)
@@ -881,13 +916,13 @@ async def approve_payout(
 async def reject_payout(
     payout_id: int,
     body: _PayoutActionBody = _PayoutActionBody(),
-    telegram_id: int = Query(...),
+
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
     """
     Admin: reject a pending payout.
-    Returns money from pending_withdrawal → available_balance.
+    Returns money from pending_withdrawal â†’ available_balance.
     """
     try:
         result = await ws.reject_payout(payout_id, admin_note=body.admin_note)

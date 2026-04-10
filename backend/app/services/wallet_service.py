@@ -3,12 +3,15 @@ SAHIFALAB — Teacher Wallet & Payout Service
 
 Business logic for teacher earnings, withdrawal requests,
 and admin approval workflow.  All money values are in UZS.
+
+Wallet mutations use atomic Supabase RPC functions (credit_wallet,
+debit_wallet, approve_payout, reject_payout) that lock rows with
+FOR UPDATE to eliminate race conditions.
 """
 
 import os
 import logging
 import httpx
-from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -17,7 +20,8 @@ logger = logging.getLogger(__name__)
 # ── Constants ─────────────────────────────────────────────────────────────────
 MIN_WITHDRAWAL_AMOUNT = Decimal("50000")       # 50 000 UZS
 MAX_WITHDRAWAL_AMOUNT = Decimal("10000000")    # 10 000 000 UZS
-STARS_RATE = 250                               # 1 Telegram Star ≈ 250 UZS
+MAX_PENDING_REQUESTS = 3                       # Max concurrent pending withdrawal requests
+WITHDRAWAL_COOLDOWN_MINUTES = 10               # Min minutes between withdrawal requests
 
 # ── Supabase helpers (same pattern as teacher.py) ─────────────────────────────
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
@@ -80,32 +84,56 @@ async def get_or_create_wallet(teacher_id: int) -> dict:
     raise RuntimeError(f"Failed to create wallet for teacher {teacher_id}: {res.text}")
 
 
-async def _update_wallet_fields(teacher_id: int, fields: dict) -> dict:
-    """Patch arbitrary fields on teacher_wallets row."""
+async def _DEPRECATED_update_wallet_fields(teacher_id: int, fields: dict) -> dict:
+    """DEPRECATED: Non-atomic PATCH bypass. DO NOT USE for balance mutations.
+    
+    Kept only for potential non-financial metadata updates.
+    All balance operations MUST use atomic RPC helpers (credit_wallet, debit_wallet).
+    """
+    raise RuntimeError(
+        "_update_wallet_fields is deprecated. Use atomic RPC helpers "
+        "(credit_wallet, debit_wallet, approve_payout, reject_payout) instead."
+    )
+
+
+async def _call_rpc(fn_name: str, params: dict) -> dict:
+    """Call a Supabase RPC function and return the JSON result."""
     _ensure_supabase()
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/teacher_wallets",
-            params={"teacher_id": f"eq.{teacher_id}"},
-            json=fields,
-            headers=_supabase_headers(),
+    async with httpx.AsyncClient(timeout=15) as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/{fn_name}",
+            json=params,
+            headers=_supabase_headers("return=representation"),
         )
-    rows = res.json() if res.status_code in (200, 204) and isinstance(res.json(), list) else []
-    return rows[0] if rows else {}
+    if res.status_code not in (200, 201):
+        detail = res.text[:500]
+        logger.error("RPC %s failed (%s): %s", fn_name, res.status_code, detail)
+        raise RuntimeError(f"RPC {fn_name} failed: {detail}")
+    data = res.json()
+    # Supabase RPC returns the function result directly
+    return data if isinstance(data, dict) else {}
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # Credit teacher wallet (called after a course/book sale completes)
 # ═════════════════════════════════════════════════════════════════════════════
 
-async def credit_teacher_wallet(teacher_id: int, amount_uzs: float) -> dict:
+async def credit_teacher_wallet(
+    teacher_id: int,
+    amount_uzs: float,
+    reference: str | None = None,
+    note: str | None = None,
+) -> dict:
     """
-    Add earnings to the teacher's available_balance.
-    Called from payment fulfillment (e.g. after a course sale).
+    Add earnings to the teacher's available_balance via atomic RPC.
+    Uses FOR UPDATE row locking — safe against concurrent calls.
     """
-    wallet = await get_or_create_wallet(teacher_id)
-    new_balance = float(wallet.get("available_balance", 0)) + amount_uzs
-    return await _update_wallet_fields(teacher_id, {"available_balance": new_balance})
+    return await _call_rpc("credit_wallet", {
+        "p_teacher_id": teacher_id,
+        "p_amount": float(amount_uzs),
+        "p_reference": reference,
+        "p_note": note or f"Sale credit: {amount_uzs} UZS",
+    })
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -119,15 +147,16 @@ async def request_withdrawal(
     teacher_name: str = "O'qituvchi",
 ) -> dict:
     """
-    Create a withdrawal request.  Validates limits, atomically moves money
-    from available_balance → pending_withdrawal, and notifies admins.
+    Create a withdrawal request via atomic RPC (debit_wallet).
+    The RPC atomically: locks wallet → checks balance → deducts available_balance →
+    adds to pending_withdrawal → creates payout_requests row → logs audit entry.
 
-    Returns the new payout_requests row.
-    Raises ValueError on validation failures.
+    Returns the payout details dict.
+    Raises ValueError on validation failures, RuntimeError on RPC errors.
     """
     amount_d = Decimal(str(amount))
 
-    # ── Validation ────────────────────────────────────────────────────────
+    # ── Client-side validation (fast-fail before RPC) ─────────────────────
     if amount_d < MIN_WITHDRAWAL_AMOUNT:
         raise ValueError(
             f"Minimal summa {MIN_WITHDRAWAL_AMOUNT:,.0f} UZS. "
@@ -139,56 +168,87 @@ async def request_withdrawal(
             f"Siz {amount_d:,.0f} UZS so'radingiz."
         )
 
+    # ── Pending request cap — prevent spam ────────────────────────────────
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        pending_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/payout_requests",
+            params={
+                "teacher_id": f"eq.{teacher_id}",
+                "status": "eq.pending",
+                "select": "id,created_at",
+                "order": "created_at.desc",
+            },
+            headers=_supabase_headers(),
+        )
+    pending_rows = pending_res.json() if pending_res.status_code == 200 and isinstance(pending_res.json(), list) else []
+
+    if len(pending_rows) >= MAX_PENDING_REQUESTS:
+        raise ValueError(
+            f"Sizda allaqachon {len(pending_rows)} ta kutilayotgan so'rov bor. "
+            f"Maksimal {MAX_PENDING_REQUESTS} ta."
+        )
+
+    # ── Cooldown check — prevent rapid-fire requests ──────────────────────
+    if pending_rows:
+        from datetime import datetime, UTC, timedelta
+        last_created = pending_rows[0].get("created_at", "")
+        if last_created:
+            try:
+                last_dt = datetime.fromisoformat(last_created.replace("Z", "+00:00"))
+                cooldown_until = last_dt + timedelta(minutes=WITHDRAWAL_COOLDOWN_MINUTES)
+                if datetime.now(UTC) < cooldown_until:
+                    remaining = int((cooldown_until - datetime.now(UTC)).total_seconds() // 60) + 1
+                    raise ValueError(
+                        f"Iltimos, {remaining} daqiqa kuting. "
+                        f"So'rovlar orasida kamida {WITHDRAWAL_COOLDOWN_MINUTES} daqiqa bo'lishi kerak."
+                    )
+            except ValueError:
+                raise  # Re-raise our own ValueError
+            except Exception:
+                pass  # If date parsing fails, allow the request
+
+    # Quick balance pre-check (non-atomic, just for user-friendly error)
     wallet = await get_or_create_wallet(teacher_id)
     available = Decimal(str(wallet.get("available_balance", 0)))
-
     if amount_d > available:
         raise ValueError(
             f"Yetarli mablag' yo'q. Mavjud: {available:,.0f} UZS, "
             f"so'ralgan: {amount_d:,.0f} UZS."
         )
 
-    # Also reject if the remaining balance after withdrawal is negative
-    # (handles concurrent requests)
-    if available - amount_d < 0:
-        raise ValueError("Mablag' yetarli emas (parallel request detected).")
-
-    # ── Atomic wallet update ──────────────────────────────────────────────
-    new_available = float(available - amount_d)
-    new_pending = float(Decimal(str(wallet.get("pending_withdrawal", 0))) + amount_d)
-    await _update_wallet_fields(teacher_id, {
-        "available_balance": new_available,
-        "pending_withdrawal": new_pending,
-    })
-
-    # ── Create payout request record ──────────────────────────────────────
-    _ensure_supabase()
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.post(
-            f"{SUPABASE_URL}/rest/v1/payout_requests",
-            json={
-                "teacher_id": teacher_id,
-                "amount": float(amount_d),
-                "card_number": card_number,
-                "status": "pending",
-            },
-            headers=_supabase_headers(),
-        )
-    rows = res.json() if res.status_code in (200, 201) and isinstance(res.json(), list) else []
-    if not rows:
-        # Rollback wallet changes
-        await _update_wallet_fields(teacher_id, {
-            "available_balance": float(available),
-            "pending_withdrawal": float(Decimal(str(wallet.get("pending_withdrawal", 0)))),
+    # ── Atomic debit via RPC ──────────────────────────────────────────────
+    card_masked = f"****{card_number[-4:]}" if len(card_number) >= 4 else card_number
+    try:
+        result = await _call_rpc("debit_wallet", {
+            "p_teacher_id": teacher_id,
+            "p_amount": float(amount_d),
+            # Store ONLY the masked card — never persist full card numbers
+            "p_card_number": card_masked,
+            "p_card_masked": card_masked,
+            "p_note": f"Withdrawal request by {teacher_name}",
         })
-        raise RuntimeError(f"Failed to create payout request: {res.text}")
+    except RuntimeError as exc:
+        err_msg = str(exc).lower()
+        if "insufficient balance" in err_msg:
+            raise ValueError(
+                "Mablag' yetarli emas (parallel request detected)."
+            ) from exc
+        raise
 
-    payout = rows[0]
+    payout_id = result.get("payout_id")
 
-    # ── Notify admins via Telegram ────────────────────────────────────────
-    await _notify_admins_new_request(teacher_id, teacher_name, amount, card_number)
+    # ── Notify admins via Telegram (masked card only) ────────────────────
+    await _notify_admins_new_request(teacher_id, teacher_name, amount, card_masked)
 
-    return payout
+    return {
+        "id": payout_id,
+        "teacher_id": teacher_id,
+        "amount": float(amount_d),
+        "card_masked": card_masked,
+        "status": "pending",
+        **result,
+    }
 
 
 async def _notify_admins_new_request(
@@ -296,104 +356,46 @@ async def list_all_payouts(status_filter: Optional[str] = None, limit: int = 100
 
 async def approve_payout(payout_id: int, admin_note: str = "") -> dict:
     """
-    Mark a pending payout as paid.
-    Moves money from pending_withdrawal → withdrawn_total.
+    Mark a pending payout as paid via atomic RPC (approve_payout).
+    The RPC atomically: locks payout → validates status → locks wallet →
+    moves pending_withdrawal → withdrawn_total → updates payout status → logs audit.
     """
-    _ensure_supabase()
+    try:
+        result = await _call_rpc("approve_payout", {
+            "p_payout_id": payout_id,
+            "p_admin_note": admin_note or None,
+        })
+    except RuntimeError as exc:
+        err_msg = str(exc).lower()
+        if "not found" in err_msg:
+            raise ValueError("Payout request topilmadi") from exc
+        if "already processed" in err_msg:
+            raise ValueError("Bu so'rov allaqachon bajarilgan") from exc
+        raise
 
-    # Fetch the payout request
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.get(
-            f"{SUPABASE_URL}/rest/v1/payout_requests",
-            params={"id": f"eq.{payout_id}", "select": "*"},
-            headers=_supabase_headers(),
-        )
-    rows = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
-    if not rows:
-        raise ValueError("Payout request topilmadi")
-
-    payout = rows[0]
-    if payout["status"] != "pending":
-        raise ValueError(f"Bu so'rov allaqachon '{payout['status']}' holatida")
-
-    teacher_id = int(payout["teacher_id"])
-    amount = Decimal(str(payout["amount"]))
-
-    # Update wallet: pending_withdrawal -= amount, withdrawn_total += amount
-    wallet = await get_or_create_wallet(teacher_id)
-    new_pending = max(0, float(Decimal(str(wallet.get("pending_withdrawal", 0))) - amount))
-    new_withdrawn = float(Decimal(str(wallet.get("withdrawn_total", 0))) + amount)
-    await _update_wallet_fields(teacher_id, {
-        "pending_withdrawal": new_pending,
-        "withdrawn_total": new_withdrawn,
-    })
-
-    # Update payout request → paid
-    now_iso = datetime.now(timezone.utc).isoformat()
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/payout_requests",
-            params={"id": f"eq.{payout_id}"},
-            json={
-                "status": "paid",
-                "admin_note": admin_note or None,
-                "processed_at": now_iso,
-            },
-            headers=_supabase_headers(),
-        )
-    updated = res.json() if res.status_code in (200, 204) and isinstance(res.json(), list) else []
-    return updated[0] if updated else {**payout, "status": "paid", "processed_at": now_iso}
+    return {"id": payout_id, **result}
 
 
 async def reject_payout(payout_id: int, admin_note: str = "") -> dict:
     """
-    Reject a pending payout.
-    Returns money from pending_withdrawal → available_balance.
+    Reject a pending payout via atomic RPC (reject_payout).
+    The RPC atomically: locks payout → validates status → locks wallet →
+    returns money from pending_withdrawal → available_balance → updates status → logs audit.
     """
-    _ensure_supabase()
+    try:
+        result = await _call_rpc("reject_payout", {
+            "p_payout_id": payout_id,
+            "p_admin_note": admin_note or None,
+        })
+    except RuntimeError as exc:
+        err_msg = str(exc).lower()
+        if "not found" in err_msg:
+            raise ValueError("Payout request topilmadi") from exc
+        if "already processed" in err_msg:
+            raise ValueError("Bu so'rov allaqachon bajarilgan") from exc
+        raise
 
-    # Fetch the payout request
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.get(
-            f"{SUPABASE_URL}/rest/v1/payout_requests",
-            params={"id": f"eq.{payout_id}", "select": "*"},
-            headers=_supabase_headers(),
-        )
-    rows = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
-    if not rows:
-        raise ValueError("Payout request topilmadi")
-
-    payout = rows[0]
-    if payout["status"] != "pending":
-        raise ValueError(f"Bu so'rov allaqachon '{payout['status']}' holatida")
-
-    teacher_id = int(payout["teacher_id"])
-    amount = Decimal(str(payout["amount"]))
-
-    # Return money to available_balance
-    wallet = await get_or_create_wallet(teacher_id)
-    new_available = float(Decimal(str(wallet.get("available_balance", 0))) + amount)
-    new_pending = max(0, float(Decimal(str(wallet.get("pending_withdrawal", 0))) - amount))
-    await _update_wallet_fields(teacher_id, {
-        "available_balance": new_available,
-        "pending_withdrawal": new_pending,
-    })
-
-    # Update payout request → rejected
-    now_iso = datetime.now(timezone.utc).isoformat()
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/payout_requests",
-            params={"id": f"eq.{payout_id}"},
-            json={
-                "status": "rejected",
-                "admin_note": admin_note or None,
-                "processed_at": now_iso,
-            },
-            headers=_supabase_headers(),
-        )
-    updated = res.json() if res.status_code in (200, 204) and isinstance(res.json(), list) else []
-    return updated[0] if updated else {**payout, "status": "rejected", "processed_at": now_iso}
+    return {"id": payout_id, **result}
 
 
 # ═════════════════════════════════════════════════════════════════════════════

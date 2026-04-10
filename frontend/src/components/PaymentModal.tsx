@@ -1,10 +1,9 @@
 /**
  * PaymentModal — Reusable payment modal for courses & books
  *
- * Supports three payment methods:
- *   ⭐ Telegram Stars  (inside Telegram Mini App via openInvoice)
- *   🟢 Click.uz        (Telegram openInvoice or direct browser redirect)
- *   💙 Payme           (Telegram openInvoice or direct browser redirect)
+ * Supports two payment methods (direct browser checkout):
+ *   🟢 Click.uz
+ *   💙 Payme
  *
  * Usage:
  *   <PaymentModal
@@ -20,12 +19,9 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { XMarkIcon, ArrowPathIcon, CursorArrowRaysIcon, DevicePhoneMobileIcon, ShieldCheckIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
-import { StarIcon } from '@heroicons/react/24/solid'
-import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
-import { usePlatform } from '../hooks/usePlatform'
 import apiService from '../services/apiService'
 
-type PaymentProvider = 'telegram_stars' | 'click' | 'payme'
+type PaymentProvider = 'click' | 'payme'
 
 interface PaymentModalProps {
   open: boolean
@@ -35,17 +31,12 @@ interface PaymentModalProps {
   itemId: number
   itemTitle: string
   priceUzs: number
-  userId?: number  // Telegram user ID — required in Telegram mode (no JWT)
 }
-
-const STARS_RATE = 250
 
 const PaymentModal: React.FC<PaymentModalProps> = ({
   open, onClose, onSuccess,
-  itemType, itemId, itemTitle, priceUzs, userId,
+  itemType, itemId, itemTitle, priceUzs,
 }) => {
-  const { webApp } = useTelegramWebApp()
-  const { isTelegram } = usePlatform()
   const [loading, setLoading] = useState<PaymentProvider | null>(null)
   const [error, setError] = useState('')
   const [polling, setPolling] = useState(false)
@@ -83,7 +74,7 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         return
       }
       try {
-        const res = await apiService.getPaymentStatus(orderId, userId)
+        const res = await apiService.getPaymentStatus(orderId)
         if (res.data?.status === 'completed') {
           if (pollingRef.current) clearInterval(pollingRef.current)
           pollingRef.current = null
@@ -95,67 +86,31 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
         // Keep polling
       }
     }, 5000)
-  }, [onSuccess, onClose, userId])
+  }, [onSuccess, onClose])
 
   const handlePay = useCallback(async (provider: PaymentProvider) => {
     setError('')
     setLoading(provider)
     try {
-      // Use the unified /pay/init endpoint
-      const res = await apiService.initPayment(
-        itemType, itemId, provider,
-        window.location.href, // return_url
-        userId,
-      )
+      const res = await apiService.initPayment(itemType, itemId, provider, window.location.href)
+      const { order_id, checkout_url } = res.data || {}
 
-      const { order_id, invoice_url, checkout_url } = res.data || {}
-      if (!order_id) {
+      if (!order_id || !checkout_url) {
         setError("To'lov yaratilmadi. Qayta urinib ko'ring.")
         setLoading(null)
         return
       }
 
-      // ── Inside Telegram Mini App ──
-      if (isTelegram && webApp && invoice_url) {
-        webApp.openInvoice(invoice_url, async (status: string) => {
-          if (status === 'paid') {
-            try {
-              await apiService.confirmUnifiedPayment(order_id, userId)
-            } catch { /* webhook will handle */ }
-            onSuccess()
-            onClose()
-          } else if (status === 'failed') {
-            setError("To'lov amalga oshmadi")
-          } else if (status === 'cancelled') {
-            // User cancelled, do nothing
-          }
-          setLoading(null)
-        })
-        // Also start polling as backup
-        startPolling(order_id)
-        return
-      }
-
-      // ── Outside Telegram (browser) ──
-      // For Click/Payme: prefer direct checkout URL
-      const redirectUrl = checkout_url || invoice_url
-      if (redirectUrl) {
-        // Open payment page in new tab
-        window.open(redirectUrl, '_blank')
-        // Start polling for completion
-        startPolling(order_id)
-      } else {
-        setError("To'lov havolasi yaratilmadi")
-        setLoading(null)
-      }
+      // Open payment page in new tab / redirect
+      window.open(checkout_url, '_blank')
+      // Start polling for completion
+      startPolling(order_id)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
       setError(msg || "Xatolik yuz berdi")
       setLoading(null)
     }
-  }, [itemType, itemId, isTelegram, webApp, startPolling, onSuccess, onClose, userId])
-
-  const starsPrice = Math.max(1, Math.round(priceUzs / STARS_RATE))
+  }, [itemType, itemId, startPolling])
 
   if (!open) return null
 
@@ -230,26 +185,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
             {/* Payment buttons */}
             <div className="px-5 pb-5 space-y-2.5">
-              {/* Telegram Stars — only in Telegram */}
-              {isTelegram && (
-                <button
-                  onClick={() => handlePay('telegram_stars')}
-                  disabled={!!loading}
-                  className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-semibold text-sm
-                    bg-gradient-to-r from-yellow-400 to-amber-500 text-white shadow-md shadow-amber-200/40
-                    dark:shadow-amber-900/30 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
-                    transition-all disabled:opacity-60 disabled:pointer-events-none"
-                >
-                  {loading === 'telegram_stars' ? (
-                    <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                  ) : (
-                    <StarIcon className="h-5 w-5 text-white" />
-                  )}
-                  <span className="flex-1 text-left">Telegram Stars</span>
-                  <span className="text-xs opacity-90">≈ {starsPrice} Stars</span>
-                </button>
-              )}
-
               {/* Click */}
               <button
                 onClick={() => handlePay('click')}

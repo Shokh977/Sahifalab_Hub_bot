@@ -50,8 +50,7 @@ interface MyCourse {
 
 interface TeacherAnalytics {
   courses_count: number; published_courses: number; paid_courses: number
-  total_students: number; completed_orders: number; gross_stars: number
-  estimated_revenue_uzs: number
+  total_students: number; completed_orders: number; total_revenue_uzs: number
   course_performance?: Array<{
     course_id: number; title: string; lesson_count: number
     enrolled_students: number; completed_lessons: number; completion_rate: number
@@ -259,7 +258,7 @@ const TeacherDashboardPage: React.FC = () => {
   }
 
   // ── Derived analytics vars ──────────────────────────────────────────────
-  const grossUZS  = analytics?.estimated_revenue_uzs ?? 0
+  const grossUZS  = analytics?.total_revenue_uzs ?? 0
   const netUZS    = Math.round(netIncome(grossUZS))
   const commUZS   = grossUZS - netUZS
   const convRate  = (analytics?.total_students && analytics.completed_orders)
@@ -402,7 +401,7 @@ const TeacherDashboardPage: React.FC = () => {
                 <BentoTile Icon={Users}           label="Talabalarim"   value={analytics?.total_students ?? 0}    sub="yozilganlar"                     accent="blue"    loading={analyticsLoading} />
                 <BentoTile Icon={Video}           label="Kurslar"       value={`${analytics?.published_courses ?? 0}/${analytics?.courses_count ?? 0}`} sub="nashr / jami" accent="emerald" loading={analyticsLoading} />
                 <BentoTile Icon={Star}            label="To'lovli"      value={analytics?.paid_courses ?? 0}      sub={`${analytics?.completed_orders ?? 0} to'lov`} accent="amber"   loading={analyticsLoading} />
-                <BentoTile Icon={BadgeDollarSign} label="Daromad"       value={`${(netUZS / 1000).toFixed(0)}K`}  sub={`${analytics?.gross_stars ?? 0} Stars`} accent="sahifa"  loading={analyticsLoading} />
+                <BentoTile Icon={BadgeDollarSign} label="Daromad"       value={`${(netUZS / 1000).toFixed(0)}K`}  sub={`${analytics?.completed_orders ?? 0} to'lov`} accent="sahifa"  loading={analyticsLoading} />
               </div>
             </div>
 
@@ -455,7 +454,7 @@ const TeacherDashboardPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-3">
               <BentoTile Icon={Wallet}           label="Brut daromad"  value={`${(grossUZS / 1000).toFixed(0)}K`} sub="so'm (jami)" accent="sahifa" loading={analyticsLoading} />
               <BentoTile Icon={BadgeDollarSign}  label="Sof daromad"   value={`${(netUZS / 1000).toFixed(0)}K`}   sub="so'm (70%)" accent="emerald" loading={analyticsLoading} />
-              <BentoTile Icon={Star}             label="Jami Stars"    value={analytics?.gross_stars?.toLocaleString() ?? '0'} sub={`komisyon: ${(commUZS / 1000).toFixed(0)}K`} accent="amber" loading={analyticsLoading} />
+              <BentoTile Icon={Star}             label="To'lovlar"     value={analytics?.completed_orders?.toLocaleString() ?? '0'} sub={`komisyon: ${(commUZS / 1000).toFixed(0)}K`} accent="amber" loading={analyticsLoading} />
               <BentoTile Icon={Target}           label="Konversiya"    value={`${convRate}%`} sub={`${analytics?.completed_orders ?? 0} / ${analytics?.total_students ?? 0} talaba`} accent="violet" loading={analyticsLoading} />
             </div>
 

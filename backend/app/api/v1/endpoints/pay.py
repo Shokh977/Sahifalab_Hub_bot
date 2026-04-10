@@ -1,21 +1,25 @@
 """
-SAHIFALAB — Unified Payment Endpoints
+SAHIFALAB — Unified Payment Endpoints (v2.1 — Security Hardened)
 
 Routes:
-  POST /api/pay/init               — Initialize payment (any item type + provider)
-  POST /api/pay/confirm            — Frontend confirms payment (after invoice callback)
+  POST /api/pay/init               — Initialize payment (Click or Payme)
+  POST /api/pay/confirm            — Frontend confirms payment (requires webhook-set 'processing' status)
   GET  /api/pay/{order_id}         — Check payment status
+  GET  /api/pay/check-purchase     — Check book ownership (JWT required)
   POST /api/pay/click/prepare      — Click.uz webhook (prepare phase)
   POST /api/pay/click/complete     — Click.uz webhook (complete phase)
   POST /api/pay/payme              — Payme JSON-RPC webhook
 
 Security:
-  - Click webhooks validated via MD5 signature
-  - Payme webhooks validated via Basic auth
-  - Frontend confirm requires valid Bearer JWT
-  - All callbacks are idempotent
+  - All user-facing endpoints require Bearer JWT (no user_id fallback)
+  - Click webhooks validated via MD5 signature + hmac.compare_digest
+  - Payme webhooks validated via Basic auth + hmac.compare_digest
+  - /confirm requires status=processing (must be set by webhook first)
+  - Fulfilled_at guard prevents double fulfillment
+  - Webhook replay protection via dedup cache
+  - Idempotency keys prevent duplicate payment records on rapid clicks
 """
-from fastapi import APIRouter, HTTPException, Header, Request
+from fastapi import APIRouter, HTTPException, Header, Request, Form
 from pydantic import BaseModel
 from typing import Optional, Literal
 import logging
@@ -33,30 +37,25 @@ router = APIRouter()
 class InitPaymentRequest(BaseModel):
     item_type: Literal["book", "course"]
     item_id: int
-    provider: Literal["telegram_stars", "click", "payme"]
+    provider: Literal["click", "payme"]
     return_url: Optional[str] = ""
-    user_id: Optional[int] = None   # Telegram Mini App: pass tg user id directly
 
 
 class ConfirmPaymentRequest(BaseModel):
     order_id: str
-    user_id: Optional[int] = None   # Telegram Mini App fallback
 
 
 # ── Auth helper ──────────────────────────────────────────────────────────────
 
-async def _resolve_caller(authorization: Optional[str], user_id_fallback: Optional[int] = None) -> int:
-    """Resolve caller ID from Bearer JWT or direct user_id (Telegram Mini App mode)."""
+async def _resolve_caller(authorization: Optional[str]) -> int:
+    """Resolve caller ID from Bearer JWT. No fallback — JWT required."""
     if authorization:
         parts = authorization.split()
         if len(parts) == 2 and parts[0] == "Bearer":
             tid = decode_token(parts[1])
             if tid is not None:
                 return tid
-    # Telegram Mini App mode: no JWT stored, trust the passed user_id
-    if user_id_fallback and user_id_fallback > 0:
-        return user_id_fallback
-    raise HTTPException(status_code=401, detail="Missing authorization header")
+    raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
 
 
 # ── Item info helper ─────────────────────────────────────────────────────────
@@ -102,6 +101,46 @@ async def _get_item_info(item_type: str, item_id: int) -> dict:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# CHECK PURCHASE (book or course ownership)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/check-purchase")
+async def check_purchase(
+    book_id: int = 0,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Check if the authenticated user has purchased a paid book.
+    JWT required — telegram_id extracted from token, not from query params.
+    """
+    caller_id = await _resolve_caller(authorization)
+    if not book_id:
+        return {"purchased": False}
+    import httpx, os
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    headers = {
+        "apikey": key,
+        "Authorization": f"Bearer {key}",
+        "Content-Type": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{url}/rest/v1/book_purchase",
+            params={
+                "book_id": f"eq.{book_id}",
+                "telegram_id": f"eq.{caller_id}",
+                "status": "eq.completed",
+                "select": "id",
+                "limit": "1",
+            },
+            headers=headers,
+        )
+    rows = res.json() if res.status_code == 200 else []
+    return {"purchased": len(rows) > 0}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # INIT PAYMENT
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -109,69 +148,69 @@ async def _get_item_info(item_type: str, item_id: int) -> dict:
 async def init_payment(body: InitPaymentRequest, authorization: Optional[str] = Header(None)):
     """
     Initialize a payment for any item (book or course).
-    Returns:
-      - invoice_url   → for Telegram openInvoice / browser redirect
-      - checkout_url  → direct Click/Payme URL (for non-Telegram users)
-      - order_id      → for status polling + confirmation
+    Returns checkout_url for direct Click/Payme browser redirect.
+    JWT required. Uses idempotency key to prevent duplicate records on rapid clicks.
     """
-    caller_id = await _resolve_caller(authorization, body.user_id)
+    caller_id = await _resolve_caller(authorization)
     item = await _get_item_info(body.item_type, body.item_id)
 
     if not item["is_paid"] or item["price"] <= 0:
-        raise HTTPException(status_code=400, detail="This item is free")
+        raise HTTPException(status_code=400, detail="Bu mahsulot bepul")
 
     amount_uzs = item["price"]
+
+    # Generate idempotency key — same user+item+provider within 1 minute = same key
+    idemp_key = ps.generate_idempotency_key(body.item_type, body.item_id, caller_id, body.provider)
+
+    # Check for existing pending/processing payment with this idempotency key
+    existing = await ps.get_payment_by_idempotency_key(idemp_key)
+    if existing and existing.get("status") in ("pending", "processing"):
+        # Return the existing checkout URL instead of creating a duplicate
+        checkout_url = None
+        if existing.get("provider") == "click":
+            checkout_url = ps.generate_click_checkout_url(existing["order_id"], int(existing["amount"]), existing.get("return_url", ""))
+        elif existing.get("provider") == "payme":
+            checkout_url = ps.generate_payme_checkout_url(existing["order_id"], int(existing["amount"]), existing.get("return_url", ""))
+        return {
+            "order_id": existing["order_id"],
+            "checkout_url": checkout_url,
+            "amount": int(existing["amount"]),
+            "currency": existing.get("currency", "UZS"),
+            "provider": existing["provider"],
+            "deduplicated": True,
+        }
+
     order_id = ps.generate_order_id(body.item_type, body.item_id, caller_id, body.provider)
     return_url = body.return_url or ps.PAYMENT_RETURN_URL
 
-    # Determine display currency + amount for the payment record
-    if body.provider == "telegram_stars":
-        currency = "XTR"
-        record_amount = max(1, int(amount_uzs / ps.STARS_RATE))
-    else:
-        currency = "UZS"
-        record_amount = amount_uzs
-
-    # Create payment record (idempotent — unique order_id)
+    # Create payment record with expiry and idempotency key
     await ps.create_payment_record(
         order_id=order_id,
         item_type=body.item_type,
         item_id=body.item_id,
         user_id=caller_id,
         provider=body.provider,
-        amount=record_amount,
-        currency=currency,
+        amount=amount_uzs,
+        currency="UZS",
         return_url=return_url,
+        idempotency_key=idemp_key,
     )
 
-    # Generate Telegram invoice URL (works for all providers inside Telegram)
-    invoice_url = None
-    try:
-        emoji = "📕" if body.item_type == "book" else "🎓"
-        invoice_url = await ps.create_telegram_invoice(
-            title=f"{emoji} {item['title']}",
-            description=f"SAHIFALAB {body.item_type} sotib olish",
-            order_id=order_id,
-            provider=body.provider,
-            amount_uzs=amount_uzs,
-        )
-    except Exception as e:
-        logger.warning("[Pay] Telegram invoice failed: %s", e)
-
-    # Generate direct checkout URL (for non-Telegram/browser users)
+    # Generate direct checkout URL
     checkout_url = None
     if body.provider == "click":
         checkout_url = ps.generate_click_checkout_url(order_id, amount_uzs, return_url)
     elif body.provider == "payme":
         checkout_url = ps.generate_payme_checkout_url(order_id, amount_uzs, return_url)
 
+    if not checkout_url:
+        raise HTTPException(status_code=503, detail="To'lov tizimi sozlanmagan")
+
     return {
         "order_id": order_id,
-        "invoice_url": invoice_url,
         "checkout_url": checkout_url,
-        "amount": record_amount,
-        "currency": currency,
-        "price_uzs": amount_uzs,
+        "amount": amount_uzs,
+        "currency": "UZS",
         "provider": body.provider,
     }
 
@@ -183,19 +222,27 @@ async def init_payment(body: InitPaymentRequest, authorization: Optional[str] = 
 @router.post("/confirm")
 async def confirm_payment(body: ConfirmPaymentRequest, authorization: Optional[str] = Header(None)):
     """
-    Called by frontend when Telegram openInvoice callback returns "paid".
-    Marks payment completed and unlocks content.
+    Called by frontend after Click/Payme redirect back.
+    Only completes if webhook already set status to 'processing' or 'completed'.
+    This prevents self-confirmation exploits.
     """
-    caller_id = await _resolve_caller(authorization, body.user_id)
+    caller_id = await _resolve_caller(authorization)
     payment = await ps.get_payment_by_order_id(body.order_id)
     if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi")
 
     if int(payment.get("user_id", 0)) != caller_id:
-        raise HTTPException(status_code=403, detail="Not your payment")
+        raise HTTPException(status_code=403, detail="Bu sizning to'lovingiz emas")
 
     if payment.get("status") == "completed":
         return {"status": "completed", "order_id": body.order_id, "already_completed": True}
+
+    # Only allow confirmation if webhook already moved status to 'processing'
+    if payment.get("status") not in ("processing", "completed"):
+        raise HTTPException(
+            status_code=409,
+            detail="To'lov hali tasdiqlanmagan. Iltimos, biroz kuting.",
+        )
 
     # Mark as completed
     await ps.update_payment_status(body.order_id, "completed")
@@ -212,15 +259,15 @@ async def confirm_payment(body: ConfirmPaymentRequest, authorization: Optional[s
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/{order_id}")
-async def get_payment_status(order_id: str, authorization: Optional[str] = Header(None), user_id: Optional[int] = None):
-    """Check payment status. Caller must own the payment or be admin."""
-    caller_id = await _resolve_caller(authorization, user_id)
+async def get_payment_status(order_id: str, authorization: Optional[str] = Header(None)):
+    """Check payment status. Caller must own the payment."""
+    caller_id = await _resolve_caller(authorization)
     payment = await ps.get_payment_by_order_id(order_id)
     if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
+        raise HTTPException(status_code=404, detail="Buyurtma topilmadi")
 
     if int(payment.get("user_id", 0)) != caller_id:
-        raise HTTPException(status_code=403, detail="Not your payment")
+        raise HTTPException(status_code=403, detail="Bu sizning to'lovingiz emas")
 
     return {
         "order_id": payment["order_id"],
@@ -241,23 +288,42 @@ async def get_payment_status(order_id: str, authorization: Optional[str] = Heade
 
 @router.post("/click/prepare")
 async def click_prepare(
-    click_trans_id: int = 0,
-    service_id: int = 0,
-    click_paydoc_id: int = 0,
-    merchant_trans_id: str = "",
-    amount: float = 0,
-    action: int = 0,
-    error: int = 0,
-    error_note: str = "",
-    sign_time: str = "",
-    sign_string: str = "",
+    click_trans_id: int = Form(0),
+    service_id: int = Form(0),
+    click_paydoc_id: int = Form(0),
+    merchant_trans_id: str = Form(""),
+    amount: float = Form(0),
+    action: int = Form(0),
+    error: int = Form(0),
+    error_note: str = Form(""),
+    sign_time: str = Form(""),
+    sign_string: str = Form(""),
 ):
     """
     Click.uz PREPARE webhook (action=0).
     Called by Click when user initiates payment.
     Validates signature, checks order exists and amount matches.
+    Click sends form-encoded POST data.
     """
     logger.info("[Click/Prepare] trans=%s order=%s amount=%s", click_trans_id, merchant_trans_id, amount)
+
+    # Verify signature (timing-safe comparison)
+    if not ps.verify_click_signature(
+        click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, sign_string
+    ):
+        return {"error": -1, "error_note": "SIGN CHECK FAILED!"}
+
+    # Webhook replay protection
+    if ps.is_webhook_duplicate("click_prepare", str(click_trans_id)):
+        logger.warning("[Click/Prepare] Duplicate webhook: trans=%s", click_trans_id)
+        payment = await ps.get_payment_by_order_id(merchant_trans_id)
+        return {
+            "click_trans_id": click_trans_id,
+            "merchant_trans_id": merchant_trans_id,
+            "merchant_prepare_id": payment.get("id", merchant_trans_id) if payment else merchant_trans_id,
+            "error": 0,
+            "error_note": "Already processed",
+        }
 
     # Verify signature
     if not ps.verify_click_signature(
@@ -275,6 +341,11 @@ async def click_prepare(
 
     if payment["status"] == "cancelled":
         return {"error": -9, "error_note": "Order cancelled"}
+
+    # Check expiry
+    if ps.is_payment_expired(payment):
+        await ps.update_payment_status(merchant_trans_id, "expired")
+        return {"error": -9, "error_note": "Order expired"}
 
     # Click sends amount in UZS, compare with our stored amount
     expected = float(payment["amount"])
@@ -299,24 +370,43 @@ async def click_prepare(
 
 @router.post("/click/complete")
 async def click_complete(
-    click_trans_id: int = 0,
-    service_id: int = 0,
-    click_paydoc_id: int = 0,
-    merchant_trans_id: str = "",
-    merchant_prepare_id: str = "",
-    amount: float = 0,
-    action: int = 1,
-    error: int = 0,
-    error_note: str = "",
-    sign_time: str = "",
-    sign_string: str = "",
+    click_trans_id: int = Form(0),
+    service_id: int = Form(0),
+    click_paydoc_id: int = Form(0),
+    merchant_trans_id: str = Form(""),
+    merchant_prepare_id: str = Form(""),
+    amount: float = Form(0),
+    action: int = Form(1),
+    error: int = Form(0),
+    error_note: str = Form(""),
+    sign_time: str = Form(""),
+    sign_string: str = Form(""),
 ):
     """
     Click.uz COMPLETE webhook (action=1).
     Called by Click after successful payment.
     Validates, marks completed, unlocks content.
+    Click sends form-encoded POST data.
     """
     logger.info("[Click/Complete] trans=%s order=%s error=%d", click_trans_id, merchant_trans_id, error)
+
+    # Verify signature (timing-safe comparison)
+    if not ps.verify_click_signature(
+        click_trans_id, service_id, merchant_trans_id, amount, action, sign_time, sign_string
+    ):
+        return {"error": -1, "error_note": "SIGN CHECK FAILED!"}
+
+    # Webhook replay protection
+    if ps.is_webhook_duplicate("click_complete", str(click_trans_id)):
+        logger.warning("[Click/Complete] Duplicate webhook: trans=%s", click_trans_id)
+        payment = await ps.get_payment_by_order_id(merchant_trans_id)
+        return {
+            "click_trans_id": click_trans_id,
+            "merchant_trans_id": merchant_trans_id,
+            "merchant_confirm_id": payment.get("id", merchant_trans_id) if payment else merchant_trans_id,
+            "error": 0,
+            "error_note": "Already processed",
+        }
 
     # Verify signature
     if not ps.verify_click_signature(
@@ -448,6 +538,20 @@ async def _payme_create(params: dict) -> dict:
     if payment["status"] == "completed":
         return {"error": {"code": -31051, "message": {"uz": "Allaqachon to'langan", "en": "Already paid"}}}
 
+    # Validate amount matches stored payment (Payme sends tiyins)
+    expected_tiyins = float(payment["amount"]) * 100
+    if abs(expected_tiyins - amount) > 1:
+        return {"error": {"code": -31001, "message": {"uz": "Noto'g'ri summa", "ru": "Неверная сумма", "en": "Incorrect amount"}}}
+
+    # Webhook replay protection
+    if ps.is_webhook_duplicate("payme_create", payme_id):
+        logger.warning("[Payme/Create] Duplicate webhook: payme_id=%s", payme_id)
+        return {
+            "create_time": time_ms,
+            "transaction": str(payment.get("id", order_id)),
+            "state": 1,
+        }
+
     # Mark as processing
     await ps.update_payment_status(
         order_id, "processing",
@@ -494,7 +598,7 @@ async def _payme_perform(params: dict) -> dict:
             "state": 2,
         }
 
-    # Complete + fulfill
+    # Complete + fulfill (idempotent via fulfilled_at guard)
     from datetime import datetime, UTC
     now = datetime.now(UTC)
     await ps.update_payment_status(order_id, "completed", provider_transaction_id=payme_id)
@@ -509,7 +613,7 @@ async def _payme_perform(params: dict) -> dict:
 
 
 async def _payme_cancel(params: dict) -> dict:
-    """Cancel a transaction."""
+    """Cancel a transaction. If it was completed, reverse fulfillment."""
     payme_id = params.get("id", "")
     reason = params.get("reason", 0)
 
@@ -531,6 +635,15 @@ async def _payme_cancel(params: dict) -> dict:
 
     payment = rows[0]
     order_id = payment["order_id"]
+    was_completed = payment["status"] == "completed"
+
+    # If payment was already fulfilled, attempt to reverse
+    if was_completed and payment.get("fulfilled_at"):
+        try:
+            await _reverse_fulfillment(payment)
+            logger.info("[Payme/Cancel] Reversed fulfillment for order=%s", order_id)
+        except Exception as e:
+            logger.error("[Payme/Cancel] Failed to reverse fulfillment: %s", e)
 
     await ps.update_payment_status(order_id, "cancelled", provider_data={"cancel_reason": reason})
 
@@ -538,8 +651,78 @@ async def _payme_cancel(params: dict) -> dict:
     return {
         "transaction": str(payment.get("id", order_id)),
         "cancel_time": int(datetime.now(UTC).timestamp() * 1000),
-        "state": -1 if payment["status"] != "completed" else -2,
+        "state": -1 if not was_completed else -2,
     }
+
+
+async def _reverse_fulfillment(payment: dict):
+    """
+    Best-effort reversal of a completed payment's fulfillment:
+    - Deactivate course enrollment or book purchase
+    - Debit teacher wallet by the teacher's share amount
+    """
+    import httpx, os
+    url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    item_type = payment.get("item_type")
+    item_id = payment.get("item_id")
+    user_id = payment.get("user_id")
+    order_id = payment.get("order_id", "")
+    amount = float(payment.get("amount", 0))
+
+    if item_type == "course":
+        # Deactivate enrollment
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.patch(
+                f"{url}/rest/v1/course_enrollments",
+                params={
+                    "course_id": f"eq.{item_id}",
+                    "student_id": f"eq.{user_id}",
+                },
+                json={"is_active": False},
+                headers=ps._sb_headers(),
+            )
+    elif item_type == "book":
+        # Mark purchase as cancelled
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.patch(
+                f"{url}/rest/v1/book_purchase",
+                params={
+                    "book_id": f"eq.{item_id}",
+                    "telegram_id": f"eq.{user_id}",
+                    "status": "eq.completed",
+                },
+                json={"status": "refunded"},
+                headers=ps._sb_headers(),
+            )
+
+    # Reverse teacher wallet credit (teacher share only)
+    teacher_amount = round(amount * ps.TEACHER_SHARE_RATE, 2)
+    try:
+        table = "courses" if item_type == "course" else "book"
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{url}/rest/v1/{table}",
+                params={"id": f"eq.{item_id}", "select": "teacher_id"},
+                headers=ps._sb_headers(),
+            )
+        rows = res.json() if res.status_code == 200 else []
+        if rows and rows[0].get("teacher_id"):
+            teacher_id = int(rows[0]["teacher_id"])
+            # Use credit_wallet with negative amount or a dedicated debit RPC
+            # For now, use credit_wallet with negative to reverse
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"{url}/rest/v1/rpc/credit_wallet",
+                    json={
+                        "p_teacher_id": teacher_id,
+                        "p_amount": -teacher_amount,
+                        "p_reference": f"refund:{order_id}",
+                        "p_note": f"Refund for cancelled {item_type}:{item_id}",
+                    },
+                    headers=ps._sb_headers(),
+                )
+    except Exception as e:
+        logger.error("[Cancel] Failed to reverse teacher credit: %s", e)
 
 
 async def _payme_check(params: dict) -> dict:

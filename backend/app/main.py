@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
+from app.middleware.rate_limiter import rate_limit_middleware
 import app.models  # noqa: F401 — registers all models with SQLAlchemy Base
 import logging
 
@@ -34,6 +35,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting — 100/min, 1000/hr, 10000/day per IP
+app.middleware("http")(rate_limit_middleware)
+
 # Include API routes
 app.include_router(api_router, prefix="/api")
 
@@ -48,6 +52,50 @@ async def root():
         "version": "1.0.0",
         "docs": "/docs",
     }
+
+
+# ── Background task: expire stale payments ────────────────────────────────────
+import asyncio
+
+async def _expire_stale_payments_loop():
+    """Periodically expire payments that have been pending for too long."""
+    import httpx, os
+    from datetime import datetime, UTC
+    while True:
+        try:
+            await asyncio.sleep(300)  # Run every 5 minutes
+            supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+            supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            if not supabase_url or not supabase_key:
+                continue
+            now = datetime.now(UTC).isoformat()
+            async with httpx.AsyncClient(timeout=15) as client:
+                res = await client.patch(
+                    f"{supabase_url}/rest/v1/payments",
+                    params={
+                        "status": "eq.pending",
+                        "expires_at": f"lt.{now}",
+                    },
+                    json={"status": "expired"},
+                    headers={
+                        "apikey": supabase_key,
+                        "Authorization": f"Bearer {supabase_key}",
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal",
+                    },
+                )
+            if res.status_code in (200, 204):
+                logger.debug("[Expiry] Expired stale pending payments")
+        except Exception as e:
+            logger.error("[Expiry] Error: %s", e)
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Start background tasks on app startup."""
+    asyncio.create_task(_expire_stale_payments_loop())
+    logger.info("Background payment expiry task started")
+
 
 if __name__ == "__main__":
     import uvicorn

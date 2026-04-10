@@ -26,10 +26,9 @@ class Settings(BaseSettings):
     # Comma-separated Telegram IDs of admins, e.g. "123456789,987654321"
     ADMIN_TELEGRAM_IDS: List[int] = []
 
-    # Payment — BotFather provider tokens
-    # Get these from @BotFather → Payments → Connect Click / Payme
-    CLICK_PROVIDER_TOKEN: str = ""   # BotFather → Payments → Click
-    PAYME_PROVIDER_TOKEN: str = ""   # BotFather → Payments → Payme
+    # Payment — BotFather provider tokens (kept for backwards compat, unused in v2)
+    # CLICK_PROVIDER_TOKEN: str = ""
+    # PAYME_PROVIDER_TOKEN: str = ""
 
     # Payment — Direct merchant credentials (for webhooks + browser checkout)
     # Click: get from Click.uz merchant dashboard
@@ -72,8 +71,8 @@ class Settings(BaseSettings):
             return [int(x.strip()) for x in v.split(',') if x.strip()]
         return v
     
-    # JWT
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    # JWT — MUST override SECRET_KEY in production via env var
+    SECRET_KEY: str = "CHANGE-ME-IN-PRODUCTION-SET-SECRET_KEY-ENV"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
