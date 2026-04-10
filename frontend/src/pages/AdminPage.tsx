@@ -342,8 +342,8 @@ const AdminPage: React.FC = () => {
       const res = await apiService.debugDb(adminId)
       setDbStatus(JSON.stringify(res.data, null, 2))
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || String(err)
-      setDbStatus(`❌ HTTP ${err?.response?.status ?? '?'}: ${detail}`)
+      console.error('[Admin] debugDb error:', err?.response?.data?.detail || err?.response?.statusText || err?.message)
+      setDbStatus('❌ Xatolik yuz berdi')
     } finally {
       setDbChecking(false)
     }
@@ -419,9 +419,9 @@ const AdminPage: React.FC = () => {
           })
       )
     } catch (err: any) {
-      const detail = err?.message || 'Foydalanuvchilar ro\'yxatini yuklab bo\'lmadi'
+      console.error('[Admin] loadProfiles error:', err?.message)
       setProfiles([])
-      setProfilesError(String(detail))
+      setProfilesError('Xatolik yuz berdi')
     } finally {
       setProfilesLoading(false)
     }
@@ -451,9 +451,9 @@ const AdminPage: React.FC = () => {
       const res = await apiService.getAdminQuizzes(adminId)
       setQuizList(res.data)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Quizlar yuklanmadi'
+      console.error('[Admin] loadAdminQuizzes error:', err?.response?.data?.detail || err?.message)
       setQuizList([])
-      setQuizListError(String(detail))
+      setQuizListError('Xatolik yuz berdi')
     } finally {
       setQuizListLoading(false)
     }
@@ -477,8 +477,8 @@ const AdminPage: React.FC = () => {
       const res = await apiService.getTeacherRequests()
       setTeacherRequests(res.data ?? [])
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Yuklab bo\'lmadi'
-      setTeacherReqError(String(detail))
+      console.error('[Admin] loadTeacherRequests error:', err?.response?.data?.detail || err?.message)
+      setTeacherReqError('Xatolik yuz berdi')
     } finally {
       setTeacherReqLoading(false)
     }
@@ -492,8 +492,8 @@ const AdminPage: React.FC = () => {
       const res = await apiService.getAdminPlatformAnalytics(adminId)
       setPlatformAnalytics(res.data)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Analitika yuklanmadi'
-      setAnalyticsError(String(detail))
+      console.error('[Admin] loadPlatformAnalytics error:', err?.response?.data?.detail || err?.message)
+      setAnalyticsError('Xatolik yuz berdi')
     } finally {
       setAnalyticsLoading(false)
     }
@@ -509,8 +509,8 @@ const AdminPage: React.FC = () => {
       const res = await apiService.getAdminCourses(adminId)
       setAdminCourses(res.data ?? [])
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Kurslar yuklanmadi'
-      setAdminCoursesError(String(detail))
+      console.error('[Admin] loadAdminCourses error:', err?.response?.data?.detail || err?.message)
+      setAdminCoursesError('Xatolik yuz berdi')
     } finally {
       setAdminCoursesLoading(false)
     }
@@ -528,8 +528,8 @@ const AdminPage: React.FC = () => {
       )
       setCoursesMsg(`✅ Kurs ${is_published ? 'chop etildi' : 'qoralamaga olindi'}`)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
-      setCoursesMsg(`❌ ${detail}`)
+      console.error('[Admin] handleToggleCoursePublish error:', err?.response?.data?.detail || err?.message)
+      setCoursesMsg('❌ Xatolik yuz berdi')
     } finally {
       setCourseToggleId(null)
     }
@@ -545,8 +545,8 @@ const AdminPage: React.FC = () => {
       setAdminCourses(prev => prev.filter(c => c.id !== courseId))
       setCoursesMsg('✅ Kurs o\'chirildi')
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
-      setCoursesMsg(`❌ ${detail}`)
+      console.error('[Admin] handleAdminDeleteCourse error:', err?.response?.data?.detail || err?.message)
+      setCoursesMsg('❌ Xatolik yuz berdi')
     } finally {
       setCourseDeleteId(null)
     }
@@ -561,8 +561,8 @@ const AdminPage: React.FC = () => {
       const res = await apiService.searchAdminUsers(q, 50)
       setUserSearchResults(res.data ?? [])
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Qidiruv xatosi'
-      setUserSearchError(String(detail))
+      console.error('[Admin] searchUsers error:', err?.response?.data?.detail || err?.message)
+      setUserSearchError('Xatolik yuz berdi')
     } finally {
       setUserSearchLoading(false)
     }
@@ -579,8 +579,8 @@ const AdminPage: React.FC = () => {
         prev.map(u => u.telegram_id === telegramId ? { ...u, role: role as any, status: status as any } : u)
       )
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
-      setUserMsg(`❌ ${detail}`)
+      console.error('[Admin] handleSetUserRole error:', err?.response?.data?.detail || err?.message)
+      setUserMsg('❌ Xatolik yuz berdi')
     } finally {
       setUserRoleActionId(null)
     }
@@ -594,8 +594,8 @@ const AdminPage: React.FC = () => {
       setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
       loadTeacherRequests()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
-      setTeacherMsg(`❌ ${detail}`)
+      console.error('[Admin] handleApproveTeacher error:', err?.response?.data?.detail || err?.message)
+      setTeacherMsg('❌ Xatolik yuz berdi')
     } finally {
       setTeacherActionId(null)
     }
@@ -610,8 +610,8 @@ const AdminPage: React.FC = () => {
       setTeacherMsg(`🚫 ${telegramId} rad etildi`)
       loadTeacherRequests()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Xatolik'
-      setTeacherMsg(`❌ ${detail}`)
+      console.error('[Admin] handleRejectTeacher error:', err?.response?.data?.detail || err?.message)
+      setTeacherMsg('❌ Xatolik yuz berdi')
     } finally {
       setTeacherActionId(null)
     }
@@ -646,8 +646,8 @@ const AdminPage: React.FC = () => {
       setEditingHero(null)
       loadHero()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
-      setHeroMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
+      console.error('[Admin] handleSaveHero error:', err?.response?.data?.detail || err?.response?.statusText || err?.message)
+      setHeroMsg('❌ Xatolik yuz berdi')
     } finally {
       setHeroSaving(false)
     }
@@ -690,8 +690,8 @@ const AdminPage: React.FC = () => {
       loadAdminQuizzes()
       loadStats()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
-      setQuizMsg(`❌ ${detail}`)
+      console.error('[Admin] handleUploadQuiz error:', err?.response?.data?.detail || err?.message)
+      setQuizMsg('❌ Xatolik yuz berdi')
     } finally {
       setQuizUploading(false)
     }
@@ -708,8 +708,8 @@ const AdminPage: React.FC = () => {
       loadAdminQuizzes()
       loadStats()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Server xatosi'
-      setQuizMsg(`❌ ${detail}`)
+      console.error('[Admin] handleDeleteQuiz error:', err?.response?.data?.detail || err?.message)
+      setQuizMsg('❌ Xatolik yuz berdi')
     } finally {
       setQuizDeletingId(null)
     }
@@ -748,8 +748,8 @@ const AdminPage: React.FC = () => {
       setEditingBook(null)
       loadBooks()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
-      setBookMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
+      console.error('[Admin] handleUpdateBook error:', err?.response?.data?.detail || err?.response?.statusText || err?.message)
+      setBookMsg('❌ Xatolik yuz berdi')
     } finally {
       setBookSaving(false)
     }
@@ -778,8 +778,8 @@ const AdminPage: React.FC = () => {
       setBookCoverMsg('')
       loadBooks()
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.response?.statusText || err?.message || 'Server xatosi'
-      setBookMsg(`❌ ${err?.response?.status ?? ''} ${detail}`)
+      console.error('[Admin] handleCreateBook error:', err?.response?.data?.detail || err?.response?.statusText || err?.message)
+      setBookMsg('❌ Xatolik yuz berdi')
     } finally {
       setBookSaving(false)
     }
@@ -824,7 +824,8 @@ const AdminPage: React.FC = () => {
         xhr.send(form)
       })
     } catch (err: any) {
-      setBookPdfMsg(`❌ ${err?.message || 'Xato'}`)
+      console.error('[Admin] handleUploadBookPdf error:', err?.message)
+      setBookPdfMsg('❌ Xatolik yuz berdi')
     } finally {
       setBookPdfUploading(false)
     }
@@ -869,7 +870,8 @@ const AdminPage: React.FC = () => {
         xhr.send(form)
       })
     } catch (err: any) {
-      setBookCoverMsg(`❌ ${err?.message || 'Xato'}`)
+      console.error('[Admin] handleUploadBookCover error:', err?.message)
+      setBookCoverMsg('❌ Xatolik yuz berdi')
     } finally {
       setBookCoverUploading(false)
     }
@@ -923,7 +925,7 @@ const AdminPage: React.FC = () => {
       loadSounds()
     } catch (err: any) {
       console.error('[AdminPage] handleUploadSound error:', err)
-      setSoundMsg(`❌ ${err?.message || 'Xato yuz berdi'}`)
+      setSoundMsg('❌ Xatolik yuz berdi')
     } finally {
       setSoundUploading(false)
     }

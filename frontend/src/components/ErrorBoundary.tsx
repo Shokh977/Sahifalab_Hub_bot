@@ -125,7 +125,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Error caught by boundary:', error, errorInfo)
-    showToast('Something went wrong. Please refresh the page.', 'error')
+    showToast('Kutilmagan xatolik yuz berdi. Sahifani yangilang.', 'error')
   }
 
   render() {
@@ -137,10 +137,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
               <ExclamationTriangleIcon className="w-9 h-9" />
             </div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              Oops! Something went wrong
+              Kutilmagan xatolik yuz berdi
             </h1>
             <p className="text-gray-600 dark:text-gray-400">
-              {this.state.error?.message || 'An unexpected error occurred'}
+              Sahifani yangilang yoki orqaga qayting.
             </p>
             <button
               onClick={() => window.location.reload()}

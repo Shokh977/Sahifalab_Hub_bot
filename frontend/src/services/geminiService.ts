@@ -71,7 +71,8 @@ export async function geminiChat(message: string): Promise<string> {
         return backendFallback(message)
       }
       const reason = e?.message || 'Noma\'lum xatolik'
-      return `AI xatolik: ${reason} 🔧`
+      console.error('[Gemini] Error:', reason)
+      return 'AI hozir ishlamayapti. Iltimos, keyinroq urinib ko\'ring. 🙏'
     }
   }
 

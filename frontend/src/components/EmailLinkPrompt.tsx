@@ -71,7 +71,8 @@ const EmailLinkPrompt: React.FC = () => {
       // Auto-close after showing success
       setTimeout(() => setVisible(false), 3000)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Xatolik yuz berdi')
+      console.error('[EmailLink] Error:', err?.response?.data?.detail || err?.message)
+      setError('Xatolik yuz berdi')
     } finally {
       setLoading(false)
     }

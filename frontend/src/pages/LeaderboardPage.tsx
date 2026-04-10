@@ -205,18 +205,8 @@ const LeaderboardPage: React.FC = () => {
 
       setLastFetch(Date.now())
     } catch (err: any) {
-      const msg = err?.message || err?.error_description || String(err)
-      // Table doesn't exist yet (various Supabase/PostgREST error formats)
-      const isNoTable =
-        msg.includes('schema cache') ||
-        (msg.includes('relation') && msg.includes('does not exist')) ||
-        msg.includes("Could not find the table") ||
-        msg.includes('profiles') && msg.includes('not found')
-      if (isNoTable) {
-        setError('__no_table__')
-      } else {
-        setError(msg || "Noma'lum xato")
-      }
+      console.error('[Leaderboard] Error:', err?.message || err?.error_description || String(err))
+      setError('Xatolik yuz berdi')
     } finally {
       setLoading(false)
     }
@@ -268,66 +258,13 @@ const LeaderboardPage: React.FC = () => {
         </button>
       </div>
 
-      {/* Error — not configured */}
-      {error === '__not_configured__' && (
-        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-bold text-amber-900 dark:text-amber-300">Supabase sozlanmagan</p>
-          <p className="text-xs text-amber-800 dark:text-amber-400 leading-relaxed">
-            Liderlar jadvalini ko'rsatish uchun quyidagi sozlamalarni Vercel-ga qo'shing:
-          </p>
-          <div className="bg-white dark:bg-gray-900 rounded-xl p-3 font-mono text-xs space-y-1 text-gray-700 dark:text-gray-300">
-            <p>VITE_SUPABASE_URL = https://xxxx.supabase.co</p>
-            <p>VITE_SUPABASE_ANON_KEY = eyJ...</p>
-          </div>
-          <p className="text-[11px] text-amber-700 dark:text-amber-500">
-            Supabase → Project Settings → API → Project URL &amp; anon key
-          </p>
-        </div>
-      )}
-
-      {/* Error — table missing (SQL schema not run) */}
-      {error === '__no_table__' && (
-        <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-2xl p-4 space-y-3">
-          <p className="text-sm font-bold text-orange-900 dark:text-orange-300">Jadval yaratilmagan</p>
-          <p className="text-xs text-orange-800 dark:text-orange-400 leading-relaxed">
-            <strong>1-qadam:</strong> Supabase saytiga kiring →{' '}
-            <strong>SQL Editor → New Query</strong>
-          </p>
-          <p className="text-xs text-orange-800 dark:text-orange-400 leading-relaxed">
-            <strong>2-qadam:</strong> Quyidagi SQL ni joylashtiring va <strong>Run</strong> tugmasini bosing:
-          </p>
-          <div className="bg-white dark:bg-gray-900 rounded-xl p-3 font-mono text-[11px] text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre leading-relaxed select-all">{`CREATE TABLE IF NOT EXISTS public.profiles (
-  id                uuid DEFAULT gen_random_uuid() PRIMARY KEY,
-  telegram_id       bigint UNIQUE NOT NULL,
-  first_name        text NOT NULL DEFAULT '',
-  username          text,
-  total_xp          int NOT NULL DEFAULT 0,
-  focus_seconds     int NOT NULL DEFAULT 0,
-  level             int NOT NULL DEFAULT 1,
-  quizzes_completed int NOT NULL DEFAULT 0,
-  app_online_at     timestamptz,
-  created_at        timestamptz DEFAULT now(),
-  updated_at        timestamptz DEFAULT now()
-);
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS app_online_at timestamptz;
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "public read"  ON public.profiles FOR SELECT TO anon USING (true);
-CREATE POLICY "anon insert"  ON public.profiles FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY "anon update"  ON public.profiles FOR UPDATE TO anon USING (true) WITH CHECK (true);`}</div>
-          <button
-            onClick={fetchLeaderboard}
-            className="w-full py-2 rounded-xl bg-orange-500 text-white text-xs font-bold active:scale-95 transition-transform"
-          >
-            SQL ishga tushirdim — Qayta urinib ko'rish
-          </button>
-        </div>
-      )}
-
-      {/* Error — generic */}
-      {error && error !== '__not_configured__' && error !== '__no_table__' && (
+      {/* Error */}
+      {error && (
         <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-2xl p-4 space-y-2">
-          <p className="text-sm font-bold text-red-800 dark:text-red-300">Xato yuz berdi</p>
-          <p className="text-xs text-red-700 dark:text-red-400 font-mono break-all">{error}</p>
+          <p className="text-sm font-bold text-red-800 dark:text-red-300">Xatolik yuz berdi</p>
+          <p className="text-xs text-red-700 dark:text-red-400">
+            Ma'lumotlarni yuklashda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.
+          </p>
           <button
             onClick={fetchLeaderboard}
             className="text-xs text-red-600 dark:text-red-400 font-semibold underline"

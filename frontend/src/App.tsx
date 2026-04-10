@@ -256,8 +256,9 @@ const AppRoutes: React.FC = () => {
             <Route path="/resources"      element={<ResourcesPage />} />
             <Route path="/admin"          element={<AdminRoute />} />
             <Route path="/cabinet"        element={<CabinetPage />} />
-            <Route path="/book-summarizer" element={<BookSummarizerPage />} />
-            <Route path="/ai-companion"   element={<AICompanionPage />} />
+            {/* AI features temporarily disabled */}
+            <Route path="/book-summarizer" element={<Navigate to="/" replace />} />
+            <Route path="/ai-companion"   element={<Navigate to="/" replace />} />
             <Route path="/notifications"  element={<NotificationsPage />} />
             <Route path="/messenger"      element={<SlouthMessenger />} />
             <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />

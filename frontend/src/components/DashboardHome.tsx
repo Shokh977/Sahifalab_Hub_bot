@@ -101,7 +101,6 @@ const HeroBanner: React.FC<{
   const PILLS = [
     { icon: Clock,          label: "O'qish",   path: '/workspace?tab=focus', },
     { icon: LayoutList, label: 'Test',     path: '/quiz',         },
-    { icon: Cpu,        label: 'AI',       path: '/ai-companion', },
     { icon: BookOpen,       label: 'Kitoblar', path: '/kitoblar',     },
   ]
 

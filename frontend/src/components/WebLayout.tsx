@@ -70,7 +70,6 @@ const NAV_LEARNING: NavItem[] = [
   { icon: RectangleStackIcon, label: 'Test', path: '/quiz' },
   { icon: BookOpenIcon, label: 'Kitoblar', path: '/kitoblar' },
   { icon: LinkIcon, label: 'Resurslar', path: '/resources' },
-  { icon: CpuChipIcon, label: 'SAHIFALAB AI', path: '/ai-companion' },
 ]
 
 const NAV_SOCIAL: NavItem[] = [

@@ -71,14 +71,14 @@ const AICompanionPage: React.FC = () => {
 
       setMessages((prev) => [...prev, aiMessage])
     } catch (err: any) {
-      const errorMsg = err?.message || 'Xizmatda xatolik yuz berdi'
-      setError(String(errorMsg))
+      console.error('[AICompanion] Error:', err?.message)
+      setError('Xizmatda xatolik yuz berdi')
       
       // Add error message as AI response
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'ai',
-        text: `Uzur, xatolik yuz berdi: ${errorMsg}. Iltimos, keyinroq qayta urinib ko'ring.`,
+        text: 'Uzur, xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko\'ring.',
         timestamp: new Date(),
       }
       setMessages((prev) => [...prev, errorMessage])

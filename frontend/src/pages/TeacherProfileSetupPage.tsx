@@ -111,7 +111,8 @@ const TeacherProfileSetupPage: React.FC = () => {
         setStatus('ready')
       })
       .catch(err => {
-        setError(err?.response?.data?.detail || err?.message || 'Profil yuklanmadi')
+        console.error('[TeacherProfile] Load error:', err?.response?.data?.detail || err?.message)
+        setError('Profil yuklanmadi')
         setStatus('error')
       })
   }, [])
@@ -141,7 +142,8 @@ const TeacherProfileSetupPage: React.FC = () => {
       setStatus('saved')
       setTimeout(() => navigate('/teacher'), 1200)
     } catch (err: any) {
-      setError(err?.response?.data?.detail || err?.message || 'Saqlashda xatolik')
+      console.error('[TeacherProfile] Save error:', err?.response?.data?.detail || err?.message)
+      setError('Saqlashda xatolik yuz berdi')
       setStatus('ready')
     }
   }

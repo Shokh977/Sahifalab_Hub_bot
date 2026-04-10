@@ -35,12 +35,27 @@ class ApiService {
         const status = error?.response?.status ?? 'NO_RESPONSE'
         const url = error?.config?.url ?? ''
         const detail = error?.response?.data?.detail ?? error?.response?.data?.message ?? error?.response?.data ?? error?.message ?? 'Unknown error'
+        // Only log details to console (developer eyes only)
         console.error(`[API] ❌ ${status} ${url}`, detail, error?.response?.data)
         
-        // Show toast notification for errors (unless it's from a query with showErrorToast = false)
+        // Show SAFE toast notification — never expose raw backend details to users
         const shouldShowToast = error?.config?.headers?.['X-Show-Error-Toast'] !== 'false'
         if (shouldShowToast) {
-          const errorMessage = typeof detail === 'string' ? detail : JSON.stringify(detail).substring(0, 100)
+          // Map HTTP status to user-friendly Uzbek messages
+          const safeMessages: Record<number, string> = {
+            400: "So'rov noto'g'ri. Iltimos, ma'lumotlarni tekshiring.",
+            401: "Tizimga qayta kiring.",
+            403: "Ruxsat berilmagan.",
+            404: "Ma'lumot topilmadi.",
+            409: "Bu ma'lumot allaqachon mavjud.",
+            413: "Fayl hajmi juda katta.",
+            422: "Ma'lumotlar noto'g'ri formatda.",
+            429: "Juda ko'p so'rov. Biroz kuting.",
+            500: "Serverda xatolik yuz berdi. Keyinroq urinib ko'ring.",
+            502: "Server vaqtincha ishlamayapti.",
+            503: "Xizmat vaqtincha mavjud emas.",
+          }
+          const errorMessage = safeMessages[status as number] || "Xatolik yuz berdi. Iltimos, qayta urinib ko'ring."
           showToast(errorMessage, 'error', 4000)
         }
         

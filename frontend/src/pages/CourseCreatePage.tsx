@@ -329,7 +329,8 @@ const CourseCreatePage: React.FC = () => {
         setStatus('ready')
       } catch (err: any) {
         if (!active) return
-        setMessage(err?.response?.data?.detail || 'Course studio yuklanmadi')
+        console.error('[CourseCreate] Hydrate error:', err?.response?.data?.detail || err?.message)
+        setMessage('Kurs yuklanmadi. Iltimos, qayta urinib ko\'ring.')
         setStatus('error')
       } finally {
         if (active) setHydrated(true)
@@ -567,8 +568,8 @@ const CourseCreatePage: React.FC = () => {
 
       if (!courseId && syncedCourseId) navigate(`/courses/${syncedCourseId}/edit`, { replace: true })
     } catch (err: any) {
-      const detail = err?.response?.data?.detail ?? err?.message ?? 'Saqlashda xatolik yuz berdi'
-      setMessage(typeof detail === 'string' ? detail : JSON.stringify(detail))
+      console.error('[CourseCreate] Save error:', err?.response?.data?.detail || err?.message)
+      setMessage('Saqlashda xatolik yuz berdi')
       setStatus('error')
     }
   }

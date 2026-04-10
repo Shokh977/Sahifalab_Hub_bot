@@ -133,7 +133,8 @@ export default function TeacherWalletPage() {
       // Refresh
       await Promise.all([loadWallet(), loadHistory()])
     } catch (err: any) {
-      setError(err?.response?.data?.detail || "Xatolik yuz berdi")
+      console.error('[Wallet] Withdrawal error:', err?.response?.data?.detail || err?.message)
+      setError('Xatolik yuz berdi. Iltimos, qayta urinib ko\'ring.')
     } finally {
       setSubmitting(false)
     }

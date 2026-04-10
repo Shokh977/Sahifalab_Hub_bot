@@ -101,15 +101,6 @@ const MENU_ITEMS: MenuItem[] = [
     description: "Tasdiqlangan mentorlar",
     path: '/teachers',
   },
-  {
-    id: 'bookSummarizer',
-    icon: CpuChipIcon,
-    iconImage: '/sahifalab.jpg',
-    title: 'SahifaLab AI',
-    titleUz: 'SahifaLab AI',
-    description: "Kitob haqida suhbat, savol-javob",
-    path: '/ai-companion',
-  },
 
 ]
 

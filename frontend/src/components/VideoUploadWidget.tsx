@@ -119,16 +119,16 @@ const VideoUploadWidget: React.FC<Props> = ({
             reject(new Error('Javob o\'qishda xatolik'))
           }
         } else {
-          let detail = `HTTP ${xhr.status}`
-          try { detail = JSON.parse(xhr.responseText)?.detail ?? detail } catch { /* ignore */ }
-          reject(new Error(detail))
+          console.error('[VideoUpload] HTTP error:', xhr.status, xhr.responseText)
+          reject(new Error('Yuklashda xatolik yuz berdi'))
         }
       }
 
       xhr.onerror = () => reject(new Error('Tarmoq xatoligi'))
       xhr.send(formData)
     }).catch(err => {
-      setErrorMsg(String(err?.message ?? err))
+      console.error('[VideoUpload] Error:', err?.message)
+      setErrorMsg('Yuklashda xatolik yuz berdi')
       setState('error')
     })
   }, [token, courseId, onUploaded])

@@ -38,8 +38,8 @@ const BookSummarizerPage: React.FC = () => {
       const r = await apiService.bookSummarizer(text, question || undefined, maxSentences)
       setResult(r.data)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || "Xizmatda xatolik yuz berdi"
-      setError(String(detail))
+      console.error('[BookSummarizer] Error:', err?.response?.data?.detail || err?.message)
+      setError('Xizmatda xatolik yuz berdi')
     } finally {
       setLoading(false)
     }

@@ -170,8 +170,8 @@ const LessonCreatePage: React.FC = () => {
       setStatus('saved')
       setTimeout(() => navigate(`/courses/${cId}`), 700)
     } catch (err: any) {
-      const detail = err?.response?.data?.detail ?? 'Xatolik yuz berdi'
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail))
+      console.error('[LessonCreate] Save error:', err?.response?.data?.detail || err?.message)
+      setError('Xatolik yuz berdi')
       setStatus('error')
     }
   }

@@ -445,9 +445,8 @@ const PaymentSection: React.FC<PaymentSectionProps> = ({ book, telegramId, onPur
         window.open(invoiceUrl, '_blank', 'noopener')
       }
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Noma\'lum xato'
-      console.error('[Payment] Error:', detail, err)
-      setMsg(`❌ ${detail}`)
+      console.error('[Payment] Error:', err?.response?.data?.detail || err?.message, err)
+      setMsg('❌ To\'lov amalga oshmadi. Iltimos, qayta urinib ko\'ring.')
     } finally {
       setLoading('')
     }

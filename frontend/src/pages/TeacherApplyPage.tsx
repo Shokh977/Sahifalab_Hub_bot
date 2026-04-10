@@ -123,8 +123,8 @@ const TeacherApplyPage: React.FC = () => {
         setState('success')
       }
     } catch (err: any) {
-      const detail = err?.response?.data?.detail || err?.message || 'Xatolik yuz berdi'
-      setErrorMsg(String(detail))
+      console.error('[TeacherApply] Error:', err?.response?.data?.detail || err?.message)
+      setErrorMsg('Xatolik yuz berdi')
       setState('form')
     }
   }

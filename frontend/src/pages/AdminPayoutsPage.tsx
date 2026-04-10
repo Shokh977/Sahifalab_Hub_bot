@@ -101,7 +101,8 @@ export default function AdminPayoutsPage() {
       await apiService.approvePayout(payoutId, telegramId, noteInput[payoutId] || '')
       await loadData()
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Xatolik yuz berdi")
+      console.error('[AdminPayouts] Approve error:', err?.response?.data?.detail || err?.message)
+      alert('Xatolik yuz berdi')
     } finally {
       setProcessing(null)
     }
@@ -114,7 +115,8 @@ export default function AdminPayoutsPage() {
       await apiService.rejectPayout(payoutId, telegramId, noteInput[payoutId] || '')
       await loadData()
     } catch (err: any) {
-      alert(err?.response?.data?.detail || "Xatolik yuz berdi")
+      console.error('[AdminPayouts] Reject error:', err?.response?.data?.detail || err?.message)
+      alert('Xatolik yuz berdi')
     } finally {
       setProcessing(null)
     }

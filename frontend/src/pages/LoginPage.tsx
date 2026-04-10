@@ -105,8 +105,8 @@ const LoginPage: React.FC = () => {
           const res = await axios.post(`${API_BASE}/api/auth/google`, { id_token: resp.credential })
           loginWithCode(res.data); navigate('/', { replace: true })
         } catch (err: any) {
-          const detail = err?.response?.data?.detail || "Google kirishda xatolik"
-          setTgError(String(detail))
+          console.error('[Login] Google error:', err?.response?.data?.detail || err?.message)
+          setTgError('Google kirishda xatolik yuz berdi')
         }
       },
     })
@@ -156,7 +156,8 @@ const LoginPage: React.FC = () => {
       loginWithCode(res.data)
       navigate('/', { replace: true })
     } catch (err: any) {
-      setEmailError(err?.response?.data?.detail || err?.message || 'Xatolik yuz berdi')
+      console.error('[Login] Email error:', err?.response?.data?.detail || err?.message)
+      setEmailError('Xatolik yuz berdi. Iltimos, ma\'lumotlarni tekshirib qayta urinib ko\'ring.')
     } finally {
       setEmailLoading(false)
     }
