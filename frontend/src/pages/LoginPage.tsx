@@ -157,7 +157,7 @@ const LoginPage: React.FC = () => {
   // ── Tab bar ──────────────────────────────────────────────────────────────
   const tabs: Array<{ id: AuthTab; icon: string; label: string }> = [
     { id: 'telegram', icon: 'telegram', label: 'Telegram' },
-    { id: 'google',   icon: 'google', label: 'Google' },
+    ...(GOOGLE_CLIENT_ID ? [{ id: 'google' as AuthTab, icon: 'google', label: 'Google' }] : []),
     { id: 'email',    icon: 'email', label: 'Email' },
   ]
 

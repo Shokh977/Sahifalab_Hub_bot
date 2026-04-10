@@ -414,6 +414,7 @@ const TeacherDashboardPage: React.FC = () => {
                   { Icon: Plus,         label: 'Yangi kurs yaratish',    desc: 'Video darslar va materiallar bilan kurs tuzing',       to: '/courses/create',       bg: 'from-sahifa-400 to-sahifa-600' },
                   { Icon: Video,        label: 'Kurslarimni boshqarish', desc: "Ko'rish, tahrirlash, nashr qilish yoki o'chirish",      action: () => setActiveTab('courses'),    bg: 'from-blue-400 to-blue-600' },
                   { Icon: BarChart3,    label: 'Analitika',              desc: "Daromad va kurs performansini batafsil ko'ring",        action: () => setActiveTab('analytics'),  bg: 'from-violet-400 to-violet-600' },
+                  { Icon: Wallet,       label: 'Hamyon',                 desc: "Balans, pul yechish va to'lov tarixi",                 to: '/teacher/wallet',                    bg: 'from-green-400 to-green-600' },
                   { Icon: Award,        label: 'Reyting jadvali',        desc: "XP va daraja bo'yicha eng faol talabalar",             to: '/leaderboard',           bg: 'from-amber-400 to-amber-600' },
                   ...(isAdmin ? [{ Icon: Wrench, label: 'Admin paneli', desc: 'Quizlar, kitoblar va tizim sozlamalarini boshqarish', to: '/admin', bg: 'from-red-400 to-red-600' }] : []),
                 ] as { Icon: React.FC<{ className?: string }>; label: string; desc: string; to?: string; action?: () => void; bg: string }[]).map((item, i) => {

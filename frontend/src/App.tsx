@@ -35,6 +35,8 @@ import CoursesPage from './pages/CoursesPage'
 import CourseDetailPage from './pages/CourseDetailPage'
 import CourseCreatePage from './pages/CourseCreatePage'
 import LessonCreatePage from './pages/LessonCreatePage'
+import TeacherWalletPage from './pages/TeacherWalletPage'
+import AdminPayoutsPage from './pages/AdminPayoutsPage'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
 import SocialFeed from './pages/SocialFeed'
@@ -264,13 +266,17 @@ const AppRoutes: React.FC = () => {
 
             {/* Teacher & Admin role-gated routes */}
             <Route element={<RoleGuard roles={['teacher', 'admin']} />}>
-              <Route path="/teacher"       element={<TeacherDashboardPage />} />
-              <Route path="/teacher/setup" element={<TeacherProfileSetupPage />} />
-              <Route path="/courses/create"      element={<CourseCreatePage />} />
-              <Route path="/courses/:id/edit"    element={<CourseCreatePage />} />
+              <Route path="/teacher"              element={<TeacherDashboardPage />} />
+              <Route path="/teacher/setup"        element={<TeacherProfileSetupPage />} />
+              <Route path="/teacher/wallet"       element={<TeacherWalletPage />} />
+              <Route path="/courses/create"       element={<CourseCreatePage />} />
+              <Route path="/courses/:id/edit"     element={<CourseCreatePage />} />
               <Route path="/courses/:courseId/lessons/add"                    element={<LessonCreatePage />} />
               <Route path="/courses/:courseId/lessons/:lessonId/edit"         element={<LessonCreatePage />} />
             </Route>
+
+            {/* Admin payout management */}
+            <Route path="/admin/payouts" element={<AdminPayoutsPage />} />
 
             {/* Teacher application — any authenticated user */}
             <Route path="/become-teacher" element={<TeacherApplyPage />} />

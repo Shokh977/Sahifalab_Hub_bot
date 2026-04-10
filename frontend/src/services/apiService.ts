@@ -749,6 +749,55 @@ class ApiService {
       { params: { telegram_id: telegramId, days } },
     )
   }
+
+  // ─── Teacher Wallet ──────────────────────────────────────────────────────
+
+  /** Get teacher wallet balances */
+  async getTeacherWallet() {
+    return this.axiosInstance.get('/api/teacher/wallet')
+  }
+
+  /** Request a withdrawal */
+  async requestWithdrawal(amount: number, card_number: string) {
+    return this.axiosInstance.post('/api/teacher/wallet/withdraw', { amount, card_number })
+  }
+
+  /** Get teacher payout history */
+  async getPayoutHistory(limit = 50) {
+    return this.axiosInstance.get('/api/teacher/wallet/history', { params: { limit } })
+  }
+
+  // ─── Admin Payouts ───────────────────────────────────────────────────────
+
+  /** Admin: get all pending payout requests */
+  async getPendingPayouts(telegramId: number) {
+    return this.axiosInstance.get('/api/admin/payouts/pending', { params: { telegram_id: telegramId } })
+  }
+
+  /** Admin: get all payout requests */
+  async getAllPayouts(telegramId: number, status?: string, limit = 100) {
+    const params: Record<string, any> = { telegram_id: telegramId, limit }
+    if (status) params.status = status
+    return this.axiosInstance.get('/api/admin/payouts/all', { params })
+  }
+
+  /** Admin: approve a payout (mark as paid) */
+  async approvePayout(payoutId: number, telegramId: number, adminNote = '') {
+    return this.axiosInstance.post(
+      `/api/admin/payouts/${payoutId}/approve`,
+      { admin_note: adminNote },
+      { params: { telegram_id: telegramId } },
+    )
+  }
+
+  /** Admin: reject a payout */
+  async rejectPayout(payoutId: number, telegramId: number, adminNote = '') {
+    return this.axiosInstance.post(
+      `/api/admin/payouts/${payoutId}/reject`,
+      { admin_note: adminNote },
+      { params: { telegram_id: telegramId } },
+    )
+  }
 }
 
 export default new ApiService()

@@ -814,3 +814,85 @@ async def admin_delete_course(
         raise HTTPException(status_code=502, detail=f"Failed to delete course: {res.text}")
 
     return {"ok": True, "deleted_id": course_id}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payout Management — Teacher Wallet Admin Endpoints
+# ─────────────────────────────────────────────────────────────────────────────
+
+from app.services import wallet_service as ws
+from pydantic import BaseModel as _PayoutBase
+
+
+class _PayoutActionBody(_PayoutBase):
+    admin_note: str = ""
+
+
+@router.get("/payouts/pending")
+async def list_pending_payouts(
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Admin: list all pending withdrawal requests with teacher info."""
+    try:
+        return {"payouts": await ws.list_pending_payouts()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/payouts/all")
+async def list_all_payouts(
+    telegram_id: int = Query(...),
+    status_filter: str = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Admin: list all payout requests, optionally filtered by status."""
+    try:
+        return {"payouts": await ws.list_all_payouts(status_filter=status_filter, limit=limit)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/payouts/{payout_id}/approve")
+async def approve_payout(
+    payout_id: int,
+    body: _PayoutActionBody = _PayoutActionBody(),
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """
+    Admin: mark a pending payout as PAID.
+    Moves money from pending_withdrawal → withdrawn_total.
+    """
+    try:
+        result = await ws.approve_payout(payout_id, admin_note=body.admin_note)
+        return {"success": True, "payout": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/payouts/{payout_id}/reject")
+async def reject_payout(
+    payout_id: int,
+    body: _PayoutActionBody = _PayoutActionBody(),
+    telegram_id: int = Query(...),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """
+    Admin: reject a pending payout.
+    Returns money from pending_withdrawal → available_balance.
+    """
+    try:
+        result = await ws.reject_payout(payout_id, admin_note=body.admin_note)
+        return {"success": True, "payout": result}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

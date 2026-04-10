@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   AcademicCapIcon,
   ArrowLeftOnRectangleIcon,
+  BanknotesIcon,
   Bars3Icon,
   BookOpenIcon,
   BriefcaseIcon,
@@ -207,6 +208,29 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
         </div>
       )}
 
+      {/* ── Teacher Wallet link (for active teachers) ──────────── */}
+      {isTeacherActive && (
+        <div className="px-3 mb-2">
+          <Link
+            to="/teacher/wallet"
+            onClick={onNavClick}
+            className={`
+              flex items-center gap-3 px-4 py-2.5 rounded-xl
+              transition-all duration-150
+              ${isActive('/teacher/wallet')
+                ? 'bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800'
+                : 'hover:bg-gray-50 dark:hover:bg-[#1A1A1A]'
+              }
+            `}
+          >
+            <BanknotesIcon className={`w-4 h-4 ${isActive('/teacher/wallet') ? 'text-green-600 dark:text-green-400' : 'text-slate-400'}`} />
+            <span className={`text-xs font-semibold ${isActive('/teacher/wallet') ? 'text-green-700 dark:text-green-300' : 'text-slate-500 dark:text-slate-400'}`}>
+              Hamyon
+            </span>
+          </Link>
+        </div>
+      )}
+
       {/* Main nav */}
       <div className="mx-3 h-px bg-slate-100 dark:bg-[#2A2A36] mb-2" />
       <nav className="flex-1 px-3 space-y-0.5 overflow-y-auto">
@@ -293,6 +317,13 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
               label="Admin panel"
               path="/admin"
               active={isActive('/admin')}
+              onClick={onNavClick}
+            />
+            <SidebarNavItem
+              icon={BanknotesIcon}
+              label="To'lov so'rovlari"
+              path="/admin/payouts"
+              active={isActive('/admin/payouts')}
               onClick={onNavClick}
             />
           </>
