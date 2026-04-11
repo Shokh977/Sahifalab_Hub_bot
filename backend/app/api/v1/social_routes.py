@@ -3,6 +3,8 @@ Social API routes — posts, likes, comments, follows, feed, discovery.
 """
 
 import asyncio
+from datetime import datetime
+from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
@@ -67,22 +69,34 @@ def create_post(
 
 @router.get("/posts/feed")
 def feed(
-    page: int = Query(1, ge=1),
+    before_timestamp: Optional[str] = Query(None, description="ISO datetime cursor for pagination"),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    return svc.get_feed(db, user_id, page, page_size)
+    cursor_dt: Optional[datetime] = None
+    if before_timestamp:
+        try:
+            cursor_dt = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(400, "Invalid before_timestamp format")
+    return svc.get_feed(db, user_id, cursor_dt, page_size)
 
 
 @router.get("/posts/explore")
 def explore(
-    page: int = Query(1, ge=1),
+    before_timestamp: Optional[str] = Query(None, description="ISO datetime cursor for pagination"),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    return svc.get_explore(db, user_id, page, page_size)
+    cursor_dt: Optional[datetime] = None
+    if before_timestamp:
+        try:
+            cursor_dt = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(400, "Invalid before_timestamp format")
+    return svc.get_explore(db, user_id, cursor_dt, page_size)
 
 
 @router.get("/posts/{post_id}")
@@ -120,20 +134,6 @@ def bulk_view(
     Called by the client-side view-buffer every 10 s or when the buffer hits 10 IDs.
     """
     svc.increment_views_bulk(db, body.post_ids)
-    return {"ok": True}
-
-
-@router.post("/simulate-growth")
-def simulate_growth(
-    db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
-):
-    """Trigger one tick of organic view simulation.
-
-    Safe to call from any authenticated user; called once per session by the
-    Lenta page to make the platform feel naturally active.
-    """
-    svc.simulate_organic_growth(db)
     return {"ok": True}
 
 @router.post("/posts/{post_id}/view")
@@ -331,12 +331,18 @@ def get_profile(
 @router.get("/users/{target_id}/posts")
 def get_user_posts(
     target_id: int,
-    page: int = Query(1, ge=1),
+    before_timestamp: Optional[str] = Query(None),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    return svc.get_user_posts(db, target_id, user_id, page, page_size)
+    cursor_dt: Optional[datetime] = None
+    if before_timestamp:
+        try:
+            cursor_dt = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            raise HTTPException(400, "Invalid before_timestamp format")
+    return svc.get_user_posts(db, target_id, user_id, cursor_dt, page_size)
 
 
 @router.get("/search")

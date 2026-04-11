@@ -14,12 +14,12 @@ from app.models.models import Profile
 def _profile_brief(p: Profile) -> dict:
     return {
         "telegram_id": p.telegram_id,
-        "full_name": p.full_name,
+        "full_name": getattr(p, "full_name", None) or getattr(p, "first_name", None),
         "username": p.username,
         "photo_url": p.photo_url,
         "role": p.role or "student",
         "level": p.level or 1,
-        "xp": p.xp or 0,
+        "xp": p.total_xp or 0,
     }
 
 
@@ -117,6 +117,7 @@ def _msg_dict(m: DirectMessage) -> dict:
         "conversation_id": m.conversation_id,
         "sender_id": m.sender_id,
         "content": m.content,
+        "is_delivered": m.is_delivered,
         "is_read": m.is_read,
         "created_at": m.created_at,
     }
@@ -160,8 +161,27 @@ def get_messages(
     return [_msg_dict(m) for m in reversed(msgs)]
 
 
+def mark_delivered(db: Session, conversation_id: int, user_id: int) -> int:
+    """Mark messages as delivered (recipient opened the conversation).
+
+    Sets is_delivered=True on all messages sent by the other participant.
+    Called when ChatView mounts, before the user has necessarily read them.
+    """
+    count = (
+        db.query(DirectMessage)
+        .filter(
+            DirectMessage.conversation_id == conversation_id,
+            DirectMessage.sender_id != user_id,
+            DirectMessage.is_delivered == False,
+        )
+        .update({"is_delivered": True})
+    )
+    db.commit()
+    return count
+
+
 def mark_read(db: Session, conversation_id: int, user_id: int) -> int:
-    """Mark all unread messages in a conversation as read (messages NOT sent by user_id)."""
+    """Mark all unread messages as delivered + read (messages NOT sent by user_id)."""
     count = (
         db.query(DirectMessage)
         .filter(
@@ -169,7 +189,7 @@ def mark_read(db: Session, conversation_id: int, user_id: int) -> int:
             DirectMessage.sender_id != user_id,
             DirectMessage.is_read == False,
         )
-        .update({"is_read": True})
+        .update({"is_delivered": True, "is_read": True})
     )
     db.commit()
     return count

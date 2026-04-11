@@ -69,6 +69,17 @@ def send_message(
         raise HTTPException(400, str(e))
 
 
+@router.patch("/conversations/{conversation_id}/delivered")
+def mark_delivered(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Mark messages as delivered when the recipient opens the conversation."""
+    count = msvc.mark_delivered(db, conversation_id, user_id)
+    return {"ok": True, "marked": count}
+
+
 @router.patch("/conversations/{conversation_id}/read")
 def mark_read(
     conversation_id: int,

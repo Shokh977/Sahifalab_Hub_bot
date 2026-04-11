@@ -126,6 +126,23 @@ async def _expire_stale_payments_loop():
             logger.error("[Expiry] Error: %s", e)
 
 
+async def _organic_growth_loop():
+    """Simulate organic view growth every 10 minutes (backend-only, no client trigger)."""
+    from app.db.session import SessionLocal
+    from app.services.social_service import simulate_organic_growth
+    while True:
+        try:
+            await asyncio.sleep(600)  # every 10 minutes
+            db = SessionLocal()
+            try:
+                simulate_organic_growth(db)
+                logger.debug("[OrganicGrowth] Tick executed")
+            finally:
+                db.close()
+        except Exception as e:
+            logger.error("[OrganicGrowth] Error: %s", e)
+
+
 @app.on_event("startup")
 async def startup_event():
     """Start background tasks on app startup."""
@@ -143,7 +160,9 @@ async def startup_event():
         )
 
     asyncio.create_task(_expire_stale_payments_loop())
+    asyncio.create_task(_organic_growth_loop())
     logger.info("Background payment expiry task started")
+    logger.info("Background organic growth task started")
 
 
 if __name__ == "__main__":

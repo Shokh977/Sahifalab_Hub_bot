@@ -4,6 +4,7 @@ Social service — posts, likes, comments, follows, feed, discovery.
 
 from __future__ import annotations
 from typing import Optional, List, Tuple
+from datetime import datetime
 from sqlalchemy import desc, func, and_, or_, exists, text
 from sqlalchemy.orm import Session
 
@@ -16,12 +17,12 @@ from app.models.models import Profile
 def _profile_to_author(p: Profile) -> dict:
     return {
         "telegram_id": p.telegram_id,
-        "full_name": p.full_name,
+        "full_name": getattr(p, "full_name", None) or getattr(p, "first_name", None),
         "username": p.username,
         "photo_url": p.photo_url,
         "role": p.role or "student",
         "level": p.level or 1,
-        "xp": p.xp or 0,
+        "xp": p.total_xp or 0,
     }
 
 
@@ -106,32 +107,39 @@ def edit_post(db: Session, post_id: int, user_id: int, content: str) -> Optional
 def get_feed(
     db: Session,
     user_id: int,
-    page: int = 1,
+    before_timestamp: Optional[datetime] = None,
     page_size: int = 20,
 ) -> dict:
-    """Home feed: own posts + followed users' posts + reposts by followed users, newest first."""
+    """Home feed: own posts + followed users' posts + reposts by followed users.
+
+    Cursor-based pagination via before_timestamp (ISO datetime).  Returns the
+    next cursor as ``next_cursor`` (ISO string) or ``None`` when exhausted.
+    """
     following_ids: List[int] = [
         r[0] for r in
         db.query(Follow.following_id).filter(Follow.follower_id == user_id).all()
     ]
     visible_ids = set(following_ids) | {user_id}
 
-    # 1. Regular posts by self + followed
-    regular_posts: List[Post] = (
-        db.query(Post).filter(Post.author_id.in_(visible_ids)).all()
-    )
+    # 1. Regular posts by self + followed (cursor-filtered)
+    reg_q = db.query(Post).filter(Post.author_id.in_(visible_ids))
+    if before_timestamp:
+        reg_q = reg_q.filter(Post.created_at < before_timestamp)
+    regular_posts: List[Post] = reg_q.all()
     regular_post_ids = {p.id for p in regular_posts}
 
-    # 2. Reposts made by followed users (of posts not already in regular)
+    # 2. Reposts made by followed users (cursor-filtered, exclude already-fetched posts)
     repost_rows: List[Tuple] = []
     if following_ids:
-        repost_rows = (
+        rp_q = (
             db.query(Repost, Post)
             .join(Post, Post.id == Repost.original_post_id)
             .filter(Repost.user_id.in_(following_ids))
             .filter(Post.id.notin_(regular_post_ids) if regular_post_ids else True)
-            .all()
         )
+        if before_timestamp:
+            rp_q = rp_q.filter(Repost.created_at < before_timestamp)
+        repost_rows = rp_q.all()
 
     # 3. Build reposter profile map
     reposter_ids = {r.user_id for r, _ in repost_rows}
@@ -142,16 +150,20 @@ def get_feed(
             for p in db.query(Profile).filter(Profile.telegram_id.in_(reposter_ids)).all()
         }
 
-    # 4. Merge and sort by effective date (repost.created_at or post.created_at)
+    # 4. Merge and sort by effective date descending, take page_size + 1 to detect more
     feed_items: List[Tuple] = [(p.created_at, p, None) for p in regular_posts]
     for repost, post in repost_rows:
         feed_items.append((repost.created_at, post, reposters_map.get(repost.user_id)))
     feed_items.sort(key=lambda x: x[0], reverse=True)
-    total = len(feed_items)
 
-    paginated = feed_items[(page - 1) * page_size : page * page_size]
+    paginated = feed_items[:page_size + 1]
+    has_more = len(paginated) > page_size
+    paginated = paginated[:page_size]
+
     if not paginated:
-        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+        return {"posts": [], "next_cursor": None}
+
+    next_cursor = paginated[-1][0].isoformat() if has_more else None
 
     # 5. Batch-load authors + liked/reposted sets
     paged_posts = [item[1] for item in paginated]
@@ -184,56 +196,60 @@ def get_feed(
         )
         for _, post, reposter in paginated
     ]
-    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
+    return {"posts": enriched, "next_cursor": next_cursor}
 
 
 def get_explore(
     db: Session,
     user_id: int,
-    page: int = 1,
+    before_timestamp: Optional[datetime] = None,
     page_size: int = 20,
 ) -> dict:
-    """Explore feed: all posts, newest first."""
+    """Explore feed: all posts, newest first. Cursor-based via before_timestamp."""
     q = db.query(Post)
-    total = q.count()
+    if before_timestamp:
+        q = q.filter(Post.created_at < before_timestamp)
     posts = (
         q.order_by(desc(Post.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .limit(page_size + 1)
         .all()
     )
-    return _enrich_posts_list(db, posts, user_id, total, page, page_size)
+    has_more = len(posts) > page_size
+    posts = posts[:page_size]
+    next_cursor = posts[-1].created_at.isoformat() if has_more and posts else None
+    return _enrich_posts_list(db, posts, user_id, next_cursor=next_cursor)
 
 
 def get_user_posts(
     db: Session,
     target_id: int,
     viewer_id: Optional[int],
-    page: int = 1,
+    before_timestamp: Optional[datetime] = None,
     page_size: int = 20,
 ) -> dict:
     q = db.query(Post).filter(Post.author_id == target_id)
-    total = q.count()
+    if before_timestamp:
+        q = q.filter(Post.created_at < before_timestamp)
     posts = (
         q.order_by(desc(Post.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
+        .limit(page_size + 1)
         .all()
     )
-    return _enrich_posts_list(db, posts, viewer_id, total, page, page_size)
+    has_more = len(posts) > page_size
+    posts = posts[:page_size]
+    next_cursor = posts[-1].created_at.isoformat() if has_more and posts else None
+    return _enrich_posts_list(db, posts, viewer_id, next_cursor=next_cursor)
 
 
 def _enrich_posts_list(
     db: Session,
     posts: list,
     viewer_id: Optional[int],
-    total: int,
-    page: int,
-    page_size: int,
     repost_by_map: Optional[dict] = None,
+    next_cursor: Optional[str] = None,
 ) -> dict:
     if not posts:
-        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+        return {"posts": [], "next_cursor": None}
 
     author_ids = list({p.author_id for p in posts})
     authors_map = {
@@ -265,7 +281,7 @@ def _enrich_posts_list(
         )
         for p in posts
     ]
-    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
+    return {"posts": enriched, "next_cursor": next_cursor}
 
 # ── Views / Reposts / Shares ───────────────────────────────────────────────────────
 
@@ -521,7 +537,7 @@ def search_users(db: Session, query: str, page: int = 1, page_size: int = 20) ->
         )
     )
     total = q.count()
-    users = q.order_by(desc(Profile.xp)).offset((page - 1) * page_size).limit(page_size).all()
+    users = q.order_by(desc(Profile.total_xp)).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "users": [_profile_to_author(u) for u in users],
         "total": total,
@@ -541,7 +557,7 @@ def discover_users(db: Session, viewer_id: int, page: int = 1, page_size: int = 
     )
     total = q.count()
     users = (
-        q.order_by(desc(Profile.xp))
+        q.order_by(desc(Profile.total_xp))
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()
