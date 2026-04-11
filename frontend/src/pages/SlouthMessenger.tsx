@@ -9,7 +9,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { ArrowLeft, Send, Loader2, MessageSquare, Check, CheckCheck, Search, Trash2 } from 'lucide-react'
+import { ArrowLeft, Send, Loader2, MessageSquare, Check, CheckCheck, Search, Trash2, Clock } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
@@ -27,8 +27,10 @@ interface Message {
   conversation_id: number
   sender_id: number
   content: string
+  is_delivered: boolean
   is_read: boolean
   created_at: string
+  _sending?: boolean  // optimistic flag
 }
 
 interface ConversationItem {
@@ -157,14 +159,16 @@ const ChatView: React.FC<{
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Fetch messages
+  // Fetch messages and mark delivered on mount
   useEffect(() => {
     const fetchMessages = async () => {
       setLoading(true)
       try {
         const res = await api.client.get(`/api/v1/messenger/conversations/${conversationId}/messages`)
         setMessages(res.data || [])
-        // Mark as read
+        // Mark as delivered first (recipient opened chat)
+        await api.client.patch(`/api/v1/messenger/conversations/${conversationId}/delivered`)
+        // Then mark as read
         await api.client.patch(`/api/v1/messenger/conversations/${conversationId}/read`)
       } catch {}
       setLoading(false)
@@ -177,7 +181,7 @@ const ChatView: React.FC<{
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Supabase Realtime subscription for new messages
+  // Supabase Realtime subscription for new messages and delivery/read status updates
   useEffect(() => {
     const channel = supabase
       .channel(`dm-${conversationId}`)
@@ -192,14 +196,29 @@ const ChatView: React.FC<{
         (payload: any) => {
           const newMsg = payload.new as Message
           setMessages(prev => {
-            // Avoid duplicates
             if (prev.some(m => m.id === newMsg.id)) return prev
             return [...prev, newMsg]
           })
-          // Mark read if from other user
           if (newMsg.sender_id !== myId) {
+            api.client.patch(`/api/v1/messenger/conversations/${conversationId}/delivered`).catch(() => {})
             api.client.patch(`/api/v1/messenger/conversations/${conversationId}/read`).catch(() => {})
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'direct_messages',
+          filter: `conversation_id=eq.${conversationId}`,
+        },
+        (payload: any) => {
+          const updated = payload.new as Message
+          // Update delivery/read status on our sent messages
+          setMessages(prev =>
+            prev.map(m => m.id === updated.id ? { ...m, is_delivered: updated.is_delivered, is_read: updated.is_read } : m)
+          )
         }
       )
       .subscribe()
@@ -219,7 +238,9 @@ const ChatView: React.FC<{
       conversation_id: conversationId,
       sender_id: myId,
       content: text,
+      is_delivered: false,
       is_read: false,
+      _sending: true,
       created_at: new Date().toISOString(),
     }
     setMessages(prev => [...prev, tempMsg])
@@ -338,11 +359,15 @@ const ChatView: React.FC<{
                     <p className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                       {linkify(msg.content)}
                     </p>
-                    {/* Read receipt for sent messages */}
+                    {/* Read receipt for sent messages — 3 states */}
                     {isMine && (
                       <div className="flex justify-end mt-0.5">
-                        {msg.is_read ? (
-                          <CheckCheck className="w-3.5 h-3.5 text-white/60" />
+                        {msg._sending ? (
+                          <Clock className="w-3.5 h-3.5 text-white/30" />
+                        ) : msg.is_read ? (
+                          <CheckCheck className="w-3.5 h-3.5 text-white/80" />
+                        ) : msg.is_delivered ? (
+                          <CheckCheck className="w-3.5 h-3.5 text-white/40" />
                         ) : (
                           <Check className="w-3.5 h-3.5 text-white/40" />
                         )}

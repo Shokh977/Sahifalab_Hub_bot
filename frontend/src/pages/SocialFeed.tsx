@@ -24,8 +24,7 @@ const SocialFeed: React.FC = () => {
   const [tab, setTab] = useState<Tab>('feed')
   const [posts, setPosts] = useState<PostData[]>([])
   const [loading, setLoading] = useState(true)
-  const [page, setPage] = useState(1)
-  const [hasMore, setHasMore] = useState(true)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const [showScrollTop, setShowScrollTop] = useState(false)
 
@@ -40,20 +39,16 @@ const SocialFeed: React.FC = () => {
 
   const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' })
 
-  const fetchPosts = useCallback(async (pg = 1, reset = false) => {
+  const fetchPosts = useCallback(async (cursor: string | null = null, reset = false) => {
     try {
       const endpoint = tab === 'feed' ? '/api/v1/social/posts/feed' : '/api/v1/social/posts/explore'
-      const res = await api.client.get(endpoint, { params: { page: pg, page_size: 20 } })
+      const params: Record<string, string | number> = { page_size: 20 }
+      if (cursor) params.before_timestamp = cursor
+      const res = await api.client.get(endpoint, { params })
       const data = res.data
-      const fetched = data.posts || []
+      const fetched: PostData[] = data.posts || []
       setPosts(prev => reset ? fetched : [...prev, ...fetched])
-      setHasMore(fetched.length >= 20)
-      setPage(pg)
-      // Trigger one organic-growth tick once per browser session
-      if (reset && pg === 1 && !sessionStorage.getItem('sahifa_growth_ticked')) {
-        sessionStorage.setItem('sahifa_growth_ticked', '1')
-        api.client.post('/api/v1/social/simulate-growth').catch(() => {})
-      }
+      setNextCursor(data.next_cursor ?? null)
     } catch (err) {
       console.error('Feed fetch error:', err)
     }
@@ -64,16 +59,18 @@ const SocialFeed: React.FC = () => {
   useEffect(() => {
     setLoading(true)
     setPosts([])
-    fetchPosts(1, true)
+    setNextCursor(null)
+    fetchPosts(null, true)
   }, [tab, fetchPosts])
 
   const handleRefresh = () => {
     setRefreshing(true)
-    fetchPosts(1, true)
+    setNextCursor(null)
+    fetchPosts(null, true)
   }
 
   const handleLoadMore = () => {
-    fetchPosts(page + 1)
+    if (nextCursor) fetchPosts(nextCursor)
   }
 
   const handleCreatePost = async (content: string, imageUrl?: string) => {
@@ -216,7 +213,7 @@ const SocialFeed: React.FC = () => {
                   />
                 ))}
 
-                {hasMore && (
+                {nextCursor && (
                   <button
                     onClick={handleLoadMore}
                     className="w-full py-3 rounded-xl text-sm text-gray-500 dark:text-white/40 hover:text-gray-700 dark:hover:text-white/60 bg-white/50 dark:bg-white/[0.02] hover:bg-white/70 dark:hover:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.04] transition-colors"

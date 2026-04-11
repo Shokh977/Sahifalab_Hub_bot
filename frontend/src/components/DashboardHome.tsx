@@ -78,131 +78,295 @@ const ll = (l: string) => LEVEL_LABELS[l] ?? l
 const DAILY_FOCUS_GOAL_MINS = 30
 const DAILY_QUIZ_GOAL       = 3
 
-// â”€â”€ Fade-in entrance variant â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ── Fade-in entrance variant ──────────────────────────────────────────────────
 const fadeUp = (delay = 0) => ({
   initial:    { opacity: 0, y: 18 },
   animate:    { opacity: 1, y: 0 },
   transition: { delay, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const },
 })
 
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-// BENTO CELL 1: Hero glassmorphism banner
-// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// ── Streak helper (reads sahifa:streak from localStorage) ────────────────────
+function getLocalStreak(): number {
+  try {
+    const raw = localStorage.getItem('sahifa:streak')
+    if (!raw) return 0
+    const { days, lastDate } = JSON.parse(raw) as { days: number; lastDate: string }
+    const today     = new Date().toDateString()
+    const yesterday = new Date(Date.now() - 86_400_000).toDateString()
+    if (lastDate === today || lastDate === yesterday) return days
+    return 0
+  } catch { return 0 }
+}
+
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BENTO CELL 1 — Premium Hero Banner ($100K edition)
+// ══════════════════════════════════════════════════════════════════════════════
 const HeroBanner: React.FC<{
   user: { first_name: string; photo_url?: string | null }
-  totalXP:    number
-  level:      number
+  totalXP:      number
+  level:        number
   focusSeconds: number
-  xpPct:      number
-  xpInLevel:  number
-  xpForLevel: number
+  xpPct:        number
+  xpInLevel:    number
+  xpForLevel:   number
 }> = ({ user, totalXP, level, focusSeconds, xpPct, xpInLevel, xpForLevel }) => {
   const navigate = useNavigate()
+  const streak   = getLocalStreak()
+
+  // XP ring math (avatar border ring — r=36, within 88×88 SVG centred at 44,44)
+  const R    = 36
+  const CIRC = 2 * Math.PI * R
+  const dash = (xpPct / 100) * CIRC
+
+  // Motivational subtitle based on level tier
+  const subtitle =
+    level >= 20 ? "🏆 Siz elita safida — davom eting!" :
+    level >= 10 ? "🚀 Profesional yo'lda jadal ilgarilamoqdasiz" :
+    level >= 5  ? "⚡ Yaxshi natijalar — siz oldinda bormoqdasiz" :
+                  "🌱 Yangi bilimlar sari — maqsadingizga e'tibor bering"
 
   const PILLS = [
-    { icon: Clock,          label: "O'qish",   path: '/workspace?tab=focus', },
-    { icon: LayoutList, label: 'Test',     path: '/quiz',         },
-    { icon: BookOpen,       label: 'Kitoblar', path: '/kitoblar',     },
+    { icon: Clock,      label: "O'qish",   path: '/workspace?tab=focus' },
+    { icon: LayoutList, label: 'Test',     path: '/quiz'                },
+    { icon: BookOpen,   label: 'Kitoblar', path: '/kitoblar'            },
+    { icon: Cpu,        label: 'Kabinet',  path: '/cabinet'             },
   ]
 
   return (
-    <motion.div {...fadeUp(0)} className="hero-glass col-span-12">
-      
-      <div className="pointer-events-none absolute -top-16 -right-16 w-72 h-72 rounded-full bg-white/5 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-20 w-80 h-80 rounded-full bg-black/15 blur-3xl" />
-      <div
-        className="pointer-events-none absolute inset-0 opacity-[0.03]"
-        style={{ backgroundImage: 'repeating-linear-gradient(0deg,#fff 0,#fff 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,#fff 0,#fff 1px,transparent 1px,transparent 40px)' }}
-      />
+    <motion.div
+      {...fadeUp(0)}
+      className="relative overflow-hidden rounded-[28px] col-span-12"
+      style={{
+        background: 'linear-gradient(135deg, #F15929 0%, #D43E12 38%, #B82C06 68%, #8B1A00 100%)',
+        boxShadow: '0 24px 64px rgba(241,89,41,0.40), 0 4px 16px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.15)',
+      }}
+    >
+      {/* ── Layered depth backgrounds ──────────────────────────────────── */}
+      <div className="pointer-events-none absolute -top-24 -right-24 w-96 h-96 rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(255,160,100,0.18) 0%, transparent 70%)' }} />
+      <div className="pointer-events-none absolute -bottom-28 -left-20 w-[500px] h-[500px] rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(0,0,0,0.25) 0%, transparent 65%)' }} />
+      <div className="pointer-events-none absolute -top-8 -left-8 w-48 h-48 rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(255,200,100,0.12) 0%, transparent 70%)' }} />
+      {/* Subtle dot grid */}
+      <div className="pointer-events-none absolute inset-0 opacity-[0.035]"
+        style={{ backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px)', backgroundSize: '28px 28px' }} />
 
-      <div className="relative p-6 sm:p-8">
-        {/* Row: avatar + name + pills */}
-        <div className="flex flex-wrap items-start gap-5">
-          {user.photo_url ? (
-            <img
-              src={user.photo_url}
-              alt={user.first_name}
-              className="w-16 h-16 rounded-[20px] object-cover border-2 border-white/25 shadow-xl flex-shrink-0"
-            />
-          ) : (
-            <div className="w-16 h-16 rounded-[20px] bg-white/15 backdrop-blur-sm border border-white/25 flex items-center justify-center flex-shrink-0">
-              <span className="text-3xl font-extrabold text-white">
-                {user.first_name.charAt(0).toUpperCase()}
-              </span>
+      {/* ── Main content ───────────────────────────────────────────────── */}
+      <div className="relative px-6 pt-6 pb-5 sm:px-8 sm:pt-7">
+
+        {/* Top row: avatar ring + name block + CTA pills (desktop) */}
+        <div className="flex flex-wrap items-start gap-5 sm:gap-6">
+
+          {/* ── Avatar with animated XP ring ─────────────────────────── */}
+          <div className="relative flex-shrink-0" style={{ width: 88, height: 88 }}>
+            <svg
+              width="88" height="88"
+              viewBox="0 0 88 88"
+              className="absolute inset-0"
+              style={{ transform: 'rotate(-90deg)' }}
+            >
+              <defs>
+                <linearGradient id="heroXpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%"   stopColor="rgba(255,255,255,0.95)" />
+                  <stop offset="100%" stopColor="rgba(255,210,150,0.7)" />
+                </linearGradient>
+              </defs>
+              <circle cx="44" cy="44" r={R} strokeWidth="3.5" fill="none" stroke="rgba(255,255,255,0.15)" />
+              <motion.circle
+                cx="44" cy="44" r={R}
+                strokeWidth="3.5"
+                fill="none"
+                stroke="url(#heroXpGrad)"
+                strokeLinecap="round"
+                strokeDasharray={`${dash} ${CIRC}`}
+                initial={{ strokeDasharray: `0 ${CIRC}` }}
+                animate={{ strokeDasharray: `${dash} ${CIRC}` }}
+                transition={{ duration: 1.6, ease: [0.34, 1.56, 0.64, 1], delay: 0.2 }}
+                style={{ filter: 'drop-shadow(0 0 4px rgba(255,255,255,0.55))' }}
+              />
+            </svg>
+            <div className="absolute inset-0 p-[7px]">
+              {user.photo_url ? (
+                <img
+                  src={user.photo_url}
+                  alt={user.first_name}
+                  className="w-full h-full rounded-[18px] object-cover shadow-xl"
+                  style={{ border: '2px solid rgba(255,255,255,0.2)' }}
+                />
+              ) : (
+                <div className="w-full h-full rounded-[18px] flex items-center justify-center shadow-xl"
+                  style={{ background: 'rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)', border: '2px solid rgba(255,255,255,0.2)' }}>
+                  <span className="text-2xl font-extrabold text-white">
+                    {user.first_name.charAt(0).toUpperCase()}
+                  </span>
+                </div>
+              )}
             </div>
-          )}
+            {/* Level badge pinned bottom-right */}
+            <motion.div
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: 'spring', stiffness: 480, damping: 22, delay: 0.5 }}
+              className="absolute -bottom-1 -right-1 flex items-center justify-center rounded-full text-white font-black leading-none"
+              style={{
+                minWidth: 24, height: 24, padding: '0 5px', fontSize: 10,
+                background: 'linear-gradient(135deg, rgba(255,200,80,0.95) 0%, rgba(241,89,41,0.95) 100%)',
+                border: '2px solid rgba(255,255,255,0.35)',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.35)',
+              }}
+            >
+              {level}
+            </motion.div>
+          </div>
 
+          {/* ── Name + subtitle + stats ───────────────────────────────── */}
           <div className="flex-1 min-w-0 space-y-3">
             <div>
-              <p className="text-white/60 text-sm">Assalomu alaykum 👋</p>
-              <h1 className="text-2xl font-extrabold text-white tracking-tight truncate mt-0.5">
+              <p className="text-white/60 text-[13px] font-medium leading-none">Assalomu alaykum 👋</p>
+              <h1 className="text-[26px] sm:text-[28px] font-extrabold text-white tracking-[-0.03em] truncate leading-tight mt-1">
                 {user.first_name}
               </h1>
+              <p className="text-white/50 text-[12px] mt-1.5 font-medium leading-snug">{subtitle}</p>
             </div>
-            
+
+            {/* Stats chips */}
             <div className="flex flex-wrap gap-2">
               {[
-                { icon: Star,        val: totalXP.toLocaleString(), lbl: 'XP'     },
-                { icon: GraduationCap, val: `L${level}`,              lbl: 'Daraja' },
-                { icon: Clock,       val: formatFocusTime(focusSeconds), lbl: 'Fokus' },
+                { icon: Star,          val: totalXP.toLocaleString(), lbl: 'XP',     iconColor: 'text-yellow-200' },
+                { icon: GraduationCap, val: `L${level}`,              lbl: 'Daraja', iconColor: 'text-orange-200' },
+                { icon: Clock,         val: formatFocusTime(focusSeconds), lbl: 'Fokus', iconColor: 'text-blue-200' },
               ].map(c => (
-                <div key={c.lbl} className="stat-chip text-white">
-                  <c.icon className="w-3.5 h-3.5 text-white/70" />
-                  <span className="font-bold">{c.val}</span>
-                  <span className="text-white/55 font-normal">{c.lbl}</span>
+                <div key={c.lbl}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-bold text-white"
+                  style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(8px)' }}>
+                  <c.icon className={`w-3.5 h-3.5 ${c.iconColor}`} />
+                  <span>{c.val}</span>
+                  <span className="text-white/50 font-normal">{c.lbl}</span>
                 </div>
               ))}
+              {streak > 0 && (
+                <motion.div
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 22, delay: 0.35 }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-bold text-white"
+                  style={{ background: 'rgba(255,165,30,0.28)', border: '1px solid rgba(255,200,80,0.42)', backdropFilter: 'blur(8px)' }}>
+                  <span className="text-[15px] leading-none">🔥</span>
+                  <span>{streak}</span>
+                  <span className="text-orange-200/80 font-normal">kun streak</span>
+                </motion.div>
+              )}
             </div>
           </div>
 
-          
-          <div className="hidden lg:flex items-center gap-2 flex-shrink-0">
-            {PILLS.map(p => {
-              const Icon = p.icon
-              return (
-                <button
-                  key={p.path}
-                  onClick={() => navigate(p.path)}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-[14px] bg-white/10 hover:bg-white/20 border border-white/10 hover:border-white/25 text-white text-xs font-semibold transition-all"
-                >
-                  <Icon className="w-3.5 h-3.5" />
-                  {p.label}
-                </button>
-              )
-            })}
+          {/* ── Desktop action pills ──────────────────────────────────── */}
+          <div className="hidden lg:flex flex-col gap-2 flex-shrink-0 items-end">
+            <div className="flex gap-2">
+              {PILLS.slice(0, 2).map(p => {
+                const Icon = p.icon
+                return (
+                  <motion.button
+                    key={p.path}
+                    whileHover={{ scale: 1.04, y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => navigate(p.path)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-[14px] text-white text-[13px] font-semibold"
+                    style={{
+                      background: 'rgba(255,255,255,0.16)',
+                      border: '1px solid rgba(255,255,255,0.2)',
+                      backdropFilter: 'blur(10px)',
+                      boxShadow: '0 2px 10px rgba(0,0,0,0.18)',
+                    }}
+                  >
+                    <Icon className="w-[15px] h-[15px]" />
+                    {p.label}
+                  </motion.button>
+                )
+              })}
+            </div>
+            <div className="flex gap-2">
+              {PILLS.slice(2).map(p => {
+                const Icon = p.icon
+                return (
+                  <motion.button
+                    key={p.path}
+                    whileHover={{ scale: 1.04, y: -1 }}
+                    whileTap={{ scale: 0.97 }}
+                    onClick={() => navigate(p.path)}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-[14px] text-white/85 text-[13px] font-semibold"
+                    style={{
+                      background: 'rgba(255,255,255,0.09)',
+                      border: '1px solid rgba(255,255,255,0.13)',
+                      backdropFilter: 'blur(10px)',
+                    }}
+                  >
+                    <Icon className="w-[15px] h-[15px]" />
+                    {p.label}
+                  </motion.button>
+                )
+              })}
+            </div>
           </div>
         </div>
 
-        
-        <div className="mt-5">
-          <div className="flex justify-between text-white/55 text-[11px] mb-1.5 font-medium">
-            <span>Daraja {level} → {level + 1}</span>
-            <span>{xpInLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP</span>
+        {/* ── XP Progress bar ──────────────────────────────────────────── */}
+        <div className="mt-5 sm:mt-6">
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center gap-2">
+              <span className="text-white/70 text-[12px] font-semibold">Daraja {level}</span>
+              <span className="text-white/35 text-[11px]">→</span>
+              <span className="text-white/50 text-[12px]">Daraja {level + 1}</span>
+            </div>
+            <span className="text-white/65 text-[11px] font-semibold tabular-nums">
+              {xpInLevel.toLocaleString()} / {xpForLevel.toLocaleString()} XP · {xpPct}%
+            </span>
           </div>
-          <div className="h-2 bg-white/12 rounded-full overflow-hidden">
+
+          {/* Track */}
+          <div className="relative h-2.5 rounded-full overflow-hidden" style={{ background: 'rgba(0,0,0,0.22)' }}>
+            {/* Animated fill */}
             <motion.div
-              className="h-full rounded-full bg-gradient-to-r from-white/90 to-white/55"
-              initial={{ width: 0 }}
+              className="absolute inset-y-0 left-0 rounded-full"
+              style={{
+                background: 'linear-gradient(90deg, rgba(255,255,255,0.95) 0%, rgba(255,210,150,0.85) 100%)',
+                boxShadow: '0 0 12px rgba(255,255,255,0.5), 0 0 24px rgba(255,200,100,0.3)',
+              }}
+              initial={{ width: '0%' }}
               animate={{ width: `${xpPct}%` }}
-              transition={{ duration: 1.4, ease: [0.34, 1.56, 0.64, 1] }}
+              transition={{ duration: 1.5, ease: [0.34, 1.56, 0.64, 1], delay: 0.15 }}
+            />
+            {/* Shimmer sweep */}
+            <motion.div
+              className="absolute inset-y-0 w-24 rounded-full pointer-events-none"
+              style={{ background: 'linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.45) 50%, transparent 100%)' }}
+              animate={{ left: ['-6rem', '110%'] }}
+              transition={{ duration: 2.5, repeat: Infinity, repeatDelay: 3.5, ease: 'easeInOut', delay: 2 }}
             />
           </div>
         </div>
       </div>
 
-      
-      <div className="lg:hidden flex gap-2.5 px-6 pb-5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+      {/* ── Mobile action pills (horizontal scroll) ─────────────────────── */}
+      <div className="lg:hidden flex gap-2 px-6 pb-5 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
         {PILLS.map(p => {
           const Icon = p.icon
           return (
-            <button
+            <motion.button
               key={p.path}
+              whileTap={{ scale: 0.96 }}
               onClick={() => navigate(p.path)}
-              className="flex items-center gap-2 px-4 py-2 rounded-2xl flex-shrink-0 bg-white/10 border border-white/12 text-white text-xs font-semibold hover:bg-white/18 transition-all"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl flex-shrink-0 text-white text-[13px] font-semibold"
+              style={{
+                background: 'rgba(255,255,255,0.13)',
+                border: '1px solid rgba(255,255,255,0.17)',
+                backdropFilter: 'blur(8px)',
+              }}
             >
-              <Icon className="w-3.5 h-3.5" />
+              <Icon className="w-[15px] h-[15px]" />
               {p.label}
-            </button>
+            </motion.button>
           )
         })}
       </div>
