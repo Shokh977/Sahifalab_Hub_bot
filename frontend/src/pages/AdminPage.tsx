@@ -1629,10 +1629,10 @@ const AdminPage: React.FC = () => {
                   </div>
                 ))}
 
-                {/* Cover image upload → Supabase Storage */}
+                {/* Cover image upload → Bunny CDN */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    Muqova rasmi <span className="text-blue-500">(JPG/PNG/WebP — Supabase-ga yuklanadi)</span>
+                    Muqova rasmi <span className="text-blue-500">(JPG/PNG/WebP — Bunny CDN-ga yuklanadi, WebP-ga optimallashtiriladi)</span>
                   </label>
                   <div className="flex gap-2">
                     <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
@@ -1655,17 +1655,7 @@ const AdminPage: React.FC = () => {
                       <p className="text-xs text-green-600 dark:text-green-400 truncate">✅ {newBook.thumbnail_url}</p>
                     </div>
                   ) : null}
-                  {bookCoverMsg === '__no_cover_bucket__' ? (
-                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
-                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «book-covers» bucket topilmadi</p>
-                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
-                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
-                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">book-covers</code></li>
-                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
-                      </ol>
-                      <button onClick={() => setBookCoverMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
-                    </div>
-                  ) : bookCoverMsg ? (
+                  {bookCoverMsg ? (
                     <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookCoverMsg}</p>
                   ) : null}
                   {bookCoverUploading && (
@@ -1675,10 +1665,10 @@ const AdminPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* PDF file upload → Supabase Storage */}
+                {/* PDF file upload → Bunny CDN */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    PDF fayl <span className="text-blue-500">(Supabase-ga yuklanadi)</span>
+                    PDF fayl <span className="text-blue-500">(Bunny CDN-ga yuklanadi)</span>
                   </label>
                   <div className="flex gap-2">
                     <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
@@ -1708,19 +1698,7 @@ const AdminPage: React.FC = () => {
                       />
                     </div>
                   )}
-                  {bookPdfMsg === '__no_bucket__' ? (
-                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
-                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «books» bucket topilmadi</p>
-                      <p className="text-orange-600 dark:text-orange-300">Supabase Storage-da bir marta sozlash kerak:</p>
-                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
-                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
-                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">books</code></li>
-                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
-                        <li>Keyin qayta urinib ko'ring</li>
-                      </ol>
-                      <button onClick={() => setBookPdfMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
-                    </div>
-                  ) : bookPdfMsg ? (
+                  {bookPdfMsg ? (
                     <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>
                   ) : null}
                   {bookPdfUploading && (
@@ -1810,17 +1788,7 @@ const AdminPage: React.FC = () => {
                       <p className="text-xs text-green-600 dark:text-green-400 truncate">✅ {editingBook.thumbnail_url}</p>
                     </div>
                   ) : null}
-                  {bookCoverMsg === '__no_cover_bucket__' ? (
-                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
-                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «book-covers» bucket topilmadi</p>
-                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
-                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
-                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">book-covers</code></li>
-                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
-                      </ol>
-                      <button onClick={() => setBookCoverMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
-                    </div>
-                  ) : bookCoverMsg ? (
+                  {bookCoverMsg ? (
                     <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookCoverMsg}</p>
                   ) : null}
                   {bookCoverUploading && (
@@ -1857,19 +1825,7 @@ const AdminPage: React.FC = () => {
                     onChange={e => setEditingBook({ ...editingBook, file_url: e.target.value })}
                     className="w-full mt-1 px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sahifa-500"
                   />
-                  {bookPdfMsg === '__no_bucket__' ? (
-                    <div className="mt-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded-xl p-3 text-xs space-y-1.5">
-                      <p className="font-semibold text-orange-700 dark:text-orange-400">🪣 «books» bucket topilmadi</p>
-                      <p className="text-orange-600 dark:text-orange-300">Supabase Storage-da bir marta sozlash kerak:</p>
-                      <ol className="list-decimal list-inside text-orange-600 dark:text-orange-300 space-y-1">
-                        <li>supabase.com → loyihangiz → <strong>Storage</strong></li>
-                        <li><strong>New bucket</strong> → Name: <code className="bg-orange-100 dark:bg-orange-900/40 px-1 rounded">books</code></li>
-                        <li><strong>Public bucket</strong> belgisini qo'ying → <strong>Save</strong></li>
-                        <li>Keyin qayta urinib ko'ring</li>
-                      </ol>
-                      <button onClick={() => setBookPdfMsg('')} className="text-orange-500 underline text-xs">Yopish</button>
-                    </div>
-                  ) : bookPdfMsg ? (
+                  {bookPdfMsg ? (
                     <p className="text-xs mt-1 text-gray-500 dark:text-gray-400">{bookPdfMsg}</p>
                   ) : null}
                   {bookPdfUploading && (

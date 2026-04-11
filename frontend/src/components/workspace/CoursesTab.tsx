@@ -5,6 +5,7 @@
  * Future: list enrolled courses with progress indicators.
  */
 import React from 'react'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { BookOpen, ArrowRight, GraduationCap, Timer } from 'lucide-react'
 

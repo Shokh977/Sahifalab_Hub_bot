@@ -569,16 +569,6 @@ const CabinetPage: React.FC = () => {
         />
       </div>
 
-      {/* ═══ XP Progress Bento ═══ */}
-      <div className="px-4">
-        <XPProgressBar
-          totalXP={effectiveTotalXP}
-          level={effectiveLevel}
-          dailyQuizXP={dailyQuizXP}
-          totalFocusMinutes={totalFocusMinutes || Math.floor((focusSeconds || 0) / 60)}
-        />
-      </div>
-
       {/* ═══ Bento Settings Form ═══ */}
       <AnimatePresence>
       {editOpen && (
@@ -661,6 +651,16 @@ const CabinetPage: React.FC = () => {
         </motion.div>
       )}
       </AnimatePresence>
+
+      {/* ═══ XP Progress Bento ═══ */}
+      <div className="px-4">
+        <XPProgressBar
+          totalXP={effectiveTotalXP}
+          level={effectiveLevel}
+          dailyQuizXP={dailyQuizXP}
+          totalFocusMinutes={totalFocusMinutes || Math.floor((focusSeconds || 0) / 60)}
+        />
+      </div>
 
       {/* ═══ Profile Strength Meter (Teachers only) ═══ */}
       {isTeacher && (() => {

@@ -60,6 +60,8 @@ class TelegramBotHandler:
         self.news_file = self.data_dir / "news_posts.json"
         self.scheduled_news_file = self.data_dir / "scheduled_news.json"
         self.motivation_logs_file = self.data_dir / "motivation_logs.json"
+        self.questions_file = self.data_dir / "questions.json"
+        self.qna_msg_map_file = self.data_dir / "qna_msg_map.json"
         self.admin_ids = self._parse_admin_ids(os.getenv("BOT_ADMIN_IDS", ""))
         self.timezone = ZoneInfo(os.getenv("BOT_TIMEZONE", "Asia/Tashkent"))
         self.file_lock = asyncio.Lock()
@@ -473,6 +475,138 @@ class TelegramBotHandler:
     async def _save_motivation_logs(self, logs: dict[str, str]) -> None:
         await self._write_json(self.motivation_logs_file, logs)
 
+    # ── Q&A: data helpers ─────────────────────────────────────────────────────
+
+    async def _get_questions(self) -> list[dict[str, Any]]:
+        data = await self._read_json(self.questions_file, default=[])
+        return data if isinstance(data, list) else []
+
+    async def _save_questions(self, questions: list[dict[str, Any]]) -> None:
+        await self._write_json(self.questions_file, questions)
+
+    async def _get_qna_msg_map(self) -> dict[str, int]:
+        data = await self._read_json(self.qna_msg_map_file, default={})
+        return data if isinstance(data, dict) else {}
+
+    async def _save_qna_msg_map(self, mapping: dict[str, int]) -> None:
+        await self._write_json(self.qna_msg_map_file, mapping)
+
+    async def _notify_admins_of_question(self, bot: Bot, question: dict[str, Any]) -> None:
+        """Forward a new question to all configured admins."""
+        if not self.admin_ids:
+            return
+        qid = question["id"]
+        user_name = question.get("user_name") or "Foydalanuvchi"
+        user_username = question.get("user_username")
+        user_id = question["user_id"]
+        text = question["text"]
+        user_line = f"👤 {user_name}"
+        if user_username:
+            user_line += f" (@{user_username})"
+        user_line += f"\n🆔 {user_id}"
+        msg_text = (
+            f"❓ Yangi savol #{qid}\n\n"
+            f"{user_line}\n\n"
+            f"💬 Savol:\n{text}\n\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"Javob berish uchun shu xabarga *reply* qiling\n"
+            f"yoki: /answer {qid} [javob]"
+        )
+        qna_map = await self._get_qna_msg_map()
+        for admin_id in self.admin_ids:
+            try:
+                sent_msg = await bot.send_message(
+                    chat_id=admin_id,
+                    text=msg_text,
+                    parse_mode="Markdown",
+                )
+                qna_map[f"{admin_id}:{sent_msg.message_id}"] = qid
+            except Exception as e:
+                logger.warning(f"Failed to notify admin {admin_id} of question #{qid}: {e}")
+        await self._save_qna_msg_map(qna_map)
+
+    async def _handle_user_question(
+        self, update: Update, context: ContextTypes.DEFAULT_TYPE, text: str
+    ) -> None:
+        """Save a user's question, confirm receipt, and notify admins."""
+        user = update.effective_user
+        if not user:
+            return
+        if len(text) > 1000:
+            await update.message.reply_text(
+                "\u2757 Savol juda uzun (1000 ta belgidan ko'p). Iltimos, qisqartiring."
+            )
+            return
+        questions = await self._get_questions()
+        next_id = (questions[-1]["id"] + 1) if questions else 1
+        question: dict[str, Any] = {
+            "id": next_id,
+            "user_id": user.id,
+            "user_name": user.first_name or "",
+            "user_username": user.username,
+            "text": text,
+            "status": "pending",
+            "created_at": datetime.now(UTC).isoformat(),
+            "answer": None,
+            "answered_at": None,
+            "answered_by_id": None,
+            "answered_by_name": None,
+        }
+        questions.append(question)
+        await self._save_questions(questions[-500:])
+        await update.message.reply_text(
+            f"\u2705 Savolingiz qabul qilindi! (#{next_id})\n"
+            "Admin tez orada javob beradi. \U0001f64f"
+        )
+        await self._notify_admins_of_question(context.bot, question)
+
+    async def _send_answer(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        qid: int,
+        answer_text: str,
+        admin_user: Any,
+    ) -> None:
+        """Mark a question as answered and send the reply to the original user."""
+        questions = await self._get_questions()
+        question = next((q for q in questions if q["id"] == qid), None)
+        if not question:
+            await update.message.reply_text(f"\u274c #{qid} raqamli savol topilmadi.")
+            return
+        if question["status"] == "answered":
+            await update.message.reply_text(
+                f"\u2139\ufe0f #{qid} savolga allaqachon javob berilgan:\n\n{question['answer']}"
+            )
+            return
+        question["status"] = "answered"
+        question["answer"] = answer_text
+        question["answered_at"] = datetime.now(UTC).isoformat()
+        question["answered_by_id"] = admin_user.id
+        question["answered_by_name"] = admin_user.first_name or "Admin"
+        await self._save_questions(questions)
+        user_chat_id = question["user_id"]
+        original_q = question["text"]
+        if len(original_q) > 200:
+            original_q = original_q[:197] + "..."
+        user_msg = (
+            f"\U0001f4ac Savolingizga javob (#{qid})\n\n"
+            f"\u2753 Savol: {original_q}\n\n"
+            f"\u2705 Javob:\n{answer_text}\n\n"
+            f"\u2014 SAHIFALAB jamoasi \U0001f393"
+        )
+        try:
+            await context.bot.send_message(chat_id=user_chat_id, text=user_msg)
+            await update.message.reply_text(f"\u2705 #{qid} savolga javob yuborildi!")
+        except (Forbidden, BadRequest) as e:
+            logger.warning(f"Could not deliver answer to user {user_chat_id}: {e}")
+            await update.message.reply_text(
+                f"\u26a0\ufe0f Javob saqlandi, lekin foydalanuvchiga yetib bormadi:\n{e}"
+            )
+        except Exception as e:
+            logger.error(f"Failed to send answer to {user_chat_id}: {e}")
+            await update.message.reply_text("\u274c Javob saqlandi, lekin yuborishda xatolik yuz berdi.")
+
     async def _dispatch_inactive_motivation(self, bot: Bot, inactive_hours: int) -> tuple[int, int, int]:
         profiles = await self._fetch_inactive_profiles(inactive_hours=inactive_hours, limit=500)
         if not profiles:
@@ -599,6 +733,7 @@ class TelegramBotHandler:
             await application.bot.set_my_commands([
                 BotCommand("start",        "Boshlash — SAHIFALAB ni oching"),
                 BotCommand("app",          "Mini ilovani ochish"),
+                BotCommand("ask",          "Savol berish ❓"),
                 BotCommand("kurslar",      "Barcha kurslarni ko'rish 📚"),
                 BotCommand("oquvchilar",   "O'qituvchilar galereyasi 👨‍🏫"),
                 BotCommand("subscribe",    "Yangiliklarga obuna bo'lish"),
@@ -1009,6 +1144,10 @@ class TelegramBotHandler:
             "/cancel_news <id> — Rejalashtirilganni bekor qilish\n"
             "/motivate_inactive [soat] [matn] — Inactive userlarga DM\n"
             "/motivation_logs [soni] — Oxirgi motivatsiya loglari\n\n"
+            "❓ Q&A buyruqlari:\n"
+            "/questions [pending|answered|all] — Savollar ro'yxati\n"
+            "/answer <id> <matn> — Savolga javob berish\n"
+            "(Yoki savol xabariga to'g'ridan-to'g'ri reply qiling)\n\n"
             "Maslahat: /stats buyrug'ini muntazam tekshirib turing."
         )
 
@@ -1118,11 +1257,14 @@ class TelegramBotHandler:
             "\n/cancel_news <id> — Rejalashtirilgan yangilikni bekor qilish (admin)"
             "\n/motivate_inactive [soat] [matn] — Inactive userlarga DM yuborish (admin)"
             "\n/motivation_logs [soni] — Oxirgi motivatsiya loglari (admin)"
+            "\n/questions [pending|answered|all] — Savollar ro'yxati (admin)"
+            "\n/answer <id> <matn> — Savolga javob berish (admin)"
         ) if self._is_admin(update.effective_user.id if update.effective_user else None) else ""
         await update.message.reply_text(
             "📋 *Buyruqlar ro'yxati:*\n\n"
             "/start — Boshlash\n"
             "/app — Ilovani ochish\n"
+            "/ask — Savol berish ❓\n"
             "/kurslar — Barcha kurslarni ko'rish 📚\n"
             "/oquvchilar — O'qituvchilar galereyasi 👨‍🏫\n"
             "/subscribe — Yangiliklarga obuna\n"
@@ -1130,7 +1272,7 @@ class TelegramBotHandler:
             "/latest — So'nggi yangiliklar\n"
             "/help — Yordam\n\n"
             f"{admin_line}\n"
-            "Savollar bo'lsa, menga yozing! 😊",
+            "Savollar bo'lsa, menga yozing yoki /ask dan foydalaning! 😊",
             parse_mode="Markdown",
         )
 
@@ -1149,19 +1291,97 @@ class TelegramBotHandler:
             reply_markup=reply_markup,
         )
 
+    # ── /ask ─────────────────────────────────────────────────────────────────
+    async def ask_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        text = " ".join(context.args).strip() if context.args else ""
+        if not text:
+            await update.message.reply_text(
+                "❓ Savol yuboring:\n"
+                "/ask Kurs qachon boshlanadi?\n\n"
+                "Yoki shunchaki menga xabar yozing — savolingizni qabul qilaman! 😊"
+            )
+            return
+        await self._handle_user_question(update, context, text)
+
+    # ── /answer <id> <text> (admin only) ────────────────────────────────────
+    async def answer_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user = update.effective_user
+        if not user or not self._is_admin(user.id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+        if not context.args or len(context.args) < 2:
+            await update.message.reply_text(
+                "Foydalanish: /answer <savol_id> <javob matni>\n"
+                "Masalan: /answer 5 Ha, kurs 14-aprilda boshlanadi!"
+            )
+            return
+        try:
+            qid = int(context.args[0])
+        except ValueError:
+            await update.message.reply_text("Savol ID raqam bo'lishi kerak.")
+            return
+        answer_text = " ".join(context.args[1:]).strip()
+        await self._send_answer(update, context, qid, answer_text, user)
+
+    # ── /questions [pending|answered|all] (admin only) ───────────────────────
+    async def questions_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+        status_filter = (context.args[0].lower() if context.args else "pending")
+        if status_filter not in ("pending", "answered", "all"):
+            status_filter = "pending"
+        questions = await self._get_questions()
+        filtered = questions if status_filter == "all" else [q for q in questions if q["status"] == status_filter]
+        filtered = list(reversed(filtered))[:10]
+        if not filtered:
+            labels = {"pending": "kutilayotgan", "answered": "javoblangan", "all": ""}
+            await update.message.reply_text(f"ℹ️ Hozircha {labels[status_filter]} savollar yo'q.")
+            return
+        labels = {"pending": "Kutilayotgan", "answered": "Javoblangan", "all": "Barcha"}
+        lines = [f"📋 {labels[status_filter]} savollar (so'nggi {len(filtered)}):\n"]
+        for q in filtered:
+            icon = "⏳" if q["status"] == "pending" else "✅"
+            q_text = q["text"]
+            if len(q_text) > 80:
+                q_text = q_text[:77] + "..."
+            lines.append(f"{icon} #{q['id']} [{q.get('user_name') or '?'}]\n{q_text}")
+        await update.message.reply_text("\n\n".join(lines))
+
     # ── Fallback ─────────────────────────────────────────────────────────
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        keyboard = [[
-            InlineKeyboardButton(
-                "📚 Ilovani ochish",
-                web_app=WebAppInfo(url=MINI_APP_URL),
+        user = update.effective_user
+        if not user or not update.message:
+            return
+        text = (update.message.text or "").strip()
+        chat_id = update.effective_chat.id
+
+        # Admin replying to a Q&A notification → route as answer ──────────────
+        if self._is_admin(user.id) and update.message.reply_to_message:
+            reply_to_id = update.message.reply_to_message.message_id
+            qna_map = await self._get_qna_msg_map()
+            map_key = f"{chat_id}:{reply_to_id}"
+            if map_key in qna_map and text:
+                await self._send_answer(update, context, qna_map[map_key], text, user)
+                return
+
+        # Admin free text (not a Q&A reply) ───────────────────────────────────
+        if self._is_admin(user.id):
+            await update.message.reply_text(
+                "🛠️ Admin panel: /admin\n"
+                "❓ Kutilayotgan savollar: /questions\n"
+                "💬 Javob berish: /answer <id> <matn>"
             )
-        ]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "Ilovani ochib ko'ring! 👇",
-            reply_markup=reply_markup,
-        )
+            return
+
+        # Regular user → treat any text as a question ─────────────────────────
+        if not text:
+            keyboard = [[InlineKeyboardButton("📚 Ilovani ochish", web_app=WebAppInfo(url=MINI_APP_URL))]]
+            await update.message.reply_text("Ilovani ochib ko'ring! 👇", reply_markup=InlineKeyboardMarkup(keyboard))
+            return
+
+        await self._handle_user_question(update, context, text)
 
     # ── Setup ─────────────────────────────────────────────────────────────
     def setup(self):
@@ -1182,6 +1402,9 @@ class TelegramBotHandler:
         self.app.add_handler(CommandHandler("cancel_news", self.cancel_news_command))
         self.app.add_handler(CommandHandler("motivate_inactive", self.motivate_inactive_command))
         self.app.add_handler(CommandHandler("motivation_logs", self.motivation_logs_command))
+        self.app.add_handler(CommandHandler("ask", self.ask_command))
+        self.app.add_handler(CommandHandler("answer", self.answer_command))
+        self.app.add_handler(CommandHandler("questions", self.questions_command))
         # Text fallback
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)
