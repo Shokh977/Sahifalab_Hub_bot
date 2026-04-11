@@ -1,10 +1,24 @@
-from fastapi import APIRouter, HTTPException
+from typing import Optional
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 
 from app.schemas.schemas import BookSummarizerRequest, BookSummarizerResponse
 from app.services import ai_service
+from app.services.auth_service import decode_token
 
 router = APIRouter()
+
+
+async def _require_token(authorization: Optional[str] = Header(None)) -> int:
+    if not authorization:
+        raise HTTPException(401, "Avtorizatsiya talab qilinadi")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(401, "Noto'g'ri avtorizatsiya")
+    tid = decode_token(parts[1])
+    if not tid:
+        raise HTTPException(401, "Token muddati tugagan")
+    return tid
 
 
 class ChatRequest(BaseModel):
@@ -16,7 +30,7 @@ class ChatResponse(BaseModel):
 
 
 @router.post('/chat', response_model=ChatResponse)
-async def ai_chat(payload: ChatRequest):
+async def ai_chat(payload: ChatRequest, caller_id: int = Depends(_require_token)):
     """
     Chat endpoint for conversational AI interaction.
     Users can ask questions about books, authors, and learning.
@@ -35,7 +49,7 @@ async def ai_chat(payload: ChatRequest):
 
 
 @router.post('/book-summarizer', response_model=BookSummarizerResponse)
-async def book_summarizer(payload: BookSummarizerRequest):
+async def book_summarizer(payload: BookSummarizerRequest, caller_id: int = Depends(_require_token)):
     text = (payload.text or '').strip()
     if len(text) < 120:
         raise HTTPException(status_code=400, detail="Matn juda qisqa. Kamida 120 ta belgi kiriting.")

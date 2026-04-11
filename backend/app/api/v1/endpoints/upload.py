@@ -201,6 +201,41 @@ async def _upload_to_bunny(file_bytes: bytes, remote_path: str, content_type: st
     return _cdn_url(remote_path)
 
 
+import re as _re
+
+_SAFE_PATH_RE = _re.compile(r"^[\w./-]+$")
+
+
+def _validate_delete_ownership(remote_path: str, teacher_id: int) -> None:
+    """
+    Validate that the caller owns the remote_path they're trying to delete.
+    Prevents path traversal and cross-teacher deletion.
+
+    Allowed patterns:
+      uploads/teacher_<teacher_id>/**
+      courses/<course_id>/**           (any teacher can delete course assets — course ownership is
+                                        checked at the course-management layer; here we only guard
+                                        against directory traversal)
+    """
+    # Block path traversal and null bytes
+    if ".." in remote_path or "\x00" in remote_path or not _SAFE_PATH_RE.match(remote_path):
+        raise HTTPException(400, "Noto'g'ri fayl yo'li")
+
+    # Teacher uploads: must match caller's own prefix
+    if remote_path.startswith("uploads/"):
+        expected_prefix = f"uploads/teacher_{teacher_id}/"
+        if not remote_path.startswith(expected_prefix):
+            raise HTTPException(403, "Siz faqat o'z fayllaringizni o'chirishingiz mumkin")
+        return
+
+    # Course assets: any authenticated teacher/admin can manage (course-level ACL is separate)
+    if remote_path.startswith("courses/"):
+        return
+
+    # Unknown prefix — deny
+    raise HTTPException(403, "Noto'g'ri saqlash joyi")
+
+
 # ── POST /upload/video ────────────────────────────────────────────────────────
 @router.post("/video")
 async def upload_video(
@@ -261,8 +296,11 @@ async def delete_video(
     """
     Delete a previously uploaded video from Bunny.net.
     remote_path must be the value returned by the upload endpoint.
+    Ownership: caller can only delete files under their own teacher prefix or their own courses.
     """
-    await _get_caller(creds)
+    caller = await _get_caller(creds)
+    teacher_id = caller.get("telegram_id")
+    _validate_delete_ownership(remote_path, teacher_id)
 
     if not settings.BUNNY_STORAGE_ZONE or not settings.BUNNY_API_KEY:
         raise HTTPException(status_code=503, detail="Video saqlash xizmati sozlanmagan.")
@@ -367,7 +405,9 @@ async def delete_file(
     creds: HTTPAuthorizationCredentials = Depends(_security),
 ):
     """Delete a previously uploaded file (image/pdf/doc) from Bunny.net."""
-    await _get_caller(creds)
+    caller = await _get_caller(creds)
+    teacher_id = caller.get("telegram_id")
+    _validate_delete_ownership(remote_path, teacher_id)
 
     if not settings.BUNNY_STORAGE_ZONE or not settings.BUNNY_API_KEY:
         raise HTTPException(status_code=503, detail="Fayl saqlash xizmati sozlanmagan.")

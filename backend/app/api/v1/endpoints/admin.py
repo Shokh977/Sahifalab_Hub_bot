@@ -434,25 +434,13 @@ async def get_payment_config(
 # Debug endpoint — tests DB connectivity and returns diagnostics
 @router.get("/debug")
 async def debug_db(
-    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
 ):
     """Returns DB connection status and table counts. Auth: admin only (JWT)."""
-    import traceback
-
-    # Extract telegram_id from JWT for diagnostic output
-    telegram_id = 0
-    if authorization:
-        parts = authorization.split()
-        if len(parts) == 2 and parts[0] == "Bearer":
-            payload = decode_token_payload(parts[1])
-            if payload:
-                telegram_id = payload["telegram_id"]
-
     result: dict = {
-        "telegram_id": telegram_id,
-        "admin_ids_in_config": settings.ADMIN_TELEGRAM_IDS,
-        "is_known_admin": telegram_id in settings.ADMIN_TELEGRAM_IDS,
+        "telegram_id": admin.telegram_id,
+        "is_known_admin": True,
         "db_connected": False,
         "tables": {},
         "error": None,
@@ -463,8 +451,8 @@ async def debug_db(
         result["tables"]["book"] = db.query(Book).count()
         result["tables"]["hero_content"] = db.query(HeroContent).count()
         result["db_connected"] = True
-    except Exception as e:
-        result["error"] = traceback.format_exc()
+    except Exception:
+        result["error"] = "DB query failed"
     return result
 
 

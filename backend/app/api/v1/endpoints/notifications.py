@@ -166,10 +166,14 @@ async def create_notification(
     authorization: Optional[str] = Header(None),
 ):
     """
-    Create a notification for a user. Intended for internal backend use.
-    The row insert triggers Supabase Realtime broadcast automatically.
+    Create a notification for a user.
+    Only the user themselves or an admin can create notifications.
     """
     tid = await _get_tid(authorization)
+    # Restrict: users can only notify themselves; admins can target anyone
+    admin_ids = [int(x) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip().isdigit()]
+    if body.user_id != tid and tid not in admin_ids:
+        raise HTTPException(403, "Siz faqat o'zingizga bildirishnoma yaratishingiz mumkin")
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.post(

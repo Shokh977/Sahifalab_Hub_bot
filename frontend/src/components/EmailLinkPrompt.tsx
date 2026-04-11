@@ -95,7 +95,7 @@ const EmailLinkPrompt: React.FC = () => {
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.92, opacity: 0, y: 20 }}
             transition={{ type: 'spring', damping: 22, stiffness: 300 }}
-            className="relative w-full max-w-sm bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden"
+            className="email-link-modal relative w-full max-w-sm bg-white dark:bg-gray-800 rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto"
           >
             {/* Close button */}
             <button
@@ -108,7 +108,7 @@ const EmailLinkPrompt: React.FC = () => {
 
             {/* Header gradient */}
             <div className="bg-gradient-to-br from-sahifa-500 to-sahifa-600 px-6 pt-7 pb-5 text-center text-white">
-              <div className="flex justify-center mb-3">
+              <div className="hidden sm:flex justify-center mb-3">
                 <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center">
                   <LinkIcon className="w-7 h-7" />
                 </div>
@@ -161,7 +161,7 @@ const EmailLinkPrompt: React.FC = () => {
 
                   <form onSubmit={handleSubmit} className="space-y-3">
                     <div className="relative">
-                      <EnvelopeIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-gray-400" />
+                      <EnvelopeIcon className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                       <input
                         type="email"
                         value={email}
@@ -169,7 +169,10 @@ const EmailLinkPrompt: React.FC = () => {
                         placeholder="Email manzilingiz"
                         required
                         autoFocus
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sahifa-400/50 focus:border-sahifa-400 transition-all"
+                        autoComplete="email"
+                        inputMode="email"
+                        spellCheck={false}
+                        className="email-link-input appearance-none w-full pl-10 pr-10 py-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-sahifa-400/50 focus:border-sahifa-400 transition-all"
                       />
                     </div>
 

@@ -19,15 +19,31 @@ DELETE /api/planner/notes/{note_id}      — delete note
 from datetime import datetime, UTC
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from app.db.session import get_db
 from app.models.models import PlannerTask, PlannerNote
+from app.services.auth_service import decode_token
 
 router = APIRouter()
+
+
+# ── Auth helper ───────────────────────────────────────────────────────────────
+
+async def _require_token(authorization: Optional[str] = Header(None)) -> int:
+    """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Noto'g'ri avtorizatsiya")
+    tid = decode_token(parts[1])
+    if not tid:
+        raise HTTPException(status_code=401, detail="Token muddati tugagan")
+    return tid
 
 
 # ── Request schemas ───────────────────────────────────────────────────────────
@@ -111,9 +127,9 @@ def _note_dict(n: PlannerNote) -> dict:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/tasks")
-async def create_task(body: TaskCreate, db: Session = Depends(get_db)):
+async def create_task(body: TaskCreate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     task = PlannerTask(
-        user_id=body.telegram_id,
+        user_id=caller_id,
         title=body.title,
         description=body.description,
         status=body.status,
@@ -129,7 +145,10 @@ async def create_task(body: TaskCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/tasks/{telegram_id}")
-async def list_tasks(telegram_id: int, db: Session = Depends(get_db)):
+async def list_tasks(telegram_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+    # Only allow users to list their own tasks
+    if caller_id != telegram_id:
+        raise HTTPException(status_code=403, detail="Faqat o'z vazifalaringizni ko'rishingiz mumkin")
     tasks = (
         db.query(PlannerTask)
         .filter(PlannerTask.user_id == telegram_id)
@@ -140,10 +159,12 @@ async def list_tasks(telegram_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/tasks/{task_id}")
-async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db)):
+async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     task = db.query(PlannerTask).filter(PlannerTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.user_id != caller_id:
+        raise HTTPException(status_code=403, detail="Bu sizning vazifangiz emas")
 
     old_status = task.status
     update_data = body.dict(exclude_unset=True)
@@ -174,24 +195,26 @@ async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_
 
 
 @router.delete("/tasks/{task_id}")
-async def delete_task(task_id: int, db: Session = Depends(get_db)):
+async def delete_task(task_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     task = db.query(PlannerTask).filter(PlannerTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    if task.user_id != caller_id:
+        raise HTTPException(status_code=403, detail="Bu sizning vazifangiz emas")
     db.delete(task)
     db.commit()
     return {"ok": True}
 
 
 @router.post("/tasks/reorder")
-async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db)):
+async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     """Batch update sort_order and status for all tasks after a drag-drop."""
     xp_awarded = 0
 
     for item in body.items:
         task = (
             db.query(PlannerTask)
-            .filter(PlannerTask.id == item.id, PlannerTask.user_id == body.telegram_id)
+            .filter(PlannerTask.id == item.id, PlannerTask.user_id == caller_id)
             .first()
         )
         if task:
@@ -204,7 +227,7 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db)):
                 try:
                     row = db.execute(
                         text("SELECT xp_added FROM add_xp(:uid, 'DEEP_WORK', 20, NULL)"),
-                        {"uid": body.telegram_id},
+                        {"uid": caller_id},
                     ).fetchone()
                     if row:
                         xp_awarded += int(row.xp_added)
@@ -221,9 +244,9 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db)):
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/notes")
-async def create_note(body: NoteCreate, db: Session = Depends(get_db)):
+async def create_note(body: NoteCreate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     note = PlannerNote(
-        user_id=body.telegram_id,
+        user_id=caller_id,
         title=body.title,
         content=body.content,
     )
@@ -234,7 +257,9 @@ async def create_note(body: NoteCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/notes/{telegram_id}")
-async def list_notes(telegram_id: int, db: Session = Depends(get_db)):
+async def list_notes(telegram_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+    if caller_id != telegram_id:
+        raise HTTPException(status_code=403, detail="Faqat o'z qaydlaringizni ko'rishingiz mumkin")
     notes = (
         db.query(PlannerNote)
         .filter(PlannerNote.user_id == telegram_id)
@@ -245,10 +270,12 @@ async def list_notes(telegram_id: int, db: Session = Depends(get_db)):
 
 
 @router.put("/notes/{note_id}")
-async def update_note(note_id: int, body: NoteUpdate, db: Session = Depends(get_db)):
+async def update_note(note_id: int, body: NoteUpdate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     note = db.query(PlannerNote).filter(PlannerNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
+    if note.user_id != caller_id:
+        raise HTTPException(status_code=403, detail="Bu sizning qaydingiz emas")
 
     update_data = body.dict(exclude_unset=True)
     for key, value in update_data.items():
@@ -260,10 +287,12 @@ async def update_note(note_id: int, body: NoteUpdate, db: Session = Depends(get_
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: int, db: Session = Depends(get_db)):
+async def delete_note(note_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     note = db.query(PlannerNote).filter(PlannerNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
+    if note.user_id != caller_id:
+        raise HTTPException(status_code=403, detail="Bu sizning qaydingiz emas")
     db.delete(note)
     db.commit()
     return {"ok": True}

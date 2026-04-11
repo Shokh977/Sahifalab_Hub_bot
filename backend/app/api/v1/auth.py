@@ -340,9 +340,9 @@ async def request_code(db: Session = Depends(get_db)):
     db.add(AuthCode(code=code, expires_at=expires_at))
     try:
         db.commit()
-    except Exception as e:
+    except Exception:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasida xatolik")
     return {
         "code": code,
         "bot_link": f"https://t.me/{BOT_USERNAME}?start=auth_{code}",

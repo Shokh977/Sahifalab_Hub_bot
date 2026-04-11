@@ -89,10 +89,12 @@ async def award_xp(
             )
 
     elif source == "QUIZ":
-        amount = body.amount if body.amount is not None else DEFAULT_QUIZ_XP
+        # Server enforces fixed XP per quiz — client cannot override
+        amount = DEFAULT_QUIZ_XP
 
     else:  # COURSE
-        amount = body.amount if body.amount is not None else DEFAULT_COURSE_XP
+        # Server enforces fixed XP per course — client cannot override
+        amount = DEFAULT_COURSE_XP
         if body.reference_id is None:
             raise HTTPException(
                 status_code=422,
@@ -108,8 +110,8 @@ async def award_xp(
             amount=amount,
             reference_id=body.reference_id,
         )
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=500, detail="XP qo'shishda xatolik yuz berdi")
 
     return {
         "ok":        True,
@@ -121,8 +123,14 @@ async def award_xp(
 
 
 @router.get("/daily/{telegram_id}")
-async def get_daily_xp_status(telegram_id: int, db: Session = Depends(get_db)):
+async def get_daily_xp_status(
+    telegram_id: int,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
     """Return today's quiz XP used and remaining allowance."""
+    if caller_id != telegram_id:
+        raise HTTPException(403, "Faqat o'z ma'lumotlaringizni ko'rishingiz mumkin")
     row = db.execute(
         text("""
             SELECT daily_quiz_xp, daily_quiz_xp_reset_at
@@ -148,8 +156,14 @@ async def get_daily_xp_status(telegram_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/badges/{telegram_id}")
-async def get_user_badges(telegram_id: int, db: Session = Depends(get_db)):
+async def get_user_badges(
+    telegram_id: int,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
     """Return all badges earned by a user, newest first."""
+    if caller_id != telegram_id:
+        raise HTTPException(403, "Faqat o'z ma'lumotlaringizni ko'rishingiz mumkin")
     rows = db.execute(
         text("""
             SELECT badge_key, granted_at

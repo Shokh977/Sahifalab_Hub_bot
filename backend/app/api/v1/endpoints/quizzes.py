@@ -3,7 +3,8 @@ import hmac
 import hashlib
 import time
 import logging
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Query
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError, OperationalError, ProgrammingError
 from app.db.session import get_db
@@ -15,8 +16,50 @@ from app.schemas.schemas import (
     QuizResponse, QuizDetailPublic, QuizCreate, QuizQuestionResponse,
     QuizVerifyRequest, QuizVerifyResponse,
 )
+from app.services.auth_service import decode_token, decode_token_payload
+from app.models.admin_models import AdminUser
 
 router = APIRouter()
+
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+async def _require_token(authorization: Optional[str] = Header(None)) -> int:
+    """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
+    if not authorization:
+        raise HTTPException(401, "Avtorizatsiya talab qilinadi")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(401, "Noto'g'ri avtorizatsiya")
+    tid = decode_token(parts[1])
+    if not tid:
+        raise HTTPException(401, "Token muddati tugagan")
+    return tid
+
+
+async def _require_admin(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+) -> int:
+    """Require admin JWT — returns telegram_id."""
+    if not authorization:
+        raise HTTPException(401, "Avtorizatsiya talab qilinadi")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(401, "Noto'g'ri avtorizatsiya")
+    payload = decode_token_payload(parts[1])
+    if not payload:
+        raise HTTPException(401, "Token muddati tugagan")
+    telegram_id = payload["telegram_id"]
+    if telegram_id in settings.ADMIN_TELEGRAM_IDS:
+        return telegram_id
+    admin = db.query(AdminUser).filter(
+        AdminUser.telegram_id == telegram_id,
+        AdminUser.is_active == True,
+    ).first()
+    if not admin:
+        raise HTTPException(403, "Faqat adminlar uchun")
+    return telegram_id
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -99,18 +142,15 @@ async def verify_quiz(
     quiz_id: int,
     body: QuizVerifyRequest,
     db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
 ):
     """
     Server-side scoring with XP deduplication.
-
-    The client submits raw selected option indices (one per question, ordered).
-    The server compares them against stored correct_answer values and returns
-    a score plus an HMAC-signed result_token.  The token can later be used to
-    validate a certificate request without trusting the client's claimed score.
-    
-    XP is only awarded on first completion. Retakes are tracked but award 0 XP
-    to prevent farming.
+    telegram_id is derived from JWT — body.telegram_id is ignored.
     """
+    # Always use JWT-derived identity
+    telegram_id = caller_id
+
     quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
     if not quiz:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz topilmadi")
@@ -144,7 +184,7 @@ async def verify_quiz(
     # Check + record completion (gracefully skipped if table doesn't exist yet)
     try:
         existing_completion = db.query(UserQuizCompletion).filter(
-            UserQuizCompletion.telegram_id == body.telegram_id,
+            UserQuizCompletion.telegram_id == telegram_id,
             UserQuizCompletion.quiz_id == quiz_id,
         ).first()
 
@@ -157,7 +197,7 @@ async def verify_quiz(
             try:
                 completion = UserQuizCompletion(
                     quiz_id=quiz_id,
-                    telegram_id=body.telegram_id,
+                    telegram_id=telegram_id,
                     score=score,
                     total=total,
                     percentage=percentage,
@@ -179,7 +219,7 @@ async def verify_quiz(
         )
 
     ts = int(time.time())
-    token = _sign_result(quiz_id, body.telegram_id, score, total, ts)
+    token = _sign_result(quiz_id, telegram_id, score, total, ts)
 
     return QuizVerifyResponse(
         quiz_id=quiz_id,
@@ -199,7 +239,11 @@ async def verify_quiz(
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
-async def create_quiz(quiz_data: QuizCreate, db: Session = Depends(get_db)):
+async def create_quiz(
+    quiz_data: QuizCreate,
+    db: Session = Depends(get_db),
+    admin_id: int = Depends(_require_admin),
+):
     db_quiz = Quiz(
         title=quiz_data.title,
         book_title=quiz_data.book_title,
@@ -222,159 +266,6 @@ async def create_quiz(quiz_data: QuizCreate, db: Session = Depends(get_db)):
         )
         db.add(db_question)
 
-    db.commit()
-    db.refresh(db_quiz)
-    return db_quiz
-
-
-@router.get("/", response_model=list[QuizResponse])
-async def get_quizzes(
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
-    category: str = Query(None),
-    difficulty: str = Query(None),
-    db: Session = Depends(get_db)
-):
-    """Get all quizzes with optional filters"""
-    query = db.query(Quiz)
-    
-    if category:
-        query = query.filter(Quiz.category == category)
-    if difficulty:
-        query = query.filter(Quiz.difficulty == difficulty)
-    
-    return query.offset(skip).limit(limit).all()
-
-@router.get("/{quiz_id}", response_model=QuizDetailPublic)
-async def get_quiz(quiz_id: int, db: Session = Depends(get_db)):
-    """Get quiz with questions"""
-    quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
-    
-    if not quiz:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Quiz not found"
-        )
-    
-    # Load questions
-    questions = db.query(QuizQuestion).filter(
-        QuizQuestion.quiz_id == quiz_id
-    ).order_by(QuizQuestion.order).all()
-    
-    # Parse options JSON
-    questions_data = []
-    for q in questions:
-        q_dict = {
-            'id': q.id,
-            'question': q.question,
-            'options': json.loads(q.options) if isinstance(q.options, str) else q.options,
-            'correct_answer': q.correct_answer,
-            'explanation': q.explanation,
-        }
-        questions_data.append(q_dict)
-    
-    return {
-        'id': quiz.id,
-        'title': quiz.title,
-        'book_title': quiz.book_title,
-        'difficulty': quiz.difficulty,
-        'category': quiz.category,
-        'total_questions': quiz.total_questions,
-        'questions': questions_data,
-    }
-
-@router.get("/{quiz_id}/questions", response_model=list[dict])
-async def get_quiz_questions(quiz_id: int, db: Session = Depends(get_db)):
-    """Get questions for a quiz"""
-    quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
-    
-    if not quiz:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Quiz not found"
-        )
-    
-    questions = db.query(QuizQuestion).filter(
-        QuizQuestion.quiz_id == quiz_id
-    ).order_by(QuizQuestion.order).all()
-    
-    questions_data = []
-    for q in questions:
-        q_dict = {
-            'id': q.id,
-            'question': q.question,
-            'options': json.loads(q.options) if isinstance(q.options, str) else q.options,
-            'correct_answer': q.correct_answer,
-            'explanation': q.explanation,
-        }
-        questions_data.append(q_dict)
-    
-    return questions_data
-
-@router.post("/{quiz_id}/submit", status_code=status.HTTP_200_OK)
-async def submit_quiz(
-    quiz_id: int,
-    answers: dict,
-    db: Session = Depends(get_db)
-):
-    """Submit quiz answers and get score"""
-    quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
-    
-    if not quiz:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Quiz not found"
-        )
-    
-    user_answers = answers.get('answers', [])
-    score = 0
-    total = len(user_answers)
-    
-    questions = db.query(QuizQuestion).filter(
-        QuizQuestion.quiz_id == quiz_id
-    ).all()
-    
-    for i, user_answer in enumerate(user_answers):
-        if i < len(questions) and user_answer == questions[i].correct_answer:
-            score += 1
-    
-    percentage = (score / total * 100) if total > 0 else 0
-    
-    return {
-        'quiz_id': quiz_id,
-        'score': score,
-        'total': total,
-        'percentage': round(percentage, 2),
-        'passed': percentage >= 60,
-    }
-
-@router.post("/", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
-async def create_quiz(quiz_data: QuizCreate, db: Session = Depends(get_db)):
-    """Create new quiz (Admin only)"""
-    # Create quiz
-    db_quiz = Quiz(
-        title=quiz_data.title,
-        book_title=quiz_data.book_title,
-        description=quiz_data.description,
-        difficulty=quiz_data.difficulty,
-        category=quiz_data.category,
-        total_questions=len(quiz_data.questions),
-    )
-    db.add(db_quiz)
-    db.flush()
-    
-    # Create questions
-    for idx, q_data in enumerate(quiz_data.questions):
-        db_question = QuizQuestion(
-            quiz_id=db_quiz.id,
-            question=q_data.question,
-            options=json.dumps(q_data.options),
-            correct_answer=q_data.correct_answer,
-            explanation=q_data.explanation,
-            order=idx,
-        )
-        db.add(db_question)
-    
     db.commit()
     db.refresh(db_quiz)
     return db_quiz

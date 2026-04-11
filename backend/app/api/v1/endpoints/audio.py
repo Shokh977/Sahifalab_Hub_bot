@@ -19,11 +19,28 @@ from app.core.config import settings
 from app.db.session import get_db
 from app.models.admin_models import AmbientSound, AdminUser
 from app.schemas.admin_schemas import AmbientSoundResponse
+from app.services.auth_service import decode_token_payload
+from fastapi import Header
+from typing import Optional
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# ── Helper: verify admin ───────────────────────────────────────────────────────
+# ── Helper: verify admin via JWT ────────────────────────────────────────────
+async def _verify_admin_jwt(authorization: Optional[str], db: Session) -> AdminUser:
+    """Extract telegram_id from JWT Bearer token and verify admin role."""
+    if not authorization:
+        raise HTTPException(401, "Avtorizatsiya talab qilinadi")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(401, "Noto'g'ri avtorizatsiya")
+    payload = decode_token_payload(parts[1])
+    if not payload:
+        raise HTTPException(401, "Token muddati tugagan")
+    telegram_id = payload["telegram_id"]
+    return await _verify_admin(telegram_id, db)
+
+
 async def _verify_admin(telegram_id: int, db: Session):
     if telegram_id in settings.ADMIN_TELEGRAM_IDS:
         admin = db.query(AdminUser).filter(AdminUser.telegram_id == telegram_id).first()
@@ -121,7 +138,7 @@ class SaveSoundPayload(_BM):
 @router.post("/admin/ambient-sounds", response_model=AmbientSoundResponse, status_code=201)
 async def save_ambient_sound(
     body: SaveSoundPayload,
-    telegram_id: int = Query(...),
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -131,7 +148,7 @@ async def save_ambient_sound(
 
     JSON body: { name, emoji, url }
     """
-    admin = await _verify_admin(telegram_id, db)
+    admin = await _verify_admin_jwt(authorization, db)
     direct_url = _convert_drive_url(body.url.strip())
     max_order = db.query(AmbientSound).count()
     sound = AmbientSound(
@@ -151,11 +168,11 @@ async def save_ambient_sound(
 @router.delete("/admin/ambient-sounds/{sound_id}", status_code=204)
 async def delete_ambient_sound(
     sound_id: int,
-    telegram_id: int = Query(...),
+    authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
     """Delete an ambient sound by ID."""
-    await _verify_admin(telegram_id, db)
+    await _verify_admin_jwt(authorization, db)
     sound = db.query(AmbientSound).filter(AmbientSound.id == sound_id).first()
     if not sound:
         raise HTTPException(404, "Sound not found")

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import users, products, orders, cart, hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream
 from app.api.v1 import social_routes, messenger_routes
 
 api_router = APIRouter()
@@ -9,11 +9,7 @@ api_router = APIRouter()
 # Authentication routes
 api_router.include_router(auth.router, tags=["auth"])
 
-# Existing routes
-api_router.include_router(users.router, prefix="/users", tags=["users"])
-api_router.include_router(products.router, prefix="/products", tags=["products"])
-api_router.include_router(orders.router, prefix="/orders", tags=["orders"])
-api_router.include_router(cart.router, prefix="/cart", tags=["cart"])
+# ── Active routes (used by frontend) ──────────────────────────────────────────
 api_router.include_router(hero.router, prefix="/hero", tags=["hero"])
 api_router.include_router(quizzes.router, prefix="/quizzes", tags=["quizzes"])
 api_router.include_router(books.router, prefix="/books", tags=["books"])
@@ -34,6 +30,11 @@ api_router.include_router(planner.router, prefix="/planner", tags=["planner"])
 api_router.include_router(wallet.router, prefix="/teacher", tags=["wallet"])
 api_router.include_router(analytics.router, tags=["analytics"])
 api_router.include_router(notifications.router, tags=["notifications"])
+
+# NOTE: Legacy scaffolding modules (users, orders, cart, products) are NOT
+# mounted. They have zero authentication and were never used by the frontend.
+# The files remain in endpoints/ for reference but are deliberately excluded
+# from the live router to eliminate unauthenticated CRUD attack surface.
 
 # Social ecosystem
 api_router.include_router(social_routes.router)

@@ -101,6 +101,15 @@ html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 
   min-height: 100vh;
 }
 
+/* ── Email link modal: prevent oversized native email contact icons in webviews ── */
+.email-link-modal .email-link-input::-webkit-contacts-auto-fill-button,
+.email-link-modal .email-link-input::-webkit-credentials-auto-fill-button,
+.email-link-modal .email-link-input::-webkit-textfield-decoration-container {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
 /* ── Paper / Book Texture overlay ──────────────────────────────────────────── */
 .paper-texture {
   position: relative;
