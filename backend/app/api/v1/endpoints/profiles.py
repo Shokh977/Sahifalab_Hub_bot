@@ -27,12 +27,17 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
     """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
+    
     parts = authorization.split(None, 1)  # split on first whitespace only
+    
     if len(parts) != 2 or parts[0].lower() not in ("bearer",):
+        # FIX: Extracting logic to a variable to avoid f-string SyntaxError
+        scheme = repr(parts[0]) if parts else 'none'
         raise HTTPException(
             status_code=401,
-            detail=f"Invalid authorization header (scheme={parts[0]!r if parts else 'none'})"
+            detail=f"Invalid authorization header (scheme={scheme})"
         )
+        
     tid = decode_token(parts[1])
     if not tid:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -43,17 +48,21 @@ async def _require_admin(authorization: Optional[str] = Header(None)) -> int:
     """Require JWT with role=admin or role=teacher. Returns telegram_id."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
+    
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
         raise HTTPException(status_code=401, detail="Invalid authorization header")
+    
     payload = decode_token_payload(parts[1])
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
     if payload.get("role") not in ("admin", "teacher"):
         raise HTTPException(status_code=403, detail="Admin or teacher role required")
+    
     return payload["telegram_id"]
-_last_motivation_ts: float = 0.0
 
+_last_motivation_ts: float = 0.0
 
 # ── Request models ─────────────────────────────────────────────────────────────
 
