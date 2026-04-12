@@ -205,12 +205,17 @@ async def startup_event():
         logger.exception("init_db() failed — some tables may be missing: %s", e)
 
     # Explicitly ensure the auth_codes table exists.
-    # init_db() may silently skip it if another table fails first,
-    # so we create it individually as a targeted fallback.
+    # init_db() (create_all) may silently skip auth_codes if another table
+    # in the batch fails first, so we create it individually as a fallback.
     try:
         from app.models.models import AuthCode
-        AuthCode.__table__.create(bind=engine, checkfirst=True)
-        logger.info("auth_codes table ensured")
+        from sqlalchemy import inspect as sa_inspect
+        from app.db.session import Base
+        if not sa_inspect(engine).has_table("auth_codes"):
+            Base.metadata.create_all(bind=engine, tables=[AuthCode.__table__])
+            logger.info("auth_codes table created on startup")
+        else:
+            logger.info("auth_codes table already exists")
     except Exception as e:
         logger.exception("Failed to ensure auth_codes table — Telegram login will return 500: %s", e)
 
