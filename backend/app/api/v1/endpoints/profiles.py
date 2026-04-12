@@ -29,9 +29,10 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     parts = authorization.split(None, 1)  # split on first whitespace only
     if len(parts) != 2 or parts[0].lower() not in ("bearer",):
+        scheme = repr(parts[0]) if parts else "none"
         raise HTTPException(
             status_code=401,
-            detail=f"Invalid authorization header (scheme={parts[0]!r if parts else 'none'})"
+            detail=f"Invalid authorization header (scheme={scheme})"
         )
     tid = decode_token(parts[1])
     if not tid:
