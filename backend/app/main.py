@@ -46,6 +46,20 @@ app.add_middleware(BrotliMiddleware, minimum_size=500)
 app.middleware("http")(rate_limit_middleware)
 
 
+# ── Force HTTPS in redirect Location headers ──────────────────────────────────
+# Railway terminates TLS at the proxy, so uvicorn sees plain HTTP.
+# FastAPI's trailing-slash 307 redirects therefore use http:// in the Location
+# header, which browsers block as mixed content.
+@app.middleware("http")
+async def _force_https_redirects(request: Request, call_next):
+    response = await call_next(request)
+    if response.status_code in (301, 302, 307, 308):
+        loc = response.headers.get("location", "")
+        if loc.startswith("http://") and "localhost" not in loc and "127.0.0.1" not in loc:
+            response.headers["location"] = "https://" + loc[7:]
+    return response
+
+
 # ── Global exception handler — ensures CORS headers are always present ────────
 # Without this, unhandled 500s bypass CORSMiddleware and browsers block the
 # response as a CORS error, hiding the real problem from the frontend.

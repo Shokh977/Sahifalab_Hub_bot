@@ -24,6 +24,16 @@ import { create } from 'zustand'
 
 import { API_BASE } from '../lib/apiUrl'
 
+// ── Auth helper — attaches JWT from localStorage to fetch() calls ────────────
+function _authHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const h: Record<string, string> = { ...extra }
+  try {
+    const t = localStorage.getItem('auth_token')
+    if (t) h['Authorization'] = `Bearer ${t}`
+  } catch { /* SSR / Telegram WebView fallback */ }
+  return h
+}
+
 // ── XP rate constants ────────────────────────────────────────────────────────
 
 /** 1.66 XP per minute of focus (≈ 100 XP/hour) */
@@ -128,7 +138,9 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     set({ isLoading: true, telegramId, firstName, username })
 
     try {
-      const res  = await fetch(`${API_BASE}/api/profiles/${telegramId}`)
+      const res  = await fetch(`${API_BASE}/api/profiles/${telegramId}`, {
+        headers: _authHeaders(),
+      })
       const data = res.ok ? await res.json() : null
 
       if (data) {
@@ -145,7 +157,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
         // Brand-new user: create a profile row
         await fetch(`${API_BASE}/api/profiles/upsert`, {
           method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: _authHeaders({ 'Content-Type': 'application/json' }),
           body:    JSON.stringify({ telegram_id: telegramId, first_name: firstName, username }),
         })
         set({ isInitialized: true })
@@ -198,7 +210,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     // Server enforces daily cap and writes the audit log
     fetch(`${API_BASE}/api/xp/add`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: _authHeaders({ 'Content-Type': 'application/json' }),
       body:    JSON.stringify({
         telegram_id: state.telegramId,
         source:      'QUIZ',
@@ -226,7 +238,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     try {
       const res  = await fetch(`${API_BASE}/api/xp/add`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _authHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
           telegram_id:  state.telegramId,
           source:       'COURSE',
@@ -262,7 +274,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       if (focusXPDelta > 0) {
         const xpRes = await fetch(`${API_BASE}/api/xp/add`, {
           method:  'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: _authHeaders({ 'Content-Type': 'application/json' }),
           body:    JSON.stringify({
             telegram_id: state.telegramId,
             source:      'DEEP_WORK',
@@ -283,7 +295,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       // 2. Sync presence + focus seconds (server owns total_xp via add_xp)
       await fetch(`${API_BASE}/api/profiles/sync`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _authHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
           telegram_id:         state.telegramId,
           first_name:          state.firstName,
@@ -314,7 +326,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
     try {
       await fetch(`${API_BASE}/api/profiles/sync`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _authHeaders({ 'Content-Type': 'application/json' }),
         body:    JSON.stringify({
           telegram_id:  state.telegramId,
           first_name:   state.firstName,
