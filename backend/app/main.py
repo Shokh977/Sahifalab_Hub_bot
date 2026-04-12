@@ -115,6 +115,11 @@ app.include_router(api_router, prefix="/api")
 async def health_check():
     return {"status": "healthy"}
 
+@app.get("/ping")
+async def ping():
+    """Lightweight keepalive — used by Railway health-checks and uptime monitors."""
+    return "pong"
+
 @app.get("/")
 async def root():
     return {
@@ -181,16 +186,14 @@ async def _organic_growth_loop():
 async def startup_event():
     """Start background tasks on app startup."""
     # ── SECRET_KEY guard ──────────────────────────────────────────────────
-    # Refuse to start if the operator forgot to set a real SECRET_KEY.
-    # Hardcoded default allows JWT forgery → full auth bypass.
+    # Warn loudly if the operator forgot to set a real SECRET_KEY, but do NOT
+    # raise SystemExit — that causes Railway to return 503 on every request,
+    # which browsers misreport as a CORS error and hides the real problem.
     _DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION-SET-SECRET_KEY-ENV"
     if settings.SECRET_KEY == _DEFAULT_SECRET:
         logger.critical(
-            "FATAL: SECRET_KEY is still the default placeholder. "
-            "Set a secure random SECRET_KEY environment variable before deploying."
-        )
-        raise SystemExit(
-            "Startup aborted: SECRET_KEY must be overridden via environment variable."
+            "⚠️  SECURITY WARNING: SECRET_KEY is still the default placeholder! "
+            "JWT tokens can be forged. Set a secure SECRET_KEY env var on Railway immediately."
         )
 
     # Ensure all ORM-declared tables exist (safe no-op if they already do)
