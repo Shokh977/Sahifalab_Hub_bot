@@ -27,9 +27,12 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
     """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0] != "Bearer":
-        raise HTTPException(status_code=401, detail="Invalid authorization header")
+    parts = authorization.split(None, 1)  # split on first whitespace only
+    if len(parts) != 2 or parts[0].lower() not in ("bearer",):
+        raise HTTPException(
+            status_code=401,
+            detail=f"Invalid authorization header (scheme={parts[0]!r if parts else 'none'})"
+        )
     tid = decode_token(parts[1])
     if not tid:
         raise HTTPException(status_code=401, detail="Invalid or expired token")

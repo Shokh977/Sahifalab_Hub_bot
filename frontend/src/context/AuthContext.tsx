@@ -2,9 +2,9 @@
  * AuthContext — unified authentication for both platforms.
  *
  * Telegram Mini App mode:
- *   - User is always considered authenticated (Telegram guarantees it).
- *   - User data comes from useTelegramWebApp().user (initDataUnsafe.user).
- *   - No JWT is stored or needed.
+ *   - On mount: exchanges window.Telegram.WebApp.initData for a JWT via
+ *     POST /api/auth/tma-init, stores the JWT in localStorage.
+ *   - User data comes from the backend response (role, status, etc.).
  *
  * Web / browser mode:
  *   - On mount: reads `auth_token` from localStorage, calls GET /api/auth/me
@@ -79,11 +79,60 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { isTelegram } = usePlatform()
   const { user: tgUser } = useTelegramWebApp()
 
-  // Web-only state
+  // Shared state (used by both TMA and web flows)
   const [webUser, setWebUser] = useState<AuthUser | null>(null)
   const [token, setToken] = useState<string | null>(null)
-  // isLoading: only web mode needs async token validation; Telegram = instant
-  const [isLoading, setIsLoading] = useState(!isTelegram)
+  const [isLoading, setIsLoading] = useState(true)
+
+  // ── TMA: exchange initData for a JWT on mount ─────────────────────────────
+  useEffect(() => {
+    if (!isTelegram) return
+
+    const initData = window.Telegram?.WebApp?.initData ?? ''
+
+    // Re-use a cached token if it exists and is not expired
+    const stored = localStorage.getItem('auth_token')
+    if (stored && tgUser) {
+      // Optimistically restore from cache; re-validate via tma-init in background
+      setToken(stored)
+      setWebUser({
+        id: tgUser.id,
+        first_name: tgUser.first_name,
+        last_name: tgUser.last_name,
+        username: tgUser.username,
+        photo_url: tgUser.photo_url,
+        role: 'student',
+        status: 'active',
+      })
+    }
+
+    if (!initData) {
+      // Running in browser dev mode without Telegram — skip
+      setIsLoading(false)
+      return
+    }
+
+    axios
+      .post(`${API_BASE}/api/auth/tma-init`, { init_data: initData })
+      .then(res => {
+        const d = res.data
+        localStorage.setItem('auth_token', d.access_token)
+        setToken(d.access_token)
+        setWebUser({
+          id: d.telegram_id,
+          first_name: d.first_name,
+          username: d.username,
+          photo_url: d.photo_url,
+          role: d.role ?? 'student',
+          status: d.status ?? 'active',
+        })
+      })
+      .catch(err => {
+        console.error('[AuthContext] tma-init failed:', err?.response?.status, err?.response?.data)
+        // Don't clear existing user — let them keep working with optimistic cache
+      })
+      .finally(() => setIsLoading(false))
+  }, [isTelegram, tgUser])
 
   // ── Web: validate stored token on mount ───────────────────────────────────
   useEffect(() => {
@@ -163,24 +212,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
-  // In Telegram mode the user comes from the WebApp; in web mode from the JWT flow
-  const user: AuthUser | null = isTelegram
-    ? tgUser
+  // Both TMA and web modes now store auth in webUser + token after the JWT exchange.
+  // tgUser is used only as the optimistic fallback while tma-init is in flight.
+  const user: AuthUser | null = webUser ?? (
+    isTelegram && tgUser
       ? {
           id: tgUser.id,
           first_name: tgUser.first_name,
           last_name: tgUser.last_name,
           username: tgUser.username,
           photo_url: tgUser.photo_url,
-          role: 'student',   // enriched from DB later if needed
+          role: 'student',
           status: 'active',
         }
       : null
-    : webUser
+  )
 
-  // Telegram Mini App = always authenticated (Telegram guarantees the session)
-  // Web mode = authenticated only when we have a valid JWT + user object
-  const isAuthenticated = isTelegram ? true : !!token && !!webUser
+  // Authenticated when we have a JWT + user; TMA gets a token from tma-init.
+  const isAuthenticated = !!token && !!webUser
 
   return (
     <AuthContext.Provider

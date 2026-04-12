@@ -1,11 +1,16 @@
 import hashlib
 import hmac
+import json
+import logging
+import urllib.parse
 from datetime import datetime, UTC, timedelta
 from typing import Optional
 import jwt
 from pydantic import BaseModel
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Single source of truth — always reads from Settings (env → default)
 SECRET_KEY = settings.SECRET_KEY
@@ -23,37 +28,106 @@ class TelegramAuthData(BaseModel):
 
 def verify_telegram_auth(data: TelegramAuthData, bot_token: str) -> bool:
     """
-    Verify that the login data really came from Telegram.
-    
-    Telegram signs the data with your bot token.
+    Verify Telegram Login Widget data (NOT Mini App initData).
+    Secret key = SHA256(bot_token)  — Widget-specific algorithm.
     """
-    # Create the data check string in alphabetical order
     data_dict = data.dict(exclude={"hash"})
     check_string = "\n".join(
-        f"{key}={value}" 
+        f"{key}={value}"
         for key, value in sorted(data_dict.items())
     )
-    
-    # Create the secret key hash
     secret_key = hashlib.sha256(bot_token.encode()).digest()
-    
-    # Compute HMAC-SHA256
-    computed_hash = hmac.new(
-        secret_key,
-        check_string.encode(),
-        hashlib.sha256
-    ).hexdigest()
-    
-    # Verify the hash matches (timing-safe comparison to prevent side-channel attacks)
+    computed_hash = hmac.new(secret_key, check_string.encode(), hashlib.sha256).hexdigest()
+
     if not hmac.compare_digest(computed_hash, data.hash):
+        logger.warning("verify_telegram_auth: hash mismatch")
         return False
-    
-    # Check auth date (not older than 24 hours)
+
     current_time = datetime.now(UTC).timestamp()
-    if current_time - data.auth_date > 86400:
+    age = current_time - data.auth_date
+    if age > 86400:
+        logger.warning("verify_telegram_auth: auth_date too old (age=%.0fs)", age)
         return False
-    
+
     return True
+
+
+def validate_tma_init_data(init_data: str, bot_token: str, max_age_seconds: int = 86400) -> Optional[dict]:
+    """
+    Validate Telegram Mini App (TMA) initData string.
+
+    Key derivation for Mini App is different from the Login Widget:
+        secret_key = HMAC-SHA256(key=b"WebAppData", msg=bot_token.encode())
+
+    Returns the parsed user dict on success, None on any failure.
+    Logs the specific failure reason for debugging.
+    """
+    if not init_data:
+        logger.warning("validate_tma_init_data: empty initData")
+        return None
+
+    # Parse the URL-encoded initData
+    try:
+        params = dict(urllib.parse.parse_qsl(init_data, keep_blank_values=True))
+    except Exception as exc:
+        logger.warning("validate_tma_init_data: failed to parse initData – %s", exc)
+        return None
+
+    received_hash = params.pop("hash", None)
+    if not received_hash:
+        logger.warning("validate_tma_init_data: missing hash field")
+        return None
+
+    # Build the data-check string: alphabetically sorted key=value pairs joined by \n
+    data_check_string = "\n".join(
+        f"{k}={v}" for k, v in sorted(params.items())
+    )
+
+    # Derive the secret key: HMAC-SHA256("WebAppData", bot_token)
+    secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+
+    # Compute expected hash
+    computed_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(computed_hash, received_hash):
+        logger.warning(
+            "validate_tma_init_data: hash mismatch\n"
+            "  data_check_string=%r\n"
+            "  received =%s\n"
+            "  computed =%s",
+            data_check_string, received_hash, computed_hash,
+        )
+        return None
+
+    # Validate auth_date freshness
+    try:
+        auth_date = int(params.get("auth_date", 0))
+    except (ValueError, TypeError):
+        logger.warning("validate_tma_init_data: invalid auth_date value")
+        return None
+
+    age = datetime.now(UTC).timestamp() - auth_date
+    if age > max_age_seconds:
+        logger.warning(
+            "validate_tma_init_data: auth_date too old (age=%.0fs, max=%ds)",
+            age, max_age_seconds,
+        )
+        return None
+
+    # Parse the embedded user JSON
+    user_json = params.get("user")
+    if not user_json:
+        logger.warning("validate_tma_init_data: missing user field in initData")
+        return None
+
+    try:
+        user = json.loads(user_json)
+    except json.JSONDecodeError as exc:
+        logger.warning("validate_tma_init_data: invalid user JSON – %s", exc)
+        return None
+
+    logger.info("validate_tma_init_data: OK for user_id=%s", user.get("id"))
+    return user
 
 def create_access_token(telegram_id: int, role: str = "student") -> dict:
     """

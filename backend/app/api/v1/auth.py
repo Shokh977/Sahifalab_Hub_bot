@@ -42,6 +42,7 @@ from app.models.models import Profile, AuthCode, TeacherProfile
 from app.services.auth_service import (
     TelegramAuthData,
     verify_telegram_auth,
+    validate_tma_init_data,
     create_access_token,
     decode_token,
     decode_token_payload,
@@ -81,6 +82,9 @@ class ApplyTeacherRequest(BaseModel):
 class SetUserRoleRequest(BaseModel):
     role:   str
     status: str = "active"
+
+class TmaInitRequest(BaseModel):
+    init_data: str
 
 class EmailRegisterRequest(BaseModel):
     first_name: str
@@ -174,6 +178,49 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
         "first_name": data.first_name, "username": data.username,
         "photo_url": data.photo_url or profile.photo_url,
         "role": profile.role or "student", "status": profile.status or "active",
+        **token_data,
+    }
+
+
+@router.post("/tma-init")
+async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate a Telegram Mini App user by validating the raw initData string.
+
+    The frontend sends:  { "init_data": window.Telegram.WebApp.initData }
+    We validate with the correct TMA HMAC scheme (key = HMAC-SHA256("WebAppData", bot_token)),
+    then upsert the profile and return a JWT — identical shape to /auth/telegram.
+    """
+    if not BOT_TOKEN:
+        raise HTTPException(status_code=503, detail="Bot token not configured")
+
+    user = validate_tma_init_data(body.init_data, BOT_TOKEN)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram initData")
+
+    telegram_id = user.get("id")
+    if not telegram_id:
+        raise HTTPException(status_code=401, detail="Missing user.id in initData")
+
+    first_name = user.get("first_name", "")
+    username   = user.get("username")
+    photo_url  = user.get("photo_url")
+
+    profile = _upsert_profile(
+        db, telegram_id,
+        first_name=first_name, username=username,
+        photo_url=photo_url, app_last_login=datetime.now(UTC),
+    )
+    token_data = create_access_token(telegram_id, profile.role or "student")
+    logger.info("tma_init: authenticated user_id=%s (%s)", telegram_id, username or first_name)
+    return {
+        "success":     True,
+        "telegram_id": telegram_id,
+        "first_name":  first_name,
+        "username":    username,
+        "photo_url":   photo_url or profile.photo_url,
+        "role":        profile.role   or "student",
+        "status":      profile.status or "active",
         **token_data,
     }
 
