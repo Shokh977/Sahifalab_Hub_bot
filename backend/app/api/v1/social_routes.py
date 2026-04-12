@@ -3,9 +3,8 @@ Social API routes — posts, likes, comments, follows, feed, discovery.
 """
 
 import asyncio
-from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -16,12 +15,22 @@ from app.api.v1.endpoints.notifications import send_notification
 
 
 def _fire_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: dict = {}):
-    """Fire-and-forget notification from sync context."""
+    """Fire-and-forget notification from sync context.
+
+    Skips negative/zero IDs — those are email/Google synthetic accounts with no
+    real Telegram chat to push to. Uses run_coroutine_threadsafe which is the
+    correct way to schedule a coroutine from a thread-pool (sync route) context.
+    """
+    if user_id <= 0:
+        return  # not a real Telegram user — nothing to notify
     try:
         loop = asyncio.get_event_loop()
-        loop.create_task(send_notification(user_id, notif_type, category, meta))
-    except RuntimeError:
-        pass  # no event loop — skip silently
+        if loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                send_notification(user_id, notif_type, category, meta), loop
+            )
+    except Exception:
+        pass  # no event loop or scheduling failed — skip silently
 
 router = APIRouter(prefix="/social", tags=["social"])
 
@@ -69,34 +78,22 @@ def create_post(
 
 @router.get("/posts/feed")
 def feed(
-    before_timestamp: Optional[str] = Query(None, description="ISO datetime cursor for pagination"),
+    page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    cursor_dt: Optional[datetime] = None
-    if before_timestamp:
-        try:
-            cursor_dt = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(400, "Invalid before_timestamp format")
-    return svc.get_feed(db, user_id, cursor_dt, page_size)
+    return svc.get_feed(db, user_id, page, page_size)
 
 
 @router.get("/posts/explore")
 def explore(
-    before_timestamp: Optional[str] = Query(None, description="ISO datetime cursor for pagination"),
+    page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    cursor_dt: Optional[datetime] = None
-    if before_timestamp:
-        try:
-            cursor_dt = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(400, "Invalid before_timestamp format")
-    return svc.get_explore(db, user_id, cursor_dt, page_size)
+    return svc.get_explore(db, user_id, page, page_size)
 
 
 @router.get("/posts/{post_id}")
@@ -331,18 +328,12 @@ def get_profile(
 @router.get("/users/{target_id}/posts")
 def get_user_posts(
     target_id: int,
-    before_timestamp: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    cursor_dt: Optional[datetime] = None
-    if before_timestamp:
-        try:
-            cursor_dt = datetime.fromisoformat(before_timestamp.replace("Z", "+00:00"))
-        except ValueError:
-            raise HTTPException(400, "Invalid before_timestamp format")
-    return svc.get_user_posts(db, target_id, user_id, cursor_dt, page_size)
+    return svc.get_user_posts(db, target_id, user_id, page, page_size)
 
 
 @router.get("/search")

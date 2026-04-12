@@ -49,7 +49,7 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 # ── Request schemas ───────────────────────────────────────────────────────────
 
 class TaskCreate(BaseModel):
-    telegram_id:      int
+    telegram_id:      Optional[int] = None  # ignored — caller_id from JWT is used
     title:            str
     description:      Optional[str] = None
     status:           str = "todo"
@@ -81,7 +81,7 @@ class ReorderRequest(BaseModel):
 
 
 class NoteCreate(BaseModel):
-    telegram_id: int
+    telegram_id: Optional[int] = None  # ignored — caller_id from JWT is used
     title:       str = ""
     content:     str = ""
 
