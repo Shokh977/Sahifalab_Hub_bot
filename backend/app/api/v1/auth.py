@@ -386,13 +386,17 @@ async def logout(authorization: str = Header(None)):
 @router.post("/request-code")
 async def request_code(db: Session = Depends(get_db)):
     """Generate a one-time login code for the bot flow."""
+    from sqlalchemy import text as _sa_text
     code       = secrets.token_hex(4)
     expires_at = datetime.now(UTC) + timedelta(minutes=CODE_TTL_MINUTES)
-    db.add(AuthCode(code=code, expires_at=expires_at))
     try:
+        db.execute(
+            _sa_text("INSERT INTO auth_codes (code, expires_at) VALUES (:code, :expires_at)"),
+            {"code": code, "expires_at": expires_at},
+        )
         db.commit()
     except Exception as e:
-        logger.exception("request_code: DB commit failed — auth_codes table may be missing: %s", e)
+        logger.exception("request_code: DB commit failed: %s", e)
         db.rollback()
         raise HTTPException(status_code=500, detail="Ma'lumotlar bazasida xatolik")
     return {
