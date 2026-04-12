@@ -1,0 +1,9 @@
+# Ensure shell scripts and Docker-related files always use LF in the repo.
+# Windows git (core.autocrlf=true) would otherwise convert them to CRLF,
+# breaking shebang lines and line-continuation in shell scripts inside Docker.
+*.sh        text eol=lf
+Dockerfile  text eol=lf
+Procfile    text eol=lf
+*.toml      text eol=lf
+*.json      text eol=lf
+*.py        text eol=lf
