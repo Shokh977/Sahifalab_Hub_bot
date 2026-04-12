@@ -196,28 +196,57 @@ async def startup_event():
             "JWT tokens can be forged. Set a secure SECRET_KEY env var on Railway immediately."
         )
 
-    # Ensure all ORM-declared tables exist (safe no-op if they already do)
+    # ── DB diagnostics ───────────────────────────────────────────────────────
     from app.db.session import init_db, engine
+    db_url_raw = str(engine.url)
+    db_url_safe = db_url_raw.split("@")[-1] if "@" in db_url_raw else db_url_raw
+    print(f"[STARTUP] DB dialect  : {engine.dialect.name}")
+    print(f"[STARTUP] DB host/path: {db_url_safe}")
+
+    try:
+        from sqlalchemy import inspect as sa_inspect, text
+        insp = sa_inspect(engine)
+        existing = insp.get_table_names()
+        print(f"[STARTUP] Tables in DB ({len(existing)}): {sorted(existing)}")
+        print(f"[STARTUP] auth_codes exists: {'auth_codes' in existing}")
+    except Exception as e:
+        print(f"[STARTUP] Could not list tables: {e}")
+
+    # Ensure all ORM-declared tables exist (safe no-op if they already do)
     try:
         init_db()
-        logger.info("Database tables verified / created via ORM")
+        print("[STARTUP] init_db() OK — create_all ran without error")
     except Exception as e:
-        logger.exception("init_db() failed — some tables may be missing: %s", e)
+        print(f"[STARTUP] init_db() FAILED: {e}")
+        logger.exception("init_db() failed: %s", e)
 
     # Explicitly ensure the auth_codes table exists.
-    # init_db() (create_all) may silently skip auth_codes if another table
-    # in the batch fails first, so we create it individually as a fallback.
     try:
         from app.models.models import AuthCode
-        from sqlalchemy import inspect as sa_inspect
         from app.db.session import Base
-        if not sa_inspect(engine).has_table("auth_codes"):
+        insp2 = sa_inspect(engine)
+        if not insp2.has_table("auth_codes"):
             Base.metadata.create_all(bind=engine, tables=[AuthCode.__table__])
-            logger.info("auth_codes table created on startup")
+            print("[STARTUP] auth_codes table CREATED")
         else:
-            logger.info("auth_codes table already exists")
+            print("[STARTUP] auth_codes table already exists — skipping create")
     except Exception as e:
-        logger.exception("Failed to ensure auth_codes table — Telegram login will return 500: %s", e)
+        print(f"[STARTUP] auth_codes ensure FAILED: {e}")
+        logger.exception("Failed to ensure auth_codes table: %s", e)
+
+    # Quick INSERT smoke-test for auth_codes
+    try:
+        import secrets
+        from datetime import datetime, UTC, timedelta
+        test_code = "diag_" + secrets.token_hex(3)
+        with engine.begin() as conn:
+            conn.execute(text(
+                "INSERT INTO auth_codes (code, expires_at) VALUES (:c, :e)"
+            ), {"c": test_code, "e": datetime.now(UTC) + timedelta(seconds=10)})
+            conn.execute(text("DELETE FROM auth_codes WHERE code = :c"), {"c": test_code})
+        print("[STARTUP] auth_codes INSERT smoke-test PASSED")
+    except Exception as e:
+        print(f"[STARTUP] auth_codes INSERT smoke-test FAILED: {e}")
 
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
