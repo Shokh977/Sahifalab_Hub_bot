@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/main.py', encoding='utf-8'\\).read\\(\\)\\); print\\('main.py: OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/v1/auth.py', encoding='utf-8'\\).read\\(\\)\\); print\\('auth.py: OK'\\)\")"
+    ]
+  }
+}
