@@ -159,6 +159,14 @@ async def startup_event():
             "Startup aborted: SECRET_KEY must be overridden via environment variable."
         )
 
+    # Ensure all ORM-declared tables exist (safe no-op if they already do)
+    from app.db.session import init_db
+    try:
+        init_db()
+        logger.info("Database tables verified / created")
+    except Exception as e:
+        logger.error("init_db() failed (non-fatal, tables may already exist): %s", e)
+
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
     logger.info("Background payment expiry task started")

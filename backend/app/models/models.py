@@ -45,13 +45,13 @@ class AuthCode(Base):
     """One-time login codes for the Telegram bot auth flow."""
     __tablename__ = "auth_codes"
 
-    id          = Column(Integer, primary_key=True, autoincrement=True)
-    code        = Column(String(64), unique=True, index=True, nullable=False)
+    # PK is the code itself (matches migration 005 — `code text PRIMARY KEY`)
+    code        = Column(String(64), primary_key=True)
     telegram_id = Column(BigInteger, nullable=True)
     first_name  = Column(String(255), nullable=True)
     username    = Column(String(255), nullable=True)
     photo_url   = Column(String(1000), nullable=True)
-    used        = Column(Boolean, default=False)
+    used        = Column(Boolean, default=False, nullable=False)
     expires_at  = Column(DateTime(timezone=True), nullable=False)
     created_at  = Column(DateTime(timezone=True), nullable=True)
 
