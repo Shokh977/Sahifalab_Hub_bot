@@ -197,12 +197,22 @@ async def startup_event():
         )
 
     # Ensure all ORM-declared tables exist (safe no-op if they already do)
-    from app.db.session import init_db
+    from app.db.session import init_db, engine
     try:
         init_db()
-        logger.info("Database tables verified / created")
+        logger.info("Database tables verified / created via ORM")
     except Exception as e:
-        logger.error("init_db() failed (non-fatal, tables may already exist): %s", e)
+        logger.exception("init_db() failed — some tables may be missing: %s", e)
+
+    # Explicitly ensure the auth_codes table exists.
+    # init_db() may silently skip it if another table fails first,
+    # so we create it individually as a targeted fallback.
+    try:
+        from app.models.models import AuthCode
+        AuthCode.__table__.create(bind=engine, checkfirst=True)
+        logger.info("auth_codes table ensured")
+    except Exception as e:
+        logger.exception("Failed to ensure auth_codes table — Telegram login will return 500: %s", e)
 
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())

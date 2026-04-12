@@ -387,7 +387,8 @@ async def request_code(db: Session = Depends(get_db)):
     db.add(AuthCode(code=code, expires_at=expires_at))
     try:
         db.commit()
-    except Exception:
+    except Exception as e:
+        logger.exception("request_code: DB commit failed — auth_codes table may be missing: %s", e)
         db.rollback()
         raise HTTPException(status_code=500, detail="Ma'lumotlar bazasida xatolik")
     return {
