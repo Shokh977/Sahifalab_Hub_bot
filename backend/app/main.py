@@ -1,6 +1,9 @@
 from pathlib import Path
 from dotenv import load_dotenv
 
+import os
+import uvicorn
+
 # Load .env from the project root (one level above backend/) or CWD
 _root_env = Path(__file__).resolve().parents[2] / ".env"
 if _root_env.is_file():
@@ -254,5 +257,10 @@ async def startup_event():
 
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    # Pull the port from Railway's environment variables
+    # Default to 8000 for local testing if the variable isn't found
+    port = int(os.environ.get("PORT", 8000))
+    
+    # Use "main:app" string format to help with hot-reloading 
+    # and ensure uvicorn binds to all interfaces (0.0.0.0)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, proxy_headers=True)
