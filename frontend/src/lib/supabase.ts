@@ -4,7 +4,9 @@ const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL  as string
 const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string
 
 /** FastAPI backend base URL — same var used by apiService.ts */
-const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000')
+  .replace(/\/$/, '')
+  .replace(/^http:\/\/(?!localhost|127\.0\.0\.1)/, 'https://')  // never send mixed-content HTTP in production
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TWO-LEVEL TTL CACHE — drastically reduces Supabase egress.

@@ -18,7 +18,9 @@ import axios from 'axios'
 import { usePlatform } from '../hooks/usePlatform'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 
-const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000')
+  .replace(/\/$/, '')
+  .replace(/^http:\/\/(?!localhost|127\.0\.0\.1)/, 'https://')  // never send mixed-content HTTP in production
 
 // ── Public types ─────────────────────────────────────────────────────────────
 
