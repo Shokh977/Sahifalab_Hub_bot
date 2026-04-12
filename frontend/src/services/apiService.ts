@@ -38,7 +38,13 @@ class ApiService {
         const detail = error?.response?.data?.detail ?? error?.response?.data?.message ?? error?.response?.data ?? error?.message ?? 'Unknown error'
         // Only log details to console (developer eyes only)
         console.error(`[API] ❌ ${status} ${url}`, detail, error?.response?.data)
-        
+
+        // 401 on any endpoint except auth itself means the stored JWT is stale/invalid.
+        // Clear it so the next tma-init call (on re-open) issues a fresh token.
+        if (status === 401 && !url.includes('/api/auth/')) {
+          localStorage.removeItem('auth_token')
+        }
+
         // Show SAFE toast notification — never expose raw backend details to users
         const shouldShowToast = error?.config?.headers?.['X-Show-Error-Toast'] !== 'false'
         if (shouldShowToast) {
