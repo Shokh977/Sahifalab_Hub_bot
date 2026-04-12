@@ -234,6 +234,36 @@ async def startup_event():
         print(f"[STARTUP] auth_codes ensure FAILED: {e}")
         logger.exception("Failed to ensure auth_codes table: %s", e)
 
+    # ── Schema migration: add columns missing from old auth_codes deployments ────
+    # Root cause of 500 on POST /api/auth/request-code:
+    #   The auth_codes table was originally created with only (code, expires_at).
+    #   Later columns were added to the ORM model but never migrated on Supabase.
+    #   SQLAlchemy includes ALL model columns in every INSERT, so any missing column
+    #   raises "column does not exist" → the DB commit fails → HTTP 500.
+    # These ALTER TABLE statements are idempotent (PostgreSQL IF NOT EXISTS).
+    _AUTH_COLS = [
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS telegram_id BIGINT",
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS first_name VARCHAR(255)",
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS username VARCHAR(255)",
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS photo_url VARCHAR(1000)",
+        # NOT NULL + DEFAULT so existing rows are back-filled — safe on live tables
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS used BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+    ]
+    try:
+        from sqlalchemy import text as _sa_text
+        with engine.begin() as conn:
+            for _col_sql in _AUTH_COLS:
+                try:
+                    conn.execute(_sa_text(_col_sql))
+                except Exception as _col_err:
+                    # Column already exists or dialect doesn't support IF NOT EXISTS — safe to skip
+                    print(f"[STARTUP] Column migration skipped: {str(_col_err)[:120]}")
+        print("[STARTUP] auth_codes column migrations OK")
+    except Exception as e:
+        print(f"[STARTUP] auth_codes column migrations FAILED: {e}")
+        logger.exception("auth_codes column migrations failed: %s", e)
+
     # Quick INSERT smoke-test for auth_codes
     try:
         import secrets

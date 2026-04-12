@@ -183,10 +183,12 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
 
 
 @router.post("/tma-init")
+@router.post("/telegram-miniapp")
 async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
     """
     Authenticate a Telegram Mini App user by validating the raw initData string.
 
+    Registered at both /tma-init (legacy) and /telegram-miniapp (canonical).
     The frontend sends:  { "init_data": window.Telegram.WebApp.initData }
     We validate with the correct TMA HMAC scheme (key = HMAC-SHA256("WebAppData", bot_token)),
     then upsert the profile and return a JWT — identical shape to /auth/telegram.
@@ -255,7 +257,9 @@ async def google_sign_in(body: GoogleSignInRequest, db: Session = Depends(get_db
         idinfo = google_id_token.verify_oauth2_token(
             body.id_token, google_requests.Request(), GOOGLE_CLIENT_ID,
         )
-    except Exception:
+    except Exception as e:
+        logger.warning("google_sign_in: token verification failed (client_id=%s): %s",
+                       GOOGLE_CLIENT_ID[:12] + "..." if GOOGLE_CLIENT_ID else "MISSING", e)
         raise HTTPException(status_code=401, detail="Invalid Google token")
     sub = idinfo.get("sub")
     if not sub:
