@@ -27,6 +27,11 @@ import {
 import { useAuth } from '../../context/AuthContext'
 import { API_BASE as API } from '../../lib/apiUrl'
 
+const _authHeaders = (): HeadersInit => {
+  const t = localStorage.getItem('auth_token')
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export interface PlannerTask {
@@ -376,7 +381,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onPlayTask }) => {
   const fetchTasks = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`${API}/api/planner/tasks/${user.id}`)
+      const res = await fetch(`${API}/api/planner/tasks/${user.id}`, { headers: _authHeaders() })
       if (res.ok) setTasks(await res.json())
     } catch (err) {
       console.error('[Kanban] fetch error', err)
@@ -412,7 +417,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onPlayTask }) => {
     try {
       await fetch(`${API}/api/planner/tasks/${taskId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
         body: JSON.stringify({ status: targetStatus }),
       })
     } catch {
@@ -449,7 +454,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onPlayTask }) => {
     try {
       const res = await fetch(`${API}/api/planner/tasks`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
         body: JSON.stringify({ user_id: user.id, title: title.trim(), description: description.trim() || null, priority }),
       })
       if (res.ok) {
@@ -464,7 +469,7 @@ const KanbanBoard: React.FC<KanbanBoardProps> = ({ onPlayTask }) => {
   const deleteTask = useCallback(async (id: number) => {
     setTasks(prev => prev.filter(t => t.id !== id))
     try {
-      await fetch(`${API}/api/planner/tasks/${id}`, { method: 'DELETE' })
+      await fetch(`${API}/api/planner/tasks/${id}`, { method: 'DELETE', headers: _authHeaders() })
     } catch { fetchTasks() }
   }, [fetchTasks])
 

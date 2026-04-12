@@ -10,6 +10,11 @@ import { Plus, Trash2, X, FileText, Save, Edit3 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { API_BASE as API } from '../../lib/apiUrl'
 
+const _authHeaders = (): HeadersInit => {
+  const t = localStorage.getItem('auth_token')
+  return t ? { Authorization: `Bearer ${t}` } : {}
+}
+
 interface PlannerNote {
   id: number
   title: string
@@ -30,7 +35,7 @@ const NotesTab: React.FC = () => {
   const fetchNotes = useCallback(async () => {
     if (!user?.id) return
     try {
-      const res = await fetch(`${API}/api/planner/notes/${user.id}`)
+      const res = await fetch(`${API}/api/planner/notes/${user.id}`, { headers: _authHeaders() })
       if (res.ok) setNotes(await res.json())
     } catch (err) {
       console.error('[Notes] fetch error', err)
@@ -47,7 +52,7 @@ const NotesTab: React.FC = () => {
     try {
       const res = await fetch(`${API}/api/planner/notes`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
         body: JSON.stringify({ user_id: user.id, title: title.trim(), content: content.trim() || null }),
       })
       if (res.ok) {
@@ -65,7 +70,7 @@ const NotesTab: React.FC = () => {
     try {
       await fetch(`${API}/api/planner/notes/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ..._authHeaders() },
         body: JSON.stringify({ title, content: content || null }),
       })
     } catch { fetchNotes() }
@@ -75,7 +80,7 @@ const NotesTab: React.FC = () => {
   const deleteNote = useCallback(async (id: number) => {
     setNotes(prev => prev.filter(n => n.id !== id))
     try {
-      await fetch(`${API}/api/planner/notes/${id}`, { method: 'DELETE' })
+      await fetch(`${API}/api/planner/notes/${id}`, { method: 'DELETE', headers: _authHeaders() })
     } catch { fetchNotes() }
   }, [fetchNotes])
 

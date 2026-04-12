@@ -48,10 +48,10 @@ from fastapi import Header
 def get_current_user_id(authorization: str = Header(None)) -> int:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(401, "Authentication required")
-    payload = decode_token(authorization.split(" ", 1)[1])
-    if not payload or "sub" not in payload:
+    tid = decode_token(authorization.split(" ", 1)[1])
+    if not tid:
         raise HTTPException(401, "Invalid token")
-    return int(payload["sub"])
+    return tid
 
 
 # ── Posts ────────────────────────────────────────────────────────────────────
