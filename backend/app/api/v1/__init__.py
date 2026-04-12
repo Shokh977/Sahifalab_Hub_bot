@@ -36,6 +36,6 @@ api_router.include_router(notifications.router, tags=["notifications"])
 # The files remain in endpoints/ for reference but are deliberately excluded
 # from the live router to eliminate unauthenticated CRUD attack surface.
 
-# Social ecosystem
-api_router.include_router(social_routes.router)
-api_router.include_router(messenger_routes.router)
+# Social ecosystem — mounted under /v1 to match frontend expectations
+api_router.include_router(social_routes.router, prefix="/v1")
+api_router.include_router(messenger_routes.router, prefix="/v1")
