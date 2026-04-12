@@ -8,6 +8,7 @@ import {
   BadgeDollarSign, CheckCircle, Lock, Percent, Wallet, Target, Inbox,
 } from 'lucide-react'
 import apiService from '@services/apiService'
+import { API_BASE } from '../lib/apiUrl'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
@@ -791,7 +792,7 @@ const AdminPage: React.FC = () => {
     setBookPdfUploading(true)
     setBookPdfMsg('⬆️ Yuklanmoqda…')
     setBookPdfPercent(0)
-    const apiBase = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/+$/, '').replace(/\/api\/?$/, '')
+    const apiBase = API_BASE.replace(/\/api\/?$/, '')
     try {
       const form = new FormData()
       form.append('file', bookPdfFile)
@@ -837,7 +838,7 @@ const AdminPage: React.FC = () => {
     setBookCoverUploading(true)
     setBookCoverMsg('⬆️ Muqova yuklanmoqda…')
     setBookCoverPercent(0)
-    const apiBase = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/+$/, '').replace(/\/api\/?$/, '')
+    const apiBase = API_BASE.replace(/\/api\/?$/, '')
     try {
       const form = new FormData()
       form.append('file', bookCoverFile)
@@ -886,7 +887,7 @@ const AdminPage: React.FC = () => {
     setSoundUploading(true)
     setSoundMsg('⬆️ Yuklanmoqda…')
     setUploadPercent(0)
-    const apiBase = ((import.meta.env.VITE_API_URL as string) || '').replace(/\/+$/, '').replace(/\/api\/?$/, '')
+    const apiBase = API_BASE.replace(/\/api\/?$/, '')
     try {
       // 1. Upload audio → Bunny CDN
       const form = new FormData()

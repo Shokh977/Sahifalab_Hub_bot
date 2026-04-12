@@ -20,6 +20,7 @@ import { useAmbientSound, SoundType } from '../hooks/useAmbientSound'
 import { fetchAmbientSounds } from '../lib/supabase'
 import { useProgressStore } from '../context/progressStore'
 import PageWrapper from '../components/PageWrapper'
+import { API_BASE } from '../lib/apiUrl'
 
 /* ------------------------------------------------------------------------------
    Sound data is loaded dynamically from the database.
@@ -53,8 +54,6 @@ function convertToDirectUrl(url: string): string {
 }
 
 const FOCUS_PRESETS = [15, 25, 45, 60]
-
-const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
 
 const MOTIV_MESSAGES = [
   { emoji: '🔥', title: "Barakalla! Birga o'qimoqdamiz!",   sub: "Siz yolg'iz emasiz — kuch birlashganda" },
@@ -444,7 +443,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     if (sound.activeSound === String(s.id) && sound.isPlaying) { sound.stop(); return }
     const audioUrl = s.url?.includes('supabase.co/storage') || s.url?.includes('.b-cdn.net')
       ? s.url
-      : `${import.meta.env.VITE_API_URL || ''}/api/audio/proxy/${s.id}`
+      : `${API_BASE}/api/audio/proxy/${s.id}`
     setResolvingId(s.id)
     sound.play(String(s.id) as SoundType, audioUrl)
   }, [sound])

@@ -16,12 +16,12 @@ from app.models.models import Profile
 def _profile_to_author(p: Profile) -> dict:
     return {
         "telegram_id": p.telegram_id,
-        "full_name": p.full_name,
+        "full_name": p.first_name or "",
         "username": p.username,
         "photo_url": p.photo_url,
         "role": p.role or "student",
         "level": p.level or 1,
-        "xp": p.xp or 0,
+        "xp": p.total_xp or 0,
     }
 
 
@@ -516,12 +516,12 @@ def get_public_profile(db: Session, target_id: int, viewer_id: Optional[int] = N
 def search_users(db: Session, query: str, page: int = 1, page_size: int = 20) -> dict:
     q = db.query(Profile).filter(
         or_(
-            Profile.full_name.ilike(f"%{query}%"),
+            Profile.first_name.ilike(f"%{query}%"),
             Profile.username.ilike(f"%{query}%"),
         )
     )
     total = q.count()
-    users = q.order_by(desc(Profile.xp)).offset((page - 1) * page_size).limit(page_size).all()
+    users = q.order_by(desc(Profile.total_xp)).offset((page - 1) * page_size).limit(page_size).all()
     return {
         "users": [_profile_to_author(u) for u in users],
         "total": total,
@@ -541,7 +541,7 @@ def discover_users(db: Session, viewer_id: int, page: int = 1, page_size: int = 
     )
     total = q.count()
     users = (
-        q.order_by(desc(Profile.xp))
+        q.order_by(desc(Profile.total_xp))
         .offset((page - 1) * page_size)
         .limit(page_size)
         .all()

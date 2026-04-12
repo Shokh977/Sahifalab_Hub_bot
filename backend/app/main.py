@@ -8,14 +8,16 @@ if _root_env.is_file():
 else:
     load_dotenv()  # fallback: CWD/.env
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from brotli_asgi import BrotliMiddleware
 from app.api.v1 import api_router
 from app.core.config import settings
 from app.middleware.rate_limiter import rate_limit_middleware
 import app.models  # noqa: F401 — registers all models with SQLAlchemy Base
 import logging
+import traceback
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,6 +44,24 @@ app.add_middleware(BrotliMiddleware, minimum_size=500)
 
 # Rate limiting — 100/min, 1000/hr, 10000/day per IP
 app.middleware("http")(rate_limit_middleware)
+
+
+# ── Global exception handler — ensures CORS headers are always present ────────
+# Without this, unhandled 500s bypass CORSMiddleware and browsers block the
+# response as a CORS error, hiding the real problem from the frontend.
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception on %s %s: %s\n%s",
+                 request.method, request.url.path, exc, traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        },
+    )
 
 
 # ── CDN Cache-Control headers ──────────────────────────────────────────────────

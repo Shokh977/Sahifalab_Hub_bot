@@ -22,7 +22,7 @@
 
 import { create } from 'zustand'
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+import { API_BASE } from '../lib/apiUrl'
 
 // ── XP rate constants ────────────────────────────────────────────────────────
 

@@ -8,8 +8,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Trash2, X, FileText, Save, Edit3 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
-
-const API = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
+import { API_BASE as API } from '../../lib/apiUrl'
 
 interface PlannerNote {
   id: number

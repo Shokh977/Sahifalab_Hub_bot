@@ -29,11 +29,9 @@ import {
   FilmIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
+import { API_BASE } from '../lib/apiUrl'
 
-const _apiOrigin = (
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  'https://sahifalab-hub-bot-hsgt.vercel.app'
-).replace(/\/api\/?$/, '').replace(/\/$/, '')
+const _apiOrigin = API_BASE.replace(/\/api\/?$/, '').replace(/\/$/, '')
 
 const ALLOWED_TYPES = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-matroska']
 const MAX_MB = 2048  // 2 GB for Stream

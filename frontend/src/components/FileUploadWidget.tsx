@@ -29,13 +29,11 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
+import { API_BASE } from '../lib/apiUrl'
 
 // Normalise base origin: strip any trailing /api so we can always prefix /api/ ourselves.
 // This matches the convention used in apiService.ts (VITE_API_URL = origin only, no /api suffix).
-const _apiOrigin = (
-  (import.meta.env.VITE_API_URL as string | undefined) ||
-  'https://sahifalab-hub-bot-hsgt.vercel.app'
-).replace(/\/api\/?$/, '').replace(/\/$/, '')
+const _apiOrigin = API_BASE.replace(/\/api\/?$/, '').replace(/\/$/, '')
 
 interface Props {
   accept?:       string

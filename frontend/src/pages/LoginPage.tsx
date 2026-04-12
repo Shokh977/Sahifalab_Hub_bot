@@ -12,7 +12,7 @@ import { PaperAirplaneIcon, EnvelopeIcon, CheckCircleIcon, ClockIcon, XCircleIco
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
-const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
+import { API_BASE } from '../lib/apiUrl'
 const POLL_MS = 2000
 const BOT_USERNAME = (import.meta.env.VITE_BOT_USERNAME as string | undefined) || 'Sahifalab_hub_bot'
 const GOOGLE_CLIENT_ID = (import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined) || ''

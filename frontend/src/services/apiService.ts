@@ -1,10 +1,9 @@
 import axios, { AxiosInstance } from 'axios'
 import { showToast } from '../components/ErrorBoundary'
 import { DEV_MOCK, mockAxiosAdapter } from '../lib/mockAdapter'
+import { API_BASE } from '../lib/apiUrl'
 
-const API_BASE_URL = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000')
-  .replace(/\/$/, '')
-  .replace(/^http:\/\/(?!localhost|127\.0\.0\.1)/, 'https://')  // never send mixed-content HTTP in production
+const API_BASE_URL = API_BASE
 
 class ApiService {
   private axiosInstance: AxiosInstance

@@ -35,11 +35,7 @@ import {
 import HeroSection from './HeroSection'
 import { thumb } from '../utils/bunnyOptimize'
 
-const API_BASE = (
-  (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000'
-)
-  .replace(/\/$/, '')
-  .replace(/^http:\/\/(?!localhost|127\.0\.0\.1)/, 'https://')  // never send mixed-content HTTP in production
+import { API_BASE } from '../lib/apiUrl'
 
 // â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface CourseItem {

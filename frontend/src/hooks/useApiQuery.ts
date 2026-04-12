@@ -16,7 +16,7 @@
  */
 import { useQuery, useInfiniteQuery } from '@tanstack/react-query'
 
-const API = ((import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000').replace(/\/$/, '')
+import { API_BASE as API } from '../lib/apiUrl'
 
 /** Helper — JSON GET with auth header if available */
 async function authFetch<T>(path: string): Promise<T> {
