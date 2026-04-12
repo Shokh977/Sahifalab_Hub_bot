@@ -184,104 +184,73 @@ async def _organic_growth_loop():
 
 @app.on_event("startup")
 async def startup_event():
-    """Start background tasks on app startup."""
-    # ── SECRET_KEY guard ──────────────────────────────────────────────────
-    # Warn loudly if the operator forgot to set a real SECRET_KEY, but do NOT
-    # raise SystemExit — that causes Railway to return 503 on every request,
-    # which browsers misreport as a CORS error and hides the real problem.
+    """Ensure auth_codes schema is current, then start background tasks."""
+    # ── SECRET_KEY guard ─────────────────────────────────────────────────────
     _DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION-SET-SECRET_KEY-ENV"
     if settings.SECRET_KEY == _DEFAULT_SECRET:
         logger.critical(
-            "⚠️  SECURITY WARNING: SECRET_KEY is still the default placeholder! "
-            "JWT tokens can be forged. Set a secure SECRET_KEY env var on Railway immediately."
+            "SECURITY WARNING: SECRET_KEY is still the default placeholder! "
+            "JWT tokens can be forged. Set a secure SECRET_KEY env var on Railway."
         )
 
-    # ── DB diagnostics ───────────────────────────────────────────────────────
-    from app.db.session import init_db, engine
-    db_url_raw = str(engine.url)
-    db_url_safe = db_url_raw.split("@")[-1] if "@" in db_url_raw else db_url_raw
-    print(f"[STARTUP] DB dialect  : {engine.dialect.name}")
-    print(f"[STARTUP] DB host/path: {db_url_safe}")
+    from app.db.session import engine
+    from sqlalchemy import text as _sa_text
+    import secrets
+    from datetime import datetime, UTC, timedelta
 
+    # ── All DB startup work in ONE connection ─────────────────────────────────
+    # NullPool opens a new TCP+SSL handshake per engine.begin() call.
+    # Supabase roundtrip ≈ 2–3 s per connection; Railway health-check window = 30 s.
+    # The old startup opened 6+ connections and reliably exceeded the window.
+    # Everything below is one transaction: CREATE TABLE + ALTER TABLE × 6 + smoke test.
+    #
+    # PostgreSQL DDL is transactional, and ALTER TABLE … ADD COLUMN IF NOT EXISTS
+    # emits a NOTICE (not an ERROR) when the column already exists, so the
+    # transaction is never aborted by these idempotent statements.
     try:
-        from sqlalchemy import inspect as sa_inspect, text
-        insp = sa_inspect(engine)
-        existing = insp.get_table_names()
-        print(f"[STARTUP] Tables in DB ({len(existing)}): {sorted(existing)}")
-        print(f"[STARTUP] auth_codes exists: {'auth_codes' in existing}")
-    except Exception as e:
-        print(f"[STARTUP] Could not list tables: {e}")
-
-    # Ensure all ORM-declared tables exist (safe no-op if they already do)
-    try:
-        init_db()
-        print("[STARTUP] init_db() OK — create_all ran without error")
-    except Exception as e:
-        print(f"[STARTUP] init_db() FAILED: {e}")
-        logger.exception("init_db() failed: %s", e)
-
-    # Explicitly ensure the auth_codes table exists.
-    try:
-        from app.models.models import AuthCode
-        from app.db.session import Base
-        insp2 = sa_inspect(engine)
-        if not insp2.has_table("auth_codes"):
-            Base.metadata.create_all(bind=engine, tables=[AuthCode.__table__])
-            print("[STARTUP] auth_codes table CREATED")
+        if engine.dialect.name != "sqlite":
+            with engine.begin() as conn:
+                # 1. Create auth_codes with full schema if it doesn't exist yet
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS auth_codes (
+                        code        VARCHAR(64)   PRIMARY KEY,
+                        telegram_id BIGINT,
+                        first_name  VARCHAR(255),
+                        username    VARCHAR(255),
+                        photo_url   VARCHAR(1000),
+                        used        BOOLEAN NOT NULL DEFAULT FALSE,
+                        expires_at  TIMESTAMPTZ NOT NULL,
+                        created_at  TIMESTAMPTZ
+                    )
+                """))
+                # 2. Add any columns absent from older schema versions
+                for _col in [
+                    "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS telegram_id BIGINT",
+                    "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS first_name VARCHAR(255)",
+                    "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS username VARCHAR(255)",
+                    "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS photo_url VARCHAR(1000)",
+                    "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS used BOOLEAN NOT NULL DEFAULT FALSE",
+                    "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
+                ]:
+                    conn.execute(_sa_text(_col))
+                # 3. Smoke test — confirms the full schema accepts writes
+                _tc = "diag_" + secrets.token_hex(3)
+                conn.execute(_sa_text(
+                    "INSERT INTO auth_codes (code, expires_at) VALUES (:c, :e)"
+                ), {"c": _tc, "e": datetime.now(UTC) + timedelta(seconds=10)})
+                conn.execute(_sa_text("DELETE FROM auth_codes WHERE code = :c"), {"c": _tc})
+            logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
-            print("[STARTUP] auth_codes table already exists — skipping create")
+            # SQLite fallback — use ORM create_all (no SSL overhead)
+            from app.db.session import init_db
+            init_db()
+            logger.info("[STARTUP] SQLite fallback — init_db OK")
     except Exception as e:
-        print(f"[STARTUP] auth_codes ensure FAILED: {e}")
-        logger.exception("Failed to ensure auth_codes table: %s", e)
-
-    # ── Schema migration: add columns missing from old auth_codes deployments ────
-    # Root cause of 500 on POST /api/auth/request-code:
-    #   The auth_codes table was originally created with only (code, expires_at).
-    #   Later columns were added to the ORM model but never migrated on Supabase.
-    #   SQLAlchemy includes ALL model columns in every INSERT, so any missing column
-    #   raises "column does not exist" → the DB commit fails → HTTP 500.
-    # These ALTER TABLE statements are idempotent (PostgreSQL IF NOT EXISTS).
-    _AUTH_COLS = [
-        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS telegram_id BIGINT",
-        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS first_name VARCHAR(255)",
-        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS username VARCHAR(255)",
-        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS photo_url VARCHAR(1000)",
-        # NOT NULL + DEFAULT so existing rows are back-filled — safe on live tables
-        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS used BOOLEAN NOT NULL DEFAULT FALSE",
-        "ALTER TABLE auth_codes ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ",
-    ]
-    try:
-        from sqlalchemy import text as _sa_text
-        with engine.begin() as conn:
-            for _col_sql in _AUTH_COLS:
-                try:
-                    conn.execute(_sa_text(_col_sql))
-                except Exception as _col_err:
-                    # Column already exists or dialect doesn't support IF NOT EXISTS — safe to skip
-                    print(f"[STARTUP] Column migration skipped: {str(_col_err)[:120]}")
-        print("[STARTUP] auth_codes column migrations OK")
-    except Exception as e:
-        print(f"[STARTUP] auth_codes column migrations FAILED: {e}")
-        logger.exception("auth_codes column migrations failed: %s", e)
-
-    # Quick INSERT smoke-test for auth_codes
-    try:
-        import secrets
-        from datetime import datetime, UTC, timedelta
-        test_code = "diag_" + secrets.token_hex(3)
-        with engine.begin() as conn:
-            conn.execute(text(
-                "INSERT INTO auth_codes (code, expires_at) VALUES (:c, :e)"
-            ), {"c": test_code, "e": datetime.now(UTC) + timedelta(seconds=10)})
-            conn.execute(text("DELETE FROM auth_codes WHERE code = :c"), {"c": test_code})
-        print("[STARTUP] auth_codes INSERT smoke-test PASSED")
-    except Exception as e:
-        print(f"[STARTUP] auth_codes INSERT smoke-test FAILED: {e}")
+        logger.exception("[STARTUP] auth_codes setup FAILED: %s", e)
 
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
-    logger.info("Background payment expiry task started")
-    logger.info("Background organic growth task started")
+    logger.info("Background tasks started")
 
 
 if __name__ == "__main__":
