@@ -163,18 +163,26 @@ def _maybe_log_view(db: Session, profile_id: int, viewer_id: Optional[int]) -> N
     """
     if viewer_id is None or viewer_id == profile_id:
         return
+    if not _table_exists(db, "profile_view_logs"):
+        return
 
     cutoff = datetime.now(UTC) - timedelta(hours=24)
-    recent = (
-        db.query(ProfileViewLog)
-        .filter(
-            ProfileViewLog.profile_user_id == profile_id,
-            ProfileViewLog.viewer_user_id  == viewer_id,
-            ProfileViewLog.viewed_at       >= cutoff,
-        )
-        .first()
+    query_failed = object()
+    recent = _db_fallback(
+        db,
+        "profile_view_logs.recent",
+        query_failed,
+        lambda: (
+            db.query(ProfileViewLog)
+            .filter(
+                ProfileViewLog.profile_user_id == profile_id,
+                ProfileViewLog.viewer_user_id  == viewer_id,
+                ProfileViewLog.viewed_at       >= cutoff,
+            )
+            .first()
+        ),
     )
-    if recent:
+    if recent is query_failed or recent:
         return
 
     log = ProfileViewLog(profile_user_id=profile_id, viewer_user_id=viewer_id)
@@ -216,6 +224,48 @@ def _serialize_profile_user(p: Profile) -> dict:
 # PROFILE ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _db_fallback(db: Session, label: str, default, fn):
+    """Run a DB block and fall back cleanly if optional profile data is unavailable."""
+    try:
+        return fn()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("Public profile fallback for %s: %s", label, exc)
+        return default
+
+
+def _table_exists(db: Session, table_name: str) -> bool:
+    return bool(_db_fallback(
+        db,
+        f"table_exists:{table_name}",
+        False,
+        lambda: db.execute(
+            text("SELECT to_regclass(:table_name) IS NOT NULL"),
+            {"table_name": f"public.{table_name}"},
+        ).scalar(),
+    ))
+
+
+def _column_exists(db: Session, table_name: str, column_name: str) -> bool:
+    return bool(_db_fallback(
+        db,
+        f"column_exists:{table_name}.{column_name}",
+        False,
+        lambda: db.execute(text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = :table_name
+                  AND column_name = :column_name
+            )
+        """), {
+            "table_name": table_name,
+            "column_name": column_name,
+        }).scalar(),
+    ))
+
+
 @profile_router.get("/me/views")
 def get_my_views(
     authorization: Optional[str] = Header(None),
@@ -231,31 +281,46 @@ def get_my_views(
         raise HTTPException(status_code=404, detail="Profil topilmadi")
 
     week_ago = datetime.now(UTC) - timedelta(days=7)
+    has_profile_view_logs = _table_exists(db, "profile_view_logs")
 
     # Weekly count from view log (source of truth)
-    weekly_count = (
-        db.query(func.count(ProfileViewLog.id))
-        .filter(
-            ProfileViewLog.profile_user_id == viewer_id,
-            ProfileViewLog.viewed_at >= week_ago,
+    weekly_count = 0
+    if has_profile_view_logs:
+        weekly_count = _db_fallback(
+            db,
+            "profile_views.weekly_count",
+            0,
+            lambda: (
+                db.query(func.count(ProfileViewLog.id))
+                .filter(
+                    ProfileViewLog.profile_user_id == viewer_id,
+                    ProfileViewLog.viewed_at >= week_ago,
+                )
+                .scalar()
+            ) or 0,
         )
-        .scalar()
-    ) or 0
 
     # Total stored on profile (kept in sync by trigger)
     total_count = getattr(profile, "profile_views", 0) or 0
 
     # Recent unique viewers (max 20)
-    recent_rows = (
-        db.query(ProfileViewLog)
-        .filter(
-            ProfileViewLog.profile_user_id == viewer_id,
-            ProfileViewLog.viewer_user_id.isnot(None),
+    recent_rows = []
+    if has_profile_view_logs:
+        recent_rows = _db_fallback(
+            db,
+            "profile_views.recent_rows",
+            [],
+            lambda: (
+                db.query(ProfileViewLog)
+                .filter(
+                    ProfileViewLog.profile_user_id == viewer_id,
+                    ProfileViewLog.viewer_user_id.isnot(None),
+                )
+                .order_by(ProfileViewLog.viewed_at.desc())
+                .limit(20)
+                .all()
+            ),
         )
-        .order_by(ProfileViewLog.viewed_at.desc())
-        .limit(20)
-        .all()
-    )
     viewer_ids = list({r.viewer_user_id for r in recent_rows})
     viewer_profiles = (
         db.query(Profile).filter(Profile.telegram_id.in_(viewer_ids)).all()
@@ -446,29 +511,59 @@ def get_public_profile(
     tid = profile.telegram_id
     viewer_id = _optional_viewer(authorization)
 
+    has_posts = _table_exists(db, "posts")
+    has_skills = _table_exists(db, "skills")
+    has_skill_endorsements = _table_exists(db, "skill_endorsements")
+    has_connections = _table_exists(db, "connections")
+    has_follows = _table_exists(db, "follows")
+    has_courses = _table_exists(db, "courses")
+    has_course_enrollments = _table_exists(db, "course_enrollments")
+    has_course_certificates = _table_exists(db, "course_certificates")
+    has_lesson_progress = _table_exists(db, "lesson_progress")
+    has_activity_log = _table_exists(db, "activity_log")
+
     # ── Side effect: log profile view ─────────────────────────────────────────
     _maybe_log_view(db, tid, viewer_id)
 
     # ── Posts count ───────────────────────────────────────────────────────────
-    posts_count = (
-        db.query(func.count(Post.id)).filter(Post.author_id == tid).scalar()
-    ) or 0
+    posts_count = 0
+    if has_posts:
+        posts_count = _db_fallback(
+            db,
+            "posts_count",
+            0,
+            lambda: (
+                db.query(func.count(Post.id)).filter(Post.author_id == tid).scalar()
+            ) or 0,
+        )
 
     # ── Skills (with viewer endorsement flag) ─────────────────────────────────
-    skills_rows = (
-        db.query(Skill)
-        .filter(Skill.user_id == tid)
-        .order_by(Skill.display_order.asc(), Skill.endorsement_count.desc())
-        .all()
-    )
+    skills_rows = []
+    if has_skills:
+        skills_rows = _db_fallback(
+            db,
+            "skills_rows",
+            [],
+            lambda: (
+                db.query(Skill)
+                .filter(Skill.user_id == tid)
+                .order_by(Skill.display_order.asc(), Skill.endorsement_count.desc())
+                .all()
+            ),
+        )
     endorsed_ids: set[int] = set()
-    if viewer_id and skills_rows:
+    if viewer_id and skills_rows and has_skill_endorsements:
         endorsed_ids = {
             row.skill_id
-            for row in db.query(SkillEndorsement.skill_id).filter(
-                SkillEndorsement.endorser_id == viewer_id,
-                SkillEndorsement.skill_id.in_([s.id for s in skills_rows]),
-            ).all()
+            for row in _db_fallback(
+                db,
+                "skills_endorsed_ids",
+                [],
+                lambda: db.query(SkillEndorsement.skill_id).filter(
+                    SkillEndorsement.endorser_id == viewer_id,
+                    SkillEndorsement.skill_id.in_([s.id for s in skills_rows]),
+                ).all(),
+            )
         }
     skills = [
         {
@@ -487,16 +582,21 @@ def get_public_profile(
     connection_id: Optional[int] = None
     is_following    = False
     is_followed_by  = False
-    if viewer_id and viewer_id != tid:
-        conn_row = (
-            db.query(Connection)
-            .filter(
-                or_(
-                    and_(Connection.requester_id == viewer_id, Connection.receiver_id == tid),
-                    and_(Connection.requester_id == tid,       Connection.receiver_id == viewer_id),
+    if viewer_id and viewer_id != tid and has_connections:
+        conn_row = _db_fallback(
+            db,
+            "connection_status",
+            None,
+            lambda: (
+                db.query(Connection)
+                .filter(
+                    or_(
+                        and_(Connection.requester_id == viewer_id, Connection.receiver_id == tid),
+                        and_(Connection.requester_id == tid,       Connection.receiver_id == viewer_id),
+                    )
                 )
-            )
-            .first()
+                .first()
+            ),
         )
         if conn_row:
             connection_id = conn_row.id
@@ -507,164 +607,234 @@ def get_public_profile(
             elif conn_row.status == "pending" and conn_row.receiver_id == viewer_id:
                 connection_status = "pending_received"
 
+    if viewer_id and viewer_id != tid and has_follows:
         from app.models.social_models import Follow as FollowModel
-        is_following = db.query(
-            db.query(FollowModel).filter(
-                FollowModel.follower_id == viewer_id,
-                FollowModel.following_id == tid,
-            ).exists()
-        ).scalar() or False
-        is_followed_by = db.query(
-            db.query(FollowModel).filter(
-                FollowModel.follower_id == tid,
-                FollowModel.following_id == viewer_id,
-            ).exists()
-        ).scalar() or False
+        is_following = bool(_db_fallback(
+            db,
+            "is_following",
+            False,
+            lambda: db.query(
+                db.query(FollowModel).filter(
+                    FollowModel.follower_id == viewer_id,
+                    FollowModel.following_id == tid,
+                ).exists()
+            ).scalar() or False,
+        ))
+        is_followed_by = bool(_db_fallback(
+            db,
+            "is_followed_by",
+            False,
+            lambda: db.query(
+                db.query(FollowModel).filter(
+                    FollowModel.follower_id == tid,
+                    FollowModel.following_id == viewer_id,
+                ).exists()
+            ).scalar() or False,
+        ))
 
     # can_message: connected OR teacher-student (either direction)
     can_message = connection_status == "accepted"
-    if not can_message and viewer_id and viewer_id != tid:
-        teacher_student = db.execute(text("""
-            SELECT 1 FROM course_enrollments ce
-            JOIN courses c ON c.id = ce.course_id
-            WHERE (ce.student_id = :viewer AND c.teacher_id = :tid)
-               OR (ce.student_id = :tid    AND c.teacher_id = :viewer)
-            LIMIT 1
-        """), {"viewer": viewer_id, "tid": tid}).first()
+    if not can_message and viewer_id and viewer_id != tid and has_course_enrollments and has_courses:
+        teacher_student = _db_fallback(
+            db,
+            "teacher_student_link",
+            None,
+            lambda: db.execute(text("""
+                SELECT 1 FROM course_enrollments ce
+                JOIN courses c ON c.id = ce.course_id
+                WHERE (ce.student_id = :viewer AND c.teacher_id = :tid)
+                   OR (ce.student_id = :tid    AND c.teacher_id = :viewer)
+                LIMIT 1
+            """), {"viewer": viewer_id, "tid": tid}).first(),
+        )
         can_message = teacher_student is not None
 
     # ── Stats via raw SQL (Supabase tables accessed via direct Postgres) ──────
-    stats_row = db.execute(text("""
-        SELECT
-            -- accepted connections count for this user
-            (
+    connections_count = profile.connections_count or 0
+    mutual_connections = 0
+    if has_connections:
+        connections_count = _db_fallback(
+            db,
+            "stats.connections_count",
+            connections_count,
+            lambda: db.execute(text("""
                 SELECT COUNT(*) FROM connections
-                WHERE (requester_id = :tid OR receiver_id = :tid) AND status = 'accepted'
-            ) AS connections_count,
+                WHERE (requester_id = :tid OR receiver_id = :tid)
+                  AND status = 'accepted'
+            """), {"tid": tid}).scalar() or 0,
+        )
+        if viewer_id:
+            mutual_connections = _db_fallback(
+                db,
+                "stats.mutual_connections",
+                0,
+                lambda: db.execute(text("""
+                    SELECT COUNT(*) FROM (
+                        SELECT CASE WHEN c1.requester_id = :tid THEN c1.receiver_id
+                                    ELSE c1.requester_id END AS uid
+                        FROM connections c1
+                        WHERE (c1.requester_id = :tid OR c1.receiver_id = :tid)
+                          AND c1.status = 'accepted'
+                    ) pc
+                    JOIN (
+                        SELECT CASE WHEN c2.requester_id = :viewer THEN c2.receiver_id
+                                    ELSE c2.requester_id END AS uid
+                        FROM connections c2
+                        WHERE (c2.requester_id = :viewer OR c2.receiver_id = :viewer)
+                          AND c2.status = 'accepted'
+                    ) vc ON pc.uid = vc.uid
+                """), {"tid": tid, "viewer": viewer_id}).scalar() or 0,
+            )
 
-            -- mutual connections with viewer (0 if not logged in)
-            (
-                SELECT COUNT(*) FROM (
-                    SELECT CASE WHEN c1.requester_id = :tid THEN c1.receiver_id
-                                ELSE c1.requester_id END AS uid
-                    FROM connections c1
-                    WHERE (c1.requester_id = :tid OR c1.receiver_id = :tid)
-                      AND c1.status = 'accepted'
-                ) pc
-                JOIN (
-                    SELECT CASE WHEN c2.requester_id = :viewer THEN c2.receiver_id
-                                ELSE c2.requester_id END AS uid
-                    FROM connections c2
-                    WHERE (c2.requester_id = :viewer OR c2.receiver_id = :viewer)
-                      AND c2.status = 'accepted'
-                ) vc ON pc.uid = vc.uid
-            ) AS mutual_connections,
+    courses_enrolled = 0
+    if has_course_enrollments:
+        courses_enrolled = _db_fallback(
+            db,
+            "stats.courses_enrolled",
+            0,
+            lambda: db.execute(text("""
+                SELECT COUNT(*) FROM course_enrollments WHERE student_id = :tid
+            """), {"tid": tid}).scalar() or 0,
+        )
 
-            -- courses enrolled
-            (SELECT COUNT(*) FROM course_enrollments WHERE student_id = :tid)
-                AS courses_enrolled,
-
-            -- courses completed (has a certificate)
-            (SELECT COUNT(*) FROM course_certificates WHERE student_id = :tid)
-                AS courses_completed,
-
-            -- certificates count
-            (SELECT COUNT(*) FROM course_certificates WHERE student_id = :tid)
-                AS certificates_count
-    """), {"tid": tid, "viewer": viewer_id or 0}).mappings().first()
+    certificates_count = 0
+    if has_course_certificates:
+        certificates_count = _db_fallback(
+            db,
+            "stats.certificates_count",
+            0,
+            lambda: db.execute(text("""
+                SELECT COUNT(*) FROM course_certificates WHERE student_id = :tid
+            """), {"tid": tid}).scalar() or 0,
+        )
 
     stats = {
-        "connections_count":  int(stats_row["connections_count"]),
-        "mutual_connections": int(stats_row["mutual_connections"]),
-        "courses_enrolled":   int(stats_row["courses_enrolled"]),
-        "courses_completed":  int(stats_row["courses_completed"]),
-        "certificates_count": int(stats_row["certificates_count"]),
+        "connections_count":  int(connections_count),
+        "mutual_connections": int(mutual_connections),
+        "courses_enrolled":   int(courses_enrolled),
+        "courses_completed":  int(certificates_count),
+        "certificates_count": int(certificates_count),
     }
 
     # ── Certificates (max 10, most recent first) ──────────────────────────────
-    cert_rows = db.execute(text("""
-        SELECT
-            cc.id,
-            cc.certificate_id,
-            cc.course_id,
-            c.title AS course_name,
-            cc.completed_lessons,
-            cc.total_lessons,
-            cc.issued_at,
-            cc.share_token,
-            cc.skill_tags
-        FROM course_certificates cc
-        LEFT JOIN courses c ON c.id = cc.course_id
-        WHERE cc.student_id = :tid
-        ORDER BY cc.issued_at DESC
-        LIMIT 10
-    """), {"tid": tid}).mappings().fetchall()
+    certificates = []
+    if has_course_certificates:
+        share_token_sql = "cc.share_token" if _column_exists(db, "course_certificates", "share_token") else "NULL AS share_token"
+        skill_tags_sql = "cc.skill_tags" if _column_exists(db, "course_certificates", "skill_tags") else "'[]'::jsonb AS skill_tags"
+        course_name_sql = "c.title AS course_name" if has_courses else "NULL AS course_name"
+        course_join_sql = "LEFT JOIN courses c ON c.id = cc.course_id" if has_courses else ""
+        cert_rows = _db_fallback(
+            db,
+            "certificates",
+            [],
+            lambda: db.execute(text(f"""
+                SELECT
+                    cc.id,
+                    cc.certificate_id,
+                    cc.course_id,
+                    {course_name_sql},
+                    cc.completed_lessons,
+                    cc.total_lessons,
+                    cc.issued_at,
+                    {share_token_sql},
+                    {skill_tags_sql}
+                FROM course_certificates cc
+                {course_join_sql}
+                WHERE cc.student_id = :tid
+                ORDER BY cc.issued_at DESC
+                LIMIT 10
+            """), {"tid": tid}).mappings().fetchall(),
+        )
 
-    certificates = [
-        {
-            "id":           row["id"],
-            "certificate_id": row["certificate_id"],
-            "course_title": row["course_name"] or "",
-            "score":        (
-                round(row["completed_lessons"] / row["total_lessons"] * 100)
-                if row["total_lessons"] else 100
-            ),
-            "issued_at":    row["issued_at"].isoformat() if row["issued_at"] else None,
-            "share_token":  row["share_token"],
-            "skill_tags":   row["skill_tags"] or [],
-        }
-        for row in cert_rows
-    ]
+        certificates = [
+            {
+                "id":             row["id"],
+                "certificate_id": row["certificate_id"],
+                "course_title":   row["course_name"] or "",
+                "score":          (
+                    round(row["completed_lessons"] / row["total_lessons"] * 100)
+                    if row["total_lessons"] else 100
+                ),
+                "issued_at":      row["issued_at"].isoformat() if row["issued_at"] else None,
+                "share_token":    row["share_token"],
+                "skill_tags":     row["skill_tags"] or [],
+            }
+            for row in cert_rows
+        ]
 
     # ── Active courses (enrolled, not yet completed, max 3) ───────────────────
-    active_rows = db.execute(text("""
-        SELECT
-            ce.course_id,
-            c.title AS course_name,
-            c.total_lessons,
-            p.first_name AS teacher_name,
-            COALESCE(lp.done_count, 0) AS lessons_done
-        FROM course_enrollments ce
-        JOIN courses c ON c.id = ce.course_id
-        LEFT JOIN profiles p ON p.telegram_id = c.teacher_id
-        LEFT JOIN (
-            SELECT course_id, COUNT(*) AS done_count
-            FROM lesson_progress
-            WHERE student_id = :tid AND is_completed = TRUE
-            GROUP BY course_id
-        ) lp ON lp.course_id = ce.course_id
-        WHERE ce.student_id = :tid
-          AND ce.is_active = TRUE
-          -- exclude already-certificated courses
-          AND ce.course_id NOT IN (
-              SELECT course_id FROM course_certificates WHERE student_id = :tid
-          )
-        ORDER BY ce.created_at DESC
-        LIMIT 3
-    """), {"tid": tid}).mappings().fetchall()
+    active_courses = []
+    if has_course_enrollments and has_courses:
+        lesson_progress_join = """
+            LEFT JOIN (
+                SELECT course_id, COUNT(*) AS done_count
+                FROM lesson_progress
+                WHERE student_id = :tid AND is_completed = TRUE
+                GROUP BY course_id
+            ) lp ON lp.course_id = ce.course_id
+        """ if has_lesson_progress else """
+            LEFT JOIN (
+                SELECT NULL::integer AS course_id, 0::bigint AS done_count
+            ) lp ON 1 = 0
+        """
+        active_filters = ["ce.student_id = :tid"]
+        if _column_exists(db, "course_enrollments", "is_active"):
+            active_filters.append("ce.is_active = TRUE")
+        if has_course_certificates:
+            active_filters.append(
+                "ce.course_id NOT IN (SELECT course_id FROM course_certificates WHERE student_id = :tid)"
+            )
 
-    active_courses = [
-        {
-            "id":               row["course_id"],
-            "title":            row["course_name"] or "",
-            "thumbnail_url":    None,
-            "progress_percent": (
-                round(row["lessons_done"] / row["total_lessons"] * 100)
-                if row["total_lessons"] else 0
-            ),
-            "teacher_name":     row["teacher_name"] or "",
-        }
-        for row in active_rows
-    ]
+        active_rows = _db_fallback(
+            db,
+            "active_courses",
+            [],
+            lambda: db.execute(text(f"""
+                SELECT
+                    ce.course_id,
+                    c.title AS course_name,
+                    c.total_lessons,
+                    p.first_name AS teacher_name,
+                    COALESCE(lp.done_count, 0) AS lessons_done
+                FROM course_enrollments ce
+                JOIN courses c ON c.id = ce.course_id
+                LEFT JOIN profiles p ON p.telegram_id = c.teacher_id
+                {lesson_progress_join}
+                WHERE {" AND ".join(active_filters)}
+                ORDER BY ce.created_at DESC
+                LIMIT 3
+            """), {"tid": tid}).mappings().fetchall(),
+        )
+
+        active_courses = [
+            {
+                "id":               row["course_id"],
+                "title":            row["course_name"] or "",
+                "thumbnail_url":    None,
+                "progress_percent": (
+                    round(row["lessons_done"] / row["total_lessons"] * 100)
+                    if row["total_lessons"] else 0
+                ),
+                "teacher_name":     row["teacher_name"] or "",
+            }
+            for row in active_rows
+        ]
 
     # ── Recent activity (last 10 from activity_log) ───────────────────────────
-    activity_rows = (
-        db.query(ActivityLog)
-        .filter(ActivityLog.user_id == tid)
-        .order_by(ActivityLog.created_at.desc())
-        .limit(10)
-        .all()
-    )
+    activity_rows = []
+    if has_activity_log:
+        activity_rows = _db_fallback(
+            db,
+            "recent_activity",
+            [],
+            lambda: (
+                db.query(ActivityLog)
+                .filter(ActivityLog.user_id == tid)
+                .order_by(ActivityLog.created_at.desc())
+                .limit(10)
+                .all()
+            ),
+        )
     recent_activity = [
         {
             "id":             a.id,
