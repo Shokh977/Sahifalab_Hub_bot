@@ -671,7 +671,7 @@ def get_public_profile(
             "activity_type":  a.activity_type,
             "reference_id":   a.reference_id,
             "reference_type": a.reference_type,
-            "metadata":       a.metadata,
+            "metadata":       a.activity_metadata,
             "created_at":     a.created_at.isoformat(),
         }
         for a in activity_rows
