@@ -255,7 +255,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/login" element={<LoginPage />} />
 
         {/* ── Fully public — guests welcome, actions guarded in-component ── */}
-        <Route path="/"                element={<HomePage />} />
+        <Route path="/"                element={<AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>} />
         {/* Nav aliases — new canonical paths */}
         <Route path="/feed"            element={<AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>} />
         <Route path="/network"         element={<AppLayout rightSidebar={<NetworkRightSidebar />} maxWidth="max-w-[760px]"><NetworkPage /></AppLayout>} />
