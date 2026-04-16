@@ -85,8 +85,8 @@ def _log_activity(db: Session, user_id: int, other_id: int) -> None:
         ON CONFLICT (user_id, activity_type, reference_id, reference_type)
         DO NOTHING
     """), {
-        "uid1": user_id,  "ref1": str(other_id),  "ref1_int": other_id,
-        "uid2": other_id, "ref2": str(user_id),   "ref2_int": user_id,
+        "uid1": user_id,  "ref1": other_id,  "ref1_int": other_id,
+        "uid2": other_id, "ref2": user_id,   "ref2_int": user_id,
     })
 
 
