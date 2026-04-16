@@ -33,12 +33,22 @@ class Profile(Base):
     # Social ecosystem columns
     followers_count         = Column(Integer, default=0)
     following_count         = Column(Integer, default=0)
+    connections_count       = Column(Integer, default=0)
     bio                     = Column(Text, nullable=True)
     about_me                = Column(Text, nullable=True)
     # New gamification columns (038_xp_gamification)
     total_focus_minutes     = Column(Integer, default=0)
     daily_quiz_xp           = Column(Integer, default=0)
     daily_quiz_xp_reset_at  = Column(DateTime(timezone=True), nullable=True)
+    # Profile extension columns (043_profile_extension)
+    headline           = Column(String(120), nullable=True)
+    location_city      = Column(String(255), nullable=True)
+    cover_image_url    = Column(String(1000), nullable=True)
+    website_url        = Column(String(500), nullable=True)
+    profile_views      = Column(Integer, default=0)
+    profile_views_week = Column(Integer, default=0)
+    is_verified        = Column(Boolean, default=False)
+    account_type       = Column(String(50), default='student')   # student | teacher | company | admin
 
 
 class AuthCode(Base):

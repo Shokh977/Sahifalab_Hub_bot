@@ -4,15 +4,19 @@ SAHIFALAB — Notification endpoints
 Endpoints:
   GET  /api/notifications              — paginated feed (keyset cursor, selective columns)
   GET  /api/notifications/unread-count — lightweight unread badge count
+  GET  /api/notifications/{id}         — fetch single notification by id
   POST /api/notifications/read         — mark specific or all notifications as read (RPC)
   POST /api/notifications/create       — internal: create a notification for a user
+  POST /api/notifications/push-subscribe   — register browser push subscription
+  DELETE /api/notifications/push-subscribe — remove push subscription
 
 All reads use targeted column selection (never SELECT *).
 """
 from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional, List
-import os, logging, httpx
+import os, logging, httpx, json, asyncio
+from functools import partial
 
 from app.services.auth_service import decode_token
 
@@ -151,6 +155,41 @@ async def mark_read(
         raise HTTPException(500, "Internal server error")
 
 
+# ── GET /notifications/{id} — single item (used by Realtime fetchById) ───────
+# Must be declared AFTER all explicit string routes (/unread-count, /read)
+# so FastAPI's router matches those first (int conversion rejects them anyway).
+
+@router.get("/{notification_id}")
+async def get_notification_by_id(
+    notification_id: int,
+    authorization: Optional[str] = Header(None),
+):
+    tid = await _get_tid(authorization)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{SUPABASE_URL}/rest/v1/notifications",
+                headers={**_headers_rep()},
+                params={
+                    "id": f"eq.{notification_id}",
+                    "user_id": f"eq.{tid}",
+                    "select": "id,type,category,meta,is_read,created_at,sender_id",
+                    "limit": "1",
+                },
+            )
+            if resp.status_code >= 400:
+                raise HTTPException(resp.status_code, "Failed to fetch notification")
+            rows = resp.json()
+            if not rows:
+                raise HTTPException(404, "Notification not found")
+            return rows[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"get_notification_by_id error: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
 # ── POST /notifications/create — create notification (called by backend) ─────
 
 class CreateNotificationRequest(BaseModel):
@@ -200,7 +239,7 @@ async def create_notification(
 
 # ── Helper: fire-and-forget notification from other backend services ─────────
 
-async def send_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: dict = {}):
+async def send_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: Optional[dict] = None):
     """
     Utility for other backend endpoints to create notifications without going through HTTP.
     Inserts directly into Supabase — triggers Realtime broadcast.
@@ -219,10 +258,260 @@ async def send_notification(user_id: int, notif_type: str, category: str = "SOCI
                     "p_user_id": user_id,
                     "p_type": notif_type,
                     "p_category": category,
-                    "p_meta": meta,
+                    "p_meta": meta or {},
                 },
             )
             if resp.status_code >= 400:
                 logger.warning(f"send_notification failed for user {user_id}: {resp.text}")
+                return
+            # Also deliver via Web Push (non-blocking)
+            notif_id = resp.json()
+            asyncio.create_task(
+                _dispatch_push(user_id, notif_type, meta or {}, notif_id)
+            )
     except Exception as e:
         logger.warning(f"send_notification exception for user {user_id}: {e}")
+
+
+# ── Web Push dispatch ────────────────────────────────────────────────────────
+
+VAPID_PRIVATE_KEY  = os.getenv("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY   = os.getenv("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIM_EMAIL  = os.getenv("VAPID_CLAIM_EMAIL", "mailto:admin@sahifalab.com")
+
+# Human-readable push titles per notification type
+_PUSH_TITLES: dict[str, str] = {
+    "follow":       "Yangi obunachi",
+    "like":         "Layk",
+    "comment":      "Izoh",
+    "repost":       "Repost",
+    "mention":      "Eslatma",
+    "level_up":     "Yangi daraja 🎉",
+    "achievement":  "Yutuq ochildi 🏅",
+    "xp_reward":    "XP mukofot ⚡",
+    "course_complete": "Kurs yakunlandi 🎓",
+    "certificate":  "Sertifikat tayyor 🏆",
+    "quiz_pass":    "Test o'tdi ✅",
+    "new_student":  "Yangi talaba",
+    "new_sale":     "Yangi sotish 💰",
+    "payout":       "To'lov o'tkazildi 💳",
+    "welcome":      "Sahifalab'ga xush kelibsiz! 🚀",
+}
+
+_PUSH_BODIES: dict[str, str] = {
+    "follow":       "Yangi foydalanuvchi sizga obuna bo'ldi.",
+    "like":         "Sizning postingizga like bosildi.",
+    "comment":      "Postingizga yangi izoh qoldirildi.",
+    "repost":       "Postingiz repost qilindi.",
+    "mention":      "Siz eslatib o'tildi.",
+    "level_up":     "Yangi darajaga ko'tarildingiz!",
+    "achievement":  "Yangi yutuq ochildi!",
+    "xp_reward":    "Postingiz ko'p view yig'di.",
+    "course_complete": "Kurs muvaffaqiyatli yakunlandi!",
+    "certificate":  "Sertifikatingiz tayyor.",
+    "quiz_pass":    "Testni muvaffaqiyatli topshirdingiz.",
+    "new_student":  "Yangi o'quvchi kursingizga yozildi.",
+    "new_sale":     "Yangi daromad tushdi.",
+    "payout":       "Daromadingiz hisobingizga o'tkazildi.",
+    "welcome":      "Ilm yo'liga xush kelibsiz!",
+}
+
+
+async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: object):
+    """Fetch push subscriptions for user and send Web Push to each device."""
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        return  # VAPID not configured — skip silently
+
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        logger.warning("pywebpush not installed — skipping push delivery")
+        return
+
+    # Fetch subscriptions from Supabase
+    try:
+        async with httpx.AsyncClient(timeout=8) as client:
+            resp = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/get_push_subscriptions_for_user",
+                headers=_headers_rep(),
+                json={"p_user_id": user_id},
+            )
+            if resp.status_code >= 400 or not resp.json():
+                return
+            subscriptions = resp.json()
+    except Exception as e:
+        logger.warning(f"push: failed to fetch subscriptions for {user_id}: {e}")
+        return
+
+    # Build payload
+    actor = meta.get("actor_name") or meta.get("first_name", "")
+    title = _PUSH_TITLES.get(notif_type, "SAHIFALAB")
+    body  = _PUSH_BODIES.get(notif_type, "Yangi bildirishnoma")
+    if actor:
+        body = f"{actor}: {body}"
+
+    # Build route (mirrors notificationDictionary logic)
+    route = _push_route(notif_type, meta)
+
+    payload = json.dumps({
+        "title": title,
+        "body":  body,
+        "url":   route,
+        "tag":   notif_type,
+        "icon":  "/sahifalab.jpg",
+        "badge": "/sahifalab.jpg",
+    })
+
+    vapid_claims = {"sub": VAPID_CLAIM_EMAIL}
+
+    expired_ids: list[int] = []
+
+    for sub in subscriptions:
+        subscription_info = {
+            "endpoint": sub["endpoint"],
+            "keys": {
+                "p256dh": sub["p256dh"],
+                "auth":   sub["auth"],
+            },
+        }
+        try:
+            await asyncio.to_thread(
+                partial(
+                    webpush,
+                    subscription_info=subscription_info,
+                    data=payload,
+                    vapid_private_key=VAPID_PRIVATE_KEY,
+                    vapid_claims=vapid_claims,
+                )
+            )
+        except Exception as exc:
+            # 410 Gone = subscription expired → clean up
+            is_410 = (
+                hasattr(exc, "response") and
+                exc.response is not None and
+                exc.response.status_code == 410
+            )
+            if is_410:
+                expired_ids.append(sub["id"])
+            else:
+                logger.warning(f"push: send failed for sub {sub['id']}: {exc}")
+
+    # Remove expired subscriptions
+    if expired_ids:
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                for sid in expired_ids:
+                    await client.post(
+                        f"{SUPABASE_URL}/rest/v1/rpc/delete_push_subscription_by_id",
+                        headers=_headers(),
+                        json={"p_id": sid},
+                    )
+        except Exception as e:
+            logger.warning(f"push: failed to purge expired subs: {e}")
+
+
+def _push_route(notif_type: str, meta: dict) -> str:
+    """Mirror notificationDictionary.ts route() logic in Python."""
+    routes = {
+        "follow":          f"/profile/{meta.get('actor_id', '')}",
+        "like":            f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
+        "comment":         f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
+        "repost":          f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
+        "mention":         f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
+        "new_content":     f"/courses/{meta['course_id']}" if meta.get("course_id") else "/courses",
+        "course_complete": f"/courses/{meta['course_id']}" if meta.get("course_id") else "/courses",
+        "certificate":     f"/courses/{meta['course_id']}" if meta.get("course_id") else "/profile/me",
+        "quiz_pass":       f"/quiz/{meta['quiz_id']}"   if meta.get("quiz_id")   else "/quiz",
+        "new_student":     f"/courses/{meta['course_id']}" if meta.get("course_id") else "/teacher",
+        "new_sale":        f"/courses/{meta['course_id']}" if meta.get("course_id") else "/teacher",
+        "payout":          "/teacher",
+        "analytics_report":"/teacher",
+        "new_review":      f"/courses/{meta['course_id']}" if meta.get("course_id") else "/teacher",
+        "level_up":        "/profile/me",
+        "achievement":     "/profile/me",
+        "welcome":         "/profile/me",
+        "leaderboard_rank":"/leaderboard",
+    }
+    return routes.get(notif_type, "/notifications")
+
+
+# ── POST /push-subscribe ─────────────────────────────────────────────────────
+
+class PushSubscribeRequest(BaseModel):
+    endpoint:    str
+    p256dh:      str
+    auth:        str
+    user_agent:  Optional[str] = None
+
+
+@router.post("/push-subscribe")
+async def push_subscribe(
+    body: PushSubscribeRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Register or refresh a browser push subscription for the authenticated user."""
+    tid = await _get_tid(authorization)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/upsert_push_subscription",
+                headers=_headers_rep(),
+                json={
+                    "p_user_id":  tid,
+                    "p_endpoint": body.endpoint,
+                    "p256dh":     body.p256dh,
+                    "p_auth":     body.auth,
+                    "p_ua":       body.user_agent,
+                },
+            )
+            if resp.status_code >= 400:
+                logger.error(f"push_subscribe upsert error: {resp.text}")
+                raise HTTPException(resp.status_code, "Failed to save subscription")
+            return {"id": resp.json(), "vapid_public_key": VAPID_PUBLIC_KEY}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"push_subscribe error: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
+# ── DELETE /push-subscribe ───────────────────────────────────────────────────
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+
+@router.delete("/push-subscribe")
+async def push_unsubscribe(
+    body: PushUnsubscribeRequest,
+    authorization: Optional[str] = Header(None),
+):
+    """Remove a push subscription (user opted out or SW unregistered)."""
+    tid = await _get_tid(authorization)
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                f"{SUPABASE_URL}/rest/v1/rpc/delete_push_subscription",
+                headers=_headers(),
+                json={"p_user_id": tid, "p_endpoint": body.endpoint},
+            )
+            if resp.status_code >= 400:
+                logger.error(f"push_unsubscribe error: {resp.text}")
+                raise HTTPException(resp.status_code, "Failed to remove subscription")
+            return {"ok": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"push_unsubscribe error: {e}")
+        raise HTTPException(500, "Internal server error")
+
+
+# ── GET /push-vapid-key — public key for frontend subscription ────────────────
+
+@router.get("/push-vapid-key")
+async def get_vapid_public_key():
+    """Returns the VAPID public key so the frontend can subscribe."""
+    key = VAPID_PUBLIC_KEY
+    if not key:
+        raise HTTPException(503, "Push notifications not configured")
+    return {"vapid_public_key": key}

@@ -19,7 +19,7 @@ import {
   MOCK_RESOURCES, MOCK_AMBIENT_SOUNDS, MOCK_HEATMAP, MOCK_TEACHERS,
   MOCK_TEACHER_PROFILE, MOCK_TEACHER_ANALYTICS, MOCK_ADMIN_STATS,
   MOCK_PLATFORM_ANALYTICS, MOCK_HERO, MOCK_PAYMENT_ORDER, MOCK_LEADERBOARD,
-  MOCK_POSTS, MOCK_PUBLIC_PROFILE, MOCK_DISCOVER_USERS,
+  MOCK_POSTS, MOCK_PUBLIC_PROFILE, MOCK_OWN_PROFILE, MOCK_DISCOVER_USERS,
   MOCK_CONVERSATIONS, MOCK_MESSAGES,
 } from './mockData'
 import { MOCK_NOTIFICATIONS, computeUniqueSenderCount } from './mock_notifications'
@@ -396,6 +396,84 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
   if (m === 'get' && u === '/api/notifications') {
     return ok({ notifications: MOCK_NOTIFICATIONS, next_cursor: null }, config)
   }
+
+  // ── Search ────────────────────────────────────────────────────────────────
+  if (m === 'get' && u === '/api/search') {
+    const q = ((config.params?.q) ?? '').toString().toLowerCase()
+    const people = MOCK_DISCOVER_USERS(MOCK_USER.telegram_id)
+      .filter(u => (u.full_name ?? '').toLowerCase().includes(q) || (u.username ?? '').toLowerCase().includes(q))
+      .slice(0, 5)
+      .map(u => ({ id: u.telegram_id, name: u.full_name, username: u.username, avatar_url: u.photo_url, headline: u.headline }))
+    const courses = MOCK_COURSES
+      .filter(c => c.title.toLowerCase().includes(q))
+      .slice(0, 5)
+    return ok({ people, courses, jobs: [], posts: [] }, config)
+  }
+
+  // ── Connections ───────────────────────────────────────────────────────────
+  if (m === 'get' && u === '/api/connections') return ok([], config)
+  if (m === 'get' && u === '/api/connections/pending') return ok({ sent: [], received: [] }, config)
+  if (m === 'get' && u === '/api/connections/suggestions') {
+    const limit = Number(config.params?.limit ?? 3)
+    const suggestions = MOCK_LEADERBOARD
+      .filter(u => u.telegram_id !== MOCK_USER.telegram_id)
+      .slice(0, limit)
+      .map(u => ({
+        id: u.telegram_id,
+        name: u.first_name,
+        username: u.username,
+        avatar_url: u.photo_url,
+        headline: null as string | null,
+        level: u.level,
+      }))
+    return ok(suggestions, config)
+  }
+  if (m === 'post' && u === '/api/connections/request') return ok({ ok: true, id: 1, status: 'pending' }, config)
+  if (m === 'put'  && u.match(/^\/api\/connections\/\d+\/accept$/)) return ok({ ok: true }, config)
+  if (m === 'put'  && u.match(/^\/api\/connections\/\d+\/decline$/)) return ok({ ok: true }, config)
+  if (m === 'delete' && u.match(/^\/api\/connections\/\d+$/)) return ok({ ok: true }, config)
+
+  // ── Jobs ──────────────────────────────────────────────────────────────────
+  if (m === 'get' && u.startsWith('/api/jobs/skills/autocomplete')) return ok({ suggestions: [] }, config)
+  if (m === 'get' && u === '/api/jobs/matched') return ok({ jobs: [] }, config)
+  if (m === 'get' && u === '/api/jobs/mine') return ok({ jobs: [] }, config)
+  if (m === 'get' && u.startsWith('/api/jobs') && !u.match(/^\/api\/jobs\/\d+/)) return ok({ jobs: [], has_more: false, total: 0 }, config)
+  if (m === 'post' && u === '/api/jobs') return ok({ id: 1 }, config)
+  if (m === 'get' && u.match(/^\/api\/jobs\/\d+\/applicants$/)) return ok({ applicants: [] }, config)
+  if (m === 'patch' && u.match(/^\/api\/jobs\/\d+$/)) return ok({ ok: true }, config)
+  if (m === 'patch' && u.match(/^\/api\/jobs\/\d+\/applicants\/\d+$/)) return ok({ ok: true }, config)
+  if (m === 'delete' && u.match(/^\/api\/jobs\/\d+$/)) return ok({ ok: true }, config)
+  if (m === 'post' && u.match(/^\/api\/jobs\/\d+\/apply$/)) return ok({ ok: true }, config)
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+  if (m === 'get' && u === '/api/settings') return ok({
+    notification_prefs: { messages: true, connections: true, courses: true, weekly_digest: true, endorsements: true },
+    privacy_prefs:      { public_profile: true, show_activity: true },
+    preferred_theme:    'dark',
+    preferred_language: 'uz_latin',
+  }, config)
+  if (m === 'put' && u === '/api/settings')          return ok({ ok: true }, config)
+  if (m === 'put' && u === '/api/settings/password') return ok({ ok: true }, config)
+  if (m === 'put' && u === '/api/settings/email')    return ok({ ok: true }, config)
+  if (m === 'delete' && u === '/api/settings/account') return ok({ ok: true }, config)
+
+  // ── Profile public ────────────────────────────────────────────────────────
+  if (m === 'get' && u.startsWith('/api/profile/') && !u.includes('/views')) {
+    // Extract the username/id segment after /api/profile/
+    const seg = u.replace('/api/profile/', '')
+    const isOwnProfile =
+      seg === 'me' ||
+      seg === MOCK_USER.username ||
+      seg === String(MOCK_USER.telegram_id)
+    if (isOwnProfile) return ok(MOCK_OWN_PROFILE, config)
+    return ok(MOCK_PUBLIC_PROFILE(MOCK_USER.telegram_id, MOCK_USER.telegram_id), config)
+  }
+  if (m === 'put' && u === '/api/profile/me') return ok({ ok: true }, config)
+  if (m === 'get' && u === '/api/profile/me/views') return ok({ weekly_count: 42, total_count: 347, recent_viewers: [] }, config)
+
+  // ── Certificates ─────────────────────────────────────────────────────────
+  if (m === 'get'  && u.match(/^\/api\/certificates\/share\/.+$/)) return ok(null, config, 404)
+  if (m === 'post' && u.match(/^\/api\/certificates\/share\/\d+\/token$/)) return ok({ share_token: 'mock-token-123' }, config)
 
   // ── Fallback ──────────────────────────────────────────────────────────────
   console.warn(`[mockAdapter] ⚠️  Unmatched ${m.toUpperCase()} ${url} — returning {}`)

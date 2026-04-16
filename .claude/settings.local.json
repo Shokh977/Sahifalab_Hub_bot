@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(python -c \"import ast; ast.parse\\(open\\('app/main.py', encoding='utf-8'\\).read\\(\\)\\); print\\('main.py: OK'\\)\")",
-      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/v1/auth.py', encoding='utf-8'\\).read\\(\\)\\); print\\('auth.py: OK'\\)\")"
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app/api/v1/auth.py', encoding='utf-8'\\).read\\(\\)\\); print\\('auth.py: OK'\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(grep -E \"\\\\.\\(py|ts|tsx\\)$\")",
+      "Bash(cmd.exe /c \"cd \\\\\"d:\\\\My Data\\\\Coding\\\\SAHIFALAB\\\\Telegram App\\\\frontend\\\\\" && npx tsc --noEmit 2>&1\")"
     ]
   }
 }

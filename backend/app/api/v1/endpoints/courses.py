@@ -17,7 +17,7 @@ Teacher/Admin routes (Bearer JWT required):
   DELETE /api/courses/{id}           — delete course (owner or admin)
   GET    /api/courses/mine           — list calling teacher's own courses (all statuses)
 """
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional, List
 import os
@@ -26,6 +26,8 @@ import httpx
 import re
 
 from app.services.auth_service import decode_token
+from app.db.session import get_db
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -305,22 +307,25 @@ async def update_course(
     course_id: int,
     body: CourseUpdate,
     authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     """Teacher: update own course. Admin: update any course."""
     caller_id = await _resolve_teacher_id(authorization)
     _ensure_supabase()
 
-    # Fetch course to verify ownership
+    # Fetch course to verify ownership + capture current is_published state
     async with httpx.AsyncClient(timeout=10) as client:
         chk = await client.get(
             f"{SUPABASE_URL}/rest/v1/courses",
-            params={"id": f"eq.{course_id}", "select": "teacher_id"},
+            params={"id": f"eq.{course_id}",
+                    "select": "teacher_id,is_published,title,thumbnail_url,price,is_paid"},
             headers=_supabase_headers(),
         )
     rows = chk.json() if chk.status_code == 200 else []
     if not rows:
         raise HTTPException(status_code=404, detail="Course not found")
-    if rows[0]["teacher_id"] != caller_id and caller_id not in ADMIN_IDS:
+    existing_course = rows[0]
+    if existing_course["teacher_id"] != caller_id and caller_id not in ADMIN_IDS:
         raise HTTPException(status_code=403, detail="Not your course")
 
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -336,6 +341,27 @@ async def update_course(
         )
     if res.status_code not in (200, 201, 204):
         raise HTTPException(status_code=502, detail=f"Failed to update course: {res.text}")
+
+    # ── HOOK 5: course just published for the first time ──────────────────────
+    being_published = (
+        patch.get("is_published") is True
+        and not existing_course.get("is_published", False)
+    )
+    if being_published:
+        try:
+            from app.services.integration_service import hook_course_published
+            hook_course_published(
+                db,
+                teacher_id=caller_id,
+                course_id=course_id,
+                course_title=patch.get("title") or existing_course.get("title", f"Kurs #{course_id}"),
+                thumbnail_url=patch.get("thumbnail_url") or existing_course.get("thumbnail_url"),
+                price=patch.get("price") or existing_course.get("price"),
+                is_paid=bool(patch.get("is_paid") or existing_course.get("is_paid", False)),
+            )
+        except Exception as exc:
+            logger.warning("HOOK 5 course_published failed: %s", exc)
+
     rows = res.json()
     return rows[0] if isinstance(rows, list) and rows else {"ok": True}
 

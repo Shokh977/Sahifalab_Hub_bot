@@ -14,3 +14,4 @@ google-auth==2.38.0
 bcrypt==4.2.0
 Pillow==10.4.0
 brotli-asgi==1.6.0
+pywebpush==2.0.0

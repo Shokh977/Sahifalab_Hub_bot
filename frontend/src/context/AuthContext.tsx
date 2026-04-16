@@ -210,6 +210,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWebUser(prev => prev ? { ...prev, email } : prev)
   }, [])
 
+  // ── Listen for apiService token-expiry signal ──────────────────────────────
+  // When the interceptor detects a 401 on /api/auth/me, it dispatches 'auth:expired'.
+  // We clear the in-memory state here so the next AuthGuard check redirects to login.
+  useEffect(() => {
+    const handler = () => { setToken(null); setWebUser(null) }
+    window.addEventListener('auth:expired', handler)
+    return () => window.removeEventListener('auth:expired', handler)
+  }, [])
+
   // ── Derived values ─────────────────────────────────────────────────────────
 
   // Both TMA and web modes now store auth in webUser + token after the JWT exchange.

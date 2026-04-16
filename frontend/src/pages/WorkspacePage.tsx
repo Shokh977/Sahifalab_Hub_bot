@@ -20,8 +20,7 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutGrid, BookOpen, Timer, StickyNote, Briefcase, Pause, Zap } from 'lucide-react'
-import PageWrapper from '../components/PageWrapper'
+import { LayoutGrid, BookOpen, Timer, StickyNote, BookCheck, Pause, Zap } from 'lucide-react'
 import KanbanBoard, { type PlannerTask } from '../components/workspace/KanbanBoard'
 import { StudyTimer, type StudyTimerState } from './StudyPage'
 import NotesTab from '../components/workspace/NotesTab'
@@ -93,7 +92,7 @@ const WorkspacePage: React.FC = () => {
   const showMiniTimer = timerState.isRunning && activeTab !== 'focus'
 
   return (
-    <PageWrapper className="">
+    <div className="pb-8">
       {/* ── Header ────────────────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -8 }}
@@ -102,11 +101,11 @@ const WorkspacePage: React.FC = () => {
       >
         <div className="flex items-center gap-3 mb-1">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center shadow-glow-sm">
-            <Briefcase className="w-5 h-5 text-white" />
+            <BookCheck className="w-5 h-5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <h1 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
-              Ish joyi
+              O'qish maydoni
             </h1>
             <p className="text-xs text-slate-400 dark:text-slate-500">
               Reja, fokus va qaydlar — bitta joyda
@@ -225,7 +224,7 @@ const WorkspacePage: React.FC = () => {
           </div>
         )}
       </div>
-    </PageWrapper>
+    </div>
   )
 }
 

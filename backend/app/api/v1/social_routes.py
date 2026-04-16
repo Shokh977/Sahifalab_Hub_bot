@@ -12,6 +12,7 @@ from app.services.auth_service import decode_token
 from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, CommentUpdate, BulkViewRequest
 from app.services import social_service as svc
 from app.api.v1.endpoints.notifications import send_notification
+from app.services.integration_service import hook_post_created
 
 
 def _fire_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: dict = {}):
@@ -73,7 +74,11 @@ def create_post(
 ):
     if not body.content.strip() and not body.image_url:
         raise HTTPException(400, "Post must have text or an image")
-    return svc.create_post(db, user_id, body.content.strip(), body.image_url)
+    post = svc.create_post(db, user_id, body.content.strip(), body.image_url)
+    # HOOK 4: log post creation in activity_log
+    if post and post.get("id"):
+        hook_post_created(db, user_id, post["id"])
+    return post
 
 
 @router.get("/posts/feed")
@@ -117,6 +122,43 @@ def delete_post(
     if not svc.delete_post(db, post_id, user_id):
         raise HTTPException(404, "Post not found or not yours")
     return {"ok": True}
+
+
+# ── Saves (bookmarks) ────────────────────────────────────────────────────────
+
+@router.post("/posts/{post_id}/save")
+def save_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    svc.save_post(db, post_id, user_id)
+    return {"ok": True}
+
+
+@router.delete("/posts/{post_id}/save")
+def unsave_post(
+    post_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    svc.unsave_post(db, post_id, user_id)
+    return {"ok": True}
+
+
+# ── Poll vote ─────────────────────────────────────────────────────────────────
+
+@router.post("/posts/{post_id}/vote")
+def vote_poll(
+    post_id: int,
+    option_idx: int = 0,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    result = svc.vote_poll(db, post_id, user_id, option_idx)
+    if result is None:
+        raise HTTPException(404, "Poll not found")
+    return result
 
 
 # ── Views / Reposts / Shares ─────────────────────────────────────────────────

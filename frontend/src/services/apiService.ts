@@ -39,10 +39,12 @@ class ApiService {
         // Only log details to console (developer eyes only)
         console.error(`[API] ❌ ${status} ${url}`, detail, error?.response?.data)
 
-        // 401 on any endpoint except auth itself means the stored JWT is stale/invalid.
-        // Clear it so the next tma-init call (on re-open) issues a fresh token.
-        if (status === 401 && !url.includes('/api/auth/')) {
+        // 401 on /api/auth/me means the stored JWT is definitively invalid — clear it.
+        // We do NOT clear on other 401s (e.g. a single endpoint requiring extra perms)
+        // because that would silently log the user out mid-session.
+        if (status === 401 && url.includes('/api/auth/me')) {
           localStorage.removeItem('auth_token')
+          window.dispatchEvent(new CustomEvent('auth:expired'))
         }
 
         // Show SAFE toast notification — never expose raw backend details to users

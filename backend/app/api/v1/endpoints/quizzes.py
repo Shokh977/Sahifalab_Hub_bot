@@ -18,6 +18,7 @@ from app.schemas.schemas import (
 )
 from app.services.auth_service import decode_token, decode_token_payload
 from app.models.admin_models import AdminUser
+from app.services.integration_service import hook_quiz_passed
 
 router = APIRouter()
 
@@ -216,6 +217,19 @@ async def verify_quiz(
         logger.warning(
             "user_quiz_completion table missing — run migration 020. "
             "Scoring continues without XP dedup. Error: %s", exc
+        )
+
+    # ── HOOK 2: quiz/test passed for the first time ───────────────────────────
+    if xp_awarded:
+        # skill_tags: quizzes don't have a first-class skill_tags column yet —
+        # pass empty list; future migration can add it to the Quiz model.
+        hook_quiz_passed(
+            db,
+            user_id=telegram_id,
+            quiz_id=quiz_id,
+            quiz_title=quiz.title or f"Test #{quiz_id}",
+            score=percentage,
+            skill_tags=[],
         )
 
     ts = int(time.time())

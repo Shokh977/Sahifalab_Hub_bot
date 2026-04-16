@@ -649,6 +649,97 @@ export function MOCK_PUBLIC_PROFILE(targetId: number, myId: number) {
   }
 }
 
+// ── Own profile (flat ProfileData shape for /api/profile/:username own user) ──
+export const MOCK_OWN_PROFILE = {
+  telegram_id:        MOCK_USER.telegram_id,
+  username:           MOCK_USER.username,
+  first_name:         MOCK_USER.first_name,
+  photo_url:          MOCK_USER.photo_url,
+  cover_image_url:    'https://images.unsplash.com/photo-1517134191118-9d595e4c8c2b?w=1200&q=80',
+  headline:           'Full-stack dasturchi & SAHIFALAB admin | Python · React · FastAPI',
+  bio:                "To'liq stack dasturchi, open-source loyihalarga hissa qo'shaman. SAHIFALAB platformasini quruvchilardan biriman. Python, FastAPI, React, PostgreSQL va DevOps sohalari bo'yicha tajribaga egaman.",
+  location_city:      'Toshkent',
+  website_url:        'https://github.com/dev_tester',
+  account_type:       'admin',
+  is_verified:        true,
+  level:              MOCK_USER.level,
+  level_name:         'Senior Developer',
+  total_xp:           MOCK_USER.total_xp,
+  next_level_xp:      5_000,
+  xp_percent:         84,
+  focus_hours:        120,
+  profile_views:      347,
+  profile_views_week: 42,
+  connections_count:  28,
+  mutual_connections: 0,
+  courses_enrolled:   5,
+  courses_completed:  3,
+  certificates_count: 3,
+  connection_status:  'own' as const,
+  connection_id:      null,
+  profile_completeness: 92,
+  skills: [
+    { id: 1, skill_name: 'Python',     is_verified: true,  endorsement_count: 12, endorsed_by_viewer: false, display_order: 0 },
+    { id: 2, skill_name: 'FastAPI',    is_verified: true,  endorsement_count: 8,  endorsed_by_viewer: false, display_order: 1 },
+    { id: 3, skill_name: 'React',      is_verified: true,  endorsement_count: 9,  endorsed_by_viewer: false, display_order: 2 },
+    { id: 4, skill_name: 'TypeScript', is_verified: false, endorsement_count: 6,  endorsed_by_viewer: false, display_order: 3 },
+    { id: 5, skill_name: 'PostgreSQL', is_verified: true,  endorsement_count: 5,  endorsed_by_viewer: false, display_order: 4 },
+    { id: 6, skill_name: 'Docker',     is_verified: false, endorsement_count: 3,  endorsed_by_viewer: false, display_order: 5 },
+  ],
+  certificates: [
+    {
+      id: 1,
+      course_title: "Python dasturlash — boshlang'ichdan mutaxassisgacha",
+      score: 96,
+      issued_at: '2025-12-10T10:00:00Z',
+      share_token: 'mock-share-abc123',
+      skill_tags: ['Python', 'Backend', 'Automation'],
+    },
+    {
+      id: 2,
+      course_title: 'Ingliz tili: IELTS 7.0 ga tayyorlanish',
+      score: 88,
+      issued_at: '2026-01-22T10:00:00Z',
+      share_token: 'mock-share-def456',
+      skill_tags: ['IELTS', 'English'],
+    },
+    {
+      id: 3,
+      course_title: 'React va TypeScript: Professional kurs',
+      score: 93,
+      issued_at: '2026-02-15T10:00:00Z',
+      share_token: 'mock-share-ghi789',
+      skill_tags: ['React', 'TypeScript', 'Frontend'],
+    },
+  ],
+  active_courses: [
+    {
+      id: 4,
+      title: 'Data Science va Machine Learning',
+      thumbnail_url: 'https://images.unsplash.com/photo-1555949963-ff9fe0c870eb?w=400&q=80',
+      progress_percent: 62,
+      teacher_name: 'Barno Yusupova',
+    },
+    {
+      id: 5,
+      title: 'DevOps: Docker, CI/CD va Kubernetes',
+      thumbnail_url: 'https://images.unsplash.com/photo-1607799279861-4dd421887fb3?w=400&q=80',
+      progress_percent: 35,
+      teacher_name: 'Jahongir Nazarov',
+    },
+  ],
+  recent_activity: [
+    { activity_type: 'certificate_earned',   created_at: new Date(Date.now() - 1_296_000_000).toISOString(), metadata: { course_title: 'React va TypeScript: Professional kurs' } },
+    { activity_type: 'level_up',             created_at: new Date(Date.now() - 2_592_000_000).toISOString(), metadata: { level_name: 'Senior Developer' } },
+    { activity_type: 'skill_added',          created_at: new Date(Date.now() - 3_456_000_000).toISOString(), metadata: { skill_name: 'Docker' } },
+    { activity_type: 'course_enrolled',      created_at: new Date(Date.now() - 4_320_000_000).toISOString(), metadata: { course_title: 'DevOps: Docker, CI/CD va Kubernetes' } },
+    { activity_type: 'certificate_earned',   created_at: new Date(Date.now() - 5_184_000_000).toISOString(), metadata: { course_title: 'Ingliz tili: IELTS 7.0 ga tayyorlanish' } },
+    { activity_type: 'connection_made',      created_at: new Date(Date.now() - 6_912_000_000).toISOString(), metadata: {} },
+    { activity_type: 'post_created',         created_at: new Date(Date.now() - 8_640_000_000).toISOString(), metadata: {} },
+    { activity_type: 'achievement_unlocked', created_at: new Date(Date.now() - 10_368_000_000).toISOString(), metadata: { achievement_name: 'Kurs ustasi' } },
+  ],
+}
+
 // ── Discover users (users the current user does NOT follow) ──────────────────
 export function MOCK_DISCOVER_USERS(myId: number) {
   return MOCK_LEADERBOARD

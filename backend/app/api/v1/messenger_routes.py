@@ -3,12 +3,14 @@ Messenger API routes — conversations + direct messages (text/link only).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Header
+from sqlalchemy import or_, and_, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.schemas.social_schemas import MessageCreate
 from app.services import messenger_service as msvc
+from app.models.social_models import Connection
 
 router = APIRouter(prefix="/messenger", tags=["messenger"])
 
@@ -32,6 +34,32 @@ def list_conversations(
     return msvc.list_conversations(db, user_id)
 
 
+def _can_message(db: Session, sender_id: int, receiver_id: int) -> bool:
+    """
+    Returns True when sender_id may open a DM with receiver_id:
+      1. They have an accepted connection, OR
+      2. One is enrolled in a course the other teaches.
+    """
+    connected = db.query(Connection).filter(
+        or_(
+            and_(Connection.requester_id == sender_id,   Connection.receiver_id == receiver_id),
+            and_(Connection.requester_id == receiver_id, Connection.receiver_id == sender_id),
+        ),
+        Connection.status == "accepted",
+    ).first()
+    if connected:
+        return True
+
+    teacher_student = db.execute(text("""
+        SELECT 1 FROM course_enrollments ce
+        JOIN courses c ON c.id = ce.course_id
+        WHERE (ce.student_id = :sender AND c.teacher_id = :recv)
+           OR (ce.student_id = :recv   AND c.teacher_id = :sender)
+        LIMIT 1
+    """), {"sender": sender_id, "recv": receiver_id}).first()
+    return teacher_student is not None
+
+
 @router.post("/conversations/{other_user_id}")
 def get_or_create_conversation(
     other_user_id: int,
@@ -40,6 +68,11 @@ def get_or_create_conversation(
 ):
     if user_id == other_user_id:
         raise HTTPException(400, "Cannot message yourself")
+    if not _can_message(db, user_id, other_user_id):
+        raise HTTPException(
+            403,
+            detail="Xabar yuborish uchun avval bog'laning",
+        )
     return msvc.get_or_create_conversation(db, user_id, other_user_id)
 
 

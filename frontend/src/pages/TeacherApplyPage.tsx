@@ -8,7 +8,7 @@
  *  4. Backend sets role='teacher', status='pending', stores in teacher_profiles
  *  5. Page shows success / pending confirmation
  */
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -17,12 +17,12 @@ import {
   ArrowPathIcon,
   ArrowRightIcon,
   BanknotesIcon,
+  CheckCircleIcon,
   ExclamationCircleIcon,
   HomeIcon,
   PresentationChartLineIcon,
   TrophyIcon,
 } from '@heroicons/react/24/outline'
-import PageWrapper from '../components/PageWrapper'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
@@ -103,6 +103,9 @@ const TeacherApplyPage: React.FC = () => {
     form.course_idea.trim().length >= 20 &&
     form.motivation.trim().length >= 20
 
+  const formRef = useRef<HTMLFormElement>(null)
+  const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!isFormValid()) return
@@ -132,7 +135,7 @@ const TeacherApplyPage: React.FC = () => {
   // ── Success / already-pending ──────────────────────────────────────────────
   if (state === 'success' || state === 'already_pending') {
     return (
-      <PageWrapper>
+      <div className="pb-10">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -168,14 +171,14 @@ const TeacherApplyPage: React.FC = () => {
             </button>
           </div>
         </motion.div>
-      </PageWrapper>
+      </div>
     )
   }
 
   // ── Already active teacher ─────────────────────────────────────────────────
   if (state === 'already_teacher') {
     return (
-      <PageWrapper>
+      <div className="pb-10">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -193,35 +196,125 @@ const TeacherApplyPage: React.FC = () => {
             O'qituvchi paneli <ArrowRightIcon className="h-4 w-4" />
           </Link>
         </motion.div>
-      </PageWrapper>
+      </div>
     )
   }
 
   // ── Main application form ──────────────────────────────────────────────────
   return (
-    <PageWrapper>
-      {/* Hero */}
+    <div className="pb-10 space-y-6">
+
+      {/* ── SECTION 1: Hero ──────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-6"
+        className="relative overflow-hidden rounded-2xl p-8 text-center"
+        style={{
+          background: 'linear-gradient(135deg, rgba(232,121,47,0.18) 0%, rgba(196,74,26,0.10) 50%, rgba(139,42,16,0.06) 100%)',
+          border: '1px solid rgba(232,121,47,0.20)',
+        }}
       >
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 shadow-lg mb-4">
-          <AcademicCapIcon className="h-8 w-8 text-white" />
+        {/* Decorative blobs */}
+        <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10"
+             style={{ background: '#e8792f', filter: 'blur(32px)' }} />
+        <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full opacity-8"
+             style={{ background: '#e8792f', filter: 'blur(24px)' }} />
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+               style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}>
+            <AcademicCapIcon className="h-7 w-7 text-white" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white leading-tight">
+            Sahifalab'da o'qituvchi bo'ling 🎓
+          </h1>
+          <p className="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+            Bilimingizni ulashing, daromad oling,<br />
+            ming lab o'quvchilarga ta'sir qiling.
+            {user?.first_name && <span className="block mt-1 font-medium text-gray-700 dark:text-gray-300">Assalomu alaykum, {user.first_name}!</span>}
+          </p>
+          <button
+            onClick={scrollToForm}
+            className="mt-5 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm text-white transition-all active:scale-[0.97]"
+            style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}
+          >
+            O'qituvchi bo'lish <ArrowRightIcon className="h-4 w-4" />
+          </button>
         </div>
-        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">O'qituvchi bo'lish</h1>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto leading-relaxed">
-          Arizangizni to'ldiring — admin ko'rib chiqib, tasdiqlaydi.
-          {user?.first_name && ` Assalomu alaykum, ${user.first_name}!`}
-        </p>
       </motion.div>
 
-      {/* Benefits */}
+      {/* ── SECTION 2: How it works ───────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.04 }}
-        className="grid grid-cols-2 gap-2 mb-6"
+        transition={{ delay: 0.05 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Qanday ishlaydi?</h2>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { num: '1️⃣', title: 'Ariza topshir', desc: "Formani to'ldiring va admin tasdiqlashini kuting" },
+            { num: '2️⃣', title: 'Kurs yarating', desc: "Video va materiallar yuklang, narx belgilang" },
+            { num: '3️⃣', title: 'Daromad oling', desc: 'Har bir sotuvdan 70% siz olasiz' },
+          ].map(step => (
+            <div key={step.num} className="flex flex-col items-center text-center gap-2 p-3 rounded-xl"
+                 style={{ backgroundColor: 'rgba(232,121,47,0.05)', border: '1px solid rgba(232,121,47,0.10)' }}>
+              <span className="text-xl">{step.num}</span>
+              <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">{step.title}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* ── SECTION 3: Commission model ───────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-4">💰 Komissiya modeli</h2>
+
+        {/* 70/30 bar */}
+        <div className="rounded-xl overflow-hidden flex h-10 mb-4">
+          <div className="flex items-center justify-center text-xs font-bold text-white gap-1"
+               style={{ width: '70%', backgroundColor: '#e8792f' }}>
+            70% — Siz
+          </div>
+          <div className="flex items-center justify-center text-xs font-bold gap-1"
+               style={{ width: '30%', backgroundColor: 'var(--bg-tertiary, #24253a)', color: 'rgba(255,255,255,0.5)' }}>
+            30% — Platforma
+          </div>
+        </div>
+
+        {/* Example */}
+        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 text-sm space-y-1 mb-4">
+          <p className="text-gray-500 dark:text-gray-400">Misol: Kurs narxi <span className="font-semibold text-gray-900 dark:text-white">100,000 so'm</span></p>
+          <p className="text-gray-500 dark:text-gray-400">Siz olasiz: <span className="font-bold" style={{ color: '#e8792f' }}>70,000 so'm</span></p>
+          <p className="text-gray-500 dark:text-gray-400">Platforma: <span className="font-semibold text-gray-900 dark:text-white">30,000 so'm</span></p>
+        </div>
+
+        <div className="space-y-1.5">
+          {[
+            "To'lovlar har oy amalga oshiriladi",
+            "Minimal chiqarish: 50,000 so'm",
+            "O'qituvchi panelida hamma narsani kuzating",
+          ].map(item => (
+            <div key={item} className="flex items-start gap-2">
+              <CheckCircleIcon className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: '#e8792f' }} />
+              <p className="text-xs text-gray-600 dark:text-gray-300">{item}</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* ── SECTION 4: Benefits ───────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.10 }}
+        className="grid grid-cols-2 gap-2"
       >
         {BENEFITS.map(b => (
           <div key={b.title} className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
@@ -234,15 +327,16 @@ const TeacherApplyPage: React.FC = () => {
         ))}
       </motion.div>
 
-      {/* Application form */}
+      {/* ── SECTION 5: Application form ──────────────────────────────── */}
       <motion.form
+        ref={formRef}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
+        transition={{ delay: 0.12 }}
         onSubmit={handleSubmit}
-        className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 mb-5"
+        className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
       >
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Ariza shakli</h2>
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white">📋 Ariza topshirish</h2>
 
         {/* Specialization */}
         <Field label="Mutaxassislik" required hint="Masalan: Frontend dasturlash, Matematika, Ingliz tili...">
@@ -277,11 +371,7 @@ const TeacherApplyPage: React.FC = () => {
         </Field>
 
         {/* Bio */}
-        <Field
-          label="O'zingiz haqingizda"
-          required
-          hint="Kamida 20 ta belgi. Kim ekansiz, nima bilan shug'ullanasiz?"
-        >
+        <Field label="O'zingiz haqingizda" required hint="Kamida 20 ta belgi. Kim ekansiz, nima bilan shug'ullanasiz?">
           <textarea
             value={form.bio}
             onChange={updateField('bio')}
@@ -296,11 +386,7 @@ const TeacherApplyPage: React.FC = () => {
         </Field>
 
         {/* Course idea */}
-        <Field
-          label="Qanday kurs yaratmoqchisiz?"
-          required
-          hint="Kursning mavzusi, kimlar uchun mo'ljallangan, qanday natija beradi?"
-        >
+        <Field label="Qanday kurs yaratmoqchisiz?" required hint="Kursning mavzusi, kimlar uchun mo'ljallangan, qanday natija beradi?">
           <textarea
             value={form.course_idea}
             onChange={updateField('course_idea')}
@@ -315,11 +401,7 @@ const TeacherApplyPage: React.FC = () => {
         </Field>
 
         {/* Motivation */}
-        <Field
-          label="Nima uchun o'qituvchi bo'lmoqchisiz?"
-          required
-          hint="Motivatsiyangiz va maqsadingizni yozing (kamida 20 ta belgi)."
-        >
+        <Field label="Nima uchun o'qituvchi bo'lmoqchisiz?" required hint="Motivatsiyangiz va maqsadingizni yozing (kamida 20 ta belgi).">
           <textarea
             value={form.motivation}
             onChange={updateField('motivation')}
@@ -347,13 +429,21 @@ const TeacherApplyPage: React.FC = () => {
           )}
         </AnimatePresence>
 
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">
+          Arizalar 1–3 kun ichida ko'rib chiqiladi.
+        </p>
+
         {/* Submit */}
         <button
           type="submit"
           disabled={state === 'loading' || !isFormValid()}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] inline-flex items-center justify-center gap-1"
+          className="w-full py-4 rounded-2xl font-bold text-base text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] inline-flex items-center justify-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}
         >
-          {state === 'loading' ? <><ArrowPathIcon className="h-5 w-5 animate-spin" /> Yuborilmoqda...</> : <><AcademicCapIcon className="h-5 w-5" /> Ariza yuborish</>}
+          {state === 'loading'
+            ? <><ArrowPathIcon className="h-5 w-5 animate-spin" /> Yuborilmoqda...</>
+            : <><AcademicCapIcon className="h-5 w-5" /> Ariza yuborish</>
+          }
         </button>
       </motion.form>
 
@@ -364,7 +454,7 @@ const TeacherApplyPage: React.FC = () => {
       >
         <ArrowLeftIcon className="h-4 w-4" /> Ortga
       </button>
-    </PageWrapper>
+    </div>
   )
 }
 
