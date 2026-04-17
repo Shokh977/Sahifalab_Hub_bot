@@ -583,6 +583,7 @@ def get_suggestions(
     ]
 
 
+@router.get("/")
 @router.get("")
 def list_connections(
     search: Optional[str] = Query(None),
@@ -612,9 +613,9 @@ def list_connections(
         WHERE (c.requester_id = :vid OR c.receiver_id = :vid)
           AND c.status = 'accepted'
           AND (
-               :search IS NULL
-               OR p.first_name ILIKE '%' || :search || '%'
-               OR p.username   ILIKE '%' || :search || '%'
+               CAST(:search AS text) IS NULL
+               OR p.first_name ILIKE '%' || CAST(:search AS text) || '%'
+               OR p.username   ILIKE '%' || CAST(:search AS text) || '%'
           )
         ORDER BY c.accepted_at DESC
     """), {"vid": viewer_id, "search": search or None}).mappings().fetchall()

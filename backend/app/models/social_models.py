@@ -249,7 +249,7 @@ class ActivityLog(Base):
     activity_type  = Column(Text, nullable=False)   # see CHECK constraint in migration
     reference_id   = Column(Text, nullable=True)    # ID of related entity cast to text
     reference_type = Column(Text, nullable=True)    # 'course' | 'post' | 'certificate' | …
-    activity_metadata = Column(JSONB, nullable=True)   # extra display data (title, preview, …)
+    activity_metadata = Column("metadata", JSONB, nullable=True)   # DB column is "metadata"
     created_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
