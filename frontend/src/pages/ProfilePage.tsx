@@ -244,7 +244,7 @@ function normalizeProfile(raw: any): ProfileData {
 
 const ProfilePage: React.FC = () => {
   const { userId: rawParam } = useParams<{ userId: string }>()
-  const { user: authUser, isAuthenticated } = useAuth()
+  const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -267,6 +267,7 @@ const ProfilePage: React.FC = () => {
 
   // If param is "me", redirect to own profile username
   if (rawParam === 'me') {
+    if (authLoading) return <div className="flex-1 flex items-center justify-center min-h-[60vh]"><Loader2 className="w-7 h-7 animate-spin text-white/20" /></div>
     if (!isAuthenticated) return <Navigate to="/login" replace />
     if (myUsername) return <Navigate to={`/profile/${myUsername}`} replace />
     if (myId) return <Navigate to={`/profile/${myId}`} replace />
@@ -450,7 +451,10 @@ const ProfilePage: React.FC = () => {
     )
   }
 
-  const isOwn = profile.connection_status === 'own'
+  // isOwn: backend returns "own" when it can verify the viewer via JWT.
+  // Also check telegram_id directly as a fallback in case the auth header
+  // is stripped by a proxy/CDN layer and the backend falls back to "none".
+  const isOwn = profile.connection_status === 'own' || (!!myId && profile.telegram_id === myId)
 
   return (
     <>
