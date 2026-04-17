@@ -326,6 +326,7 @@ def _search_posts(db: Session, q: str, limit: int) -> list[dict]:
 # ENDPOINT
 # ══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/")
 @router.get("")
 def universal_search(
     q:    str         = Query(..., min_length=1, max_length=100),
@@ -350,22 +351,49 @@ def universal_search(
     a_limit = _ALL_LIMIT
 
     if type == "people":
-        return {"people": _search_people(db, q, viewer_id, limit)}
+        try:
+            return {"people": _search_people(db, q, viewer_id, limit)}
+        except Exception as exc:
+            logger.exception("_search_people failed for q=%r: %s", q, exc)
+            raise HTTPException(500, "Qidiruvda xatolik yuz berdi")
 
     if type == "courses":
-        return {"courses": _search_courses(db, q, limit)}
+        try:
+            return {"courses": _search_courses(db, q, limit)}
+        except Exception as exc:
+            logger.exception("_search_courses failed for q=%r: %s", q, exc)
+            raise HTTPException(500, "Qidiruvda xatolik yuz berdi")
 
     if type == "jobs":
-        return {"jobs": _search_jobs(db, q, limit)}
+        try:
+            return {"jobs": _search_jobs(db, q, limit)}
+        except Exception as exc:
+            logger.exception("_search_jobs failed for q=%r: %s", q, exc)
+            raise HTTPException(500, "Qidiruvda xatolik yuz berdi")
 
     if type == "posts":
-        return {"posts": _search_posts(db, q, limit)}
+        try:
+            return {"posts": _search_posts(db, q, limit)}
+        except Exception as exc:
+            logger.exception("_search_posts failed for q=%r: %s", q, exc)
+            raise HTTPException(500, "Qidiruvda xatolik yuz berdi")
 
-    # type == "all"
+    # type == "all" — run each section independently so one failure doesn't kill the response
+    def _safe(fn, *args):
+        try:
+            return fn(*args)
+        except Exception as exc:
+            logger.exception("search section %s failed for q=%r: %s", fn.__name__, q, exc)
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            return []
+
     return {
-        "people":  _search_people(db, q, viewer_id, a_limit),
-        "courses": _search_courses(db, q, a_limit),
-        "jobs":    _search_jobs(db, q, a_limit),
-        "posts":   _search_posts(db, q, a_limit),
+        "people":  _safe(_search_people, db, q, viewer_id, a_limit),
+        "courses": _safe(_search_courses, db, q, a_limit),
+        "jobs":    _safe(_search_jobs, db, q, a_limit),
+        "posts":   _safe(_search_posts, db, q, a_limit),
         "query":   q,
     }
