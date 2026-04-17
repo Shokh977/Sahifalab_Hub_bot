@@ -256,20 +256,21 @@ def accept_request(
 
     requester_id = conn.requester_id
 
-    # Auto-follow: receiver → requester (requester→receiver already exists from send_request)
-    _ensure_follow(db, viewer_id, requester_id)
-
-    # Increment connections_count for both parties
-    db.query(Profile).filter(Profile.telegram_id.in_([viewer_id, requester_id])).update(
-        {Profile.connections_count: Profile.connections_count + 1}, synchronize_session=False
-    )
-
     try:
+        # Auto-follow: receiver → requester (requester→receiver already exists from send_request)
+        _ensure_follow(db, viewer_id, requester_id)
+
+        # Increment connections_count for both parties (migration 049 column)
+        db.query(Profile).filter(Profile.telegram_id.in_([viewer_id, requester_id])).update(
+            {Profile.connections_count: Profile.connections_count + 1}, synchronize_session=False
+        )
+
         _log_activity(db, viewer_id, requester_id)
         db.commit()
         db.refresh(conn)
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        logger.exception("accept_request(%s) failed: %s", conn_id, exc)
         raise HTTPException(500, "Qabul qilishda xatolik")
 
     # HOOK 6: notify the requester that their request was accepted
