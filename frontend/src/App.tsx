@@ -243,6 +243,13 @@ const NotFoundPage: React.FC = () => {
   )
 }
 
+// Root route: Telegram mini app → simple MenuGrid home; web → social feed
+const RootRoute: React.FC = () => {
+  const { isTelegram } = usePlatform()
+  if (isTelegram) return <HomePage />
+  return <AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>
+}
+
 // All app routes — shared between both layout modes.
 // No AnimatePresence/motion.div wrapper — that was causing full-tree unmount/remount
 // on every navigation (the root cause of blinking). The layout shell (WebLayout/
@@ -255,7 +262,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/login" element={<LoginPage />} />
 
         {/* ── Fully public — guests welcome, actions guarded in-component ── */}
-        <Route path="/"                element={<AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>} />
+        <Route path="/"                element={<RootRoute />} />
         {/* Nav aliases — new canonical paths */}
         <Route path="/feed"            element={<AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>} />
         <Route path="/network"         element={<AppLayout rightSidebar={<NetworkRightSidebar />} maxWidth="max-w-[760px]"><NetworkPage /></AppLayout>} />
