@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { UserPlus, UserCheck } from 'lucide-react'
 import SidebarCard from './SidebarCard'
 import api from '../../services/apiService'
+import { useAuth } from '../../context/AuthContext'
 
 interface Suggestion {
   id: number
@@ -14,14 +15,16 @@ interface Suggestion {
 }
 
 const SuggestionsWidget: React.FC = () => {
+  const { isAuthenticated } = useAuth()
   const [items, setItems] = useState<Suggestion[]>([])
   const [connected, setConnected] = useState<Set<number>>(new Set())
 
   useEffect(() => {
+    if (!isAuthenticated) return
     api.client.get('/api/connections/suggestions', { params: { limit: 3 } })
       .then(r => setItems(Array.isArray(r.data) ? r.data.slice(0, 3) : []))
       .catch(() => {})
-  }, [])
+  }, [isAuthenticated])
 
   if (!items.length) return null
 

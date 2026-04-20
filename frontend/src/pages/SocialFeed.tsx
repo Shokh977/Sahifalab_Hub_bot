@@ -209,8 +209,8 @@ const SocialFeed: React.FC = () => {
   }, [])
 
   const fetchPosts = useCallback(async (pageNum: number, reset = false) => {
-    // Kuzatuv tab requires auth — skip API call for guests to avoid error toasts
-    if (tab === 'feed' && !user) {
+    // Both endpoints require auth — skip for guests to avoid error toasts
+    if (!user) {
       setLoading(false)
       setRefreshing(false)
       return
@@ -362,11 +362,11 @@ const SocialFeed: React.FC = () => {
                         : <Compass className="w-9 h-9 text-white/15" />
                       }
                     </div>
-                    {tab === 'feed' && !user ? (
+                    {!user ? (
                       <>
                         <h3 className="text-sm font-semibold text-white/40 mb-1">Kirish talab qilinadi</h3>
                         <p className="text-xs text-white/20 max-w-xs mx-auto leading-relaxed mb-4">
-                          Kuzatuv lentasini ko'rish uchun tizimga kiring
+                          Postlarni ko'rish uchun tizimga kiring
                         </p>
                         <Link
                           to="/login"

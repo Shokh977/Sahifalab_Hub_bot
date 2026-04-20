@@ -265,10 +265,6 @@ const AppRoutes: React.FC = () => {
         <Route path="/"                element={<RootRoute />} />
         {/* Nav aliases — new canonical paths */}
         <Route path="/feed"            element={<AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>} />
-        <Route path="/network"         element={<AppLayout rightSidebar={<NetworkRightSidebar />} maxWidth="max-w-[760px]"><NetworkPage /></AppLayout>} />
-        <Route path="/messages"        element={<SlouthMessenger />} />
-        <Route path="/messages/:conversationId" element={<SlouthMessenger />} />
-        <Route path="/jobs"            element={<AppLayout rightSidebar={<JobsRightSidebar />} maxWidth="max-w-[760px]"><JobsPage /></AppLayout>} />
         <Route path="/certificate/:share_token" element={<CertificatePage />} />
         {/* Legacy paths kept for backward compat */}
         <Route path="/social"          element={<Navigate to="/feed" replace />} />
@@ -284,6 +280,10 @@ const AppRoutes: React.FC = () => {
 
         {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
         <Route element={<AuthGuard />}>
+          <Route path="/network"         element={<AppLayout rightSidebar={<NetworkRightSidebar />} maxWidth="max-w-[760px]"><NetworkPage /></AppLayout>} />
+          <Route path="/messages"        element={<SlouthMessenger />} />
+          <Route path="/messages/:conversationId" element={<SlouthMessenger />} />
+          <Route path="/jobs"            element={<AppLayout rightSidebar={<JobsRightSidebar />} maxWidth="max-w-[760px]"><JobsPage /></AppLayout>} />
           <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
           <Route path="/workspace"      element={<AppLayout rightSidebar={<WorkspaceRightSidebar />} maxWidth="max-w-[760px]"><WorkspacePage /></AppLayout>} />
           <Route path="/read/:bookId"   element={<BookReaderPage />} />

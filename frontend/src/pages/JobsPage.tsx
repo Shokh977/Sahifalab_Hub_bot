@@ -818,7 +818,7 @@ const AllJobsTab: React.FC<{ onApply: (job: Job) => void }> = ({ onApply }) => {
       const params = new URLSearchParams({ page: p.toString(), page_size: '12' })
       if (search) params.set('q', search)
       if (jobType) params.set('job_type', jobType)
-      const res = await api.client.get(`/jobs?${params}`)
+      const res = await api.client.get(`/api/jobs?${params}`)
       const newJobs: Job[] = res.data.jobs || []
       setJobs(prev => reset ? newJobs : [...prev, ...newJobs])
       setHasMore(res.data.has_more ?? false)
