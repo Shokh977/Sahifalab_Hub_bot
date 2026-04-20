@@ -256,22 +256,33 @@ def accept_request(
 
     requester_id = conn.requester_id
 
+    # ── Critical: status + mutual follow ─────────────────────────────────────
     try:
-        # Auto-follow: receiver → requester (requester→receiver already exists from send_request)
         _ensure_follow(db, viewer_id, requester_id)
-
-        # Increment connections_count for both parties (migration 049 column)
-        db.query(Profile).filter(Profile.telegram_id.in_([viewer_id, requester_id])).update(
-            {Profile.connections_count: Profile.connections_count + 1}, synchronize_session=False
-        )
-
-        _log_activity(db, viewer_id, requester_id)
         db.commit()
         db.refresh(conn)
     except Exception as exc:
         db.rollback()
         logger.exception("accept_request(%s) failed: %s", conn_id, exc)
         raise HTTPException(500, "Qabul qilishda xatolik")
+
+    # ── Best-effort: connections_count (skipped if column not yet migrated) ──
+    try:
+        db.query(Profile).filter(Profile.telegram_id.in_([viewer_id, requester_id])).update(
+            {Profile.connections_count: Profile.connections_count + 1}, synchronize_session=False
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("accept_request(%s): connections_count update skipped: %s", conn_id, exc)
+
+    # ── Best-effort: activity log (skipped if constraint not yet migrated) ───
+    try:
+        _log_activity(db, viewer_id, requester_id)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("accept_request(%s): activity log skipped: %s", conn_id, exc)
 
     # HOOK 6: notify the requester that their request was accepted
     hook_connection_accepted(db, acceptor_id=viewer_id, requester_id=requester_id)
@@ -337,22 +348,25 @@ def remove_connection(
     was_accepted = conn.status == "accepted"
 
     db.delete(conn)
-
-    # Remove both follow relationships
     _remove_follow(db, user_a, user_b)
     _remove_follow(db, user_b, user_a)
-
-    if was_accepted:
-        db.query(Profile).filter(Profile.telegram_id.in_([user_a, user_b])).update(
-            {Profile.connections_count: func.greatest(Profile.connections_count - 1, 0)},
-            synchronize_session=False,
-        )
 
     try:
         db.commit()
     except Exception:
         db.rollback()
         raise HTTPException(500, "Ulanishni o'chirishda xatolik")
+
+    if was_accepted:
+        try:
+            db.query(Profile).filter(Profile.telegram_id.in_([user_a, user_b])).update(
+                {Profile.connections_count: func.greatest(Profile.connections_count - 1, 0)},
+                synchronize_session=False,
+            )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("remove_connection: connections_count update skipped: %s", exc)
 
     return {"ok": True}
 
