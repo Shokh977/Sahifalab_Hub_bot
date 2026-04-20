@@ -83,16 +83,19 @@ interface SearchResult {
 }
 
 function useSearch() {
-  const [query, setQuery]     = useState('')
-  const [results, setResults] = useState<SearchResult | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [query, setQuery]         = useState('')
+  const [results, setResults]     = useState<SearchResult | null>(null)
+  const [loading, setLoading]     = useState(false)
+  const [searchError, setError]   = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { isAuthenticated } = useAuth()
 
   useEffect(() => {
     const q = query.trim()
-    if (!q || !isAuthenticated) { setResults(null); return }
+    if (!q) { setResults(null); setError(false); return }
+    if (!isAuthenticated) { setResults(null); setError(false); return }
     if (timer.current) clearTimeout(timer.current)
+    setError(false)
     timer.current = setTimeout(async () => {
       setLoading(true)
       try {
@@ -106,15 +109,16 @@ function useSearch() {
         })
       } catch {
         setResults(null)
+        setError(true)
       }
       setLoading(false)
     }, 300)
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [query, isAuthenticated])
 
-  const clear = useCallback(() => { setQuery(''); setResults(null) }, [])
+  const clear = useCallback(() => { setQuery(''); setResults(null); setError(false) }, [])
 
-  return { query, setQuery, results, loading, clear }
+  return { query, setQuery, results, loading, searchError, clear }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -551,7 +555,7 @@ interface TopBarProps {
 const TopBar: React.FC<TopBarProps> = ({ onHamburger }) => {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const { query, setQuery, results, loading, clear } = useSearch()
+  const { query, setQuery, results, loading, searchError, clear } = useSearch()
   const [searchFocused, setSearchFocused] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -619,11 +623,27 @@ const TopBar: React.FC<TopBarProps> = ({ onHamburger }) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.15 }}
-              className="absolute left-0 right-0 top-full mt-2 rounded-2xl bg-[#1c1d27] border border-white/[0.08] shadow-2xl overflow-hidden max-h-[480px] overflow-y-auto"
+              className="absolute left-0 right-0 top-full mt-2 rounded-2xl bg-[#1c1d27] border border-white/[0.08] shadow-2xl overflow-hidden max-h-[480px] overflow-y-auto z-50"
             >
               {loading && !results ? (
                 <div className="py-8 flex justify-center">
                   <Loader2 className="w-5 h-5 text-white/30 animate-spin" />
+                </div>
+              ) : !isAuthenticated ? (
+                <div className="py-7 text-center px-4">
+                  <Search className="w-7 h-7 mx-auto mb-2 text-white/20" />
+                  <p className="text-sm text-white/50 mb-3">Qidirish uchun tizimga kiring</p>
+                  <Link
+                    to="/login"
+                    onClick={clear}
+                    className="inline-block px-5 py-2 rounded-xl bg-[#e8792f] text-white text-sm font-semibold"
+                  >
+                    Kirish
+                  </Link>
+                </div>
+              ) : searchError ? (
+                <div className="py-7 text-center px-4">
+                  <p className="text-sm text-white/40">Qidiruvda xatolik yuz berdi. Qayta urinib ko'ring.</p>
                 </div>
               ) : results ? (
                 <SearchDropdown results={results} query={query} onClose={clear} />
