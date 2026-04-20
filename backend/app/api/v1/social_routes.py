@@ -80,9 +80,19 @@ def create_post(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    if not body.content.strip() and not body.image_url:
-        raise HTTPException(400, "Post must have text or an image")
-    post = svc.create_post(db, user_id, body.content.strip(), body.image_url)
+    has_content = bool(body.content.strip())
+    has_image = bool(body.image_url or body.image_urls)
+    has_poll = bool(body.poll_options and len(body.poll_options) >= 2)
+    if not has_content and not has_image and not has_poll:
+        raise HTTPException(400, "Post must have text, images, or a poll")
+    if body.poll_options and len(body.poll_options) > 4:
+        raise HTTPException(400, "Poll can have at most 4 options")
+    post = svc.create_post(
+        db, user_id, body.content.strip(),
+        image_url=body.image_url,
+        image_urls=body.image_urls,
+        poll_options=body.poll_options,
+    )
     # HOOK 4: log post creation in activity_log
     if post and post.get("id"):
         hook_post_created(db, user_id, post["id"])

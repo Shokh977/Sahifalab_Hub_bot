@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, Compass, Loader2, RefreshCw, ArrowUp,
-  Image, Send, X, LogIn,
+  Image, Send, X, LogIn, BarChart2, Plus, Trash2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
@@ -45,42 +45,81 @@ function useRotatingPrompt() {
 
 interface ComposerProps {
   user: { photo_url?: string; full_name?: string; username?: string }
-  onPost: (content: string, imageUrl?: string) => Promise<void>
+  onPost: (content: string, imageUrls?: string[], pollOptions?: string[]) => Promise<void>
   uploadImage: (blob: Blob) => Promise<string>
 }
+
+const MAX_IMAGES = 3
 
 const Composer: React.FC<ComposerProps> = ({ user, onPost, uploadImage }) => {
   const [open, setOpen] = useState(false)
   const [content, setContent] = useState('')
-  const [preview, setPreview] = useState<string | null>(null)
-  const [imageBlob, setImageBlob] = useState<Blob | null>(null)
+  const [imageBlobs, setImageBlobs] = useState<Blob[]>([])
+  const [previews, setPreviews] = useState<string[]>([])
+  const [pollMode, setPollMode] = useState(false)
+  const [pollOptions, setPollOptions] = useState<string[]>(['', ''])
   const [posting, setPosting] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const placeholder = useRotatingPrompt()
 
-  const canPost = (content.trim() || imageBlob) && !posting
+  const hasPoll = pollMode && pollOptions.filter(o => o.trim()).length >= 2
+  const canPost = !posting && (content.trim() || imageBlobs.length > 0 || hasPoll)
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file || !file.type.startsWith('image/')) return
-    // simple preview without compression for now
-    setImageBlob(file)
-    setPreview(URL.createObjectURL(file))
+    const files = Array.from(e.target.files || [])
+    if (!files.length) return
+    if (fileRef.current) fileRef.current.value = ''
+    const remaining = MAX_IMAGES - imageBlobs.length
+    const toAdd = files.slice(0, remaining).filter(f => f.type.startsWith('image/'))
+    setImageBlobs(prev => [...prev, ...toAdd])
+    setPreviews(prev => [...prev, ...toAdd.map(f => URL.createObjectURL(f))])
+  }
+
+  const removeImage = (idx: number) => {
+    URL.revokeObjectURL(previews[idx])
+    setImageBlobs(prev => prev.filter((_, i) => i !== idx))
+    setPreviews(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const updatePollOption = (idx: number, val: string) => {
+    setPollOptions(prev => prev.map((o, i) => i === idx ? val : o))
+  }
+
+  const addPollOption = () => {
+    if (pollOptions.length < 4) setPollOptions(prev => [...prev, ''])
+  }
+
+  const removePollOption = (idx: number) => {
+    if (pollOptions.length <= 2) return
+    setPollOptions(prev => prev.filter((_, i) => i !== idx))
+  }
+
+  const togglePollMode = () => {
+    if (!pollMode && imageBlobs.length > 0) return // can't mix
+    setPollMode(v => !v)
+    if (pollMode) setPollOptions(['', ''])
+  }
+
+  const reset = () => {
+    previews.forEach(URL.revokeObjectURL)
+    setContent(''); setImageBlobs([]); setPreviews([])
+    setPollMode(false); setPollOptions(['', '']); setOpen(false)
   }
 
   const handleSubmit = async () => {
     if (!canPost) return
     setPosting(true)
     try {
-      let imageUrl: string | undefined
-      if (imageBlob) {
-        imageUrl = await uploadImage(imageBlob)
+      if (pollMode && hasPoll) {
+        const opts = pollOptions.map(o => o.trim()).filter(Boolean)
+        await onPost(content.trim(), undefined, opts)
+      } else if (imageBlobs.length > 0) {
+        const urls = await Promise.all(imageBlobs.map(b => uploadImage(b)))
+        await onPost(content.trim(), urls)
+      } else {
+        await onPost(content.trim())
       }
-      await onPost(content, imageUrl)
-      setContent('')
-      setPreview(null)
-      setImageBlob(null)
-      setOpen(false)
+      reset()
     } catch (err) {
       console.error('Post failed:', err)
     } finally {
@@ -121,9 +160,7 @@ const Composer: React.FC<ComposerProps> = ({ user, onPost, uploadImage }) => {
               </motion.span>
             </AnimatePresence>
           </button>
-        ) : null}
-
-        {open && (
+        ) : (
           <div className="flex-1">
             <textarea
               autoFocus
@@ -140,32 +177,77 @@ const Composer: React.FC<ComposerProps> = ({ user, onPost, uploadImage }) => {
       {/* Expanded controls */}
       {open && (
         <div className="mt-3 space-y-3">
-          {preview && (
-            <div className="relative rounded-xl overflow-hidden">
-              <img src={preview} alt="" className="w-full max-h-48 object-cover rounded-xl" />
-              <button
-                onClick={() => { setPreview(null); setImageBlob(null) }}
-                className="absolute top-2 right-2 p-1 rounded-full bg-black/60 text-white hover:bg-black/80 transition"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
+          {/* Image previews (up to 3) */}
+          {previews.length > 0 && (
+            <div className={`grid gap-2 ${previews.length === 1 ? 'grid-cols-1' : 'grid-cols-3'}`}>
+              {previews.map((src, i) => (
+                <div key={i} className="relative rounded-xl overflow-hidden">
+                  <img src={src} alt="" className="w-full object-cover rounded-xl" style={{ maxHeight: previews.length === 1 ? 192 : 120 }} />
+                  <button
+                    onClick={() => removeImage(i)}
+                    className="absolute top-1.5 right-1.5 p-1 rounded-full bg-black/60 text-white hover:bg-black/80 transition"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              ))}
             </div>
           )}
 
+          {/* Poll builder */}
+          {pollMode && (
+            <div className="space-y-2 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+              <p className="text-xs text-white/40 font-medium uppercase tracking-wide mb-2">So'rovnoma</p>
+              {pollOptions.map((opt, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={opt}
+                    onChange={e => updatePollOption(i, e.target.value)}
+                    placeholder={`Variant ${i + 1}`}
+                    maxLength={80}
+                    className="flex-1 bg-white/[0.06] border border-white/[0.08] rounded-lg px-3 py-1.5 text-sm text-white/90 placeholder-white/30 outline-none focus:border-[#e8792f]/50 transition-colors"
+                  />
+                  {pollOptions.length > 2 && (
+                    <button onClick={() => removePollOption(i)} className="p-1 text-white/30 hover:text-white/60 transition-colors">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              ))}
+              {pollOptions.length < 4 && (
+                <button onClick={addPollOption} className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white/60 transition-colors mt-1">
+                  <Plus className="w-3.5 h-3.5" /> Variant qo'shish
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Toolbar */}
           <div className="flex items-center justify-between">
             <div className="flex gap-1">
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFile} />
               <button
                 onClick={() => fileRef.current?.click()}
-                className="p-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
+                disabled={pollMode || imageBlobs.length >= MAX_IMAGES}
+                title={`Rasm (${imageBlobs.length}/${MAX_IMAGES})`}
+                className="p-2 rounded-lg text-white/40 hover:text-white/70 hover:bg-white/[0.06] disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
               >
                 <Image className="w-4 h-4" />
+              </button>
+              <button
+                onClick={togglePollMode}
+                disabled={imageBlobs.length > 0}
+                title="So'rovnoma"
+                className={`p-2 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${pollMode ? 'text-[#e8792f] bg-[#e8792f]/10' : 'text-white/40 hover:text-white/70 hover:bg-white/[0.06]'}`}
+              >
+                <BarChart2 className="w-4 h-4" />
               </button>
             </div>
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => { setOpen(false); setContent(''); setPreview(null); setImageBlob(null) }}
+                onClick={reset}
                 className="px-3 py-1.5 rounded-lg text-sm text-white/40 hover:text-white/60 hover:bg-white/[0.04] transition-colors"
               >
                 Bekor
@@ -252,8 +334,14 @@ const SocialFeed: React.FC = () => {
   }
 
   // Post creation
-  const handlePost = async (content: string, imageUrl?: string) => {
-    const res = await api.client.post('/api/v1/social/posts', { content, image_url: imageUrl })
+  const handlePost = async (content: string, imageUrls?: string[], pollOptions?: string[]) => {
+    const body: Record<string, unknown> = { content }
+    if (imageUrls && imageUrls.length > 0) {
+      body.image_url = imageUrls[0]
+      if (imageUrls.length > 1) body.image_urls = imageUrls
+    }
+    if (pollOptions && pollOptions.length >= 2) body.poll_options = pollOptions
+    const res = await api.client.post('/api/v1/social/posts', body)
     setPosts(prev => [res.data, ...prev])
   }
 

@@ -135,8 +135,34 @@ def _enrich_post(
 
 # ── Posts CRUD ───────────────────────────────────────────────────────────────
 
-def create_post(db: Session, author_id: int, content: str, image_url: Optional[str] = None) -> dict:
-    post = Post(author_id=author_id, content=content, image_url=image_url)
+def create_post(
+    db: Session,
+    author_id: int,
+    content: str,
+    image_url: Optional[str] = None,
+    image_urls: Optional[List[str]] = None,
+    poll_options: Optional[List[str]] = None,
+) -> dict:
+    post_type = "text"
+    post_metadata = None
+
+    if poll_options and len(poll_options) >= 2:
+        post_type = "poll"
+        post_metadata = {
+            "options": [{"text": opt, "votes_count": 0} for opt in poll_options],
+            "total_votes": 0,
+        }
+    elif image_urls and len(image_urls) > 1:
+        post_metadata = {"images": image_urls}
+        image_url = image_urls[0]
+
+    post = Post(
+        author_id=author_id,
+        content=content,
+        image_url=image_url,
+        post_type=post_type,
+        post_metadata=post_metadata,
+    )
     db.add(post)
     db.commit()
     db.refresh(post)

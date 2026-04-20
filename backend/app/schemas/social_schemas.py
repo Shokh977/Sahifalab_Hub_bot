@@ -38,6 +38,8 @@ class PublicProfile(AuthorBrief):
 class PostCreate(BaseModel):
     content: str = Field("", max_length=2000)
     image_url: Optional[str] = None
+    image_urls: Optional[List[str]] = None
+    poll_options: Optional[List[str]] = None
 
 
 class PostUpdate(BaseModel):

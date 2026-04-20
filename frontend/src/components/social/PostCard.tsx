@@ -78,6 +78,7 @@ export interface PostData {
     options?: { text: string; votes_count: number }[]
     total_votes?: number
     user_voted_option_idx?: number
+    images?: string[]
   } | null
   likes_count: number
   comments_count: number
@@ -521,19 +522,36 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
           </div>
         )}
 
-        {/* Image */}
-        {post.image_url && (
-          <div className="relative rounded-xl overflow-hidden mb-3 bg-[#24253a]">
-            {!imgLoaded && <div className="absolute inset-0 animate-pulse bg-white/[0.04]" />}
-            <img
-              src={post.image_url}
-              alt=""
-              className={`w-full max-h-[500px] object-cover transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
-              loading="lazy"
-              onLoad={() => setImgLoaded(true)}
-            />
-          </div>
-        )}
+        {/* Image(s) */}
+        {(() => {
+          const multiImages = post.post_metadata?.images
+          if (multiImages && multiImages.length > 1) {
+            return (
+              <div className={`grid gap-1.5 mb-3 ${multiImages.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                {multiImages.map((src, i) => (
+                  <div key={i} className="rounded-xl overflow-hidden bg-[#24253a] aspect-square">
+                    <img src={src} alt="" className="w-full h-full object-cover" loading="lazy" />
+                  </div>
+                ))}
+              </div>
+            )
+          }
+          if (post.image_url) {
+            return (
+              <div className="relative rounded-xl overflow-hidden mb-3 bg-[#24253a]">
+                {!imgLoaded && <div className="absolute inset-0 animate-pulse bg-white/[0.04]" />}
+                <img
+                  src={post.image_url}
+                  alt=""
+                  className={`w-full max-h-[500px] object-cover transition-opacity duration-300 ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                  loading="lazy"
+                  onLoad={() => setImgLoaded(true)}
+                />
+              </div>
+            )
+          }
+          return null
+        })()}
 
         {/* Post-type specific cards */}
         {postType === 'course_announcement' && pollMeta && (
