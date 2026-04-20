@@ -87,13 +87,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true)
 
   // ── TMA: exchange initData for a JWT on mount ─────────────────────────────
+  // Uses a separate localStorage key ('tma_auth_token') so TMA sessions never
+  // overwrite web/email sessions stored under 'auth_token'.
   useEffect(() => {
     if (!isTelegram) return
 
     const initData = window.Telegram?.WebApp?.initData ?? ''
 
-    // Re-use a cached token if it exists and is not expired
-    const stored = localStorage.getItem('auth_token')
+    // Re-use a cached TMA token if it exists
+    const stored = localStorage.getItem('tma_auth_token')
     if (stored && tgUser) {
       // Optimistically restore from cache; re-validate via tma-init in background
       setToken(stored)
@@ -118,7 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .post(`${API_BASE}/api/auth/tma-init`, { init_data: initData })
       .then(res => {
         const d = res.data
-        localStorage.setItem('auth_token', d.access_token)
+        localStorage.setItem('tma_auth_token', d.access_token)
         setToken(d.access_token)
         setWebUser({
           id: d.telegram_id,
@@ -205,6 +207,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(() => {
     localStorage.removeItem('auth_token')
+    localStorage.removeItem('tma_auth_token')
     setToken(null)
     setWebUser(null)
   }, [])

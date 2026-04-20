@@ -18,7 +18,7 @@ class ApiService {
 
     // Add interceptor to include auth token
     this.axiosInstance.interceptors.request.use((config) => {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('tma_auth_token') || localStorage.getItem('auth_token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
@@ -44,6 +44,7 @@ class ApiService {
         // because that would silently log the user out mid-session.
         if (status === 401 && url.includes('/api/auth/me')) {
           localStorage.removeItem('auth_token')
+          localStorage.removeItem('tma_auth_token')
           window.dispatchEvent(new CustomEvent('auth:expired'))
         }
 

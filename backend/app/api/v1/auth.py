@@ -231,11 +231,17 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
     if not verify_telegram_auth(data, BOT_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
 
-    is_new = db.query(Profile).filter(Profile.telegram_id == data.id).first() is None
+    existing = db.query(Profile).filter(Profile.telegram_id == data.id).first()
+    is_new = existing is None
+    cdn_host = (settings.BUNNY_CDN_HOSTNAME or "").rstrip("/")
+    has_custom_photo = bool(
+        existing and existing.photo_url and cdn_host and cdn_host in existing.photo_url
+    )
     profile = _upsert_profile(
         db, data.id,
         first_name=data.first_name, username=data.username,
-        photo_url=data.photo_url, app_last_login=datetime.now(UTC),
+        app_last_login=datetime.now(UTC),
+        **({} if has_custom_photo else {"photo_url": data.photo_url}),
     )
     if is_new:
         _send_welcome(data.id, data.first_name or "")
@@ -243,7 +249,7 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
     return {
         "success": True, "telegram_id": data.id,
         "first_name": data.first_name, "username": data.username,
-        "photo_url": data.photo_url or profile.photo_url,
+        "photo_url": profile.photo_url or data.photo_url,
         "role": profile.role or "student", "status": profile.status or "active",
         **token_data,
     }
@@ -275,11 +281,17 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
     username   = user.get("username")
     photo_url  = user.get("photo_url")
 
-    is_new = db.query(Profile).filter(Profile.telegram_id == telegram_id).first() is None
+    existing = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
+    is_new = existing is None
+    cdn_host = (settings.BUNNY_CDN_HOSTNAME or "").rstrip("/")
+    has_custom_photo = bool(
+        existing and existing.photo_url and cdn_host and cdn_host in existing.photo_url
+    )
     profile = _upsert_profile(
         db, telegram_id,
         first_name=first_name, username=username,
-        photo_url=photo_url, app_last_login=datetime.now(UTC),
+        app_last_login=datetime.now(UTC),
+        **({} if has_custom_photo else {"photo_url": photo_url}),
     )
     if is_new:
         _send_welcome(telegram_id, first_name or "")
@@ -290,7 +302,7 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
         "telegram_id": telegram_id,
         "first_name":  first_name,
         "username":    username,
-        "photo_url":   photo_url or profile.photo_url,
+        "photo_url":   profile.photo_url or photo_url,
         "role":        profile.role   or "student",
         "status":      profile.status or "active",
         **token_data,
