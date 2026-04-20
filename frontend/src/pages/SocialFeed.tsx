@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, Compass, Loader2, RefreshCw, ArrowUp,
-  Image, Send, X,
+  Image, Send, X, LogIn,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
@@ -20,7 +20,7 @@ import api from '../services/apiService'
 import PostCard from '../components/social/PostCard'
 import type { PostData } from '../components/social/PostCard'
 
-type Tab = 'feed' | 'explore'
+type Tab = 'explore' | 'feed'
 
 // ── Rotating composer prompts ────────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ const Composer: React.FC<ComposerProps> = ({ user, onPost, uploadImage }) => {
 const SocialFeed: React.FC = () => {
   const { user } = useAuth()
   const { level: storeLevel, totalXP, isInitialized } = useProgressStore()
-  const [tab, setTab] = useState<Tab>('feed')
+  const [tab, setTab] = useState<Tab>('explore')
   const [posts, setPosts] = useState<PostData[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -209,6 +209,12 @@ const SocialFeed: React.FC = () => {
   }, [])
 
   const fetchPosts = useCallback(async (pageNum: number, reset = false) => {
+    // Kuzatuv tab requires auth — skip API call for guests to avoid error toasts
+    if (tab === 'feed' && !user) {
+      setLoading(false)
+      setRefreshing(false)
+      return
+    }
     try {
       const endpoint = tab === 'feed'
         ? '/api/v1/social/posts/feed'
@@ -223,7 +229,7 @@ const SocialFeed: React.FC = () => {
       setLoading(false)
       setRefreshing(false)
     }
-  }, [tab])
+  }, [tab, user])
 
   useEffect(() => {
     setLoading(true)
@@ -356,14 +362,42 @@ const SocialFeed: React.FC = () => {
                         : <Compass className="w-9 h-9 text-white/15" />
                       }
                     </div>
-                    <h3 className="text-sm font-semibold text-white/40 mb-1">
-                      {tab === 'feed' ? "Lenta bo'sh" : "Hali postlar yo'q"}
-                    </h3>
-                    <p className="text-xs text-white/20 max-w-xs mx-auto leading-relaxed">
-                      {tab === 'feed'
-                        ? "Kashfiyot bo'limidan qiziqarli foydalanuvchilarni toping va kuzating!"
-                        : "Birinchi bo'lib post yozing va jamiyatga ilhom ulashing!"}
-                    </p>
+                    {tab === 'feed' && !user ? (
+                      <>
+                        <h3 className="text-sm font-semibold text-white/40 mb-1">Kirish talab qilinadi</h3>
+                        <p className="text-xs text-white/20 max-w-xs mx-auto leading-relaxed mb-4">
+                          Kuzatuv lentasini ko'rish uchun tizimga kiring
+                        </p>
+                        <Link
+                          to="/login"
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#e8792f] text-white text-sm font-medium hover:bg-[#d4692a] transition-colors"
+                        >
+                          <LogIn className="w-4 h-4" />
+                          Kirish / Ro'yxatdan o'tish
+                        </Link>
+                      </>
+                    ) : tab === 'feed' ? (
+                      <>
+                        <h3 className="text-sm font-semibold text-white/40 mb-1">Lenta bo'sh</h3>
+                        <p className="text-xs text-white/20 max-w-xs mx-auto leading-relaxed mb-4">
+                          Hali hech kimni kuzatmayapsiz. Qiziqarli foydalanuvchilarni toping!
+                        </p>
+                        <button
+                          onClick={() => setTab('explore')}
+                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#1c1d27] border border-white/[0.08] text-white/50 text-sm font-medium hover:text-white/70 hover:border-white/20 transition-colors"
+                        >
+                          <Compass className="w-4 h-4" />
+                          Kashfiyot bo'limiga o'tish
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <h3 className="text-sm font-semibold text-white/40 mb-1">Hali postlar yo'q</h3>
+                        <p className="text-xs text-white/20 max-w-xs mx-auto leading-relaxed">
+                          Birinchi bo'lib post yozing va jamiyatga ilhom ulashing!
+                        </p>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <>
