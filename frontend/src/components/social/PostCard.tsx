@@ -404,10 +404,11 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
         {post.repost_by && (
           <button
             onClick={() => navigate(`/profile/${post.repost_by!.username || post.repost_by!.telegram_id}`)}
-            className="flex items-center gap-1.5 mb-3 text-[11px] font-medium text-emerald-400/70 hover:text-emerald-400 transition-colors"
+            className="flex items-center gap-1.5 mb-3 text-[11px] font-medium text-emerald-400/70 hover:text-emerald-400 transition-colors max-w-full"
           >
-            <Repeat2 className="w-3 h-3" />
-            {post.repost_by.full_name || post.repost_by.username} repost qildi
+            <Repeat2 className="w-3 h-3 flex-shrink-0" />
+            <span className="truncate max-w-[160px]">{post.repost_by.full_name || post.repost_by.username}</span>
+            <span className="flex-shrink-0">repost qildi</span>
           </button>
         )}
 
@@ -433,10 +434,10 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
 
             {/* Name + headline */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   onClick={() => navigate(`/profile/${post.author.username || post.author.telegram_id}`)}
-                  className="text-sm font-bold hover:text-[#e8792f] transition-colors leading-tight"
+                  className="text-sm font-bold hover:text-[#e8792f] transition-colors leading-tight truncate max-w-[180px]"
                   style={{ color: 'var(--text-primary)' }}
                 >
                   {post.author.full_name || post.author.username}

@@ -162,8 +162,8 @@ const UserIdentity: React.FC<Props> = ({
 
       {/* Name + Badge + Rank */}
       {showName && (
-        <div className="min-w-0 flex flex-col">
-          <div className="flex items-center gap-1">
+        <div className="min-w-0 flex flex-col max-w-[200px]">
+          <div className="flex items-center gap-1 min-w-0">
             <span className={`font-semibold text-gray-900 dark:text-white truncate ${font} ${nameClass}`}>
               {displayName}
             </span>
