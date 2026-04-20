@@ -60,6 +60,8 @@ async def _force_https_redirects(request: Request, call_next):
         loc = response.headers.get("location", "")
         if loc.startswith("http://") and "localhost" not in loc and "127.0.0.1" not in loc:
             response.headers["location"] = "https://" + loc[7:]
+    # Allow Google Sign-In popup postMessage (COOP must not be same-origin)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
     return response
 
 

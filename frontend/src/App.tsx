@@ -46,7 +46,11 @@ const PageSkeleton = () => (
   </div>
 )
 
-const LoginPage = lazy(() => import('./pages/LoginPage'))
+const LoginPage               = lazy(() => import('./pages/LoginPage'))
+const VerifyEmailPendingPage  = lazy(() => import('./pages/VerifyEmailPendingPage'))
+const VerifyEmailPage         = lazy(() => import('./pages/VerifyEmailPage'))
+const ForgotPasswordPage      = lazy(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage       = lazy(() => import('./pages/ResetPasswordPage'))
 const QuizPage = lazy(() => import('./pages/QuizPage'))
 const KitoblarPage = lazy(() => import('./pages/KitoblarPage'))
 const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
@@ -258,8 +262,12 @@ const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<PageSkeleton />}>
       <Routes>
-        {/* ── Auth page ───────────────────────────────────────────── */}
-        <Route path="/login" element={<LoginPage />} />
+        {/* ── Auth pages (public, no layout shell) ───────────────── */}
+        <Route path="/login"                  element={<LoginPage />} />
+        <Route path="/auth/verify-pending"    element={<VerifyEmailPendingPage />} />
+        <Route path="/auth/verify-email"      element={<VerifyEmailPage />} />
+        <Route path="/auth/forgot-password"   element={<ForgotPasswordPage />} />
+        <Route path="/auth/reset-password"    element={<ResetPasswordPage />} />
 
         {/* ── Fully public — guests welcome, actions guarded in-component ── */}
         <Route path="/"                element={<RootRoute />} />

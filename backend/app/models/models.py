@@ -51,6 +51,9 @@ class Profile(Base):
     is_verified        = Column(Boolean, default=False)
     account_type       = Column(String(50), default='student')   # student | teacher | company | admin
     user_settings      = Column(JSONB, nullable=True)
+    # Email verification & password management (049_auth_tokens_email_verification)
+    email_verified     = Column(Boolean, nullable=True, default=None)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class AuthCode(Base):
@@ -66,6 +69,19 @@ class AuthCode(Base):
     used        = Column(Boolean, default=False, nullable=False)
     expires_at  = Column(DateTime(timezone=True), nullable=False)
     created_at  = Column(DateTime(timezone=True), nullable=True)
+
+
+class AuthToken(Base):
+    """Tokens for email verification and password reset (one-time use, expiring)."""
+    __tablename__ = "auth_tokens"
+
+    id         = Column(String(64), primary_key=True)  # random hex
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    token      = Column(String(64), unique=True, nullable=False)
+    type       = Column(String(30), nullable=False)   # 'email_verification' | 'password_reset'
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at    = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class XpLog(Base):

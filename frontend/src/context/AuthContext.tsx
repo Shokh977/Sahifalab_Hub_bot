@@ -30,6 +30,8 @@ export interface AuthUser {
   photo_url?: string
   /** User email — null if not yet linked (Telegram-only users) */
   email?: string | null
+  /** True when the email has been verified (only relevant for email-registered users) */
+  email_verified?: boolean | null
   /** 'student' | 'teacher' | 'admin' */
   role: 'student' | 'teacher' | 'admin'
   /** 'active' | 'suspended' | 'pending' */
@@ -156,6 +158,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: res.data.username,
           photo_url: res.data.photo_url,
           email: res.data.email ?? null,
+          email_verified: res.data.email_verified ?? null,
           role: res.data.role ?? 'student',
           status: res.data.status ?? 'active',
           level: res.data.level ?? 1,
@@ -182,7 +185,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Web: login via bot-code verify response ───────────────────────────────
   const loginWithCode = useCallback((data: Record<string, any>) => {
-    const { access_token, telegram_id, first_name, username, photo_url, email, role, status_account, status } = data
+    const { access_token, telegram_id, first_name, username, photo_url, email, email_verified, role, status_account, status } = data
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)
     setWebUser({
@@ -191,6 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       username,
       photo_url,
       email: email ?? null,
+      email_verified: email_verified ?? null,
       role: role ?? 'student',
       status: status_account ?? status ?? 'active',
       level: data.level ?? 1,

@@ -15,3 +15,4 @@ bcrypt==4.2.0
 Pillow==10.4.0
 brotli-asgi==1.6.0
 pywebpush==2.0.0
+resend==2.10.0

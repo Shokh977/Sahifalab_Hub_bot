@@ -39,7 +39,7 @@ except ImportError:
 import asyncio
 from app.core.config import settings
 from app.db.session import get_db
-from app.models.models import Profile, AuthCode, TeacherProfile
+from app.models.models import Profile, AuthCode, AuthToken, TeacherProfile
 from app.services.auth_service import (
     TelegramAuthData,
     verify_telegram_auth,
@@ -115,6 +115,20 @@ class EmailLoginRequest(BaseModel):
 class LinkEmailRequest(BaseModel):
     email: EmailStr
 
+class ResendVerificationRequest(BaseModel):
+    email: EmailStr
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
 
 # ── ORM helpers ───────────────────────────────────────────────────────────────
 
@@ -160,6 +174,37 @@ def _require_admin(db: Session, authorization: Optional[str]) -> int:
     if not profile or profile.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return telegram_id
+
+
+def _validate_password(password: str) -> list[str]:
+    """Return a list of validation errors (empty = valid)."""
+    errors: list[str] = []
+    if len(password) < 8:
+        errors.append("Kamida 8 ta belgi bo'lishi kerak")
+    if not any(c.isupper() for c in password):
+        errors.append("Kamida 1 ta katta harf (A-Z)")
+    if not any(c.islower() for c in password):
+        errors.append("Kamida 1 ta kichik harf (a-z)")
+    if not any(c.isdigit() for c in password):
+        errors.append("Kamida 1 ta raqam (0-9)")
+    if not any(c in "!@#$%^&*()_+-=[]{}|;:',.<>?/" for c in password):
+        errors.append("Kamida 1 ta maxsus belgi (!@#$...)")
+    return errors
+
+
+def _create_auth_token(db: Session, user_id: int, token_type: str, hours: int = 24) -> str:
+    """Create and persist a one-time auth token. Returns the token string."""
+    import uuid as _uuid
+    token_str = secrets.token_hex(32)
+    db.add(AuthToken(
+        id=_uuid.uuid4().hex,
+        user_id=user_id,
+        token=token_str,
+        type=token_type,
+        expires_at=datetime.now(UTC) + timedelta(hours=hours),
+    ))
+    db.commit()
+    return token_str
 
 
 def _google_sub_to_internal_id(sub: str) -> int:
@@ -263,6 +308,7 @@ async def get_current_user(
         "telegram_id": profile.telegram_id, "first_name": profile.first_name,
         "username": profile.username, "photo_url": profile.photo_url,
         "email": profile.email,
+        "email_verified": profile.email_verified,
         "role": profile.role or "student", "status": profile.status or "active",
         "level": profile.level or 1, "total_xp": profile.total_xp or 0,
         "bio": getattr(profile, "bio", None),
@@ -639,27 +685,37 @@ async def set_user_role(
 
 @router.post("/email-register")
 async def email_register(body: EmailRegisterRequest, db: Session = Depends(get_db)):
-    if len(body.password) < 6:
-        raise HTTPException(status_code=400, detail="Parol kamida 6 ta belgidan iborat bo'lishi kerak")
+    # Validate password complexity
+    pw_errors = _validate_password(body.password)
+    if pw_errors:
+        raise HTTPException(status_code=400, detail="; ".join(pw_errors))
+
     email_lower = body.email.lower()
     if db.query(Profile).filter(Profile.email == email_lower).first():
         raise HTTPException(status_code=400, detail="Bu email allaqachon ro'yxatdan o'tgan")
+
     password_hash = bcrypt.hashpw(body.password.encode(), bcrypt.gensalt()).decode()
     internal_id   = _email_to_internal_id(email_lower)
     _upsert_profile(
         db, internal_id,
         first_name=body.first_name.strip(), email=email_lower,
         password_hash=password_hash, role="student", status="active",
+        email_verified=False,
         app_last_login=datetime.now(UTC),
     )
-    _send_welcome(internal_id, body.first_name.strip())
-    token_data = create_access_token(internal_id, "student")
+
+    # Send verification email (fire-and-forget — don't block on failure)
+    try:
+        token_str = _create_auth_token(db, internal_id, "email_verification", hours=24)
+        from app.services.email_service import send_verification_email
+        send_verification_email(email_lower, body.first_name.strip(), token_str)
+    except Exception as exc:
+        logger.warning("email_register: failed to send verification email: %s", exc)
+
     return {
-        "status": "ok", "telegram_id": internal_id,
-        "first_name": body.first_name.strip(), "email": email_lower,
-        "username": None, "photo_url": None,
-        "role": "student", "status_account": "active",
-        **token_data,
+        "status": "pending_verification",
+        "email": email_lower,
+        "message": "Ro'yxatdan o'tdingiz! Email manzilingizga tasdiqlash havolasi yuborildi.",
     }
 
 
@@ -687,6 +743,8 @@ async def email_login(body: EmailLoginRequest, db: Session = Depends(get_db)):
         "status": "ok",
         "telegram_id": profile.telegram_id, "first_name": profile.first_name or "",
         "username": profile.username, "photo_url": profile.photo_url,
+        "email": profile.email,
+        "email_verified": profile.email_verified,
         "role": profile.role or "student", "status_account": profile.status or "active",
         **token_data,
     }
@@ -852,4 +910,220 @@ async def link_email(
             "Email muvaffaqiyatli ulandi"
         ),
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EMAIL VERIFICATION
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get("/verify-email")
+async def verify_email(token: str, db: Session = Depends(get_db)):
+    """Verify email address using the one-time token from the verification email."""
+    auth_token = (
+        db.query(AuthToken)
+        .filter(AuthToken.token == token, AuthToken.type == "email_verification")
+        .first()
+    )
+    if not auth_token:
+        raise HTTPException(status_code=400, detail="Havola noto'g'ri yoki muddati o'tgan")
+    if auth_token.used_at is not None:
+        raise HTTPException(status_code=400, detail="Bu havola allaqachon ishlatilgan")
+
+    expires = auth_token.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    if datetime.now(UTC) > expires:
+        raise HTTPException(status_code=410, detail="Havola muddati o'tgan. Yangi havola so'rang.")
+
+    # Mark token used
+    auth_token.used_at = datetime.now(UTC)
+
+    # Verify the user's email
+    profile = db.query(Profile).filter(Profile.telegram_id == auth_token.user_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+
+    profile.email_verified = True
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+
+    # Send welcome email (best-effort)
+    try:
+        from app.services.email_service import send_welcome_email
+        send_welcome_email(profile.email or "", profile.first_name or "")
+    except Exception:
+        pass
+
+    return {
+        "ok": True,
+        "message": "Email tasdiqlandi! Endi tizimga kirishingiz mumkin.",
+        "email": profile.email,
+        "first_name": profile.first_name,
+    }
+
+
+@router.post("/resend-verification")
+async def resend_verification(body: ResendVerificationRequest, db: Session = Depends(get_db)):
+    """Resend email verification link. Max 3 per hour per email."""
+    email_lower = body.email.lower().strip()
+    profile = db.query(Profile).filter(Profile.email == email_lower).first()
+
+    # Always return success — don't reveal if email exists
+    if not profile or not profile.password_hash:
+        return {"ok": True, "message": "Agar bu email ro'yxatdan o'tgan bo'lsa, tasdiqlash havolasi yuborildi."}
+
+    if profile.email_verified:
+        return {"ok": True, "message": "Email allaqachon tasdiqlangan."}
+
+    # Rate limit: count tokens created in last hour
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    recent = (
+        db.query(AuthToken)
+        .filter(
+            AuthToken.user_id == profile.telegram_id,
+            AuthToken.type == "email_verification",
+            AuthToken.created_at >= one_hour_ago,
+        )
+        .count()
+    )
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Juda ko'p urinish. 1 soatdan keyin qayta urinib ko'ring.")
+
+    try:
+        token_str = _create_auth_token(db, profile.telegram_id, "email_verification", hours=24)
+        from app.services.email_service import send_verification_email
+        send_verification_email(email_lower, profile.first_name or "", token_str)
+    except Exception as exc:
+        logger.error("resend_verification failed: %s", exc)
+
+    return {"ok": True, "message": "Tasdiqlash havolasi qayta yuborildi."}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PASSWORD RESET
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Request a password reset email. Always returns the same message (no info leak)."""
+    email_lower = body.email.lower().strip()
+    generic_ok = {"ok": True, "message": "Agar bu email ro'yxatdan o'tgan bo'lsa, parolni tiklash havolasi yuborildi."}
+
+    profile = db.query(Profile).filter(Profile.email == email_lower).first()
+    if not profile or not profile.password_hash:
+        return generic_ok  # Don't reveal non-existence
+
+    # Rate limit: 3 reset requests per hour
+    one_hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    recent = (
+        db.query(AuthToken)
+        .filter(
+            AuthToken.user_id == profile.telegram_id,
+            AuthToken.type == "password_reset",
+            AuthToken.created_at >= one_hour_ago,
+        )
+        .count()
+    )
+    if recent >= 3:
+        raise HTTPException(status_code=429, detail="Juda ko'p urinish. 1 soatdan keyin qayta urinib ko'ring.")
+
+    try:
+        token_str = _create_auth_token(db, profile.telegram_id, "password_reset", hours=1)
+        from app.services.email_service import send_password_reset_email
+        send_password_reset_email(email_lower, profile.first_name or "", token_str)
+    except Exception as exc:
+        logger.error("forgot_password email send failed: %s", exc)
+
+    return generic_ok
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Set a new password using the one-time reset token."""
+    auth_token = (
+        db.query(AuthToken)
+        .filter(AuthToken.token == body.token, AuthToken.type == "password_reset")
+        .first()
+    )
+    if not auth_token:
+        raise HTTPException(status_code=400, detail="Havola noto'g'ri yoki muddati o'tgan")
+    if auth_token.used_at is not None:
+        raise HTTPException(status_code=400, detail="Bu havola allaqachon ishlatilgan")
+
+    expires = auth_token.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    if datetime.now(UTC) > expires:
+        raise HTTPException(status_code=410, detail="Havola muddati o'tgan. Yangi havola so'rang.")
+
+    pw_errors = _validate_password(body.new_password)
+    if pw_errors:
+        raise HTTPException(status_code=400, detail="; ".join(pw_errors))
+
+    profile = db.query(Profile).filter(Profile.telegram_id == auth_token.user_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+
+    # Mark token used + update password
+    auth_token.used_at = datetime.now(UTC)
+    profile.password_hash = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    profile.password_changed_at = datetime.now(UTC)
+
+    # Invalidate all other reset tokens for this user
+    db.query(AuthToken).filter(
+        AuthToken.user_id == profile.telegram_id,
+        AuthToken.type == "password_reset",
+        AuthToken.id != auth_token.id,
+        AuthToken.used_at.is_(None),
+    ).update({"used_at": datetime.now(UTC)})
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+
+    return {"ok": True, "message": "Parol muvaffaqiyatli o'zgartirildi!"}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CHANGE PASSWORD (logged-in users)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.put("/change-password")
+async def change_password(
+    body: ChangePasswordRequest,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Change password for a logged-in email-registered user."""
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+    if not profile.password_hash:
+        raise HTTPException(status_code=400, detail="Bu akkaunt parol bilan ro'yxatdan o'tmagan")
+
+    if not bcrypt.checkpw(body.current_password.encode(), profile.password_hash.encode()):
+        raise HTTPException(status_code=401, detail="Joriy parol noto'g'ri")
+
+    if body.current_password == body.new_password:
+        raise HTTPException(status_code=400, detail="Yangi parol eski paroldan farqli bo'lishi kerak")
+
+    pw_errors = _validate_password(body.new_password)
+    if pw_errors:
+        raise HTTPException(status_code=400, detail="; ".join(pw_errors))
+
+    profile.password_hash = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    profile.password_changed_at = datetime.now(UTC)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+
+    return {"ok": True, "message": "Parol o'zgartirildi"}
 

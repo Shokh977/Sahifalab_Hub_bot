@@ -29,6 +29,7 @@ import {
   BookMarked, ClipboardList,
 } from 'lucide-react'
 import GlobalProgressBar from './GlobalProgressBar'
+import EmailVerificationBanner from './EmailVerificationBanner'
 import NotificationBell from './NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
@@ -902,6 +903,9 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         {/* Top bar — always visible */}
         <TopBar onHamburger={() => setDrawerOpen(true)} />
+
+        {/* Unverified email banner */}
+        <EmailVerificationBanner />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">
