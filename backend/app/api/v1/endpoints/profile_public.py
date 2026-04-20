@@ -25,13 +25,13 @@ import logging
 from datetime import datetime, UTC, timedelta
 from typing import Optional
 
-import httpx
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from pydantic import BaseModel, field_validator
 from sqlalchemy import func, or_, and_, text
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.api.v1.endpoints.upload import _upload_to_bunny, _cdn_url
 
 from app.db.session import get_db
 from app.models.models import Profile
@@ -410,35 +410,6 @@ _ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
 _MAX_PROFILE_IMG_BYTES = 5 * 1024 * 1024  # 5 MB
 
 
-async def _upload_profile_image_to_bunny(file_bytes: bytes, remote_path: str, content_type: str) -> str:
-    """Upload bytes to Bunny.net storage, return CDN URL."""
-    if not getattr(settings, "BUNNY_STORAGE_ZONE", None) or not getattr(settings, "BUNNY_API_KEY", None):
-        raise HTTPException(status_code=503, detail="Fayl saqlash xizmati sozlanmagan")
-    region = getattr(settings, "BUNNY_STORAGE_REGION", "de") or "de"
-    region_hosts = {
-        "de": "storage.bunnycdn.com", "ny": "ny.storage.bunnycdn.com",
-        "la": "la.storage.bunnycdn.com", "sg": "sg.storage.bunnycdn.com",
-    }
-    host = region_hosts.get(region, "storage.bunnycdn.com")
-    put_url = f"https://{host}/{settings.BUNNY_STORAGE_ZONE}/{remote_path}"
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            resp = await client.put(
-                put_url, content=file_bytes,
-                headers={"AccessKey": settings.BUNNY_API_KEY, "Content-Type": content_type, "Content-Length": str(len(file_bytes))},
-            )
-    except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Fayl yuklash vaqti tugadi. Qayta urinib ko'ring.")
-    except httpx.RequestError as exc:
-        logger.error("Bunny upload connection error: %s", exc)
-        raise HTTPException(status_code=503, detail="Fayl saqlash xizmatiga ulanib bo'lmadi.")
-    if resp.status_code not in (200, 201):
-        logger.error("Bunny upload failed: HTTP %s — %s", resp.status_code, resp.text[:200])
-        raise HTTPException(status_code=502, detail=f"Yuklashda xatolik: {resp.status_code}")
-    hostname = getattr(settings, "BUNNY_CDN_HOSTNAME", "").rstrip("/")
-    return f"https://{hostname}/{remote_path}"
-
-
 @profile_router.post("/me/upload")
 async def upload_profile_image(
     file: UploadFile = File(...),
@@ -468,7 +439,7 @@ async def upload_profile_image(
     folder = "avatars" if type == "avatar" else "covers"
     remote_path = f"profiles/{folder}/{viewer_id}/{unique_name}"
 
-    cdn_url = await _upload_profile_image_to_bunny(file_bytes, remote_path, file.content_type or "image/jpeg")
+    cdn_url = await _upload_to_bunny(file_bytes, remote_path, file.content_type or "image/jpeg")
 
     # Persist immediately so the profile reflects the new image
     profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
