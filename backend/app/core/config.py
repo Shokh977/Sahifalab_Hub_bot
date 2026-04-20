@@ -66,7 +66,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID:     str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
-    # Email via Sender.net — get API key from Sender.net → API access tokens
+    # Email via Resend (resend.com) — free 100/day, no SDK needed
+    # Get key from resend.com → API Keys → Create API Key
     SENDER_API_KEY: str = ""
     # Base URL of the frontend app (used to build email links)
     APP_URL: str = "https://sahifalab.uz"

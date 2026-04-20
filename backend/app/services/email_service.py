@@ -10,7 +10,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-SENDER_API_URL = "https://api.sender.net/v2/emails"
+RESEND_API_URL = "https://api.resend.com/emails"
 FROM_EMAIL     = "info@sahifalab.uz"
 FROM_NAME      = "Sahifalab"
 
@@ -57,7 +57,7 @@ def _base_template(card_html: str) -> str:
 
 
 def _send(to_email: str, to_name: str, subject: str, html: str) -> bool:
-    """Send email via Sender.net REST API. Returns True on success."""
+    """Send email via Resend REST API. Returns True on success."""
     api_key = settings.SENDER_API_KEY
     logger.info("[EMAIL] _send called: to=%s subject=%s api_key_set=%s", to_email, subject, bool(api_key))
 
@@ -66,31 +66,30 @@ def _send(to_email: str, to_name: str, subject: str, html: str) -> bool:
         return False
 
     payload = {
-        "from": {"email": FROM_EMAIL, "name": FROM_NAME},
-        "to":   [{"email": to_email, "name": to_name or to_email}],
+        "from":    f"{FROM_NAME} <{FROM_EMAIL}>",
+        "to":      [to_email],
         "subject": subject,
-        "html": html,
+        "html":    html,
     }
     try:
-        logger.info("[EMAIL] Posting to Sender.net for %s ...", to_email)
+        logger.info("[EMAIL] Posting to Resend API for %s ...", to_email)
         resp = httpx.post(
-            SENDER_API_URL,
+            RESEND_API_URL,
             json=payload,
             headers={
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type":  "application/json",
-                "Accept":        "application/json",
             },
             timeout=10.0,
         )
-        logger.info("[EMAIL] Sender.net response: status=%s body=%s", resp.status_code, resp.text[:300])
+        logger.info("[EMAIL] Resend response: status=%s body=%s", resp.status_code, resp.text[:300])
         if resp.status_code not in (200, 201, 202):
-            logger.error("[EMAIL] Sender.net rejected: %s %s", resp.status_code, resp.text[:300])
+            logger.error("[EMAIL] Resend rejected: %s %s", resp.status_code, resp.text[:300])
             return False
         logger.info("[EMAIL] Email sent successfully to %s", to_email)
         return True
     except Exception as exc:
-        logger.error("[EMAIL] Sender.net request exception: %s", exc)
+        logger.error("[EMAIL] Resend request exception: %s", exc)
         return False
 
 
