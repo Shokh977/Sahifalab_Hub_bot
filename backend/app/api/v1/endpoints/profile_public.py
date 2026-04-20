@@ -477,12 +477,15 @@ def get_public_profile(
         .filter(func.lower(Profile.username) == username.lower())
         .first()
     )
-    if not profile and username.isdigit():
-        profile = (
-            db.query(Profile)
-            .filter(Profile.telegram_id == int(username))
-            .first()
-        )
+    if not profile:
+        try:
+            profile = (
+                db.query(Profile)
+                .filter(Profile.telegram_id == int(username))
+                .first()
+            )
+        except ValueError:
+            pass
     if not profile:
         raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
 

@@ -324,7 +324,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
         {/* User card */}
         {user ? (
           <Link
-            to={myUsername ? `/profile/${myUsername}` : '/profile/me'}
+            to="/profile/me"
             onClick={onNavClick}
             className="flex items-center gap-3 px-3 py-2.5 rounded-2xl border transition-colors group"
             style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-default)' }}
@@ -494,7 +494,7 @@ const AvatarDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const handleLogout = () => { logout(); navigate('/login'); onClose() }
 
   const items = [
-    { icon: User,     label: 'Profilni ko\'rish', action: () => go(myUsername ? `/profile/${myUsername}` : '/profile/me') },
+    { icon: User,     label: 'Profilni ko\'rish', action: () => go('/profile/me') },
     { icon: Settings, label: 'Sozlamalar',         action: () => go('/settings') },
     ...(isTeacher ? [{ icon: Wallet, label: 'Hamyon', action: () => go('/teacher/wallet') }] : []),
     { icon: HelpCircle, label: 'Yordam',           action: () => go('/about') },
