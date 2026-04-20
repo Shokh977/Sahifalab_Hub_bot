@@ -13,6 +13,7 @@ from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, Co
 from app.services import social_service as svc
 from app.api.v1.endpoints.notifications import send_notification
 from app.services.integration_service import hook_post_created
+from app.models.models import Profile
 
 
 def _fire_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: dict = {}):
@@ -151,6 +152,16 @@ def save_post(
     user_id: int = Depends(get_current_user_id),
 ):
     svc.save_post(db, post_id, user_id)
+    post = svc.get_post(db, post_id)
+    if post:
+        author_id = post.get("author", {}).get("telegram_id")
+        if author_id and author_id != user_id:
+            actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+            _fire_notification(author_id, "save", "SOCIAL", {
+                "actor_id": user_id,
+                "actor_name": actor.first_name or "" if actor else "",
+                "post_id": post_id,
+            })
     return {"ok": True}
 
 
@@ -212,6 +223,16 @@ def repost(
 ):
     if not svc.repost_post(db, post_id, user_id):
         raise HTTPException(400, "Already reposted or post not found")
+    post = svc.get_post(db, post_id)
+    if post:
+        author_id = post.get("author", {}).get("telegram_id")
+        if author_id and author_id != user_id:
+            actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+            _fire_notification(author_id, "repost", "SOCIAL", {
+                "actor_id": user_id,
+                "actor_name": actor.first_name or "" if actor else "",
+                "post_id": post_id,
+            })
     return {"ok": True}
 
 
@@ -258,10 +279,14 @@ def like_post(
     user_id: int = Depends(get_current_user_id),
 ):
     svc.like_post(db, post_id, user_id)
-    # Notify post author (skip if liking own post)
     post = svc.get_post(db, post_id, user_id)
     if post and post.get("author", {}).get("telegram_id") and post["author"]["telegram_id"] != user_id:
-        _fire_notification(post["author"]["telegram_id"], "like", "SOCIAL", {"actor_id": user_id, "post_id": post_id})
+        actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+        _fire_notification(post["author"]["telegram_id"], "like", "SOCIAL", {
+            "actor_id": user_id,
+            "actor_name": actor.first_name or "" if actor else "",
+            "post_id": post_id,
+        })
     return {"ok": True}
 
 
@@ -295,10 +320,14 @@ def create_comment(
     user_id: int = Depends(get_current_user_id),
 ):
     result = svc.create_comment(db, post_id, user_id, body.content.strip())
-    # Notify post author (skip if commenting on own post)
     post = svc.get_post(db, post_id, user_id)
     if post and post.get("author", {}).get("telegram_id") and post["author"]["telegram_id"] != user_id:
-        _fire_notification(post["author"]["telegram_id"], "comment", "SOCIAL", {"actor_id": user_id, "post_id": post_id})
+        actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+        _fire_notification(post["author"]["telegram_id"], "comment", "SOCIAL", {
+            "actor_id": user_id,
+            "actor_name": actor.first_name or "" if actor else "",
+            "post_id": post_id,
+        })
     return result
 
 
@@ -337,7 +366,11 @@ def follow_user(
     if not svc.follow_user(db, user_id, target_id):
         raise HTTPException(400, "Cannot follow (already following or self)")
     if user_id != target_id:
-        _fire_notification(target_id, "follow", "SOCIAL", {"actor_id": user_id})
+        actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+        _fire_notification(target_id, "follow", "SOCIAL", {
+            "actor_id": user_id,
+            "actor_name": actor.first_name or "" if actor else "",
+        })
     return {"ok": True}
 
 

@@ -36,6 +36,7 @@ try:
 except ImportError:
     _PIL_AVAILABLE = False
 
+import asyncio
 from app.core.config import settings
 from app.db.session import get_db
 from app.models.models import Profile, AuthCode, TeacherProfile
@@ -51,6 +52,22 @@ from app.services.auth_service import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+def _send_welcome(user_id: int, first_name: str = ""):
+    """Fire welcome notification for newly registered users (fire-and-forget)."""
+    if user_id <= 0:
+        return
+    try:
+        from app.api.v1.endpoints.notifications import send_notification
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                send_notification(user_id, "welcome", "SOCIAL", {"first_name": first_name}),
+                loop,
+            )
+    except Exception:
+        pass
 
 BOT_TOKEN        = os.getenv("TELEGRAM_BOT_TOKEN", "")
 GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", "")
@@ -167,11 +184,14 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
     if not verify_telegram_auth(data, BOT_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
 
+    is_new = db.query(Profile).filter(Profile.telegram_id == data.id).first() is None
     profile = _upsert_profile(
         db, data.id,
         first_name=data.first_name, username=data.username,
         photo_url=data.photo_url, app_last_login=datetime.now(UTC),
     )
+    if is_new:
+        _send_welcome(data.id, data.first_name or "")
     token_data = create_access_token(data.id, profile.role or "student")
     return {
         "success": True, "telegram_id": data.id,
@@ -208,11 +228,14 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
     username   = user.get("username")
     photo_url  = user.get("photo_url")
 
+    is_new = db.query(Profile).filter(Profile.telegram_id == telegram_id).first() is None
     profile = _upsert_profile(
         db, telegram_id,
         first_name=first_name, username=username,
         photo_url=photo_url, app_last_login=datetime.now(UTC),
     )
+    if is_new:
+        _send_welcome(telegram_id, first_name or "")
     token_data = create_access_token(telegram_id, profile.role or "student")
     logger.info("tma_init: authenticated user_id=%s (%s)", telegram_id, username or first_name)
     return {
@@ -271,10 +294,13 @@ async def google_sign_in(body: GoogleSignInRequest, db: Session = Depends(get_db
     username    = email.split("@")[0] if isinstance(email, str) and "@" in email else None
     photo_url   = idinfo.get("picture")
 
+    is_new = db.query(Profile).filter(Profile.telegram_id == telegram_id).first() is None
     profile = _upsert_profile(
         db, telegram_id, first_name=first_name, username=username,
         photo_url=photo_url, email=email, app_last_login=datetime.now(UTC),
     )
+    if is_new:
+        _send_welcome(telegram_id, first_name or "")
     token_data = create_access_token(telegram_id, profile.role or "student")
     return {
         "status": "ok", "telegram_id": telegram_id,
@@ -626,6 +652,7 @@ async def email_register(body: EmailRegisterRequest, db: Session = Depends(get_d
         password_hash=password_hash, role="student", status="active",
         app_last_login=datetime.now(UTC),
     )
+    _send_welcome(internal_id, body.first_name.strip())
     token_data = create_access_token(internal_id, "student")
     return {
         "status": "ok", "telegram_id": internal_id,

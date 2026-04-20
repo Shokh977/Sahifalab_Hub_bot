@@ -281,40 +281,50 @@ VAPID_CLAIM_EMAIL  = os.getenv("VAPID_CLAIM_EMAIL", "mailto:admin@sahifalab.com"
 
 # Human-readable push titles per notification type
 _PUSH_TITLES: dict[str, str] = {
-    "follow":       "Yangi obunachi",
-    "like":         "Layk",
-    "comment":      "Izoh",
-    "repost":       "Repost",
-    "mention":      "Eslatma",
-    "level_up":     "Yangi daraja 🎉",
-    "achievement":  "Yutuq ochildi 🏅",
-    "xp_reward":    "XP mukofot ⚡",
-    "course_complete": "Kurs yakunlandi 🎓",
-    "certificate":  "Sertifikat tayyor 🏆",
-    "quiz_pass":    "Test o'tdi ✅",
-    "new_student":  "Yangi talaba",
-    "new_sale":     "Yangi sotish 💰",
-    "payout":       "To'lov o'tkazildi 💳",
-    "welcome":      "Sahifalab'ga xush kelibsiz! 🚀",
+    "follow":              "Yangi obunachi",
+    "like":                "Layk",
+    "comment":             "Yangi izoh",
+    "repost":              "Repost",
+    "save":                "Foydali",
+    "mention":             "Eslatma",
+    "connection_request":  "Ulanish so'rovi",
+    "connection_accepted": "So'rov qabul qilindi",
+    "level_up":            "Yangi daraja",
+    "achievement":         "Yutuq ochildi",
+    "xp_reward":           "XP mukofot",
+    "course_complete":     "Kurs yakunlandi",
+    "certificate":         "Sertifikat tayyor",
+    "quiz_pass":           "Test natijasi",
+    "new_student":         "Yangi talaba",
+    "new_sale":            "Yangi sotish",
+    "payout":              "To'lov o'tkazildi",
+    "welcome":             "Sahifalab'ga xush kelibsiz",
 }
 
-_PUSH_BODIES: dict[str, str] = {
-    "follow":       "Yangi foydalanuvchi sizga obuna bo'ldi.",
-    "like":         "Sizning postingizga like bosildi.",
-    "comment":      "Postingizga yangi izoh qoldirildi.",
-    "repost":       "Postingiz repost qilindi.",
-    "mention":      "Siz eslatib o'tildi.",
-    "level_up":     "Yangi darajaga ko'tarildingiz!",
-    "achievement":  "Yangi yutuq ochildi!",
-    "xp_reward":    "Postingiz ko'p view yig'di.",
-    "course_complete": "Kurs muvaffaqiyatli yakunlandi!",
-    "certificate":  "Sertifikatingiz tayyor.",
-    "quiz_pass":    "Testni muvaffaqiyatli topshirdingiz.",
-    "new_student":  "Yangi o'quvchi kursingizga yozildi.",
-    "new_sale":     "Yangi daromad tushdi.",
-    "payout":       "Daromadingiz hisobingizga o'tkazildi.",
-    "welcome":      "Ilm yo'liga xush kelibsiz!",
+# Body templates — {actor} is replaced with the actor's name at send time
+_PUSH_BODY_TPL: dict[str, str] = {
+    "follow":              "{actor} sizga obuna bo'ldi.",
+    "like":                "{actor} postingizga layk bosdi.",
+    "comment":             "{actor} postingizga izoh qoldirdi.",
+    "repost":              "{actor} postingizni repost qildi.",
+    "save":                "{actor} postingizni foydali deb belgiladi.",
+    "mention":             "{actor} sizni eslatib o'tdi.",
+    "connection_request":  "{actor} sizga ulanish so'rovi yubordi.",
+    "connection_accepted": "{actor} ulanish so'rovingizni qabul qildi.",
+    "level_up":            "Tabriklaymiz! Yangi darajaga ko'tarildingiz.",
+    "achievement":         "Yangi yutuq ochildi — davom eting!",
+    "xp_reward":           "Postingiz ko'p ko'rindi — XP mukofot oldiniz.",
+    "course_complete":     "Kurs muvaffaqiyatli yakunlandi.",
+    "certificate":         "Sertifikatingiz tayyor — yuklab oling.",
+    "quiz_pass":           "Testni muvaffaqiyatli topshirdingiz.",
+    "new_student":         "Yangi o'quvchi kursingizga yozildi.",
+    "new_sale":            "Yangi daromad tushdi.",
+    "payout":              "Daromadingiz hisobingizga o'tkazildi.",
+    "welcome":             "Ilm yo'liga xush kelibsiz. Profilingizni to'ldiring.",
 }
+
+# Keep _PUSH_BODIES as fallback alias
+_PUSH_BODIES = _PUSH_BODY_TPL
 
 
 async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: object):
@@ -344,11 +354,10 @@ async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: ob
         return
 
     # Build payload
-    actor = meta.get("actor_name") or meta.get("first_name", "")
+    actor = meta.get("actor_name") or meta.get("first_name") or "Kimdir"
     title = _PUSH_TITLES.get(notif_type, "SAHIFALAB")
-    body  = _PUSH_BODIES.get(notif_type, "Yangi bildirishnoma")
-    if actor:
-        body = f"{actor}: {body}"
+    tpl   = _PUSH_BODY_TPL.get(notif_type, "Yangi bildirishnoma")
+    body  = tpl.format(actor=actor)
 
     # Build route (mirrors notificationDictionary logic)
     route = _push_route(notif_type, meta)
@@ -413,10 +422,13 @@ async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: ob
 def _push_route(notif_type: str, meta: dict) -> str:
     """Mirror notificationDictionary.ts route() logic in Python."""
     routes = {
-        "follow":          f"/profile/{meta.get('actor_id', '')}",
+        "follow":              f"/profile/{meta.get('actor_id', '')}",
+        "connection_request":  f"/profile/{meta.get('actor_id', '')}",
+        "connection_accepted": f"/profile/{meta.get('actor_id', '')}",
         "like":            f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
         "comment":         f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
         "repost":          f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
+        "save":            f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
         "mention":         f"/feed?post={meta.get('post_id', '')}" if meta.get("post_id") else "/feed",
         "new_content":     f"/courses/{meta['course_id']}" if meta.get("course_id") else "/courses",
         "course_complete": f"/courses/{meta['course_id']}" if meta.get("course_id") else "/courses",

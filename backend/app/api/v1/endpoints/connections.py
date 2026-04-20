@@ -25,6 +25,7 @@ Routes (mounted at /api/connections):
   GET    /suggestions          — top-10 smart suggestions
 """
 
+import asyncio
 import logging
 from datetime import datetime, UTC
 from typing import Optional
@@ -39,6 +40,21 @@ from app.models.models import Profile
 from app.models.social_models import Connection, Follow, ActivityLog
 from app.services.auth_service import decode_token
 from app.services.integration_service import hook_connection_accepted
+from app.api.v1.endpoints.notifications import send_notification
+
+
+def _fire_conn_notification(user_id: int, notif_type: str, meta: dict):
+    """Fire-and-forget notification from sync context."""
+    if user_id <= 0:
+        return
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.run_coroutine_threadsafe(
+                send_notification(user_id, notif_type, "SOCIAL", meta), loop
+            )
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +202,11 @@ def send_request(
             _ensure_follow(db, viewer_id, body.receiver_id)
             db.commit()
             db.refresh(existing)
+            requester = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+            _fire_conn_notification(body.receiver_id, "connection_request", {
+                "actor_id": viewer_id,
+                "actor_name": requester.first_name or "" if requester else "",
+            })
             return {"ok": True, "id": existing.id, "status": "pending"}
 
     conn = Connection(requester_id=viewer_id, receiver_id=body.receiver_id, status="pending")
@@ -201,6 +222,11 @@ def send_request(
         db.rollback()
         raise HTTPException(500, "So'rovni saqlashda xatolik")
 
+    requester = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+    _fire_conn_notification(body.receiver_id, "connection_request", {
+        "actor_id": viewer_id,
+        "actor_name": requester.first_name or "" if requester else "",
+    })
     return {"ok": True, "id": conn.id, "status": "pending"}
 
 
