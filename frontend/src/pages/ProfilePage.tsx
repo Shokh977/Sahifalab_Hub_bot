@@ -1400,9 +1400,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     const formData = new FormData()
     formData.append('file', file)
     formData.append('type', type)
-    const r = await api.client.post('/api/profile/me/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    const r = await api.client.post('/api/profile/me/upload', formData)
     return r.data.url
   }
 

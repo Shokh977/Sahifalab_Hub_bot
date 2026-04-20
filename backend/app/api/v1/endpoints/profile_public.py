@@ -421,12 +421,19 @@ async def _upload_profile_image_to_bunny(file_bytes: bytes, remote_path: str, co
     }
     host = region_hosts.get(region, "storage.bunnycdn.com")
     put_url = f"https://{host}/{settings.BUNNY_STORAGE_ZONE}/{remote_path}"
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        resp = await client.put(
-            put_url, content=file_bytes,
-            headers={"AccessKey": settings.BUNNY_API_KEY, "Content-Type": content_type, "Content-Length": str(len(file_bytes))},
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.put(
+                put_url, content=file_bytes,
+                headers={"AccessKey": settings.BUNNY_API_KEY, "Content-Type": content_type, "Content-Length": str(len(file_bytes))},
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Fayl yuklash vaqti tugadi. Qayta urinib ko'ring.")
+    except httpx.RequestError as exc:
+        logger.error("Bunny upload connection error: %s", exc)
+        raise HTTPException(status_code=503, detail="Fayl saqlash xizmatiga ulanib bo'lmadi.")
     if resp.status_code not in (200, 201):
+        logger.error("Bunny upload failed: HTTP %s — %s", resp.status_code, resp.text[:200])
         raise HTTPException(status_code=502, detail=f"Yuklashda xatolik: {resp.status_code}")
     hostname = getattr(settings, "BUNNY_CDN_HOSTNAME", "").rstrip("/")
     return f"https://{hostname}/{remote_path}"

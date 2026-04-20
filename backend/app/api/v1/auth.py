@@ -357,15 +357,20 @@ async def upload_my_photo(
     remote_path = f"uploads/users/{telegram_id}/avatar_{uuid.uuid4().hex}{ext}"
     put_url     = f"https://{host}/{settings.BUNNY_STORAGE_ZONE}/{remote_path}"
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        put_res = await client.put(
-            put_url, content=file_bytes,
-            headers={
-                "AccessKey": settings.BUNNY_API_KEY,
-                "Content-Type": upload_content_type,
-                "Content-Length": str(len(file_bytes)),
-            },
-        )
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            put_res = await client.put(
+                put_url, content=file_bytes,
+                headers={
+                    "AccessKey": settings.BUNNY_API_KEY,
+                    "Content-Type": upload_content_type,
+                    "Content-Length": str(len(file_bytes)),
+                },
+            )
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Fayl yuklash vaqti tugadi.")
+    except httpx.RequestError as exc:
+        raise HTTPException(status_code=503, detail=f"CDN ulanish xatosi: {exc}")
     if put_res.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail=f"Bunny upload error: {put_res.text[:200]}")
 

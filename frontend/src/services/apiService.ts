@@ -401,9 +401,7 @@ class ApiService {
   async uploadMyPhotoFile(file: File) {
     const form = new FormData()
     form.append('file', file)
-    return this.axiosInstance.post('/api/auth/me/photo/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    })
+    return this.axiosInstance.post('/api/auth/me/photo/upload', form)
   }
 
   // ─── Email auth ───────────────────────────────────────────────────────────

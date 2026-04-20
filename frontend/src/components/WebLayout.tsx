@@ -689,7 +689,7 @@ const MobileBottomTabs: React.FC<MobileBottomTabsProps> = ({ onNewPost }) => {
   }
 
   return (
-    <nav className="lg:hidden flex-shrink-0 flex items-stretch border-t border-white/[0.06] bg-[#13141a]/95 backdrop-blur-xl z-30">
+    <nav className="lg:hidden flex-shrink-0 flex items-stretch border-t border-white/[0.06] backdrop-blur-xl z-30" style={{ backgroundColor: 'var(--bg-sidebar)' }}>
       {BOTTOM_TABS.map((tab, i) => {
         // Center ➕ button
         if (tab.path === '__new_post__') {
