@@ -699,10 +699,11 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
       {/* Delete confirm modal */}
       {deleteTarget && (
         <DeleteConfirmModal
+          open={true}
+          description={deleteTarget.type === 'post' ? "Bu postni o'chirishni tasdiqlaysizmi? Bu amalni ortga qaytarib bo'lmaydi." : "Bu izohni o'chirishni tasdiqlaysizmi?"}
           onConfirm={handleConfirmDelete}
           onCancel={() => setDeleteTarget(null)}
           loading={deleting}
-          message={deleteTarget.type === 'post' ? "Bu postni o'chirishni tasdiqlaysizmi?" : "Bu izohni o'chirishni tasdiqlaysizmi?"}
         />
       )}
     </>
