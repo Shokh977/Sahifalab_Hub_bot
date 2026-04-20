@@ -59,8 +59,10 @@ def _base_template(card_html: str) -> str:
 def _send(to_email: str, to_name: str, subject: str, html: str) -> bool:
     """Send email via Sender.net REST API. Returns True on success."""
     api_key = settings.SENDER_API_KEY
+    logger.info("[EMAIL] _send called: to=%s subject=%s api_key_set=%s", to_email, subject, bool(api_key))
+
     if not api_key:
-        logger.warning("SENDER_API_KEY not configured — email not sent to %s", to_email)
+        logger.warning("[EMAIL] SENDER_API_KEY not configured — email NOT sent to %s", to_email)
         return False
 
     payload = {
@@ -70,6 +72,7 @@ def _send(to_email: str, to_name: str, subject: str, html: str) -> bool:
         "html": html,
     }
     try:
+        logger.info("[EMAIL] Posting to Sender.net for %s ...", to_email)
         resp = httpx.post(
             SENDER_API_URL,
             json=payload,
@@ -78,14 +81,16 @@ def _send(to_email: str, to_name: str, subject: str, html: str) -> bool:
                 "Content-Type":  "application/json",
                 "Accept":        "application/json",
             },
-            timeout=15.0,
+            timeout=10.0,
         )
+        logger.info("[EMAIL] Sender.net response: status=%s body=%s", resp.status_code, resp.text[:300])
         if resp.status_code not in (200, 201, 202):
-            logger.error("Sender.net error %s: %s", resp.status_code, resp.text[:300])
+            logger.error("[EMAIL] Sender.net rejected: %s %s", resp.status_code, resp.text[:300])
             return False
+        logger.info("[EMAIL] Email sent successfully to %s", to_email)
         return True
     except Exception as exc:
-        logger.error("Sender.net request failed: %s", exc)
+        logger.error("[EMAIL] Sender.net request exception: %s", exc)
         return False
 
 

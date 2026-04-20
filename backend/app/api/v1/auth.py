@@ -196,6 +196,7 @@ def _create_auth_token(db: Session, user_id: int, token_type: str, hours: int = 
     """Create and persist a one-time auth token. Returns the token string."""
     import uuid as _uuid
     token_str = secrets.token_hex(32)
+    logger.info("[TOKEN] Inserting auth_token type=%s user_id=%s", token_type, user_id)
     db.add(AuthToken(
         id=_uuid.uuid4().hex,
         user_id=user_id,
@@ -204,6 +205,7 @@ def _create_auth_token(db: Session, user_id: int, token_type: str, hours: int = 
         expires_at=datetime.now(UTC) + timedelta(hours=hours),
     ))
     db.commit()
+    logger.info("[TOKEN] auth_token committed OK")
     return token_str
 
 
@@ -704,14 +706,29 @@ async def email_register(body: EmailRegisterRequest, db: Session = Depends(get_d
         app_last_login=datetime.now(UTC),
     )
 
-    # Send verification email (fire-and-forget — don't block on failure)
+    # Create verification token and send email
     try:
+        logger.info("[REGISTER] Creating auth token for user_id=%s email=%s", internal_id, email_lower)
         token_str = _create_auth_token(db, internal_id, "email_verification", hours=24)
-        from app.services.email_service import send_verification_email
-        send_verification_email(email_lower, body.first_name.strip(), token_str)
+        logger.info("[REGISTER] Auth token created: %s", token_str[:8] + "...")
     except Exception as exc:
-        logger.warning("email_register: failed to send verification email: %s", exc)
+        logger.error("[REGISTER] Failed to create auth token: %s", exc)
+        token_str = None
 
+    if token_str:
+        try:
+            from app.services.email_service import send_verification_email
+            import concurrent.futures
+            logger.info("[REGISTER] Sending verification email to %s", email_lower)
+            # Run in thread pool so it doesn't block the async event loop
+            with concurrent.futures.ThreadPoolExecutor() as pool:
+                future = pool.submit(send_verification_email, email_lower, body.first_name.strip(), token_str)
+                result = future.result(timeout=12)
+            logger.info("[REGISTER] send_verification_email result: %s", result)
+        except Exception as exc:
+            logger.error("[REGISTER] Failed to send verification email: %s", exc)
+
+    logger.info("[REGISTER] Registration complete for %s — returning pending_verification", email_lower)
     return {
         "status": "pending_verification",
         "email": email_lower,
