@@ -174,12 +174,13 @@ const PollCard: React.FC<{
   meta: NonNullable<PostData['post_metadata']>
   postId: number
   onVoted: (newMeta: any) => void
-}> = ({ meta, postId, onVoted }) => {
+  onVoteGuard: (fn: (idx: number) => void) => (idx: number) => void
+}> = ({ meta, postId, onVoted, onVoteGuard }) => {
   const [voting, setVoting] = useState<number | null>(null)
   const voted = meta.user_voted_option_idx != null
   const total = meta.total_votes || 0
 
-  const handleVote = async (idx: number) => {
+  const handleVote = onVoteGuard(async (idx: number) => {
     if (voted) return
     setVoting(idx)
     try {
@@ -187,7 +188,7 @@ const PollCard: React.FC<{
       onVoted(r.data)
     } catch {}
     setVoting(null)
-  }
+  })
 
   return (
     <div className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.03] p-4">
@@ -265,7 +266,7 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
 
   const navigate    = useNavigate()
   const isOwner     = currentUserId === post.author.telegram_id
-  const { withAuth } = useGuestGuard()
+  const { withAuth, isAuthenticated } = useGuestGuard()
   const articleRef  = useRef<HTMLElement>(null)
 
   // ── View tracking ────────────────────────────────────────────────────────────
@@ -343,7 +344,7 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
     }
   }
 
-  const handleSendComment = async () => {
+  const handleSendComment = withAuth(async () => {
     const text = commentText.trim()
     if (!text || sendingComment) return
     setSendingComment(true)
@@ -354,7 +355,7 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
       setCommentText('')
     } catch {}
     setSendingComment(false)
-  }
+  })
 
   // ── Edit ─────────────────────────────────────────────────────────────────────
   const handleSaveEdit = async () => {
@@ -541,7 +542,7 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
           <AchievementCard meta={pollMeta} />
         )}
         {postType === 'poll' && pollMeta && (
-          <PollCard meta={pollMeta} postId={post.id} onVoted={setPollMeta} />
+          <PollCard meta={pollMeta} postId={post.id} onVoted={setPollMeta} onVoteGuard={withAuth} />
         )}
 
         {/* Action bar: 💬 | 🔄 | ⭐ | 👁 | 📌 */}
@@ -643,24 +644,33 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
                   ))
                 )}
 
-                {/* Comment input */}
-                <div className="flex items-start gap-2">
-                  <input
-                    value={commentText}
-                    onChange={e => setCommentText(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
-                    placeholder="Izoh yozing..."
-                    className="flex-1 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.06] text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/30 transition-colors"
-                    style={{ color: 'var(--text-primary)' }}
-                  />
+                {/* Comment input — guests see a login prompt */}
+                {!isAuthenticated ? (
                   <button
-                    onClick={handleSendComment}
-                    disabled={!commentText.trim() || sendingComment}
-                    className="px-3 py-2 rounded-xl bg-[#e8792f] hover:bg-[#c44a1a] text-white text-sm font-medium disabled:opacity-40 transition-colors flex-shrink-0"
+                    onClick={withAuth(() => {})}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.04] border border-white/[0.06] text-sm text-white/30 text-left transition-colors hover:border-[#e8792f]/30 hover:text-white/50"
                   >
-                    {sendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yuborish'}
+                    Izoh yozish uchun kiring...
                   </button>
-                </div>
+                ) : (
+                  <div className="flex items-start gap-2">
+                    <input
+                      value={commentText}
+                      onChange={e => setCommentText(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendComment() } }}
+                      placeholder="Izoh yozing..."
+                      className="flex-1 px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.06] text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/30 transition-colors"
+                      style={{ color: 'var(--text-primary)' }}
+                    />
+                    <button
+                      onClick={handleSendComment}
+                      disabled={!commentText.trim() || sendingComment}
+                      className="px-3 py-2 rounded-xl bg-[#e8792f] hover:bg-[#c44a1a] text-white text-sm font-medium disabled:opacity-40 transition-colors flex-shrink-0"
+                    >
+                      {sendingComment ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Yuborish'}
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           )}

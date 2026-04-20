@@ -209,8 +209,8 @@ const SocialFeed: React.FC = () => {
   }, [])
 
   const fetchPosts = useCallback(async (pageNum: number, reset = false) => {
-    // Both endpoints require auth — skip for guests to avoid error toasts
-    if (!user) {
+    // Kuzatuv (feed) requires auth — guests only see Kashfiyot (explore)
+    if (tab === 'feed' && !user) {
       setLoading(false)
       setRefreshing(false)
       return
@@ -295,17 +295,20 @@ const SocialFeed: React.FC = () => {
             {/* Tab switcher + refresh */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex gap-1 p-1 bg-[#1c1d27] rounded-xl border border-white/[0.06]">
-                <button
-                  onClick={() => setTab('feed')}
-                  className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    tab === 'feed'
-                      ? 'bg-[#e8792f] text-white shadow-sm'
-                      : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
-                  }`}
-                >
-                  <Users className="w-3.5 h-3.5" />
-                  Kuzatuv
-                </button>
+                {/* Kuzatuv tab — only for logged-in users */}
+                {user && (
+                  <button
+                    onClick={() => setTab('feed')}
+                    className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      tab === 'feed'
+                        ? 'bg-[#e8792f] text-white shadow-sm'
+                        : 'text-white/40 hover:text-white/70 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    Kuzatuv
+                  </button>
+                )}
                 <button
                   onClick={() => setTab('explore')}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -362,16 +365,11 @@ const SocialFeed: React.FC = () => {
                         : <Compass className="w-9 h-9 text-white/15" />
                       }
                     </div>
-                    {!user ? (
+                    {tab === 'feed' && !user ? (
+                      // Guest somehow on feed tab — shouldn't happen, just show explore prompt
                       <>
                         <h3 className="text-sm font-semibold text-white/40 mb-1">Kirish talab qilinadi</h3>
-                        <p className="text-xs text-white/20 max-w-xs mx-auto leading-relaxed mb-4">
-                          Postlarni ko'rish uchun tizimga kiring
-                        </p>
-                        <Link
-                          to="/login"
-                          className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#e8792f] text-white text-sm font-medium hover:bg-[#d4692a] transition-colors"
-                        >
+                        <Link to="/login" className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#e8792f] text-white text-sm font-medium hover:bg-[#d4692a] transition-colors mt-3">
                           <LogIn className="w-4 h-4" />
                           Kirish / Ro'yxatdan o'tish
                         </Link>

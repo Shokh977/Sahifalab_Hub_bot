@@ -64,6 +64,14 @@ def get_current_user_id(authorization: str = Header(None)) -> int:
     return tid
 
 
+def get_optional_user_id(authorization: str = Header(None)) -> Optional[int]:
+    """Like get_current_user_id but returns None instead of raising for guests."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    tid = decode_token(authorization.split(" ", 1)[1])
+    return tid if tid else None
+
+
 # ── Posts ────────────────────────────────────────────────────────────────────
 
 @router.post("/posts")
@@ -96,7 +104,7 @@ def explore(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: Optional[int] = Depends(get_optional_user_id),
 ):
     return svc.get_explore(db, user_id, page, page_size)
 
@@ -264,7 +272,7 @@ def get_comments(
     post_id: int,
     page: int = Query(1, ge=1),
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: Optional[int] = Depends(get_optional_user_id),
 ):
     return svc.get_comments(db, post_id, page)
 
