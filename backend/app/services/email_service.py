@@ -11,7 +11,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-FROM_EMAIL = "Sahifalab <noreply@sahifalab.com>"
+FROM_EMAIL = "Sahifalab <info@sahifalab.uz>"
 
 
 def _get_client():
