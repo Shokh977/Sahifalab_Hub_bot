@@ -301,7 +301,7 @@ const SkillInput: React.FC<{
     if (q.length < 2) { setSuggestions([]); return }
     setLoading(true)
     try {
-      const res = await api.client.get(`/jobs/skills/autocomplete?q=${encodeURIComponent(q)}&limit=6`)
+      const res = await api.client.get(`/api/jobs/skills/autocomplete?q=${encodeURIComponent(q)}&limit=6`)
       setSuggestions((res.data.suggestions || []).filter((s: string) => !value.includes(s)))
     } catch { /* ignore */ } finally { setLoading(false) }
   }, [value])
@@ -435,9 +435,9 @@ const JobFormModal: React.FC<{
         expires_at: form.expires_at || null,
       }
       if (initial) {
-        await api.client.patch(`/jobs/${initial.id}`, payload)
+        await api.client.patch(`/api/jobs/${initial.id}`, payload)
       } else {
-        await api.client.post('/jobs', payload)
+        await api.client.post('/api/jobs', payload)
       }
       onSaved()
     } catch (err: any) {
@@ -620,7 +620,7 @@ const ApplyModal: React.FC<{
   const handleApply = async () => {
     setLoading(true)
     try {
-      await api.client.post(`/jobs/${job.id}/apply`, { message: message.trim() || null })
+      await api.client.post(`/api/jobs/${job.id}/apply`, { message: message.trim() || null })
       setDone(true)
     } catch { /* ignore */ } finally { setLoading(false) }
   }
@@ -697,14 +697,14 @@ const ApplicantsModal: React.FC<{
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.client.get(`/jobs/${job.id}/applicants`).then(r => {
+    api.client.get(`/api/jobs/${job.id}/applicants`).then(r => {
       setApplicants(r.data.applicants || [])
     }).finally(() => setLoading(false))
   }, [job.id])
 
   const updateStatus = async (appId: number, status: string) => {
     try {
-      await api.client.patch(`/jobs/${job.id}/applicants/${appId}`, { status })
+      await api.client.patch(`/api/jobs/${job.id}/applicants/${appId}`, { status })
       setApplicants(prev => prev.map(a => a.application_id === appId ? { ...a, status } : a))
     } catch { /* ignore */ }
   }
@@ -927,7 +927,7 @@ const MatchedTab: React.FC<{ onApply: (job: Job) => void }> = ({ onApply }) => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    api.client.get('/jobs/matched').then(r => {
+    api.client.get('/api/jobs/matched').then(r => {
       setJobs(r.data.jobs || [])
     }).finally(() => setLoading(false))
   }, [])
@@ -976,7 +976,7 @@ const MineTab: React.FC<{
 
   useEffect(() => {
     setLoading(true)
-    api.client.get('/jobs/mine').then(r => {
+    api.client.get('/api/jobs/mine').then(r => {
       setJobs(r.data.jobs || [])
     }).finally(() => setLoading(false))
   }, [refreshKey])
@@ -984,7 +984,7 @@ const MineTab: React.FC<{
   const handleDelete = async (job: Job) => {
     if (!confirm(`"${job.title}" e'lonini o'chirishni tasdiqlaysizmi?`)) return
     try {
-      await api.client.delete(`/jobs/${job.id}`)
+      await api.client.delete(`/api/jobs/${job.id}`)
       setJobs(prev => prev.filter(j => j.id !== job.id))
     } catch { /* ignore */ }
   }
