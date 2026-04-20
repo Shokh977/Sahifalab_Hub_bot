@@ -1,31 +1,18 @@
 """
-email_service.py — Transactional emails via Resend.
+email_service.py — Transactional emails via Sender.net API.
 
-All emails use the Sahifalab design system:
-  BG:    #13141a (page) / #1c1d27 (card)
-  Brand: #e8792f (orange)
-  Text:  #fff (primary) / rgba(255,255,255,0.65) (secondary)
+Requires SENDER_API_KEY env var (from Sender.net → API access tokens).
+Domain sahifalab.uz must be verified in Sender.net → Domains.
 """
 import logging
+import httpx
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-FROM_EMAIL = "Sahifalab <info@sahifalab.uz>"
-
-
-def _get_client():
-    """Lazily import resend so the app still boots without it configured."""
-    try:
-        import resend
-        if not settings.RESEND_API_KEY:
-            return None
-        resend.api_key = settings.RESEND_API_KEY
-        return resend
-    except ImportError:
-        logger.warning("resend package not installed — email sending disabled")
-        return None
-
+SENDER_API_URL = "https://api.sender.net/v2/emails"
+FROM_EMAIL     = "info@sahifalab.uz"
+FROM_NAME      = "Sahifalab"
 
 _CARD_STYLE = (
     'background-color:#1c1d27;border-radius:16px;padding:32px 24px;'
@@ -69,13 +56,40 @@ def _base_template(card_html: str) -> str:
 </html>"""
 
 
-def send_verification_email(to: str, user_name: str, token: str) -> bool:
-    """Send email-verification link. Returns True on success."""
-    resend = _get_client()
-    if not resend:
-        logger.warning("Email not sent (Resend not configured): verification for %s", to)
+def _send(to_email: str, to_name: str, subject: str, html: str) -> bool:
+    """Send email via Sender.net REST API. Returns True on success."""
+    api_key = settings.SENDER_API_KEY
+    if not api_key:
+        logger.warning("SENDER_API_KEY not configured — email not sent to %s", to_email)
         return False
 
+    payload = {
+        "from": {"email": FROM_EMAIL, "name": FROM_NAME},
+        "to":   [{"email": to_email, "name": to_name or to_email}],
+        "subject": subject,
+        "html": html,
+    }
+    try:
+        resp = httpx.post(
+            SENDER_API_URL,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type":  "application/json",
+                "Accept":        "application/json",
+            },
+            timeout=15.0,
+        )
+        if resp.status_code not in (200, 201, 202):
+            logger.error("Sender.net error %s: %s", resp.status_code, resp.text[:300])
+            return False
+        return True
+    except Exception as exc:
+        logger.error("Sender.net request failed: %s", exc)
+        return False
+
+
+def send_verification_email(to: str, user_name: str, token: str) -> bool:
     verify_url = f"{settings.APP_URL}/auth/verify-email?token={token}"
     card = f"""
       <h1 style="color:#ffffff;font-size:20px;font-weight:700;margin:0 0 8px;">
@@ -95,26 +109,10 @@ def send_verification_email(to: str, user_name: str, token: str) -> bool:
         Bu havola 24 soat ichida amal qiladi.
       </p>
     """
-    try:
-        resend.Emails.send({
-            "from": FROM_EMAIL,
-            "to": [to],
-            "subject": "Sahifalab — Email manzilingizni tasdiqlang",
-            "html": _base_template(card),
-        })
-        return True
-    except Exception as exc:
-        logger.error("send_verification_email failed for %s: %s", to, exc)
-        return False
+    return _send(to, user_name, "Sahifalab — Email manzilingizni tasdiqlang", _base_template(card))
 
 
 def send_password_reset_email(to: str, user_name: str, token: str) -> bool:
-    """Send password-reset link. Returns True on success."""
-    resend = _get_client()
-    if not resend:
-        logger.warning("Email not sent (Resend not configured): reset for %s", to)
-        return False
-
     reset_url = f"{settings.APP_URL}/auth/reset-password?token={token}"
     card = f"""
       <h1 style="color:#ffffff;font-size:20px;font-weight:700;margin:0 0 8px;">
@@ -132,29 +130,13 @@ def send_password_reset_email(to: str, user_name: str, token: str) -> bool:
         <a href="{reset_url}" style="color:#e8792f;word-break:break-all;">{reset_url}</a>
       </p>
       <p style="color:rgba(255,255,255,0.25);font-size:12px;margin:20px 0 0;">
-        Bu havola 1 soat ichida amal qiladi. Agar siz bu so'rovni
-        yubormagan bo'lsangiz, bu xabarni e'tiborsiz qoldiring.
+        Bu havola 1 soat ichida amal qiladi.
       </p>
     """
-    try:
-        resend.Emails.send({
-            "from": FROM_EMAIL,
-            "to": [to],
-            "subject": "Sahifalab — Parolni tiklash",
-            "html": _base_template(card),
-        })
-        return True
-    except Exception as exc:
-        logger.error("send_password_reset_email failed for %s: %s", to, exc)
-        return False
+    return _send(to, user_name, "Sahifalab — Parolni tiklash", _base_template(card))
 
 
 def send_welcome_email(to: str, user_name: str) -> bool:
-    """Send welcome email after successful verification. Returns True on success."""
-    resend = _get_client()
-    if not resend:
-        return False
-
     feed_url = f"{settings.APP_URL}/feed"
     card = f"""
       <h1 style="color:#ffffff;font-size:20px;font-weight:700;margin:0 0 16px;">
@@ -173,14 +155,4 @@ def send_welcome_email(to: str, user_name: str) -> bool:
         <a href="{feed_url}" style="{_BTN_STYLE}">Boshlash</a>
       </div>
     """
-    try:
-        resend.Emails.send({
-            "from": FROM_EMAIL,
-            "to": [to],
-            "subject": "Sahifalab'ga xush kelibsiz!",
-            "html": _base_template(card),
-        })
-        return True
-    except Exception as exc:
-        logger.error("send_welcome_email failed for %s: %s", to, exc)
-        return False
+    return _send(to, user_name, "Sahifalab'ga xush kelibsiz!", _base_template(card))

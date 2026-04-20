@@ -66,10 +66,10 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID:     str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
-    # Email via Resend — get API key from resend.com dashboard
-    RESEND_API_KEY: str = ""
+    # Email via Sender.net — get API key from Sender.net → API access tokens
+    SENDER_API_KEY: str = ""
     # Base URL of the frontend app (used to build email links)
-    APP_URL: str = "https://sahifalab-hub-bot.vercel.app"
+    APP_URL: str = "https://sahifalab.uz"
 
     @field_validator('ADMIN_TELEGRAM_IDS', mode='before')
     @classmethod
