@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -49,6 +50,7 @@ class Profile(Base):
     profile_views_week = Column(Integer, default=0)
     is_verified        = Column(Boolean, default=False)
     account_type       = Column(String(50), default='student')   # student | teacher | company | admin
+    user_settings      = Column(JSONB, nullable=True)
 
 
 class AuthCode(Base):

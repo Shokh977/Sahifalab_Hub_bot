@@ -242,6 +242,10 @@ async def startup_event():
                     "INSERT INTO auth_codes (code, expires_at) VALUES (:c, :e)"
                 ), {"c": _tc, "e": datetime.now(UTC) + timedelta(seconds=10)})
                 conn.execute(_sa_text("DELETE FROM auth_codes WHERE code = :c"), {"c": _tc})
+                # 4. user_settings column (migration 052)
+                conn.execute(_sa_text(
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_settings JSONB"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
