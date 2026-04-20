@@ -351,6 +351,21 @@ def get_my_views(
     }
 
 
+@profile_router.get("/me")
+def get_my_profile(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Return the authenticated user's own full profile (same shape as /{username})."""
+    viewer_id = _require_viewer(authorization)
+    profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profil topilmadi")
+    # Re-use the existing full-profile endpoint by delegating via the username/id
+    identifier = profile.username or str(profile.telegram_id)
+    return get_public_profile(username=identifier, authorization=authorization, db=db)
+
+
 @profile_router.put("/me")
 def update_my_profile(
     body: ProfileUpdateRequest,

@@ -261,30 +261,29 @@ const ProfilePage: React.FC = () => {
   const [newSkill, setNewSkill] = useState('')
   const [addingSkill, setAddingSkill] = useState(false)
 
-  // Resolve "me" alias
   const myId = (authUser as any)?.telegram_id || (authUser as any)?.id
-  const myUsername = authUser?.username
 
-  // If param is "me", redirect to own profile username
-  if (rawParam === 'me') {
-    if (authLoading) return <div className="flex-1 flex items-center justify-center min-h-[60vh]"><Loader2 className="w-7 h-7 animate-spin text-white/20" /></div>
-    if (!isAuthenticated) return <Navigate to="/login" replace />
-    if (myUsername) return <Navigate to={`/profile/${myUsername}`} replace />
-    if (myId) return <Navigate to={`/profile/${myId}`} replace />
+  // /profile/me requires auth — guard before fetching
+  if (rawParam === 'me' && !authLoading && !isAuthenticated) {
+    return <Navigate to="/login" replace />
   }
 
+  // "me" → call /api/profile/me (backend resolves via JWT); else use the param directly
   const usernameParam = rawParam || ''
+  const profileApiPath = usernameParam === 'me' ? '/api/profile/me' : `/api/profile/${usernameParam}`
 
   // ── Fetch profile ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!usernameParam) return
+    // Wait for auth to resolve before fetching /profile/me so the JWT is ready
+    if (usernameParam === 'me' && authLoading) return
     setLoading(true)
     setError(null)
-    api.client.get(`/api/profile/${usernameParam}`)
+    api.client.get(profileApiPath)
       .then(r => setProfile(normalizeProfile(r.data)))
       .catch(() => setError('Profil topilmadi'))
       .finally(() => setLoading(false))
-  }, [usernameParam])
+  }, [profileApiPath, authLoading])
 
   // ── Connection actions ─────────────────────────────────────────────────────
   const handleConnect = useCallback(async () => {
