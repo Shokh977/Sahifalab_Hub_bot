@@ -471,6 +471,8 @@ const DeleteAccountModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     setLoading(true)
     try {
       await api.client.delete('/api/settings/account')
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('tma_auth_token')
       window.location.href = '/login'
     } catch {} finally { setLoading(false) }
   }

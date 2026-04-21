@@ -673,6 +673,22 @@ async def list_users(
     ]
 
 
+@router.delete("/admin/users/{target_telegram_id}")
+async def admin_delete_user(
+    target_telegram_id: int,
+    authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
+):
+    admin_id = _require_admin(db, authorization)
+    if admin_id == target_telegram_id:
+        raise HTTPException(status_code=400, detail="Cannot delete your own account")
+    profile = _get_profile(db, target_telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    db.delete(profile)
+    db.commit()
+    return {"success": True, "deleted_id": target_telegram_id}
+
+
 @router.patch("/admin/users/{target_telegram_id}/role")
 async def set_user_role(
     target_telegram_id: int, body: SetUserRoleRequest,

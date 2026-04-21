@@ -123,6 +123,25 @@ def mark_read(
     return {"ok": True, "marked": count}
 
 
+# ── Delete conversation ───────────────────────────────────────────────────────
+
+@router.delete("/conversations/{conversation_id}")
+def delete_conversation(
+    conversation_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    from app.models.social_models import Conversation
+    conv = db.query(Conversation).filter(Conversation.id == conversation_id).first()
+    if not conv:
+        raise HTTPException(404, "Conversation not found")
+    if conv.participant_a != user_id and conv.participant_b != user_id:
+        raise HTTPException(403, "Not your conversation")
+    db.delete(conv)
+    db.commit()
+    return {"ok": True}
+
+
 # ── Delete message ───────────────────────────────────────────────────────────
 
 @router.delete("/messages/{message_id}")

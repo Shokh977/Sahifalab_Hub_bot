@@ -388,6 +388,21 @@ class ApiService {
     return this.axiosInstance.patch(`/api/auth/admin/users/${telegramId}/role`, { role, status })
   }
 
+  /** Admin: permanently delete a user account */
+  async adminDeleteUser(telegramId: number) {
+    return this.axiosInstance.delete(`/api/auth/admin/users/${telegramId}`)
+  }
+
+  /** Current user: delete own account permanently */
+  async deleteAccount() {
+    return this.axiosInstance.delete('/api/settings/account')
+  }
+
+  /** Messenger: delete a conversation for both sides */
+  async deleteConversation(conversationId: number) {
+    return this.axiosInstance.delete(`/api/v1/messenger/conversations/${conversationId}`)
+  }
+
   /** Current user: update profile photo URL */
   async updateMyPhoto(photoUrl: string) {
     return this.axiosInstance.patch('/api/auth/me/photo', { photo_url: photoUrl })

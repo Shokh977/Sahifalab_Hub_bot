@@ -58,6 +58,19 @@ def get_settings(
     return {**_DEFAULTS, **saved}
 
 
+@router.delete("/account")
+def delete_account(
+    user_id: int = Depends(_require_user),
+    db: Session = Depends(get_db),
+):
+    profile = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+    if not profile:
+        raise HTTPException(404, "Profile not found")
+    db.delete(profile)
+    db.commit()
+    return {"success": True}
+
+
 @router.put("")
 def update_settings(
     body: SettingsUpdate,

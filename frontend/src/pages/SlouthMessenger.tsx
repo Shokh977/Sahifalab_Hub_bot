@@ -115,8 +115,11 @@ const ConversationList: React.FC<{
   loading: boolean
   activeId: number | null
   onSelect: (conv: ConversationItem) => void
-}> = ({ conversations, loading, activeId, onSelect }) => {
+  onDelete: (convId: number) => void
+}> = ({ conversations, loading, activeId, onSelect, onDelete }) => {
   const [q, setQ] = useState('')
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [hoveredId, setHoveredId] = useState<number | null>(null)
 
   const filtered = useMemo(() =>
     q.trim()
@@ -199,71 +202,107 @@ const ConversationList: React.FC<{
         ) : (
           <div>
             {filtered.map(conv => {
-              const isActive = activeId === conv.id
-              const timeStr  = conv.last_message ? fmtConvTime(conv.last_message.created_at) : ''
-              const preview  = conv.last_message?.content || 'Yangi suhbat'
+              const isActive   = activeId === conv.id
+              const isHovered  = hoveredId === conv.id
+              const isConfirm  = deleteConfirmId === conv.id
+              const timeStr    = conv.last_message ? fmtConvTime(conv.last_message.created_at) : ''
+              const preview    = conv.last_message?.content || 'Yangi suhbat'
 
               return (
-                <button
+                <div
                   key={conv.id}
-                  onClick={() => onSelect(conv)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all relative"
-                  style={{
-                    background: isActive ? 'var(--brand-subtle)' : 'transparent',
-                  }}
-                  onMouseEnter={e => {
-                    if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'var(--bg-tertiary)'
-                  }}
-                  onMouseLeave={e => {
-                    if (!isActive) (e.currentTarget as HTMLButtonElement).style.background = 'transparent'
-                  }}
+                  className="relative group"
+                  onMouseEnter={() => setHoveredId(conv.id)}
+                  onMouseLeave={() => { setHoveredId(null); if (!isConfirm) setDeleteConfirmId(null) }}
                 >
-                  {/* Active indicator */}
-                  {isActive && (
+                  {isConfirm ? (
+                    /* Confirm delete overlay */
                     <div
-                      className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-full"
-                      style={{ background: 'var(--brand-primary)' }}
-                    />
-                  )}
-
-                  <Avatar user={conv.other_user} size="md" />
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className="text-sm font-semibold truncate"
-                        style={{ color: 'var(--text-primary)' }}
-                      >
-                        {conv.other_user.full_name || conv.other_user.username}
-                      </span>
-                      <span
-                        className="text-[11px] flex-shrink-0 tabular-nums"
-                        style={{ color: conv.unread_count > 0 ? 'var(--brand-primary)' : 'var(--text-muted)' }}
-                      >
-                        {timeStr}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between mt-0.5 gap-2">
-                      <p
-                        className="text-xs truncate"
-                        style={{
-                          color: conv.unread_count > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
-                          fontWeight: conv.unread_count > 0 ? 500 : 400,
-                        }}
-                      >
-                        {preview}
+                      className="flex items-center gap-2 px-4 py-3"
+                      style={{ background: 'var(--bg-tertiary)', borderLeft: '2px solid var(--color-danger, #ef4444)' }}
+                    >
+                      <p className="flex-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                        Suhbatni o'chirish?
                       </p>
-                      {conv.unread_count > 0 && (
-                        <span
-                          className="flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
-                          style={{ background: 'var(--brand-primary)' }}
-                        >
-                          {conv.unread_count > 99 ? '99+' : conv.unread_count}
-                        </span>
-                      )}
+                      <button
+                        onClick={() => setDeleteConfirmId(null)}
+                        className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
+                        style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
+                      >
+                        Yo'q
+                      </button>
+                      <button
+                        onClick={() => { onDelete(conv.id); setDeleteConfirmId(null) }}
+                        className="px-2.5 py-1 rounded-lg text-xs font-bold text-white bg-red-500 hover:bg-red-600 transition-colors"
+                      >
+                        Ha
+                      </button>
                     </div>
-                  </div>
-                </button>
+                  ) : (
+                    <button
+                      onClick={() => onSelect(conv)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left transition-all relative"
+                      style={{ background: isActive ? 'var(--brand-subtle)' : isHovered ? 'var(--bg-tertiary)' : 'transparent' }}
+                    >
+                      {isActive && (
+                        <div
+                          className="absolute left-0 top-1/4 bottom-1/4 w-0.5 rounded-full"
+                          style={{ background: 'var(--brand-primary)' }}
+                        />
+                      )}
+
+                      <Avatar user={conv.other_user} size="md" />
+
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className="text-sm font-semibold truncate"
+                            style={{ color: 'var(--text-primary)' }}
+                          >
+                            {conv.other_user.full_name || conv.other_user.username}
+                          </span>
+                          <span
+                            className="text-[11px] flex-shrink-0 tabular-nums"
+                            style={{ color: conv.unread_count > 0 ? 'var(--brand-primary)' : 'var(--text-muted)' }}
+                          >
+                            {timeStr}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between mt-0.5 gap-2">
+                          <p
+                            className="text-xs truncate"
+                            style={{
+                              color: conv.unread_count > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)',
+                              fontWeight: conv.unread_count > 0 ? 500 : 400,
+                            }}
+                          >
+                            {preview}
+                          </p>
+                          {conv.unread_count > 0 && (
+                            <span
+                              className="flex-shrink-0 min-w-[20px] h-5 px-1.5 rounded-full text-white text-[10px] font-bold flex items-center justify-center"
+                              style={{ background: 'var(--brand-primary)' }}
+                            >
+                              {conv.unread_count > 99 ? '99+' : conv.unread_count}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Delete button — visible on hover */}
+                      {isHovered && (
+                        <button
+                          onClick={e => { e.stopPropagation(); setDeleteConfirmId(conv.id) }}
+                          className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
+                          style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
+                          title="O'chirish"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </button>
+                  )}
+                </div>
               )
             })}
           </div>
@@ -745,6 +784,13 @@ const SlouthMessenger: React.FC = () => {
           loading={loading}
           activeId={activeConv?.id ?? null}
           onSelect={handleSelectConv}
+          onDelete={async (convId) => {
+            try {
+              await api.client.delete(`/api/v1/messenger/conversations/${convId}`)
+              setConversations(prev => prev.filter(c => c.id !== convId))
+              if (activeConv?.id === convId) setActiveConv(null)
+            } catch {}
+          }}
         />
       </div>
 

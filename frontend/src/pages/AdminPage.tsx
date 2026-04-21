@@ -278,6 +278,8 @@ const AdminPage: React.FC = () => {
   const [userSearchLoading, setUserSearchLoading] = useState(false)
   const [userSearchError, setUserSearchError] = useState('')
   const [userRoleActionId, setUserRoleActionId] = useState<number | null>(null)
+  const [userDeleteConfirmId, setUserDeleteConfirmId] = useState<number | null>(null)
+  const [userDeleteLoading, setUserDeleteLoading] = useState(false)
   const [userMsg, setUserMsg] = useState('')
 
   // Ambient Sounds
@@ -573,7 +575,6 @@ const AdminPage: React.FC = () => {
     try {
       await apiService.setUserRole(telegramId, role, status)
       setUserMsg(`✅ ${telegramId} → ${role} (${status})`)
-      // Update local list optimistically
       setUserSearchResults(prev =>
         prev.map(u => u.telegram_id === telegramId ? { ...u, role: role as any, status: status as any } : u)
       )
@@ -582,6 +583,22 @@ const AdminPage: React.FC = () => {
       setUserMsg('❌ Xatolik yuz berdi')
     } finally {
       setUserRoleActionId(null)
+    }
+  }
+
+  const handleAdminDeleteUser = async (telegramId: number) => {
+    setUserDeleteLoading(true)
+    setUserMsg('')
+    try {
+      await apiService.adminDeleteUser(telegramId)
+      setUserMsg(`✅ Foydalanuvchi o'chirildi: ${telegramId}`)
+      setUserSearchResults(prev => prev.filter(u => u.telegram_id !== telegramId))
+    } catch (err: any) {
+      console.error('[Admin] deleteUser error:', err?.response?.data?.detail || err?.message)
+      setUserMsg('❌ O\'chirishda xatolik')
+    } finally {
+      setUserDeleteLoading(false)
+      setUserDeleteConfirmId(null)
     }
   }
 
@@ -2484,6 +2501,33 @@ const AdminPage: React.FC = () => {
                         🚫 Bloklash
                       </button>
                     </div>
+
+                    {/* Delete user */}
+                    {userDeleteConfirmId === u.telegram_id ? (
+                      <div className="flex gap-1.5">
+                        <button
+                          onClick={() => setUserDeleteConfirmId(null)}
+                          className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
+                        >
+                          Bekor qilish
+                        </button>
+                        <button
+                          onClick={() => handleAdminDeleteUser(u.telegram_id)}
+                          disabled={userDeleteLoading}
+                          className="flex-1 py-1.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 transition-colors"
+                        >
+                          {userDeleteLoading ? '⏳' : '🗑 Tasdiqlash'}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setUserDeleteConfirmId(u.telegram_id)}
+                        disabled={isBusy}
+                        className="w-full py-1.5 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-40 transition-colors"
+                      >
+                        🗑 Hisobni o'chirish
+                      </button>
+                    )}
 
                     {isBusy && (
                       <p className="text-xs text-center text-gray-400 animate-pulse">Saqlanmoqda…</p>
