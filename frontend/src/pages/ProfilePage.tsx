@@ -600,7 +600,7 @@ const ProfilePage: React.FC = () => {
                 <FaollikTab
                   activities={profile.recent_activity}
                   telegramId={profile.telegram_id}
-                  focusSeconds={profile.focus_hours * 3600}
+                  focusHours={profile.focus_hours}
                 />
               )}
               {activeTab === 'kurslar' && (
@@ -1293,8 +1293,8 @@ const RecentActivitySection: React.FC<{ activities: ActivityItem[] }> = ({ activ
 
 interface HeatmapDay { date: string; count: number }
 
-const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; focusSeconds: number }> = ({
-  activities, telegramId, focusSeconds,
+const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; focusHours: number }> = ({
+  activities, telegramId, focusHours,
 }) => {
   const [heatmap, setHeatmap] = useState<HeatmapDay[]>([])
 
@@ -1329,7 +1329,6 @@ const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; foc
 
   const maxCount = Math.max(...heatmap.map(d => d.count), 1)
   const totalDays = heatmap.length
-  const focusHours = Math.round(focusSeconds / 3600)
 
   const cellColor = (count: number) => {
     if (count === 0) return 'bg-white/[0.04]'
@@ -1447,43 +1446,157 @@ const KurslarTab: React.FC<{ profile: ProfileData; onShareCert: (c: Certificate)
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tab: Yutuqlar (placeholder)
+// Tab: Postlar
+// ═══════════════════════════════════════════════════════════════════════════════
+
+interface PostlarTabProps {
+  posts: PostData[]
+  loading: boolean
+  isOwn: boolean
+  currentUserId: number | undefined
+  onDelete: (id: number) => Promise<void>
+  onEdit: (id: number, content: string) => Promise<void>
+}
+
+const PostlarTab: React.FC<PostlarTabProps> = ({ posts, loading, isOwn, currentUserId, onDelete, onEdit }) => {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-white/20" />
+      </div>
+    )
+  }
+  if (posts.length === 0) {
+    return (
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-12 text-center">
+        <Award className="w-8 h-8 text-white/10 mx-auto mb-3" />
+        <p className="text-sm text-white/30">Hali postlar yo'q</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-4">
+      {posts.map(post => (
+        <PostCard
+          key={post.id}
+          post={post}
+          currentUserId={currentUserId}
+          onLike={async (id) => { await api.client.post(`/api/v1/social/posts/${id}/like`) }}
+          onUnlike={async (id) => { await api.client.delete(`/api/v1/social/posts/${id}/like`) }}
+          onDelete={isOwn ? onDelete : undefined}
+          onEdit={isOwn ? onEdit : undefined}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tab: Yutuqlar — 29-level achievement grid
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const YutuqlarTab: React.FC<{ profile: ProfileData }> = ({ profile }) => {
-  const achievements = [
-    { id: 1, emoji: '🎓', name: 'Birinchi kurs', desc: 'Birinchi kursni tugatdingiz', unlocked: (profile.courses_completed ?? 0) >= 1 },
-    { id: 2, emoji: '🏅', name: '3 ta kurs', desc: '3 ta kursni tugatdingiz', unlocked: (profile.courses_completed ?? 0) >= 3 },
-    { id: 3, emoji: '📚', name: '5 ta ko\'nikma', desc: '5 ta ko\'nikma qo\'shdingiz', unlocked: (profile.skills ?? []).length >= 5 },
-    { id: 4, emoji: '🤝', name: '10 ta aloqa', desc: '10 ta aloqa o\'rnatdingiz', unlocked: (profile.connections_count ?? 0) >= 10 },
-    { id: 5, emoji: '⬆️', name: 'Daraja 5', desc: '5-darajaga yetdingiz', unlocked: (profile.level ?? 0) >= 5 },
-    { id: 6, emoji: '🏆', name: 'Daraja 10', desc: '10-darajaga yetdingiz', unlocked: (profile.level ?? 0) >= 10 },
-  ]
+  const currentLevel = profile.level ?? 1
+  const xpPercent = profile.xp_percent ?? 0
+  const totalXp = profile.total_xp ?? 0
+  const nextLevelXp = profile.next_level_xp ?? 0
+
+  // XP required per level: ceil(100 × (level)^2.5)
+  const xpForLevel = (lvl: number) => Math.ceil(100 * Math.pow(lvl, 2.5))
 
   return (
-    <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
-      <h2 className="text-sm font-bold text-white mb-4">Yutuqlar</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {achievements.map(a => (
-          <div
-            key={a.id}
-            className={`rounded-xl p-3 border text-center transition-all ${
-              a.unlocked
-                ? 'bg-[#e8792f]/10 border-[#e8792f]/20'
-                : 'bg-white/[0.02] border-white/[0.04] opacity-50'
-            }`}
-          >
-            <div className="text-2xl mb-1.5" style={{ filter: a.unlocked ? 'none' : 'grayscale(100%)' }}>
-              {a.emoji}
-            </div>
-            <p className="text-xs font-semibold text-white leading-tight">{a.name}</p>
-            <p className="text-[10px] text-white/40 mt-0.5 leading-tight">{a.desc}</p>
-            {a.unlocked && (
-              <div className="mt-2 text-[9px] font-bold text-[#e8792f]">QOZONILDI</div>
-            )}
+    <div className="space-y-4">
+      {/* Current level progress card */}
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#e8792f]/10 border border-[#e8792f]/20 flex items-center justify-center text-2xl flex-shrink-0">
+            {getLevelEmoji(currentLevel)}
           </div>
-        ))}
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-white/40 mb-0.5">Joriy daraja</p>
+            <p className="text-lg font-bold text-white">{currentLevel}. {getLevelTitle(currentLevel)}</p>
+            <p className="text-xs text-white/40 mt-0.5">{totalXp.toLocaleString()} XP</p>
+          </div>
+        </div>
+        {/* XP progress bar */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-[11px] text-white/40">
+            <span>Keyingi daraja: {getLevelTitle(Math.min(currentLevel + 1, 29))}</span>
+            <span>{xpPercent}%</span>
+          </div>
+          <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-[#e8792f] to-[#c44a1a] rounded-full transition-all"
+              style={{ width: `${Math.min(xpPercent, 100)}%` }}
+            />
+          </div>
+          {currentLevel < 29 && (
+            <p className="text-[10px] text-white/25">
+              {(nextLevelXp - totalXp).toLocaleString()} XP qoldi · Keyingisi uchun: {xpForLevel(currentLevel + 1).toLocaleString()} XP kerak
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* 29-level grid */}
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+        <h2 className="text-sm font-bold text-white mb-4">Barcha darajalar</h2>
+        <div className="grid grid-cols-3 gap-2.5">
+          {LEVEL_TITLES.map(lvl => {
+            const unlocked = currentLevel >= lvl.level
+            const isCurrent = currentLevel === lvl.level
+            return (
+              <div
+                key={lvl.level}
+                className={`rounded-xl p-3 border text-center transition-all relative ${
+                  isCurrent
+                    ? 'bg-[#e8792f]/15 border-[#e8792f]/40 ring-1 ring-[#e8792f]/30'
+                    : unlocked
+                    ? 'bg-white/[0.04] border-white/[0.08]'
+                    : 'bg-white/[0.02] border-white/[0.04] opacity-40'
+                }`}
+              >
+                {isCurrent && (
+                  <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-[#e8792f] bg-[#1c1d27] px-1.5 rounded-full border border-[#e8792f]/30 whitespace-nowrap">
+                    SIZ
+                  </div>
+                )}
+                <div
+                  className="text-xl mb-1"
+                  style={{ filter: unlocked ? 'none' : 'grayscale(100%)' }}
+                >
+                  {getLevelEmoji(lvl.level)}
+                </div>
+                <p className="text-[10px] font-bold text-white/80 leading-tight">{lvl.level}. {lvl.title}</p>
+                {!unlocked && (
+                  <p className="text-[9px] text-white/25 mt-0.5">{xpForLevel(lvl.level).toLocaleString()} XP</p>
+                )}
+                {unlocked && !isCurrent && (
+                  <div className="mt-1 text-[9px] font-bold text-[#e8792f]/70">✓</div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* Next milestone hint */}
+      {currentLevel < 29 && (() => {
+        const next = LEVEL_TITLES.find(l => l.level === currentLevel + 1)
+        if (!next) return null
+        return (
+          <div className="rounded-2xl bg-[#e8792f]/05 border border-[#e8792f]/15 p-4 flex items-start gap-3">
+            <span className="text-lg flex-shrink-0">{getLevelEmoji(next.level)}</span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-[#e8792f]">Keyingi: {next.level}. {next.title}</p>
+              <p className="text-[11px] text-white/40 mt-0.5 leading-snug">{next.description}</p>
+              <p className="text-[10px] text-white/30 mt-1">
+                Kerak: {(nextLevelXp - totalXp > 0 ? nextLevelXp - totalXp : xpForLevel(next.level) - totalXp).toLocaleString()} XP · Quiz ishlang, kurslarni tugatib, faol bo'ling
+              </p>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
