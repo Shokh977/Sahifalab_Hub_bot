@@ -64,7 +64,7 @@ const TAB_COURSES = { key: 'courses' as TabKey, label: 'Kurslar', icon: PlayCirc
 // ── Main component ────────────────────────────────────────────────────────────
 const PublicProfile: React.FC = () => {
   const { userId } = useParams<{ userId: string }>()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -81,7 +81,16 @@ const PublicProfile: React.FC = () => {
   const [coursesLoading, setCoursesLoading] = useState(false)
 
   const myId = (user as any)?.telegram_id || (user as any)?.id
-  const targetId = Number(userId)
+
+  // "me" → redirect to the real numeric ID once auth resolves
+  useEffect(() => {
+    if (userId !== 'me') return
+    if (authLoading) return
+    if (!isAuthenticated || !myId) { navigate('/login', { replace: true }); return }
+    navigate(`/profile/${myId}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`, { replace: true })
+  }, [userId, authLoading, isAuthenticated, myId])
+
+  const targetId = userId === 'me' ? NaN : Number(userId)
   const isOwnProfile = myId === targetId
   const isTeacher = profile?.role === 'teacher'
 
@@ -107,6 +116,7 @@ const PublicProfile: React.FC = () => {
 
   // ── Fetch profile + posts ───────────────────────────────────────────────
   useEffect(() => {
+    if (!targetId || isNaN(targetId)) return
     const fetchProfile = async () => {
       setLoading(true)
       try {
