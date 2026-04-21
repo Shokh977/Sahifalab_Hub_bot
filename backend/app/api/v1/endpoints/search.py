@@ -57,92 +57,84 @@ def _auth(authorization: Optional[str] = Header(None)) -> int:
 
 def _search_people(db: Session, q: str, viewer_id: int, limit: int) -> list[dict]:
     rows = db.execute(text("""
-        WITH
-        -- 1st-degree connections of the viewer
-        my_1st AS (
-            SELECT CASE WHEN requester_id = :vid THEN receiver_id
-                        ELSE requester_id END AS uid
-            FROM connections
-            WHERE (requester_id = :vid OR receiver_id = :vid) AND status = 'accepted'
-        ),
-        -- 2nd-degree: connections of my connections (excluding self and 1st)
-        my_2nd AS (
-            SELECT DISTINCT CASE WHEN c.requester_id IN (SELECT uid FROM my_1st)
-                                 THEN c.receiver_id
-                                 ELSE c.requester_id END AS uid
-            FROM connections c
-            WHERE (c.requester_id IN (SELECT uid FROM my_1st)
-                OR c.receiver_id  IN (SELECT uid FROM my_1st))
-              AND c.status = 'accepted'
-              AND CASE WHEN c.requester_id IN (SELECT uid FROM my_1st)
-                       THEN c.receiver_id ELSE c.requester_id END != :vid
-              AND CASE WHEN c.requester_id IN (SELECT uid FROM my_1st)
-                       THEN c.receiver_id ELSE c.requester_id END
-                   NOT IN (SELECT uid FROM my_1st)
-        ),
-        -- Skill matches: users who have a skill matching the query
-        skill_matches AS (
-            SELECT DISTINCT user_id
-            FROM skills
-            WHERE skill_name ILIKE '%' || :q || '%'
-        )
-        SELECT
-            p.telegram_id,
-            p.first_name,
-            p.username,
-            p.photo_url,
-            COALESCE(p.headline,      '')        AS headline,
-            COALESCE(p.location_city, '')        AS location_city,
-            COALESCE(p.account_type,  'student') AS account_type,
-            COALESCE(p.is_verified,   FALSE)     AS is_verified,
-            COALESCE(p.level, 1)                 AS level,
-            COALESCE(p.total_xp, 0)              AS total_xp,
-
-            -- query_relevance: highest match wins
-            CASE
-                WHEN p.username   ILIKE :q OR p.first_name ILIKE :q   THEN 1.0
-                WHEN p.username   ILIKE :q_pct OR p.first_name ILIKE :q_pct THEN 0.85
-                WHEN p.headline   ILIKE :q_pct                         THEN 0.7
-                WHEN p.bio        ILIKE :q_pct                         THEN 0.5
-                WHEN p.telegram_id IN (SELECT user_id FROM skill_matches) THEN 0.5
-                ELSE 0.3
-            END AS relevance,
-
-            -- connection_degree
-            CASE
-                WHEN p.telegram_id IN (SELECT uid FROM my_1st) THEN 1.0
-                WHEN p.telegram_id IN (SELECT uid FROM my_2nd) THEN 0.5
-                ELSE 0.0
-            END AS conn_degree,
-
-            -- profile completeness (0-100)
-            (
-                CASE WHEN p.photo_url       IS NOT NULL THEN 20 ELSE 0 END
-              + CASE WHEN p.headline        IS NOT NULL AND p.headline != '' THEN 20 ELSE 0 END
-              + CASE WHEN p.bio             IS NOT NULL AND p.bio     != '' THEN 15 ELSE 0 END
-              + CASE WHEN (
-                    SELECT COUNT(*) FROM skills s WHERE s.user_id = p.telegram_id
-                  ) >= 3 THEN 15 ELSE 0 END
-              + CASE WHEN p.location_city   IS NOT NULL AND p.location_city != '' THEN 10 ELSE 0 END
-              + CASE WHEN EXISTS (
-                    SELECT 1 FROM course_certificates cc WHERE cc.student_id = p.telegram_id
-                  ) THEN 10 ELSE 0 END
-              + CASE WHEN p.cover_image_url IS NOT NULL THEN 10 ELSE 0 END
-            ) AS completeness
-
-        FROM profiles p
-        WHERE p.telegram_id != :vid
-          AND COALESCE(p.status, 'active') = 'active'
-          AND (
-               p.first_name    ILIKE :q_pct
-            OR p.username      ILIKE :q_pct
-            OR p.headline      ILIKE :q_pct
-            OR p.bio           ILIKE :q_pct
-            OR p.telegram_id IN (SELECT user_id FROM skill_matches)
-          )
+        SELECT * FROM (
+            WITH
+            my_1st AS (
+                SELECT CASE WHEN requester_id = :vid THEN receiver_id
+                            ELSE requester_id END AS uid
+                FROM connections
+                WHERE (requester_id = :vid OR receiver_id = :vid) AND status = 'accepted'
+            ),
+            my_2nd AS (
+                SELECT DISTINCT CASE WHEN c.requester_id IN (SELECT uid FROM my_1st)
+                                     THEN c.receiver_id
+                                     ELSE c.requester_id END AS uid
+                FROM connections c
+                WHERE (c.requester_id IN (SELECT uid FROM my_1st)
+                    OR c.receiver_id  IN (SELECT uid FROM my_1st))
+                  AND c.status = 'accepted'
+                  AND CASE WHEN c.requester_id IN (SELECT uid FROM my_1st)
+                           THEN c.receiver_id ELSE c.requester_id END != :vid
+                  AND CASE WHEN c.requester_id IN (SELECT uid FROM my_1st)
+                           THEN c.receiver_id ELSE c.requester_id END
+                       NOT IN (SELECT uid FROM my_1st)
+            ),
+            skill_matches AS (
+                SELECT DISTINCT user_id
+                FROM skills
+                WHERE skill_name ILIKE '%' || :q || '%'
+            )
+            SELECT
+                p.telegram_id,
+                p.first_name,
+                p.username,
+                p.photo_url,
+                COALESCE(p.headline,      '')        AS headline,
+                COALESCE(p.location_city, '')        AS location_city,
+                COALESCE(p.account_type,  'student') AS account_type,
+                COALESCE(p.is_verified,   FALSE)     AS is_verified,
+                COALESCE(p.level, 1)                 AS level,
+                COALESCE(p.total_xp, 0)              AS total_xp,
+                CASE
+                    WHEN p.username   ILIKE :q OR p.first_name ILIKE :q   THEN 1.0
+                    WHEN p.username   ILIKE :q_pct OR p.first_name ILIKE :q_pct THEN 0.85
+                    WHEN p.headline   ILIKE :q_pct                         THEN 0.7
+                    WHEN p.bio        ILIKE :q_pct                         THEN 0.5
+                    WHEN p.telegram_id IN (SELECT user_id FROM skill_matches) THEN 0.5
+                    ELSE 0.3
+                END AS relevance,
+                CASE
+                    WHEN p.telegram_id IN (SELECT uid FROM my_1st) THEN 1.0
+                    WHEN p.telegram_id IN (SELECT uid FROM my_2nd) THEN 0.5
+                    ELSE 0.0
+                END AS conn_degree,
+                (
+                    CASE WHEN p.photo_url       IS NOT NULL THEN 20 ELSE 0 END
+                  + CASE WHEN p.headline        IS NOT NULL AND p.headline != '' THEN 20 ELSE 0 END
+                  + CASE WHEN p.bio             IS NOT NULL AND p.bio     != '' THEN 15 ELSE 0 END
+                  + CASE WHEN (
+                        SELECT COUNT(*) FROM skills s WHERE s.user_id = p.telegram_id
+                      ) >= 3 THEN 15 ELSE 0 END
+                  + CASE WHEN p.location_city   IS NOT NULL AND p.location_city != '' THEN 10 ELSE 0 END
+                  + CASE WHEN EXISTS (
+                        SELECT 1 FROM course_certificates cc WHERE cc.student_id = p.telegram_id
+                      ) THEN 10 ELSE 0 END
+                  + CASE WHEN p.cover_image_url IS NOT NULL THEN 10 ELSE 0 END
+                ) AS completeness
+            FROM profiles p
+            WHERE p.telegram_id != :vid
+              AND COALESCE(p.status, 'active') = 'active'
+              AND (
+                   p.first_name    ILIKE :q_pct
+                OR p.username      ILIKE :q_pct
+                OR p.headline      ILIKE :q_pct
+                OR p.bio           ILIKE :q_pct
+                OR p.telegram_id IN (SELECT user_id FROM skill_matches)
+              )
+        ) sub
         ORDER BY
             (relevance * 10 + conn_degree * 5 + completeness::float / 100.0 * 3
-             + COALESCE(p.total_xp, 0) * 0.001) DESC
+             + total_xp * 0.001) DESC
         LIMIT :lim
     """), {
         "q":     q,
@@ -173,34 +165,36 @@ def _search_people(db: Session, q: str, viewer_id: int, limit: int) -> list[dict
 
 def _search_courses(db: Session, q: str, limit: int) -> list[dict]:
     rows = db.execute(text("""
-        SELECT
-            c.id,
-            c.title,
-            c.description,
-            c.thumbnail_url,
-            c.price,
-            c.is_paid,
-            c.level,
-            c.rating,
-            c.enrolled_count,
-            p.first_name AS teacher_name,
-            p.username   AS teacher_username,
-            CASE
-                WHEN c.title       ILIKE :q      THEN 1.0
-                WHEN c.title       ILIKE :q_pct  THEN 0.8
-                WHEN c.description ILIKE :q_pct  THEN 0.5
-                WHEN p.first_name  ILIKE :q_pct  THEN 0.4
-                ELSE 0.3
-            END AS relevance
-        FROM courses c
-        LEFT JOIN profiles p ON p.telegram_id = c.teacher_id
-        WHERE c.is_published = TRUE
-          AND (
-               c.title       ILIKE :q_pct
-            OR c.description ILIKE :q_pct
-            OR p.first_name  ILIKE :q_pct
-          )
-        ORDER BY (relevance * 10 + c.rating + c.enrolled_count * 0.01) DESC
+        SELECT * FROM (
+            SELECT
+                c.id,
+                c.title,
+                c.description,
+                c.thumbnail_url,
+                c.price,
+                c.is_paid,
+                c.level,
+                c.rating,
+                c.enrolled_count,
+                p.first_name AS teacher_name,
+                p.username   AS teacher_username,
+                CASE
+                    WHEN c.title       ILIKE :q      THEN 1.0
+                    WHEN c.title       ILIKE :q_pct  THEN 0.8
+                    WHEN c.description ILIKE :q_pct  THEN 0.5
+                    WHEN p.first_name  ILIKE :q_pct  THEN 0.4
+                    ELSE 0.3
+                END AS relevance
+            FROM courses c
+            LEFT JOIN profiles p ON p.telegram_id = c.teacher_id
+            WHERE c.is_published = TRUE
+              AND (
+                   c.title       ILIKE :q_pct
+                OR c.description ILIKE :q_pct
+                OR p.first_name  ILIKE :q_pct
+              )
+        ) sub
+        ORDER BY (relevance * 10 + rating + enrolled_count * 0.01) DESC
         LIMIT :lim
     """), {"q": q, "q_pct": f"%{q}%", "lim": limit}).mappings().fetchall()
 
