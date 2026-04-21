@@ -3,10 +3,10 @@
  *
  * Flow:
  *  1. Student visits /become-teacher
- *  2. Fills in: specialization, experience_years, bio, course_idea, motivation
- *  3. Submits → POST /api/auth/apply-teacher with form data
- *  4. Backend sets role='teacher', status='pending', stores in teacher_profiles
- *  5. Page shows success / pending confirmation
+ *  2. Reads requirements & terms, checks "I agree"
+ *  3. Fills in: specialization, experience_years, bio, course_idea, motivation
+ *  4. Submits → POST /api/auth/apply-teacher
+ *  5. Admin reviews → on acceptance user gets teacher badge (role='teacher')
  */
 import React, { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
@@ -16,13 +16,16 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowRightIcon,
-  BanknotesIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
   HomeIcon,
   PresentationChartLineIcon,
+  ShieldCheckIcon,
   TrophyIcon,
+  DocumentTextIcon,
+  StarIcon,
 } from '@heroicons/react/24/outline'
+import { BadgeCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
@@ -38,13 +41,33 @@ interface FormData {
 
 type State = 'form' | 'loading' | 'success' | 'already_pending' | 'already_teacher' | 'error'
 
+// ── Requirements ──────────────────────────────────────────────────────────────
+
+const REQUIREMENTS = [
+  "O'z sohasida bilim va tajribaga ega bo'lish",
+  "Sifatli video va o'quv materiallar yarata olish",
+  "O'quvchilarga hurmat bilan munosabatda bo'lish",
+  "Asl, plagiatdan xoli kontent taqdim etish",
+  "O'quvchilarning savollariga o'z vaqtida javob berish",
+  "Platformaning ichki qoidalariga rioya qilish",
+]
+
+const TERMS = [
+  "Yaratgan kurslarim to'liq mening asl ishim bo'ladi",
+  "Zararli, yolg'on yoki chalg'ituvchi kontent joylashtirilmaydi",
+  "O'quvchilarga sifatli ta'lim va qo'llab-quvvatlash beriladi",
+  "Qoidabuzarlik holida akkauntim to'xtatilishi mumkinligini tushunaman",
+  "Platforma komissiya shartlari qabul qilinganidan so'ng alohida bildiriladi",
+  "Sahifalab platformasining foydalanish shartlari to'liq qabul qilinadi",
+]
+
 // ── Benefits ──────────────────────────────────────────────────────────────────
 
 const BENEFITS = [
-  { icon: AcademicCapIcon, title: "O'z kurslaringizni yarating", desc: 'Video darslar, testlar va materiallar bilan to\'liq kurs tuzing' },
-  { icon: BanknotesIcon, title: 'Daromad oling', desc: 'Har bir to\'lov uchun komisyon foizini hisobingizga oling' },
+  { icon: AcademicCapIcon, title: "O'z kurslaringizni yarating", desc: "Video darslar, testlar va materiallar bilan to'liq kurs tuzing" },
+  { icon: BadgeCheck as any, title: "O'qituvchi badji", desc: 'Profilingizda va barcha joylarda ko\'rinadigan "Teacher" badge olasiz', blue: true },
   { icon: PresentationChartLineIcon, title: 'Analitika paneli', desc: "O'quvchilar progressi va daromad statistikasini kuzating" },
-  { icon: TrophyIcon, title: "O'qituvchi badji", desc: 'Profilingizda maxsus "Teacher" badge ko\'rinadi' },
+  { icon: TrophyIcon, title: 'Daromad oling', desc: "Qabul qilinganingizdan so'ng komissiya shartlari bilan tanishasiz" },
 ]
 
 // ── Field ─────────────────────────────────────────────────────────────────────
@@ -75,7 +98,6 @@ const TeacherApplyPage: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  // Pre-detect state from AuthContext
   const initialState: State =
     user?.role === 'admin'                                      ? 'already_teacher' :
     user?.role === 'teacher' && user.status === 'active'       ? 'already_teacher' :
@@ -84,6 +106,7 @@ const TeacherApplyPage: React.FC = () => {
 
   const [state, setState]     = useState<State>(initialState)
   const [errorMsg, setErrorMsg] = useState('')
+  const [agreed, setAgreed]   = useState(false)
   const [form, setForm]       = useState<FormData>({
     specialization:   '',
     experience_years: '',
@@ -97,6 +120,7 @@ const TeacherApplyPage: React.FC = () => {
   ) => setForm(prev => ({ ...prev, [k]: e.target.value }))
 
   const isFormValid = () =>
+    agreed &&
     form.specialization.trim() &&
     form.experience_years.trim() &&
     form.bio.trim().length >= 20 &&
@@ -154,7 +178,8 @@ const TeacherApplyPage: React.FC = () => {
             <p className="font-semibold">Navbatdagi qadamlar:</p>
             <p>1. Admin arizangizni ko'rib chiqadi</p>
             <p>2. Sizning rolingiz "Teacher" ga o'zgaradi</p>
-            <p>3. Yangi kirish paytida o'qituvchi paneli ochiladi</p>
+            <p>3. Profilingizda o'qituvchi badji paydo bo'ladi</p>
+            <p>4. Yangi kirish paytida o'qituvchi paneli ochiladi</p>
           </div>
           <div className="flex gap-3">
             <button
@@ -214,7 +239,6 @@ const TeacherApplyPage: React.FC = () => {
           border: '1px solid rgba(232,121,47,0.20)',
         }}
       >
-        {/* Decorative blobs */}
         <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10"
              style={{ background: '#e8792f', filter: 'blur(32px)' }} />
         <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full opacity-8"
@@ -226,19 +250,23 @@ const TeacherApplyPage: React.FC = () => {
             <AcademicCapIcon className="h-7 w-7 text-white" />
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white leading-tight">
-            Sahifalab'da o'qituvchi bo'ling 🎓
+            Sahifalab'da o'qituvchi bo'ling
           </h1>
           <p className="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
             Bilimingizni ulashing, daromad oling,<br />
             ming lab o'quvchilarga ta'sir qiling.
-            {user?.first_name && <span className="block mt-1 font-medium text-gray-700 dark:text-gray-300">Assalomu alaykum, {user.first_name}!</span>}
+            {user?.first_name && (
+              <span className="block mt-1 font-medium text-gray-700 dark:text-gray-300">
+                Assalomu alaykum, {user.first_name}!
+              </span>
+            )}
           </p>
           <button
             onClick={scrollToForm}
             className="mt-5 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm text-white transition-all active:scale-[0.97]"
             style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}
           >
-            O'qituvchi bo'lish <ArrowRightIcon className="h-4 w-4" />
+            Boshlash <ArrowRightIcon className="h-4 w-4" />
           </button>
         </div>
       </motion.div>
@@ -254,8 +282,8 @@ const TeacherApplyPage: React.FC = () => {
         <div className="grid grid-cols-3 gap-3">
           {[
             { num: '1️⃣', title: 'Ariza topshir', desc: "Formani to'ldiring va admin tasdiqlashini kuting" },
-            { num: '2️⃣', title: 'Kurs yarating', desc: "Video va materiallar yuklang, narx belgilang" },
-            { num: '3️⃣', title: 'Daromad oling', desc: 'Har bir sotuvdan 70% siz olasiz' },
+            { num: '2️⃣', title: 'Badj oling', desc: "Admin tasdiqlashi bilan o'qituvchi badji beriladi" },
+            { num: '3️⃣', title: 'Kurs yarating', desc: 'Video va materiallar yuklang, daromad olishni boshlang' },
           ].map(step => (
             <div key={step.num} className="flex flex-col items-center text-center gap-2 p-3 rounded-xl"
                  style={{ backgroundColor: 'rgba(232,121,47,0.05)', border: '1px solid rgba(232,121,47,0.10)' }}>
@@ -267,58 +295,16 @@ const TeacherApplyPage: React.FC = () => {
         </div>
       </motion.div>
 
-      {/* ── SECTION 3: Commission model ───────────────────────────────── */}
+      {/* ── SECTION 3: Benefits ───────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.08 }}
-        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
-      >
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-4">💰 Komissiya modeli</h2>
-
-        {/* 70/30 bar */}
-        <div className="rounded-xl overflow-hidden flex h-10 mb-4">
-          <div className="flex items-center justify-center text-xs font-bold text-white gap-1"
-               style={{ width: '70%', backgroundColor: '#e8792f' }}>
-            70% — Siz
-          </div>
-          <div className="flex items-center justify-center text-xs font-bold gap-1"
-               style={{ width: '30%', backgroundColor: 'var(--bg-tertiary, #24253a)', color: 'rgba(255,255,255,0.5)' }}>
-            30% — Platforma
-          </div>
-        </div>
-
-        {/* Example */}
-        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-900/40 text-sm space-y-1 mb-4">
-          <p className="text-gray-500 dark:text-gray-400">Misol: Kurs narxi <span className="font-semibold text-gray-900 dark:text-white">100,000 so'm</span></p>
-          <p className="text-gray-500 dark:text-gray-400">Siz olasiz: <span className="font-bold" style={{ color: '#e8792f' }}>70,000 so'm</span></p>
-          <p className="text-gray-500 dark:text-gray-400">Platforma: <span className="font-semibold text-gray-900 dark:text-white">30,000 so'm</span></p>
-        </div>
-
-        <div className="space-y-1.5">
-          {[
-            "To'lovlar har oy amalga oshiriladi",
-            "Minimal chiqarish: 50,000 so'm",
-            "O'qituvchi panelida hamma narsani kuzating",
-          ].map(item => (
-            <div key={item} className="flex items-start gap-2">
-              <CheckCircleIcon className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: '#e8792f' }} />
-              <p className="text-xs text-gray-600 dark:text-gray-300">{item}</p>
-            </div>
-          ))}
-        </div>
-      </motion.div>
-
-      {/* ── SECTION 4: Benefits ───────────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.10 }}
         className="grid grid-cols-2 gap-2"
       >
         {BENEFITS.map(b => (
           <div key={b.title} className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-            <b.icon className="h-5 w-5 shrink-0 text-sahifa-500" />
+            <b.icon className={`h-5 w-5 shrink-0 ${b.blue ? 'text-blue-400' : 'text-sahifa-500'}`} />
             <div>
               <p className="text-xs font-semibold text-gray-900 dark:text-white leading-tight">{b.title}</p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{b.desc}</p>
@@ -327,18 +313,81 @@ const TeacherApplyPage: React.FC = () => {
         ))}
       </motion.div>
 
-      {/* ── SECTION 5: Application form ──────────────────────────────── */}
+      {/* ── SECTION 4: Requirements ───────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.10 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <StarIcon className="h-5 w-5 text-sahifa-500" />
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">O'qituvchilarga qo'yiladigan talablar</h2>
+        </div>
+        <div className="space-y-2">
+          {REQUIREMENTS.map(req => (
+            <div key={req} className="flex items-start gap-2">
+              <CheckCircleIcon className="h-4 w-4 flex-shrink-0 mt-0.5 text-green-500" />
+              <p className="text-xs text-gray-700 dark:text-gray-300">{req}</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* ── SECTION 5: Terms of use ───────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <DocumentTextIcon className="h-5 w-5 text-sahifa-500" />
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Foydalanish shartlari</h2>
+        </div>
+        <div className="space-y-2 mb-5">
+          {TERMS.map(term => (
+            <div key={term} className="flex items-start gap-2">
+              <ShieldCheckIcon className="h-4 w-4 flex-shrink-0 mt-0.5 text-blue-400" />
+              <p className="text-xs text-gray-700 dark:text-gray-300">{term}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* I agree checkbox */}
+        <button
+          type="button"
+          onClick={() => setAgreed(v => !v)}
+          className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+            agreed
+              ? 'border-sahifa-400 bg-sahifa-50 dark:bg-sahifa-900/20'
+              : 'border-slate-200 dark:border-slate-600 hover:border-sahifa-300'
+          }`}
+        >
+          <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+            agreed
+              ? 'border-sahifa-500 bg-sahifa-500'
+              : 'border-slate-300 dark:border-slate-500'
+          }`}>
+            {agreed && <CheckCircleIcon className="h-3.5 w-3.5 text-white" />}
+          </div>
+          <span className="text-sm font-medium text-left text-gray-800 dark:text-gray-200">
+            Yuqoridagi talablar va foydalanish shartlarini o'qidim, qabul qilaman
+          </span>
+        </button>
+      </motion.div>
+
+      {/* ── SECTION 6: Application form ──────────────────────────────── */}
       <motion.form
         ref={formRef}
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.12 }}
+        transition={{ delay: 0.14 }}
         onSubmit={handleSubmit}
         className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
       >
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white">📋 Ariza topshirish</h2>
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Ariza topshirish</h2>
 
-        {/* Specialization */}
         <Field label="Mutaxassislik" required hint="Masalan: Frontend dasturlash, Matematika, Ingliz tili...">
           <input
             type="text"
@@ -351,7 +400,6 @@ const TeacherApplyPage: React.FC = () => {
           />
         </Field>
 
-        {/* Experience */}
         <Field label="Tajriba (yillar)" required hint="0 — endi boshlayman, 1–3 yil, 5+ yil...">
           <select
             value={form.experience_years}
@@ -370,7 +418,6 @@ const TeacherApplyPage: React.FC = () => {
           </select>
         </Field>
 
-        {/* Bio */}
         <Field label="O'zingiz haqingizda" required hint="Kamida 20 ta belgi. Kim ekansiz, nima bilan shug'ullanasiz?">
           <textarea
             value={form.bio}
@@ -385,7 +432,6 @@ const TeacherApplyPage: React.FC = () => {
           <p className="text-[10px] text-gray-400 text-right">{form.bio.length}/500</p>
         </Field>
 
-        {/* Course idea */}
         <Field label="Qanday kurs yaratmoqchisiz?" required hint="Kursning mavzusi, kimlar uchun mo'ljallangan, qanday natija beradi?">
           <textarea
             value={form.course_idea}
@@ -400,7 +446,6 @@ const TeacherApplyPage: React.FC = () => {
           <p className="text-[10px] text-gray-400 text-right">{form.course_idea.length}/1000</p>
         </Field>
 
-        {/* Motivation */}
         <Field label="Nima uchun o'qituvchi bo'lmoqchisiz?" required hint="Motivatsiyangiz va maqsadingizni yozing (kamida 20 ta belgi).">
           <textarea
             value={form.motivation}
@@ -415,7 +460,6 @@ const TeacherApplyPage: React.FC = () => {
           <p className="text-[10px] text-gray-400 text-right">{form.motivation.length}/1000</p>
         </Field>
 
-        {/* Error */}
         <AnimatePresence>
           {errorMsg && (
             <motion.div
@@ -424,16 +468,23 @@ const TeacherApplyPage: React.FC = () => {
               exit={{ opacity: 0 }}
               className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300"
             >
-              <span className="inline-flex items-center gap-1"><ExclamationCircleIcon className="h-4 w-4" /> {errorMsg}</span>
+              <span className="inline-flex items-center gap-1">
+                <ExclamationCircleIcon className="h-4 w-4" /> {errorMsg}
+              </span>
             </motion.div>
           )}
         </AnimatePresence>
+
+        {!agreed && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
+            Yuborish uchun yuqoridagi shartlarni qabul qiling
+          </p>
+        )}
 
         <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">
           Arizalar 1–3 kun ichida ko'rib chiqiladi.
         </p>
 
-        {/* Submit */}
         <button
           type="submit"
           disabled={state === 'loading' || !isFormValid()}
@@ -447,7 +498,6 @@ const TeacherApplyPage: React.FC = () => {
         </button>
       </motion.form>
 
-      {/* Back */}
       <button
         onClick={() => navigate(-1)}
         className="w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center gap-1"
