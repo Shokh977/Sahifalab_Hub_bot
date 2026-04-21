@@ -279,7 +279,6 @@ const AppRoutes: React.FC = () => {
         <Route path="/discover"        element={<DiscoverUsers />} />
         <Route path="/courses"         element={<AppLayout rightSidebar={<CoursesRightSidebar />} maxWidth="max-w-[900px]"><CoursesPage /></AppLayout>} />
         <Route path="/courses/:id"     element={<CourseDetailPage />} />
-        <Route path="/profile/me"      element={<AppLayout rightSidebar={<ProfileRightSidebar />} maxWidth="max-w-[760px]"><PublicProfile /></AppLayout>} />
         <Route path="/profile/:userId" element={<AppLayout rightSidebar={<ProfileRightSidebar />} maxWidth="max-w-[760px]"><PublicProfile /></AppLayout>} />
         <Route path="/teachers"        element={<TeachersGalleryPage />} />
         <Route path="/about"           element={<AboutPage />} />
