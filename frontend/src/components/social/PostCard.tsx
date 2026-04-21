@@ -448,9 +448,10 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" />
                 )}
                 {(() => {
-                  const role = post.author.account_type || post.author.role
-                  if (role === 'admin') return <BadgeCheck className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" title="Admin" />
-                  if (role === 'teacher') return <BadgeCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" title="O'qituvchi" />
+                  const isAdmin   = post.author.account_type === 'admin'   || post.author.role === 'admin'
+                  const isTeacher = post.author.account_type === 'teacher' || post.author.role === 'teacher'
+                  if (isAdmin)   return <BadgeCheck className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" title="Admin" />
+                  if (isTeacher) return <BadgeCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" title="O'qituvchi" />
                   return null
                 })()}
               </div>

@@ -78,6 +78,7 @@ export interface UserIdentityUser {
   username?: string | null
   photo_url?: string | null
   role?: string
+  account_type?: string
   level?: number
   xp?: number
 }
@@ -121,8 +122,8 @@ const UserIdentity: React.FC<Props> = ({
   const { avatar: avatarPx, border: borderPx, badge: badgePx, font } = SIZES[size]
   const rank = getRankInfo(level)
   const displayName = user.full_name || user.first_name || user.username || 'Foydalanuvchi'
-  const isTeacher = user.role === 'teacher'
-  const isAdmin = user.role === 'admin'
+  const isAdmin   = user.role === 'admin'   || user.account_type === 'admin'
+  const isTeacher = user.role === 'teacher' || user.account_type === 'teacher'
 
   return (
     <div
