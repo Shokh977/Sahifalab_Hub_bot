@@ -133,7 +133,7 @@ function activityLabel(type: string, meta: Record<string, any>): string {
     case 'course_enrolled':     return `Kursga yozildi: ${meta.course_title || ''}`
     case 'course_completed':    return `Kursni tugatdi: ${meta.course_title || ''}`
     case 'post_created':        return 'Yangi post yozdi'
-    case 'level_up':            return `Yangi daraja: ${meta.level_name || ''}`
+    case 'level_up':            return `Yangi daraja: ${meta.level ? getLevelTitle(meta.level) : (meta.level_name || '')}`
     case 'achievement_unlocked':return `Yutuq qo'lga kiritdi: ${meta.achievement_name || ''}`
     case 'skill_added':         return `Ko'nikma qo'shdi: ${meta.skill_name || ''}`
     case 'connection_made':     return "Yangi aloqa o'rnatdi"
@@ -956,15 +956,16 @@ const StatsRow: React.FC<{ profile: ProfileData }> = ({ profile }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const XPBar: React.FC<{ profile: ProfileData }> = ({ profile }) => {
-  const nextLevel = (profile.level ?? 1) + 1
-  const nextTitle = nextLevel <= 27 ? getLevelTitle(nextLevel) : null
-  const nextEmoji = nextLevel <= 27 ? getLevelEmoji(nextLevel) : null
+  const curLevel = profile.level ?? 1
+  const nextLevel = curLevel + 1
+  const nextTitle = nextLevel <= 29 ? getLevelTitle(nextLevel) : null
+  const nextEmoji = nextLevel <= 29 ? getLevelEmoji(nextLevel) : null
 
   return (
     <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4 space-y-2.5">
       <div className="flex items-center justify-between text-sm">
         <span className="font-semibold text-white">
-          {getLevelEmoji(profile.level ?? 1)} Daraja {profile.level ?? 1} — {profile.level_name}
+          {getLevelEmoji(curLevel)} Daraja {curLevel} — {getLevelTitle(curLevel)}
         </span>
         <span className="text-white/40 text-xs">
           {(profile.total_xp ?? 0).toLocaleString()} / {(profile.next_level_xp ?? 0).toLocaleString()} XP · {profile.xp_percent ?? 0}%

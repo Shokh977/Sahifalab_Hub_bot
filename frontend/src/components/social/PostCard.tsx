@@ -17,6 +17,7 @@ import {
   Loader2, X, Check, Repeat2, Eye, Bookmark, CheckCircle2,
   Award, BookOpen, BarChart2,
 } from 'lucide-react'
+import { getLevelTitle, getLevelEmoji } from '../../utils/levelTitles'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { UserIdentityUser } from './UserIdentity'
@@ -155,7 +156,7 @@ const AchievementCard: React.FC<{ meta: NonNullable<PostData['post_metadata']> }
       <div>
         {isLevel ? (
           <>
-            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Daraja {meta.level} — {meta.level_name}</p>
+            <p className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>{getLevelEmoji(meta.level ?? 1)} Daraja {meta.level} — {getLevelTitle(meta.level ?? 1)}</p>
             <p className="text-xs text-white/40 mt-0.5">Yangi darajaga ko'tarildi!</p>
           </>
         ) : (
