@@ -15,7 +15,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   Star, MessageCircle, Trash2, Pencil, MoreHorizontal,
   Loader2, X, Check, Repeat2, Eye, Bookmark, CheckCircle2,
-  Award, BookOpen, BarChart2, BadgeCheck, Shield,
+  Award, BookOpen, BarChart2, BadgeCheck,
 } from 'lucide-react'
 import { getLevelTitle, getLevelEmoji } from '../../utils/levelTitles'
 import { useNavigate } from 'react-router-dom'
@@ -447,12 +447,12 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
                 {post.author.is_verified && (
                   <CheckCircle2 className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" />
                 )}
-                {(post.author.account_type === 'teacher' || post.author.role === 'teacher') && (
-                  <BadgeCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" title="O'qituvchi" />
-                )}
-                {(post.author.account_type === 'admin' || post.author.role === 'admin') && (
-                  <Shield className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" title="Admin" />
-                )}
+                {(() => {
+                  const role = post.author.account_type || post.author.role
+                  if (role === 'admin') return <BadgeCheck className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" title="Admin" />
+                  if (role === 'teacher') return <BadgeCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" title="O'qituvchi" />
+                  return null
+                })()}
               </div>
               {post.author.headline ? (
                 <p className="text-[11px] text-white/40 truncate leading-tight mt-0.5">{post.author.headline}</p>

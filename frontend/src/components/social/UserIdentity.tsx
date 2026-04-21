@@ -10,7 +10,7 @@
  */
 
 import React from 'react'
-import { BadgeCheck, Shield } from 'lucide-react'
+import { BadgeCheck } from 'lucide-react'
 
 // ── Rank data ────────────────────────────────────────────────────────────────
 
@@ -167,16 +167,18 @@ const UserIdentity: React.FC<Props> = ({
             <span className={`font-semibold text-gray-900 dark:text-white truncate ${font} ${nameClass}`}>
               {displayName}
             </span>
-            {showBadge && isTeacher && (
+            {showBadge && isAdmin && (
+              <BadgeCheck
+                className="flex-shrink-0 text-[#e8792f] fill-[#e8792f]/20"
+                style={{ width: badgePx, height: badgePx }}
+                title="Admin"
+              />
+            )}
+            {showBadge && !isAdmin && isTeacher && (
               <BadgeCheck
                 className="flex-shrink-0 text-blue-400 fill-blue-400/20"
                 style={{ width: badgePx, height: badgePx }}
-              />
-            )}
-            {showBadge && isAdmin && (
-              <Shield
-                className="flex-shrink-0 text-sahifa-500 fill-sahifa-500/20"
-                style={{ width: badgePx, height: badgePx }}
+                title="O'qituvchi"
               />
             )}
           </div>

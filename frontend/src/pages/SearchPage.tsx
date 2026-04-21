@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
-  Search, Loader2, Users, BookOpen, Briefcase, FileText,
-  BadgeCheck, Shield, ArrowLeft,
+  Search, Loader2, Users, BookOpen, Briefcase,
+  BadgeCheck, ArrowLeft,
 } from 'lucide-react'
 import api from '../services/apiService'
 import { getLevelTitle } from '../utils/levelTitles'
@@ -196,12 +196,12 @@ const SearchPage: React.FC = () => {
                     <div className="flex items-center gap-1.5">
                       <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{p.name}</span>
                       {p.is_verified && <span className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0">✓</span>}
-                      {p.account_type === 'teacher' && (
-                        <BadgeCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" />
-                      )}
-                      {p.account_type === 'admin' && (
-                        <Shield className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" />
-                      )}
+                      {p.account_type === 'admin'
+                        ? <BadgeCheck className="w-3.5 h-3.5 text-[#e8792f] flex-shrink-0" title="Admin" />
+                        : p.account_type === 'teacher'
+                          ? <BadgeCheck className="w-3.5 h-3.5 text-blue-400 flex-shrink-0" title="O'qituvchi" />
+                          : null
+                      }
                     </div>
                     <p className="text-xs text-gray-400 dark:text-white/40 truncate">
                       {p.headline || getLevelTitle(p.level || 1)}
