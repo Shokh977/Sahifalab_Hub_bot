@@ -76,6 +76,7 @@ const SocialFeed = lazy(() => import('./pages/SocialFeed'))
 const SlouthMessenger = lazy(() => import('./pages/SlouthMessenger'))
 const PublicProfile = lazy(() => import('./pages/ProfilePage'))
 const DiscoverUsers = lazy(() => import('./pages/DiscoverUsers'))
+const SearchPage = lazy(() => import('./pages/SearchPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'))
 const NetworkPage = lazy(() => import('./pages/NetworkPage'))
@@ -277,6 +278,7 @@ const AppRoutes: React.FC = () => {
         {/* Legacy paths kept for backward compat */}
         <Route path="/social"          element={<Navigate to="/feed" replace />} />
         <Route path="/discover"        element={<DiscoverUsers />} />
+        <Route path="/search"          element={<SearchPage />} />
         <Route path="/courses"         element={<AppLayout rightSidebar={<CoursesRightSidebar />} maxWidth="max-w-[900px]"><CoursesPage /></AppLayout>} />
         <Route path="/courses/:id"     element={<CourseDetailPage />} />
         <Route path="/profile/:userId" element={<AppLayout rightSidebar={<ProfileRightSidebar />} maxWidth="max-w-[760px]"><PublicProfile /></AppLayout>} />

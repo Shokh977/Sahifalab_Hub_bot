@@ -470,7 +470,7 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({ results, query, onClose
       {/* View all */}
       <div className="px-4 py-3">
         <button
-          onClick={() => go(`/discover?q=${encodeURIComponent(query)}`)}
+          onClick={() => go(`/search?q=${encodeURIComponent(query)}`)}
           className="w-full py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] text-white/50 hover:text-white text-sm transition-colors"
         >
           Barcha natijalarni ko'rish →
