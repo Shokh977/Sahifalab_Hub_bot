@@ -369,15 +369,112 @@ const PrivacySection: React.FC = () => {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Section 5 — Account (password change + delete)
+// Section 5 — Account (email + password change + delete)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
-  const [form, setForm] = useState({ current: '', next: '', confirm: '' })
-  const [show, setShow] = useState({ current: false, next: false, confirm: false })
+// ── Email modal ───────────────────────────────────────────────────────────────
+const EmailModal: React.FC<{ currentEmail: string | null; onClose: () => void; onSaved: (email: string) => void }> = ({ currentEmail, onClose, onSaved }) => {
+  const [email, setEmail]   = useState(currentEmail || '')
   const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [done, setDone] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+  const [done, setDone]     = useState(false)
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const trimmed = email.trim().toLowerCase()
+    if (!trimmed.includes('@')) { setError("To'g'ri email manzil kiriting"); return }
+    setSaving(true); setError(null)
+    try {
+      await api.client.post('/api/auth/link-email', { email: trimmed })
+      setDone(true)
+      onSaved(trimmed)
+      setTimeout(onClose, 1500)
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Xatolik yuz berdi')
+    } finally { setSaving(false) }
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: 'rgba(0,0,0,0.5)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}
+    >
+      <motion.div
+        initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 10 }}
+        className="w-full max-w-md rounded-2xl p-6"
+        style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-default)' }}
+      >
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)' }}>
+            {currentEmail ? "Emailni o'zgartirish" : "Email qo'shish"}
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl" style={{ color: 'var(--text-tertiary)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        {done ? (
+          <div className="py-6 flex flex-col items-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+              <Check className="w-6 h-6 text-green-500" />
+            </div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Email muvaffaqiyatli saqlandi</p>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label>Email manzil</Label>
+              <Input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="example@email.com"
+                required
+              />
+            </div>
+            {!currentEmail && (
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                Email qo'shilgandan so'ng parolni email orqali tiklash imkoniyati ochiladi.
+              </p>
+            )}
+            {error && <p className="text-sm text-red-500">{error}</p>}
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
+              style={{ backgroundColor: 'var(--brand-primary)' }}
+            >
+              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              Saqlash
+            </button>
+          </form>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}
+
+// ── Password modal ─────────────────────────────────────────────────────────────
+const PasswordModal: React.FC<{ userEmail: string | null; hasPassword: boolean; onClose: () => void }> = ({ userEmail, hasPassword, onClose }) => {
+  const [form, setForm]   = useState({ current: '', next: '', confirm: '' })
+  const [show, setShow]   = useState({ current: false, next: false, confirm: false })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState<string | null>(null)
+  const [done, setDone]     = useState(false)
+  // "email" mode: send a forgot-password link instead of entering current password
+  const [emailSent, setEmailSent] = useState(false)
+
+  const sendResetLink = async () => {
+    if (!userEmail) return
+    setSaving(true); setError(null)
+    try {
+      await api.client.post('/api/auth/forgot-password', { email: userEmail })
+      setEmailSent(true)
+    } catch (err: any) {
+      setError(err?.response?.data?.detail || 'Xatolik yuz berdi')
+    } finally { setSaving(false) }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -385,7 +482,7 @@ const PasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     if (form.next.length < 8) { setError("Parol kamida 8 ta belgidan iborat bo'lishi kerak"); return }
     setSaving(true); setError(null)
     try {
-      await api.client.put('/api/settings/password', { current_password: form.current, new_password: form.next })
+      await api.client.put('/api/auth/change-password', { current_password: form.current, new_password: form.next })
       setDone(true)
       setTimeout(onClose, 1500)
     } catch (err: any) {
@@ -393,7 +490,7 @@ const PasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
     } finally { setSaving(false) }
   }
 
-  return (
+  const ModalShell = ({ children }: { children: React.ReactNode }) => (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex items-center justify-center p-4"
@@ -411,55 +508,120 @@ const PasswordModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <X className="w-4 h-4" />
           </button>
         </div>
-        {done ? (
-          <div className="py-6 flex flex-col items-center gap-3">
-            <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
-              <Check className="w-6 h-6 text-green-500" />
-            </div>
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Parol muvaffaqiyatli o'zgartirildi</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {(['current', 'next', 'confirm'] as const).map((key) => {
-              const labels = { current: 'Joriy parol', next: 'Yangi parol', confirm: 'Yangi parolni tasdiqlang' }
-              return (
-                <div key={key}>
-                  <Label>{labels[key]}</Label>
-                  <div className="relative">
-                    <Input
-                      type={show[key] ? 'text' : 'password'}
-                      value={form[key]}
-                      onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
-                      required
-                      minLength={key === 'current' ? 1 : 8}
-                      style={{ paddingRight: '2.5rem' }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShow(s => ({ ...s, [key]: !s[key] }))}
-                      className="absolute right-3 top-1/2 -translate-y-1/2"
-                      style={{ color: 'var(--text-muted)' }}
-                    >
-                      {show[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
-            {error && <p className="text-sm text-red-500">{error}</p>}
-            <button
-              type="submit"
-              disabled={saving}
-              className="w-full py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 mt-2"
-              style={{ backgroundColor: 'var(--brand-primary)' }}
-            >
-              {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              Saqlash
-            </button>
-          </form>
-        )}
+        {children}
       </motion.div>
     </motion.div>
+  )
+
+  // Success state
+  if (done) return (
+    <ModalShell>
+      <div className="py-6 flex flex-col items-center gap-3">
+        <div className="w-12 h-12 rounded-full bg-green-500/10 flex items-center justify-center">
+          <Check className="w-6 h-6 text-green-500" />
+        </div>
+        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Parol muvaffaqiyatli o'zgartirildi</p>
+      </div>
+    </ModalShell>
+  )
+
+  // Reset link sent state
+  if (emailSent) return (
+    <ModalShell>
+      <div className="py-6 flex flex-col items-center gap-3 text-center">
+        <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center">
+          <Check className="w-6 h-6 text-blue-500" />
+        </div>
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Havola yuborildi</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            {userEmail} manziliga parolni tiklash havolasi yuborildi. Pochta qutingizni tekshiring.
+          </p>
+        </div>
+        <button onClick={onClose} className="mt-2 text-sm font-semibold" style={{ color: 'var(--brand-primary)' }}>Yopish</button>
+      </div>
+    </ModalShell>
+  )
+
+  // No password set — offer email reset only
+  if (!hasPassword) return (
+    <ModalShell>
+      <div className="space-y-4">
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          Akkauntingizda parol o'rnatilmagan. Parol o'rnatish uchun emailingizga havola yuboramiz.
+        </p>
+        {!userEmail && (
+          <p className="text-xs px-3 py-2 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+            Avval settings sahifasida email manzil qo'shing.
+          </p>
+        )}
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <button
+          onClick={sendResetLink}
+          disabled={saving || !userEmail}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 disabled:opacity-50"
+          style={{ backgroundColor: 'var(--brand-primary)' }}
+        >
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Email orqali parol o'rnatish
+        </button>
+      </div>
+    </ModalShell>
+  )
+
+  // Has password — full change form + "forgot" fallback
+  return (
+    <ModalShell>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        {(['current', 'next', 'confirm'] as const).map((key) => {
+          const labels = { current: 'Joriy parol', next: 'Yangi parol', confirm: 'Yangi parolni tasdiqlang' }
+          return (
+            <div key={key}>
+              <Label>{labels[key]}</Label>
+              <div className="relative">
+                <Input
+                  type={show[key] ? 'text' : 'password'}
+                  value={form[key]}
+                  onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  required
+                  minLength={key === 'current' ? 1 : 8}
+                  style={{ paddingRight: '2.5rem' }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow(s => ({ ...s, [key]: !s[key] }))}
+                  className="absolute right-3 top-1/2 -translate-y-1/2"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  {show[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+          )
+        })}
+        {error && <p className="text-sm text-red-500">{error}</p>}
+        <button
+          type="submit"
+          disabled={saving}
+          className="w-full py-2.5 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2"
+          style={{ backgroundColor: 'var(--brand-primary)' }}
+        >
+          {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+          Saqlash
+        </button>
+        {userEmail && (
+          <button
+            type="button"
+            onClick={sendResetLink}
+            disabled={saving}
+            className="w-full py-2 text-xs font-medium transition-colors"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Joriy parolni unutdingizmi? Email orqali tiklash
+          </button>
+        )}
+      </form>
+    </ModalShell>
   )
 }
 
@@ -525,9 +687,13 @@ const DeleteAccountModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 }
 
 const AccountSection: React.FC = () => {
-  const { user } = useAuth()
+  const { user, updateUserEmail } = useAuth()
+  const [emailModal,  setEmailModal]  = useState(false)
   const [pwModal,     setPwModal]     = useState(false)
   const [deleteModal, setDeleteModal] = useState(false)
+
+  const currentEmail   = (user as any)?.email as string | null ?? null
+  const hasPassword    = Boolean((user as any)?.has_password ?? currentEmail)
 
   return (
     <>
@@ -536,16 +702,16 @@ const AccountSection: React.FC = () => {
         <div className="flex items-center justify-between py-3.5" style={{ borderBottom: '1px solid var(--border-default)' }}>
           <div>
             <p className="text-[13px] font-semibold" style={{ color: 'var(--text-secondary)' }}>Email</p>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--text-primary)' }}>
-              {(user as any)?.email || "Qo'shilmagan"}
+            <p className="text-sm mt-0.5" style={{ color: currentEmail ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {currentEmail || "Qo'shilmagan"}
             </p>
           </div>
           <button
             className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
             style={{ color: 'var(--brand-primary)', backgroundColor: 'var(--brand-subtle)' }}
-            onClick={() => {}} // email change modal can be added later
+            onClick={() => setEmailModal(true)}
           >
-            O'zgartirish
+            {currentEmail ? "O'zgartirish" : "Qo'shish"}
           </button>
         </div>
 
@@ -553,14 +719,16 @@ const AccountSection: React.FC = () => {
         <div className="flex items-center justify-between py-3.5" style={{ borderBottom: '1px solid var(--border-default)' }}>
           <div>
             <p className="text-[13px] font-semibold" style={{ color: 'var(--text-secondary)' }}>Parol</p>
-            <p className="text-sm mt-0.5" style={{ color: 'var(--text-tertiary)' }}>••••••••</p>
+            <p className="text-sm mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+              {hasPassword ? '••••••••' : "O'rnatilmagan"}
+            </p>
           </div>
           <button
             className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors"
             style={{ color: 'var(--brand-primary)', backgroundColor: 'var(--brand-subtle)' }}
             onClick={() => setPwModal(true)}
           >
-            O'zgartirish
+            {hasPassword ? "O'zgartirish" : "O'rnatish"}
           </button>
         </div>
 
@@ -579,7 +747,20 @@ const AccountSection: React.FC = () => {
       </Card>
 
       <AnimatePresence>
-        {pwModal     && <PasswordModal     onClose={() => setPwModal(false)} />}
+        {emailModal  && (
+          <EmailModal
+            currentEmail={currentEmail}
+            onClose={() => setEmailModal(false)}
+            onSaved={(e) => updateUserEmail(e)}
+          />
+        )}
+        {pwModal     && (
+          <PasswordModal
+            userEmail={currentEmail}
+            hasPassword={hasPassword}
+            onClose={() => setPwModal(false)}
+          />
+        )}
         {deleteModal && <DeleteAccountModal onClose={() => setDeleteModal(false)} />}
       </AnimatePresence>
     </>
