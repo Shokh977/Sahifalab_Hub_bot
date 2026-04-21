@@ -28,7 +28,9 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import api from '../services/apiService'
-import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
+import { getLevelTitle, getLevelEmoji, LEVEL_TITLES } from '../utils/levelTitles'
+import PostCard from '../components/social/PostCard'
+import type { PostData } from '../components/social/PostCard'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -107,7 +109,7 @@ interface ProfileData {
   profile_completeness?: number
 }
 
-type TabKey = 'umumiy' | 'faollik' | 'kurslar' | 'yutuqlar'
+type TabKey = 'umumiy' | 'faollik' | 'kurslar' | 'yutuqlar' | 'postlar'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -260,6 +262,8 @@ const ProfilePage: React.FC = () => {
   const [endorsingId, setEndorsingId] = useState<number | null>(null)
   const [newSkill, setNewSkill] = useState('')
   const [addingSkill, setAddingSkill] = useState(false)
+  const [posts, setPosts] = useState<PostData[]>([])
+  const [postsLoading, setPostsLoading] = useState(false)
 
   const myId = (authUser as any)?.telegram_id || (authUser as any)?.id
 
@@ -284,6 +288,27 @@ const ProfilePage: React.FC = () => {
       .catch(() => setError('Profil topilmadi'))
       .finally(() => setLoading(false))
   }, [profileApiPath, authLoading])
+
+  // ── Fetch posts when postlar tab active ───────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'postlar' || !profile) return
+    if (posts.length > 0) return // already loaded
+    setPostsLoading(true)
+    api.client.get(`/api/v1/social/users/${profile.telegram_id}/posts`, { params: { page: 1, page_size: 50 } })
+      .then(r => setPosts(r.data.posts || []))
+      .catch(() => {})
+      .finally(() => setPostsLoading(false))
+  }, [activeTab, profile?.telegram_id])
+
+  const handleDeletePost = useCallback(async (postId: number) => {
+    await api.client.delete(`/api/v1/social/posts/${postId}`)
+    setPosts(prev => prev.filter(p => p.id !== postId))
+  }, [])
+
+  const handleEditPost = useCallback(async (postId: number, content: string) => {
+    await api.client.patch(`/api/v1/social/posts/${postId}`, { content })
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, content } : p))
+  }, [])
 
   // ── Connection actions ─────────────────────────────────────────────────────
   const handleConnect = useCallback(async () => {
@@ -521,17 +546,17 @@ const ProfilePage: React.FC = () => {
 
           {/* 5. Tab bar */}
           <div className="flex gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-            {(['umumiy', 'faollik', 'kurslar', 'yutuqlar'] as TabKey[]).map(tab => (
+            {(['umumiy', 'postlar', 'faollik', 'kurslar', 'yutuqlar'] as TabKey[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
+                className={`flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-all ${
                   activeTab === tab
                     ? 'bg-white/[0.08] text-white shadow-sm'
                     : 'text-white/40 hover:text-white/60'
                 }`}
               >
-                {{ umumiy: 'Umumiy', faollik: 'Faollik', kurslar: 'Kurslar', yutuqlar: 'Yutuqlar' }[tab]}
+                {{ umumiy: 'Umumiy', postlar: 'Postlar', faollik: 'Faollik', kurslar: 'Kurslar', yutuqlar: 'Yutuqlar' }[tab]}
               </button>
             ))}
           </div>
@@ -561,8 +586,22 @@ const ProfilePage: React.FC = () => {
                   onShareCert={setShareCert}
                 />
               )}
+              {activeTab === 'postlar' && (
+                <PostlarTab
+                  posts={posts}
+                  loading={postsLoading}
+                  isOwn={isOwn}
+                  currentUserId={myId}
+                  onDelete={handleDeletePost}
+                  onEdit={handleEditPost}
+                />
+              )}
               {activeTab === 'faollik' && (
-                <FaollikTab activities={profile.recent_activity} />
+                <FaollikTab
+                  activities={profile.recent_activity}
+                  telegramId={profile.telegram_id}
+                  focusSeconds={profile.focus_hours * 3600}
+                />
               )}
               {activeTab === 'kurslar' && (
                 <KurslarTab profile={profile} onShareCert={setShareCert} />
@@ -1249,30 +1288,142 @@ const RecentActivitySection: React.FC<{ activities: ActivityItem[] }> = ({ activ
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tab: Faollik
+// Tab: Faollik (heatmap + focus hours + activity list)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const FaollikTab: React.FC<{ activities: ActivityItem[] }> = ({ activities }) => (
-  <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
-    <h2 className="text-sm font-bold text-white mb-5">Faollik tarixi</h2>
-    {activities.length === 0 ? (
-      <p className="text-sm text-white/30 text-center py-8">Hali hech qanday faollik yo'q</p>
-    ) : (
-      <div className="relative pl-5 space-y-5">
-        {/* Timeline line */}
-        <div className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]" />
-        {activities.map((a, i) => (
-          <div key={i} className="relative">
-            {/* Dot */}
-            <div className="absolute -left-5 top-1 w-2 h-2 rounded-full bg-[#e8792f] border-2 border-[#1c1d27] translate-x-[-3px]" />
-            <p className="text-sm text-white/80 leading-snug">{activityLabel(a.activity_type, a.metadata)}</p>
-            <p className="text-[11px] text-white/30 mt-0.5">{fmtDate(a.created_at)}</p>
-          </div>
-        ))}
+interface HeatmapDay { date: string; count: number }
+
+const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; focusSeconds: number }> = ({
+  activities, telegramId, focusSeconds,
+}) => {
+  const [heatmap, setHeatmap] = useState<HeatmapDay[]>([])
+
+  useEffect(() => {
+    api.client.get('/api/profiles/heatmap', { params: { telegram_id: telegramId, days: 365 } })
+      .then(r => setHeatmap(r.data || []))
+      .catch(() => {})
+  }, [telegramId])
+
+  // Build a full 52-week grid (364 days back from today)
+  const grid = (() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const map = new Map(heatmap.map(d => [d.date, d.count]))
+    const weeks: { date: string; count: number }[][] = []
+    // start on the Sunday 364 days ago
+    const start = new Date(today)
+    start.setDate(start.getDate() - 363)
+    start.setDate(start.getDate() - start.getDay()) // back to Sunday
+    let cur = new Date(start)
+    while (cur <= today) {
+      const week: { date: string; count: number }[] = []
+      for (let d = 0; d < 7; d++) {
+        const iso = cur.toISOString().slice(0, 10)
+        week.push({ date: iso, count: map.get(iso) ?? 0 })
+        cur.setDate(cur.getDate() + 1)
+      }
+      weeks.push(week)
+    }
+    return weeks
+  })()
+
+  const maxCount = Math.max(...heatmap.map(d => d.count), 1)
+  const totalDays = heatmap.length
+  const focusHours = Math.round(focusSeconds / 3600)
+
+  const cellColor = (count: number) => {
+    if (count === 0) return 'bg-white/[0.04]'
+    const pct = count / maxCount
+    if (pct < 0.25) return 'bg-[#e8792f]/20'
+    if (pct < 0.5)  return 'bg-[#e8792f]/40'
+    if (pct < 0.75) return 'bg-[#e8792f]/65'
+    return 'bg-[#e8792f]'
+  }
+
+  const months = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
+
+  return (
+    <div className="space-y-4">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4 text-center">
+          <p className="text-2xl font-bold text-[#e8792f]">{focusHours}</p>
+          <p className="text-xs text-white/40 mt-0.5">soat diqqat</p>
+        </div>
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4 text-center">
+          <p className="text-2xl font-bold text-white">{totalDays}</p>
+          <p className="text-xs text-white/40 mt-0.5">faol kun</p>
+        </div>
       </div>
-    )}
-  </div>
-)
+
+      {/* Heatmap */}
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+        <h2 className="text-sm font-bold text-white mb-4">O'qish faolligi</h2>
+        <div className="overflow-x-auto">
+          <div className="min-w-[600px]">
+            {/* Month labels */}
+            <div className="flex mb-1.5 pl-4">
+              {grid.filter((_, wi) => wi % 4 === 0).map((week, i) => {
+                const d = new Date(week[0].date)
+                return (
+                  <div key={i} className="flex-1 text-[9px] text-white/25">
+                    {months[d.getMonth()]}
+                  </div>
+                )
+              })}
+            </div>
+            {/* Day rows (Mon/Wed/Fri labels + cells) */}
+            <div className="flex gap-0.5">
+              {/* Day-of-week labels */}
+              <div className="flex flex-col gap-0.5 mr-1 pt-0">
+                {['', 'Sen', '', 'Chor', '', 'Jum', ''].map((label, di) => (
+                  <div key={di} className="h-[10px] w-5 text-[8px] text-white/20 flex items-center">{label}</div>
+                ))}
+              </div>
+              {/* Week columns */}
+              {grid.map((week, wi) => (
+                <div key={wi} className="flex flex-col gap-0.5">
+                  {week.map((day, di) => (
+                    <div
+                      key={di}
+                      title={`${day.date}: ${day.count} quiz`}
+                      className={`w-[10px] h-[10px] rounded-sm ${cellColor(day.count)}`}
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+            {/* Legend */}
+            <div className="flex items-center gap-1.5 mt-3 justify-end">
+              <span className="text-[9px] text-white/25">Kam</span>
+              {[0, 0.25, 0.5, 0.75, 1].map(v => (
+                <div key={v} className={`w-[10px] h-[10px] rounded-sm ${cellColor(Math.ceil(v * maxCount))}`} />
+              ))}
+              <span className="text-[9px] text-white/25">Ko'p</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Activity timeline */}
+      {activities.length > 0 && (
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+          <h2 className="text-sm font-bold text-white mb-5">So'nggi faollik</h2>
+          <div className="relative pl-5 space-y-5">
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]" />
+            {activities.map((a, i) => (
+              <div key={i} className="relative">
+                <div className="absolute -left-5 top-1 w-2 h-2 rounded-full bg-[#e8792f] border-2 border-[#1c1d27] translate-x-[-3px]" />
+                <p className="text-sm text-white/80 leading-snug">{activityLabel(a.activity_type, a.metadata)}</p>
+                <p className="text-[11px] text-white/30 mt-0.5">{fmtDate(a.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tab: Kurslar
