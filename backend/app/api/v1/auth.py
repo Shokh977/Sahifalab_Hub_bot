@@ -129,6 +129,9 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
+class NewPasswordRequest(BaseModel):
+    new_password: str
+
 
 # ── ORM helpers ───────────────────────────────────────────────────────────────
 
@@ -930,14 +933,23 @@ async def link_email(
         # → safe to merge into the Telegram profile.
         merged_summary = _merge_profiles(db, primary_id=telegram_id, secondary_id=existing.telegram_id)
 
-    # ── Attach email to the primary profile ───────────────────────────────
+    # ── Attach email to the primary profile (unverified until confirmed) ──
     profile.email = email_lower
+    profile.email_verified = False
     try:
         db.commit()
         db.refresh(profile)
     except Exception:
         db.rollback()
         raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+
+    # Send verification email
+    try:
+        token_str = _create_auth_token(db, telegram_id, "email_verification", hours=24)
+        from app.services.email_service import send_verification_email
+        send_verification_email(email_lower, profile.first_name or "", token_str)
+    except Exception as exc:
+        logger.error("link-email: failed to send verification email: %s", exc)
 
     merged = bool(merged_summary.get("moved"))
     logger.info(
@@ -947,13 +959,15 @@ async def link_email(
     return {
         "ok": True,
         "email": profile.email,
+        "email_verified": False,
         "merged": merged,
         "merge_summary": merged_summary.get("moved", {}),
         "message": (
-            "Akkauntlar muvaffaqiyatli birlashtirildi! Barcha xaridlaringiz saqlanadi."
+            "Akkauntlar birlashtirildi. Emailni tasdiqlash uchun pochta qutingizni tekshiring."
             if merged else
-            "Email muvaffaqiyatli ulandi"
+            "Tasdiqlash havolasi emailingizga yuborildi"
         ),
+        "verification_sent": True,
     }
 
 
@@ -1171,4 +1185,36 @@ async def change_password(
         raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
 
     return {"ok": True, "message": "Parol o'zgartirildi"}
+
+
+@router.post("/set-password")
+async def set_password(
+    body: NewPasswordRequest,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Set a password for the first time (no current password required).
+    Requires: authenticated user + email_verified=True + no existing password."""
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+    if not profile.email_verified:
+        raise HTTPException(status_code=403, detail="Avval emailingizni tasdiqlang")
+    if profile.password_hash:
+        raise HTTPException(status_code=400, detail="Parol allaqachon o'rnatilgan. Parolni o'zgartirish uchun change-password dan foydalaning")
+
+    pw_errors = _validate_password(body.new_password)
+    if pw_errors:
+        raise HTTPException(status_code=400, detail="; ".join(pw_errors))
+
+    profile.password_hash = bcrypt.hashpw(body.new_password.encode(), bcrypt.gensalt()).decode()
+    profile.password_changed_at = datetime.now(UTC)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+
+    return {"ok": True, "message": "Parol o'rnatildi. Endi email va parol bilan kirishingiz mumkin."}
 
