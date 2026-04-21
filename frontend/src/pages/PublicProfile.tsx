@@ -80,20 +80,19 @@ const PublicProfile: React.FC = () => {
   const [courses, setCourses] = useState<CourseData[]>([])
   const [coursesLoading, setCoursesLoading] = useState(false)
 
-  const myId = (user as any)?.telegram_id || (user as any)?.id
+  const myId: number | undefined = (user as any)?.telegram_id || (user as any)?.id
 
-  // "me" → redirect to the real numeric ID once auth resolves
-  useEffect(() => {
-    console.log('[PublicProfile] me-redirect check', { userId, authLoading, isAuthenticated, myId })
-    if (userId !== 'me') return
-    if (authLoading) return
-    if (!isAuthenticated || !myId) { console.log('[PublicProfile] not authed → /login'); navigate('/login', { replace: true }); return }
-    console.log('[PublicProfile] redirecting me →', `/profile/${myId}`)
-    navigate(`/profile/${myId}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`, { replace: true })
-  }, [userId, authLoading, isAuthenticated, myId])
+  // For /profile/me, resolve to the authenticated user's numeric ID without redirecting.
+  // targetId stays undefined while auth is loading → fetch skips → no flash.
+  // If auth resolved and no user, redirect to login.
+  if (userId === 'me' && !authLoading && !isAuthenticated) {
+    navigate('/login', { replace: true })
+  }
 
-  const targetId = userId === 'me' ? NaN : Number(userId)
-  console.log('[PublicProfile] render', { userId, targetId, authLoading, isAuthenticated, myId, loading })
+  const targetId: number | undefined =
+    userId === 'me'
+      ? (authLoading ? undefined : myId)
+      : Number(userId) || undefined
   const isOwnProfile = myId === targetId
   const isTeacher = profile?.role === 'teacher'
 
@@ -119,21 +118,18 @@ const PublicProfile: React.FC = () => {
 
   // ── Fetch profile + posts ───────────────────────────────────────────────
   useEffect(() => {
-    console.log('[PublicProfile] fetch effect', { targetId, isNaN: isNaN(targetId) })
-    if (!targetId || isNaN(targetId)) return
+    if (!targetId) return
     const fetchProfile = async () => {
       setLoading(true)
       try {
-        console.log('[PublicProfile] fetching', `/api/v1/social/users/${targetId}/profile`)
         const [profileRes, postsRes] = await Promise.all([
           api.client.get(`/api/v1/social/users/${targetId}/profile`),
           api.client.get(`/api/v1/social/users/${targetId}/posts`, { params: { page: 1, page_size: 50 } }),
         ])
-        console.log('[PublicProfile] profile ok', profileRes.data)
         setProfile(profileRes.data)
         setPosts(postsRes.data.posts || [])
       } catch (err) {
-        console.error('[PublicProfile] fetch error:', err)
+        console.error('Profile fetch error:', err)
       }
       setLoading(false)
     }
