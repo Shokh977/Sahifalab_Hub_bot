@@ -27,6 +27,7 @@ import {
   Loader2, AlertCircle, ExternalLink, ArrowLeft,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useProgressStore } from '../context/progressStore'
 import api from '../services/apiService'
 import { getLevelTitle, getLevelEmoji, LEVEL_TITLES } from '../utils/levelTitles'
 import PostCard from '../components/social/PostCard'
@@ -271,6 +272,7 @@ function normalizeProfile(raw: any): ProfileData {
 const ProfilePage: React.FC = () => {
   const { userId: rawParam } = useParams<{ userId: string }>()
   const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth()
+  const viewerLevel = useProgressStore(s => s.level)
   const navigate = useNavigate()
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -631,7 +633,7 @@ const ProfilePage: React.FC = () => {
                 <KurslarTab profile={profile} onShareCert={setShareCert} />
               )}
               {activeTab === 'yutuqlar' && (
-                <YutuqlarTab profile={profile} />
+                <YutuqlarTab profile={profile} viewerLevel={viewerLevel} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -1619,7 +1621,7 @@ const PostlarTab: React.FC<PostlarTabProps> = ({ posts, loading, isOwn, currentU
 // Tab: Yutuqlar — 29-level achievement grid
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const YutuqlarTab: React.FC<{ profile: ProfileData }> = ({ profile }) => {
+const YutuqlarTab: React.FC<{ profile: ProfileData; viewerLevel: number }> = ({ profile, viewerLevel }) => {
   const currentLevel = profile.level ?? 1
   const xpPercent = profile.xp_percent ?? 0
   const totalXp = profile.total_xp ?? 0
@@ -1668,7 +1670,7 @@ const YutuqlarTab: React.FC<{ profile: ProfileData }> = ({ profile }) => {
         <div className="grid grid-cols-3 gap-2.5">
           {LEVEL_TITLES.map(lvl => {
             const unlocked = currentLevel >= lvl.level
-            const isCurrent = currentLevel === lvl.level
+            const isCurrent = viewerLevel === lvl.level
             return (
               <div
                 key={lvl.level}
