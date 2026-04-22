@@ -68,6 +68,26 @@ interface ActivityItem {
   metadata: Record<string, any>
 }
 
+interface Experience {
+  id: number
+  company: string
+  title: string
+  start_date: string | null
+  end_date: string | null
+  is_current: boolean
+  description: string | null
+}
+
+interface Education {
+  id: number
+  school: string
+  degree: string | null
+  field_of_study: string | null
+  start_year: number | null
+  end_year: number | null
+  description: string | null
+}
+
 type ConnectionStatus = 'own' | 'accepted' | 'pending_sent' | 'pending_received' | 'none'
 
 interface ProfileData {
@@ -106,6 +126,8 @@ interface ProfileData {
   active_courses: ActiveCourse[]
   recent_activity: ActivityItem[]
   certificates: Certificate[]
+  experiences: Experience[]
+  education: Education[]
   profile_completeness?: number
 }
 
@@ -236,6 +258,8 @@ function normalizeProfile(raw: any): ProfileData {
       share_token:  c.share_token ?? null,
       skill_tags:   Array.isArray(c.skill_tags) ? c.skill_tags : [],
     })) : [],
+    experiences: Array.isArray(raw.experiences) ? raw.experiences : [],
+    education:   Array.isArray(raw.education)   ? raw.education   : [],
     profile_completeness: raw.profile_completeness ?? u.profile_completeness ?? undefined,
   }
 }
@@ -1055,6 +1079,14 @@ const UmumiyTab: React.FC<UmumiyTabProps> = ({
   onAddSkill, onDeleteSkill, onEndorse, onShareCert,
 }) => (
   <div className="space-y-4">
+    {/* Experience */}
+    {((profile.experiences ?? []).length > 0 || isOwn) && (
+      <ExperienceSection experiences={profile.experiences ?? []} isOwn={isOwn} />
+    )}
+    {/* Education */}
+    {((profile.education ?? []).length > 0 || isOwn) && (
+      <EducationSection education={profile.education ?? []} isOwn={isOwn} />
+    )}
     <SkillsSection
       skills={profile.skills}
       isOwn={isOwn}
@@ -1076,6 +1108,97 @@ const UmumiyTab: React.FC<UmumiyTabProps> = ({
     )}
     {(profile.recent_activity ?? []).length > 0 && (
       <RecentActivitySection activities={(profile.recent_activity ?? []).slice(0, 5)} />
+    )}
+  </div>
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Experience Section (display only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function fmtYearMonth(ym: string | null): string {
+  if (!ym) return ''
+  const [y, m] = ym.split('-')
+  const months = ['', 'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
+  return m ? `${months[parseInt(m)] || ''} ${y}` : y
+}
+
+const ExperienceSection: React.FC<{ experiences: Experience[]; isOwn: boolean }> = ({ experiences, isOwn }) => (
+  <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-sm font-bold text-white">Tajriba</h2>
+      {isOwn && <span className="text-[10px] text-white/30">Tahrirlash uchun profilni oching</span>}
+    </div>
+    {experiences.length === 0 ? (
+      <p className="text-sm text-white/25 text-center py-4">
+        {isOwn ? "Ish tajribangizni qo'shing" : "Tajriba qo'shilmagan"}
+      </p>
+    ) : (
+      <div className="space-y-4">
+        {experiences.map((exp, i) => (
+          <div key={exp.id} className={`flex gap-3 ${i > 0 ? 'pt-4 border-t border-white/[0.05]' : ''}`}>
+            <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 text-sm font-bold text-white/40">
+              {exp.company.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white leading-tight">{exp.title}</p>
+              <p className="text-xs text-[#e8792f] mt-0.5">{exp.company}</p>
+              <p className="text-[11px] text-white/35 mt-0.5">
+                {fmtYearMonth(exp.start_date)}
+                {(exp.start_date || exp.is_current || exp.end_date) && ' — '}
+                {exp.is_current ? 'Hozir' : fmtYearMonth(exp.end_date)}
+              </p>
+              {exp.description && (
+                <p className="text-xs text-white/50 mt-1.5 leading-relaxed">{exp.description}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Education Section (display only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const EducationSection: React.FC<{ education: Education[]; isOwn: boolean }> = ({ education, isOwn }) => (
+  <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-sm font-bold text-white">Ta'lim</h2>
+      {isOwn && <span className="text-[10px] text-white/30">Tahrirlash uchun profilni oching</span>}
+    </div>
+    {education.length === 0 ? (
+      <p className="text-sm text-white/25 text-center py-4">
+        {isOwn ? "Ta'lim ma'lumotlarini qo'shing" : "Ta'lim qo'shilmagan"}
+      </p>
+    ) : (
+      <div className="space-y-4">
+        {education.map((edu, i) => (
+          <div key={edu.id} className={`flex gap-3 ${i > 0 ? 'pt-4 border-t border-white/[0.05]' : ''}`}>
+            <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 text-base">
+              🎓
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white leading-tight">{edu.school}</p>
+              {(edu.degree || edu.field_of_study) && (
+                <p className="text-xs text-[#e8792f] mt-0.5">
+                  {[edu.degree, edu.field_of_study].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              {(edu.start_year || edu.end_year) && (
+                <p className="text-[11px] text-white/35 mt-0.5">
+                  {edu.start_year}{edu.start_year && edu.end_year && ' — '}{edu.end_year}
+                </p>
+              )}
+              {edu.description && (
+                <p className="text-xs text-white/50 mt-1.5 leading-relaxed">{edu.description}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     )}
   </div>
 )
@@ -1623,6 +1746,20 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  // Experience / Education state
+  const [experiences, setExperiences] = useState<Experience[]>(profile.experiences ?? [])
+  const [education, setEducation] = useState<Education[]>(profile.education ?? [])
+  const blankExp = { company: '', title: '', start_date: '', end_date: '', is_current: false, description: '' }
+  const blankEdu = { school: '', degree: '', field_of_study: '', start_year: '', end_year: '', description: '' }
+  const [expFormOpen, setExpFormOpen] = useState(false)
+  const [expEditing, setExpEditing] = useState<Experience | null>(null)
+  const [expForm, setExpForm] = useState(blankExp)
+  const [expSaving, setExpSaving] = useState(false)
+  const [eduFormOpen, setEduFormOpen] = useState(false)
+  const [eduEditing, setEduEditing] = useState<Education | null>(null)
+  const [eduForm, setEduForm] = useState(blankEdu)
+  const [eduSaving, setEduSaving] = useState(false)
+
   // Image upload state
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
@@ -1670,6 +1807,68 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     return r.data.url
   }
 
+  async function handleSaveExp() {
+    if (!expForm.company.trim() || !expForm.title.trim()) return
+    setExpSaving(true)
+    const body = {
+      company: expForm.company.trim(),
+      title: expForm.title.trim(),
+      start_date: expForm.start_date || null,
+      end_date: expForm.is_current ? null : (expForm.end_date || null),
+      is_current: expForm.is_current,
+      description: expForm.description.trim() || null,
+    }
+    try {
+      if (expEditing) {
+        const r = await api.client.put(`/api/profile/me/experiences/${expEditing.id}`, body)
+        setExperiences(prev => prev.map(e => e.id === expEditing.id ? r.data : e))
+      } else {
+        const r = await api.client.post('/api/profile/me/experiences', body)
+        setExperiences(prev => [...prev, r.data])
+      }
+      setExpFormOpen(false); setExpEditing(null); setExpForm(blankExp)
+    } catch {}
+    setExpSaving(false)
+  }
+
+  async function handleDeleteExp(id: number) {
+    try {
+      await api.client.delete(`/api/profile/me/experiences/${id}`)
+      setExperiences(prev => prev.filter(e => e.id !== id))
+    } catch {}
+  }
+
+  async function handleSaveEdu() {
+    if (!eduForm.school.trim()) return
+    setEduSaving(true)
+    const body = {
+      school: eduForm.school.trim(),
+      degree: eduForm.degree.trim() || null,
+      field_of_study: eduForm.field_of_study.trim() || null,
+      start_year: eduForm.start_year ? parseInt(eduForm.start_year) : null,
+      end_year: eduForm.end_year ? parseInt(eduForm.end_year) : null,
+      description: eduForm.description.trim() || null,
+    }
+    try {
+      if (eduEditing) {
+        const r = await api.client.put(`/api/profile/me/education/${eduEditing.id}`, body)
+        setEducation(prev => prev.map(e => e.id === eduEditing.id ? r.data : e))
+      } else {
+        const r = await api.client.post('/api/profile/me/education', body)
+        setEducation(prev => [...prev, r.data])
+      }
+      setEduFormOpen(false); setEduEditing(null); setEduForm(blankEdu)
+    } catch {}
+    setEduSaving(false)
+  }
+
+  async function handleDeleteEdu(id: number) {
+    try {
+      await api.client.delete(`/api/profile/me/education/${id}`)
+      setEducation(prev => prev.filter(e => e.id !== id))
+    } catch {}
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (form.headline.length > 120) { setErr("Sarlavha 120 belgidan oshmasligi kerak"); return }
@@ -1688,7 +1887,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
         ...(avatarFile ? { photo_url: newAvatarUrl } : {}),
         cover_image_url: newCoverUrl,
       })
-      onSaved({ ...r.data, photo_url: newAvatarUrl ?? r.data.photo_url, cover_image_url: newCoverUrl ?? r.data.cover_image_url })
+      onSaved({ ...r.data, photo_url: newAvatarUrl ?? r.data.photo_url, cover_image_url: newCoverUrl ?? r.data.cover_image_url, experiences, education })
     } catch (e: any) {
       setErr(e?.response?.data?.detail || "Xatolik yuz berdi")
     }
@@ -1858,6 +2057,197 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
               className="w-full px-3.5 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40"
               maxLength={500}
             />
+          </div>
+
+          {/* ── Ish tajribasi ─────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-2 mt-2">
+              <label className="text-xs font-semibold text-white/50 uppercase tracking-wide">Ish tajribasi</label>
+              <button type="button"
+                onClick={() => { setExpEditing(null); setExpForm(blankExp); setExpFormOpen(true) }}
+                className="flex items-center gap-1 text-xs text-[#e8792f] hover:text-[#c44a1a] transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Qo'shish
+              </button>
+            </div>
+            <div className="space-y-2">
+              {experiences.map(exp => (
+                <div key={exp.id} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  <div className="w-8 h-8 rounded-lg bg-[#e8792f]/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e8792f]">
+                    {exp.company.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{exp.title}</p>
+                    <p className="text-xs text-white/50">{exp.company}</p>
+                    <p className="text-xs text-white/30">
+                      {fmtYearMonth(exp.start_date)} — {exp.is_current ? 'Hozir' : fmtYearMonth(exp.end_date)}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button type="button" onClick={() => {
+                      setExpEditing(exp)
+                      setExpForm({ company: exp.company, title: exp.title, start_date: exp.start_date || '', end_date: exp.end_date || '', is_current: exp.is_current, description: exp.description || '' })
+                      setExpFormOpen(true)
+                    }} className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.08] transition-colors">
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                    <button type="button" onClick={() => handleDeleteExp(exp.id)}
+                      className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {expFormOpen && (
+              <div className="mt-2 p-4 rounded-xl bg-white/[0.04] border border-[#e8792f]/20 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Kompaniya *</label>
+                    <input value={expForm.company} onChange={e => setExpForm(f => ({ ...f, company: e.target.value }))}
+                      placeholder="Google" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Lavozim *</label>
+                    <input value={expForm.title} onChange={e => setExpForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Software Engineer" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Boshlanish</label>
+                    <input type="month" value={expForm.start_date} onChange={e => setExpForm(f => ({ ...f, start_date: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Tugash</label>
+                    <input type="month" value={expForm.end_date} onChange={e => setExpForm(f => ({ ...f, end_date: e.target.value }))}
+                      disabled={expForm.is_current}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-[#e8792f]/40 disabled:opacity-40" />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={expForm.is_current}
+                    onChange={e => setExpForm(f => ({ ...f, is_current: e.target.checked, end_date: e.target.checked ? '' : f.end_date }))}
+                    className="w-4 h-4 accent-[#e8792f]" />
+                  <span className="text-sm text-white/70">Hozir bu yerda ishlayapman</span>
+                </label>
+                <div>
+                  <label className="block text-xs font-medium text-white/50 mb-1">Tavsif</label>
+                  <textarea value={expForm.description} onChange={e => setExpForm(f => ({ ...f, description: e.target.value }))}
+                    rows={2} placeholder="Qisqacha tavsif..." maxLength={500}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40 resize-none" />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleSaveExp} disabled={expSaving || !expForm.company.trim() || !expForm.title.trim()}
+                    className="flex-1 py-2 rounded-xl bg-[#e8792f] hover:bg-[#c44a1a] text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                    {expSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {expEditing ? 'Yangilash' : "Qo'shish"}
+                  </button>
+                  <button type="button" onClick={() => { setExpFormOpen(false); setExpEditing(null); setExpForm(blankExp) }}
+                    className="px-4 py-2 rounded-xl bg-white/[0.06] text-white/50 text-sm hover:text-white transition-colors">
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Ta'lim ────────────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-white/50 uppercase tracking-wide">Ta'lim</label>
+              <button type="button"
+                onClick={() => { setEduEditing(null); setEduForm(blankEdu); setEduFormOpen(true) }}
+                className="flex items-center gap-1 text-xs text-[#e8792f] hover:text-[#c44a1a] transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Qo'shish
+              </button>
+            </div>
+            <div className="space-y-2">
+              {education.map(edu => (
+                <div key={edu.id} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 text-base">🎓</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{edu.school}</p>
+                    {(edu.degree || edu.field_of_study) && (
+                      <p className="text-xs text-white/50">{[edu.degree, edu.field_of_study].filter(Boolean).join(' · ')}</p>
+                    )}
+                    {(edu.start_year || edu.end_year) && (
+                      <p className="text-xs text-white/30">{edu.start_year ?? '?'} — {edu.end_year ?? 'Hozir'}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button type="button" onClick={() => {
+                      setEduEditing(edu)
+                      setEduForm({ school: edu.school, degree: edu.degree || '', field_of_study: edu.field_of_study || '', start_year: edu.start_year?.toString() || '', end_year: edu.end_year?.toString() || '', description: edu.description || '' })
+                      setEduFormOpen(true)
+                    }} className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.08] transition-colors">
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                    <button type="button" onClick={() => handleDeleteEdu(edu.id)}
+                      className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {eduFormOpen && (
+              <div className="mt-2 p-4 rounded-xl bg-white/[0.04] border border-blue-500/20 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-white/50 mb-1">Maktab / Universitet *</label>
+                  <input value={eduForm.school} onChange={e => setEduForm(f => ({ ...f, school: e.target.value }))}
+                    placeholder="Toshkent Davlat Texnika Universiteti" maxLength={200}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Daraja</label>
+                    <input value={eduForm.degree} onChange={e => setEduForm(f => ({ ...f, degree: e.target.value }))}
+                      placeholder="Bakalavr" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Mutaxassislik</label>
+                    <input value={eduForm.field_of_study} onChange={e => setEduForm(f => ({ ...f, field_of_study: e.target.value }))}
+                      placeholder="Kompyuter fanlari" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Kirish yili</label>
+                    <input type="number" value={eduForm.start_year} onChange={e => setEduForm(f => ({ ...f, start_year: e.target.value }))}
+                      placeholder="2019" min={1950} max={2030}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Bitirish yili</label>
+                    <input type="number" value={eduForm.end_year} onChange={e => setEduForm(f => ({ ...f, end_year: e.target.value }))}
+                      placeholder="2023" min={1950} max={2035}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white/50 mb-1">Tavsif</label>
+                  <textarea value={eduForm.description} onChange={e => setEduForm(f => ({ ...f, description: e.target.value }))}
+                    rows={2} placeholder="Qisqacha tavsif..." maxLength={500}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40 resize-none" />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleSaveEdu} disabled={eduSaving || !eduForm.school.trim()}
+                    className="flex-1 py-2 rounded-xl bg-[#e8792f] hover:bg-[#c44a1a] text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                    {eduSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {eduEditing ? 'Yangilash' : "Qo'shish"}
+                  </button>
+                  <button type="button" onClick={() => { setEduFormOpen(false); setEduEditing(null); setEduForm(blankEdu) }}
+                    className="px-4 py-2 rounded-xl bg-white/[0.06] text-white/50 text-sm hover:text-white transition-colors">
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <button

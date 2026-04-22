@@ -516,6 +516,17 @@ def get_suggestions(
         viewer_skills AS (
             SELECT lower(skill_name) AS sname FROM skills WHERE user_id = :vid
         ),
+        viewer_companies AS (
+            SELECT lower(company) AS cname FROM user_experiences WHERE user_id = :vid
+        ),
+        viewer_schools AS (
+            SELECT lower(school) AS sname FROM user_education WHERE user_id = :vid
+        ),
+        viewer_fields AS (
+            SELECT lower(field_of_study) AS fname
+            FROM user_education
+            WHERE user_id = :vid AND field_of_study IS NOT NULL
+        ),
         viewer_profile AS (
             SELECT COALESCE(location_city, '') AS city,
                    COALESCE(level, 1)          AS lvl
@@ -541,18 +552,15 @@ def get_suggestions(
             COALESCE(p.total_xp, 0)              AS total_xp,
 
             (SELECT COUNT(*)
-             FROM (
-                 SELECT CASE WHEN c.requester_id = p.telegram_id
-                             THEN c.receiver_id ELSE c.requester_id END AS uid
-                 FROM connections c
-                 WHERE (c.requester_id = p.telegram_id OR c.receiver_id = p.telegram_id)
-                   AND c.status = 'accepted'
-             ) tc
+             FROM (SELECT CASE WHEN c.requester_id = p.telegram_id
+                               THEN c.receiver_id ELSE c.requester_id END AS uid
+                   FROM connections c
+                   WHERE (c.requester_id = p.telegram_id OR c.receiver_id = p.telegram_id)
+                     AND c.status = 'accepted') tc
              WHERE tc.uid IN (SELECT uid FROM viewer_connections)
             ) AS mutual,
 
-            (SELECT COUNT(*)
-             FROM course_enrollments ce
+            (SELECT COUNT(*) FROM course_enrollments ce
              WHERE ce.student_id = p.telegram_id
                AND ce.course_id IN (SELECT course_id FROM viewer_courses)
             ) AS shared_courses,
@@ -562,15 +570,29 @@ def get_suggestions(
                   AND p.location_city != ''
                  THEN 1 ELSE 0 END AS same_city,
 
-            (SELECT COUNT(*)
-             FROM skills s
+            (SELECT COUNT(*) FROM skills s
              WHERE s.user_id = p.telegram_id
                AND lower(s.skill_name) IN (SELECT sname FROM viewer_skills)
             ) AS shared_skills,
 
-            CASE WHEN ABS(COALESCE(p.level, 1) -
-                          (SELECT lvl FROM viewer_profile)) <= 1
-                 THEN 1 ELSE 0 END AS similar_level
+            CASE WHEN ABS(COALESCE(p.level, 1) - (SELECT lvl FROM viewer_profile)) <= 1
+                 THEN 1 ELSE 0 END AS similar_level,
+
+            (SELECT COUNT(*) FROM user_experiences ue
+             WHERE ue.user_id = p.telegram_id
+               AND lower(ue.company) IN (SELECT cname FROM viewer_companies)
+            ) AS shared_company,
+
+            (SELECT COUNT(*) FROM user_education ed
+             WHERE ed.user_id = p.telegram_id
+               AND lower(ed.school) IN (SELECT sname FROM viewer_schools)
+            ) AS shared_school,
+
+            (SELECT COUNT(*) FROM user_education ed
+             WHERE ed.user_id = p.telegram_id
+               AND ed.field_of_study IS NOT NULL
+               AND lower(ed.field_of_study) IN (SELECT fname FROM viewer_fields)
+            ) AS shared_field
 
         FROM candidates ca
         JOIN profiles p ON p.telegram_id = ca.tid
@@ -580,20 +602,28 @@ def get_suggestions(
                  FROM (SELECT CASE WHEN c.requester_id = p.telegram_id THEN c.receiver_id ELSE c.requester_id END AS uid
                        FROM connections c
                        WHERE (c.requester_id = p.telegram_id OR c.receiver_id = p.telegram_id) AND c.status = 'accepted') tc
-                 WHERE tc.uid IN (SELECT uid FROM viewer_connections)
-                ) * 3
+                 WHERE tc.uid IN (SELECT uid FROM viewer_connections)) * 3
               + (SELECT COUNT(*) FROM course_enrollments ce
                  WHERE ce.student_id = p.telegram_id
                    AND ce.course_id IN (SELECT course_id FROM viewer_courses)) * 2
               + CASE WHEN p.location_city IS NOT NULL
                       AND p.location_city = (SELECT city FROM viewer_profile)
-                      AND p.location_city != ''
-                     THEN 2 ELSE 0 END
+                      AND p.location_city != '' THEN 2 ELSE 0 END
               + (SELECT COUNT(*) FROM skills s
                  WHERE s.user_id = p.telegram_id
-                   AND lower(s.skill_name) IN (SELECT sname FROM viewer_skills))
+                   AND lower(s.skill_name) IN (SELECT sname FROM viewer_skills)) * 2
               + CASE WHEN ABS(COALESCE(p.level,1) - (SELECT lvl FROM viewer_profile)) <= 1
                      THEN 1 ELSE 0 END
+              + (SELECT COUNT(*) FROM user_experiences ue
+                 WHERE ue.user_id = p.telegram_id
+                   AND lower(ue.company) IN (SELECT cname FROM viewer_companies)) * 3
+              + (SELECT COUNT(*) FROM user_education ed
+                 WHERE ed.user_id = p.telegram_id
+                   AND lower(ed.school) IN (SELECT sname FROM viewer_schools)) * 2
+              + (SELECT COUNT(*) FROM user_education ed
+                 WHERE ed.user_id = p.telegram_id
+                   AND ed.field_of_study IS NOT NULL
+                   AND lower(ed.field_of_study) IN (SELECT fname FROM viewer_fields))
             ) DESC,
             p.total_xp DESC
         LIMIT 10
@@ -617,6 +647,9 @@ def get_suggestions(
                 "same_city":          int(r["same_city"]),
                 "shared_skills":      int(r["shared_skills"]),
                 "similar_level":      int(r["similar_level"]),
+                "shared_company":     int(r["shared_company"]),
+                "shared_school":      int(r["shared_school"]),
+                "shared_field":       int(r["shared_field"]),
             },
         }
         for r in rows

@@ -843,6 +843,24 @@ def get_public_profile(
         for a in activity_rows
     ]
 
+    # ── Experiences & Education (public) ─────────────────────────────────────
+    experiences = []
+    education = []
+    try:
+        exp_rows = db.execute(text(
+            "SELECT * FROM user_experiences WHERE user_id=:uid ORDER BY is_current DESC, start_date DESC"
+        ), {"uid": tid}).mappings().fetchall()
+        experiences = [_exp_row(r) for r in exp_rows]
+    except Exception:
+        pass
+    try:
+        edu_rows = db.execute(text(
+            "SELECT * FROM user_education WHERE user_id=:uid ORDER BY end_year DESC NULLS FIRST, start_year DESC"
+        ), {"uid": tid}).mappings().fetchall()
+        education = [_edu_row(r) for r in edu_rows]
+    except Exception:
+        pass
+
     # ── Profile completeness ──────────────────────────────────────────────────
     completeness = calculate_profile_completeness(db, tid)
 
@@ -902,6 +920,8 @@ def get_public_profile(
         "active_courses":      active_courses,
         "recent_activity":     recent_activity,
         "certificates":        certificates,
+        "experiences":         experiences,
+        "education":           education,
         # Meta
         "profile_completeness": completeness,
     }
@@ -1114,3 +1134,201 @@ def toggle_endorsement(
         "endorsed":         endorsed,
         "endorsement_count": skill.endorsement_count,
     }
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# EXPERIENCE & EDUCATION ENDPOINTS
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ExperienceBody(BaseModel):
+    company:     str
+    title:       str
+    start_date:  Optional[str] = None   # "YYYY-MM"
+    end_date:    Optional[str] = None
+    is_current:  bool = False
+    description: Optional[str] = None
+
+class EducationBody(BaseModel):
+    school:         str
+    degree:         Optional[str] = None
+    field_of_study: Optional[str] = None
+    start_year:     Optional[int] = None
+    end_year:       Optional[int] = None
+    description:    Optional[str] = None
+
+
+def _exp_row(row) -> dict:
+    return {
+        "id":          row["id"],
+        "company":     row["company"],
+        "title":       row["title"],
+        "start_date":  row["start_date"],
+        "end_date":    row["end_date"],
+        "is_current":  row["is_current"],
+        "description": row["description"],
+    }
+
+def _edu_row(row) -> dict:
+    return {
+        "id":             row["id"],
+        "school":         row["school"],
+        "degree":         row["degree"],
+        "field_of_study": row["field_of_study"],
+        "start_year":     row["start_year"],
+        "end_year":       row["end_year"],
+        "description":    row["description"],
+    }
+
+
+# ── Experiences ───────────────────────────────────────────────────────────────
+
+@profile_router.get("/me/experiences")
+def list_experiences(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    rows = db.execute(text(
+        "SELECT * FROM user_experiences WHERE user_id = :uid ORDER BY is_current DESC, start_date DESC"
+    ), {"uid": uid}).mappings().fetchall()
+    return [_exp_row(r) for r in rows]
+
+
+@profile_router.post("/me/experiences")
+def add_experience(
+    body: ExperienceBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    if not body.company.strip() or not body.title.strip():
+        raise HTTPException(400, "Kompaniya va lavozim talab qilinadi")
+    row = db.execute(text("""
+        INSERT INTO user_experiences (user_id, company, title, start_date, end_date, is_current, description)
+        VALUES (:uid, :company, :title, :start_date, :end_date, :is_current, :description)
+        RETURNING *
+    """), {
+        "uid": uid, "company": body.company.strip(), "title": body.title.strip(),
+        "start_date": body.start_date, "end_date": body.end_date,
+        "is_current": body.is_current, "description": body.description,
+    }).mappings().fetchone()
+    db.commit()
+    return _exp_row(row)
+
+
+@profile_router.put("/me/experiences/{exp_id}")
+def update_experience(
+    exp_id: int,
+    body: ExperienceBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    row = db.execute(text("""
+        UPDATE user_experiences
+        SET company=:company, title=:title, start_date=:start_date,
+            end_date=:end_date, is_current=:is_current, description=:description
+        WHERE id=:id AND user_id=:uid
+        RETURNING *
+    """), {
+        "id": exp_id, "uid": uid,
+        "company": body.company.strip(), "title": body.title.strip(),
+        "start_date": body.start_date, "end_date": body.end_date,
+        "is_current": body.is_current, "description": body.description,
+    }).mappings().fetchone()
+    db.commit()
+    if not row:
+        raise HTTPException(404, "Topilmadi")
+    return _exp_row(row)
+
+
+@profile_router.delete("/me/experiences/{exp_id}")
+def delete_experience(
+    exp_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    db.execute(text(
+        "DELETE FROM user_experiences WHERE id=:id AND user_id=:uid"
+    ), {"id": exp_id, "uid": uid})
+    db.commit()
+    return {"ok": True}
+
+
+# ── Education ─────────────────────────────────────────────────────────────────
+
+@profile_router.get("/me/education")
+def list_education(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    rows = db.execute(text(
+        "SELECT * FROM user_education WHERE user_id = :uid ORDER BY end_year DESC NULLS FIRST, start_year DESC"
+    ), {"uid": uid}).mappings().fetchall()
+    return [_edu_row(r) for r in rows]
+
+
+@profile_router.post("/me/education")
+def add_education(
+    body: EducationBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    if not body.school.strip():
+        raise HTTPException(400, "O'quv muassasa nomi talab qilinadi")
+    row = db.execute(text("""
+        INSERT INTO user_education (user_id, school, degree, field_of_study, start_year, end_year, description)
+        VALUES (:uid, :school, :degree, :field_of_study, :start_year, :end_year, :description)
+        RETURNING *
+    """), {
+        "uid": uid, "school": body.school.strip(),
+        "degree": body.degree, "field_of_study": body.field_of_study,
+        "start_year": body.start_year, "end_year": body.end_year,
+        "description": body.description,
+    }).mappings().fetchone()
+    db.commit()
+    return _edu_row(row)
+
+
+@profile_router.put("/me/education/{edu_id}")
+def update_education(
+    edu_id: int,
+    body: EducationBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    row = db.execute(text("""
+        UPDATE user_education
+        SET school=:school, degree=:degree, field_of_study=:field_of_study,
+            start_year=:start_year, end_year=:end_year, description=:description
+        WHERE id=:id AND user_id=:uid
+        RETURNING *
+    """), {
+        "id": edu_id, "uid": uid,
+        "school": body.school.strip(), "degree": body.degree,
+        "field_of_study": body.field_of_study,
+        "start_year": body.start_year, "end_year": body.end_year,
+        "description": body.description,
+    }).mappings().fetchone()
+    db.commit()
+    if not row:
+        raise HTTPException(404, "Topilmadi")
+    return _edu_row(row)
+
+
+@profile_router.delete("/me/education/{edu_id}")
+def delete_education(
+    edu_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    uid = _require_viewer(authorization)
+    db.execute(text(
+        "DELETE FROM user_education WHERE id=:id AND user_id=:uid"
+    ), {"id": edu_id, "uid": uid})
+    db.commit()
+    return {"ok": True}

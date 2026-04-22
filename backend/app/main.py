@@ -265,6 +265,40 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS ix_poll_votes_user ON poll_votes(user_id)"
                 ))
+                # 6. user_experiences table (migration 053)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS user_experiences (
+                        id          BIGSERIAL    PRIMARY KEY,
+                        user_id     BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        company     VARCHAR(200) NOT NULL,
+                        title       VARCHAR(200) NOT NULL,
+                        start_date  VARCHAR(20),
+                        end_date    VARCHAR(20),
+                        is_current  BOOLEAN      NOT NULL DEFAULT FALSE,
+                        description TEXT,
+                        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_experiences_user ON user_experiences(user_id)"
+                ))
+                # 7. user_education table (migration 053)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS user_education (
+                        id             BIGSERIAL    PRIMARY KEY,
+                        user_id        BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        school         VARCHAR(200) NOT NULL,
+                        degree         VARCHAR(200),
+                        field_of_study VARCHAR(200),
+                        start_year     INTEGER,
+                        end_year       INTEGER,
+                        description    TEXT,
+                        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_education_user ON user_education(user_id)"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
