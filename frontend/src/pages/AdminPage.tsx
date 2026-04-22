@@ -11,7 +11,7 @@ import apiService from '@services/apiService'
 import { API_BASE } from '../lib/apiUrl'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { supabase, isSupabaseConfigured, invalidateCache } from '../lib/supabase'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
@@ -754,6 +754,12 @@ const AdminPage: React.FC = () => {
     setQuizQuestions(prev => prev.filter((_, i) => i !== idx))
   }
 
+  // ── Book cache invalidation ───────────────────────────────────────────────
+  const bustBooksCache = () => {
+    invalidateCache('books')
+    sessionStorage.removeItem('books_cache')
+  }
+
   // ── Book handlers ─────────────────────────────────────────────────────────
   const handleUpdateBook = async () => {
     if (!adminId || !editingBook) return
@@ -761,6 +767,7 @@ const AdminPage: React.FC = () => {
     setBookMsg('')
     try {
       await apiService.updateBook(editingBook.id, adminId, editingBook)
+      bustBooksCache()
       setBookMsg('✅ Kitob yangilandi!')
       setEditingBook(null)
       loadBooks()
@@ -777,6 +784,7 @@ const AdminPage: React.FC = () => {
     if (!window.confirm('Kitobni o\'chirmoqchimisiz?')) return
     try {
       await apiService.deleteBook(bookId, adminId)
+      bustBooksCache()
       loadBooks()
     } catch { /* ignore */ }
   }
@@ -787,9 +795,10 @@ const AdminPage: React.FC = () => {
     setBookMsg('')
     try {
       await apiService.createBook(adminId, newBook)
+      bustBooksCache()
       setBookMsg('✅ Yangi kitob qo\'shildi!')
       setShowNewBook(false)
-      setNewBook({ title: '', author: '', description: '', price: 0, is_paid: false, file_url: '', thumbnail_url: '', category: 'programming' })
+      setNewBook({ title: '', author: '', description: '', price: 0, is_paid: false, is_downloadable: true, file_url: '', thumbnail_url: '', category: 'programming' })
       setBookCoverFile(null)
       setBookCoverPercent(0)
       setBookCoverMsg('')
