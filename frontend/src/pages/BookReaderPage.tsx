@@ -467,22 +467,20 @@ const BookReaderPage: React.FC = () => {
 
   // ── Apply EPUB rendition styles (theme + font settings) ──────────────────
   const applyEpubStyles = useCallback((th: Theme, fs: number, ff: FontFamily, lh: number) => {
-    if (!renditionRef.current) return
-    renditionRef.current.themes.register('reader', {
-      body: {
-        background: THEMES[th].epubBg,
-        color: THEMES[th].epubFg,
-        fontSize: `${fs}px`,
-        lineHeight: String(lh),
-        fontFamily: FONT_FAMILIES[ff].css,
-        padding: '0 4px',
-      },
-      'p, div, span, li': {
-        color: THEMES[th].epubFg + ' !important',
-        fontFamily: FONT_FAMILIES[ff].css + ' !important',
-      },
-    })
-    renditionRef.current.themes.select('reader')
+    const r = renditionRef.current
+    if (!r) return
+    try {
+      // themes.override() pushes the property into all current iframe views
+      // and persists it for future views — unlike register+select which only
+      // affects future renders
+      r.themes.override('background', THEMES[th].epubBg)
+      r.themes.override('color', THEMES[th].epubFg)
+      r.themes.override('line-height', String(lh))
+      r.themes.override('padding', '0 8px')
+      // epubjs convenience helpers that also call update() on current views
+      r.themes.fontSize(`${fs}px`)
+      r.themes.font(FONT_FAMILIES[ff].css)
+    } catch { /* rendition not fully initialised yet */ }
   }, [])
 
   // ── EPUB rendition ready ──────────────────────────────────────────────────
