@@ -355,21 +355,33 @@ const BookReaderPage: React.FC = () => {
   useEffect(() => {
     if (!bookId) return
     const run = async () => {
+      // Step 1: fetch book metadata — a real failure (404/500) shows the error screen
+      let bk: BookInfo
       try {
         const res = await apiService.getBook(Number(bookId))
-        const bk = res.data as BookInfo
+        bk = res.data as BookInfo
         setBook(bk)
-        if (!bk.is_paid) {
-          setHasAccess(true)
-        } else if (telegramId) {
-          const pr = await apiService.checkPurchase(bk.id, telegramId)
-          setHasAccess(pr.data?.purchased === true)
-        }
       } catch {
         setError('Kitob topilmadi')
-      } finally {
         setLoading(false)
+        return
       }
+
+      // Step 2: access check — failures here mean "no access", not "book missing"
+      if (!bk.is_paid) {
+        setHasAccess(true)
+      } else if (telegramId) {
+        try {
+          const pr = await apiService.checkPurchase(bk.id, telegramId)
+          setHasAccess(pr.data?.purchased === true)
+        } catch {
+          // checkPurchase failed (auth/network) — treat as not purchased, show lock screen
+          setHasAccess(false)
+        }
+      }
+      // else: paid book, no telegramId — hasAccess stays false → lock screen
+
+      setLoading(false)
     }
     run()
   }, [bookId, telegramId])
