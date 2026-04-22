@@ -331,6 +331,7 @@ class Book(Base):
     downloads = Column(Integer, default=0)
     rating = Column(Float, default=0)
     is_available = Column(Boolean, default=True)
+    is_downloadable = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

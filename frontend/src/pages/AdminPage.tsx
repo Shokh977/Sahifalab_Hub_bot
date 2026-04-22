@@ -38,6 +38,7 @@ interface AdminBook {
   author: string
   price: number
   is_paid: boolean
+  is_downloadable: boolean
   file_url: string
   thumbnail_url: string | null
   downloads: number
@@ -248,7 +249,7 @@ const AdminPage: React.FC = () => {
   const [showNewBook, setShowNewBook] = useState(false)
   const [newBook, setNewBook] = useState({
     title: '', author: '', description: '', price: 0,
-    is_paid: false, file_url: '', thumbnail_url: '', category: 'programming',
+    is_paid: false, is_downloadable: true, file_url: '', thumbnail_url: '', category: 'programming',
   })
   // PDF upload (Supabase Storage)
   const [bookPdfFile, setBookPdfFile] = useState<File | null>(null)
@@ -801,9 +802,9 @@ const AdminPage: React.FC = () => {
     }
   }
 
-  // ── Book PDF upload → Bunny CDN ────────────────────────────────────────────
+  // ── Book file (PDF/EPUB) upload → Bunny CDN ───────────────────────────────
   const handleUploadBookPdf = async (target: 'new' | 'edit') => {
-    if (!bookPdfFile) { setBookPdfMsg('❌ PDF faylni tanlang'); return }
+    if (!bookPdfFile) { setBookPdfMsg('❌ PDF yoki EPUB faylni tanlang'); return }
     const jwt = token || localStorage.getItem('auth_token')
     if (!jwt) { setBookPdfMsg('❌ Tizimga kirilmagan — sahifani yangilang'); return }
     setBookPdfUploading(true)
@@ -1683,16 +1684,16 @@ const AdminPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* PDF file upload → Bunny CDN */}
+                {/* Book file upload (PDF/EPUB) → Bunny CDN */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    PDF fayl <span className="text-blue-500">(Bunny CDN-ga yuklanadi)</span>
+                    Kitob fayli <span className="text-blue-500">(PDF yoki EPUB — Bunny CDN-ga yuklanadi)</span>
                   </label>
                   <div className="flex gap-2">
                     <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                       <span>📄</span>
-                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF tanlang…'}</span>
-                      <input type="file" accept=".pdf,application/pdf" className="hidden"
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF / EPUB tanlang…'}</span>
+                      <input type="file" accept=".pdf,application/pdf,.epub,application/epub+zip" className="hidden"
                         onChange={e => { setBookPdfFile(e.target.files?.[0] || null); setBookPdfMsg('') }} />
                     </label>
                     <button
@@ -1709,7 +1710,7 @@ const AdminPage: React.FC = () => {
                     <div className="mt-1">
                       <input
                         type="text"
-                        placeholder="Yoki PDF URL ni qo'lda kiriting"
+                        placeholder="Yoki PDF / EPUB URL ni qo'lda kiriting"
                         value={newBook.file_url}
                         onChange={e => setNewBook({ ...newBook, file_url: e.target.value })}
                         className="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sahifa-500"
@@ -1725,15 +1726,29 @@ const AdminPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="new_is_paid"
-                    type="checkbox"
-                    checked={newBook.is_paid}
-                    onChange={(e) => setNewBook({ ...newBook, is_paid: e.target.checked })}
-                    className="accent-sahifa-600"
-                  />
-                  <label htmlFor="new_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik kitob</label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="new_is_paid"
+                      type="checkbox"
+                      checked={newBook.is_paid}
+                      onChange={(e) => setNewBook({ ...newBook, is_paid: e.target.checked })}
+                      className="accent-sahifa-600"
+                    />
+                    <label htmlFor="new_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik kitob</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="new_is_downloadable"
+                      type="checkbox"
+                      checked={newBook.is_downloadable}
+                      onChange={(e) => setNewBook({ ...newBook, is_downloadable: e.target.checked })}
+                      className="accent-blue-600"
+                    />
+                    <label htmlFor="new_is_downloadable" className="text-sm text-gray-700 dark:text-gray-300">
+                      Yuklab olish mumkin
+                    </label>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -1816,16 +1831,16 @@ const AdminPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* PDF upload for edit */}
+                {/* Book file upload (PDF/EPUB) for edit */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    PDF fayl <span className="text-blue-500">(yangi fayl yuklash)</span>
+                    Kitob fayli <span className="text-blue-500">(PDF yoki EPUB — yangi fayl yuklash)</span>
                   </label>
                   <div className="flex gap-2">
                     <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                       <span>📄</span>
-                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF tanlang…'}</span>
-                      <input type="file" accept=".pdf,application/pdf" className="hidden"
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF / EPUB tanlang…'}</span>
+                      <input type="file" accept=".pdf,application/pdf,.epub,application/epub+zip" className="hidden"
                         onChange={e => { setBookPdfFile(e.target.files?.[0] || null); setBookPdfMsg('') }} />
                     </label>
                     <button
@@ -1852,15 +1867,27 @@ const AdminPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="edit_is_paid"
-                    type="checkbox"
-                    checked={editingBook.is_paid}
-                    onChange={(e) => setEditingBook({ ...editingBook, is_paid: e.target.checked })}
-                    className="accent-sahifa-600"
-                  />
-                  <label htmlFor="edit_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik</label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit_is_paid"
+                      type="checkbox"
+                      checked={editingBook.is_paid}
+                      onChange={(e) => setEditingBook({ ...editingBook, is_paid: e.target.checked })}
+                      className="accent-sahifa-600"
+                    />
+                    <label htmlFor="edit_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit_is_downloadable"
+                      type="checkbox"
+                      checked={editingBook.is_downloadable ?? true}
+                      onChange={(e) => setEditingBook({ ...editingBook, is_downloadable: e.target.checked })}
+                      className="accent-blue-600"
+                    />
+                    <label htmlFor="edit_is_downloadable" className="text-sm text-gray-700 dark:text-gray-300">Yuklab olish mumkin</label>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={handleUpdateBook} disabled={bookSaving} className="flex-1 bg-sahifa-600 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50">

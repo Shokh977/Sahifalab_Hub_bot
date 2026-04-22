@@ -25,6 +25,7 @@ interface Book {
   description: string
   price: number
   is_paid: boolean
+  is_downloadable: boolean
   file_url: string | null
   thumbnail_url: string | null
   category: string
@@ -336,13 +337,15 @@ const BookDetailPage: React.FC = () => {
                 >
                   <BookOpen className="w-4 h-4" /> O‘qishni boshlash
                 </Link>
-                <button
-                  onClick={handleDownload}
-                  disabled={downloading || !book.file_url}
-                  className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 active:scale-95 text-slate-700 dark:text-slate-200 font-medium py-3 rounded-2xl transition-all disabled:opacity-50 text-sm"
-                >
-                  {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
-                </button>
+                {book.is_downloadable !== false && (
+                  <button
+                    onClick={handleDownload}
+                    disabled={downloading || !book.file_url}
+                    className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 active:scale-95 text-slate-700 dark:text-slate-200 font-medium py-3 rounded-2xl transition-all disabled:opacity-50 text-sm"
+                  >
+                    {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
+                  </button>
+                )}
               </div>
             ) : (
               /* Not purchased → payment button + modal */
@@ -373,13 +376,15 @@ const BookDetailPage: React.FC = () => {
               >
                 <BookOpen className="w-4 h-4" /> O‘qishni boshlash
               </Link>
-              <button
-                onClick={handleDownload}
-                disabled={downloading || !book.file_url}
-                className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 active:scale-95 text-slate-700 dark:text-slate-200 font-medium py-3 rounded-2xl transition-all disabled:opacity-50 text-sm"
-              >
-                {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
-              </button>
+              {book.is_downloadable !== false && (
+                <button
+                  onClick={handleDownload}
+                  disabled={downloading || !book.file_url}
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 dark:bg-gray-700 hover:bg-slate-200 dark:hover:bg-gray-600 active:scale-95 text-slate-700 dark:text-slate-200 font-medium py-3 rounded-2xl transition-all disabled:opacity-50 text-sm"
+                >
+                  {downloading ? <Spinner /> : <><ArrowDownTrayIcon className="w-4 h-4" /> Yuklab olish</>}
+                </button>
+              )}
               {!book.file_url && (
                 <p className="text-xs text-center text-gray-400 dark:text-gray-500">
                   Fayl hali qo’shilmagan

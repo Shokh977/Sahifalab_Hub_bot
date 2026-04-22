@@ -85,6 +85,13 @@ async def download_book(
             detail="Book not found"
         )
     
+    # Check download permission
+    if not book.is_downloadable:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This book is read-only and cannot be downloaded",
+        )
+
     # For paid books, verify user has purchased
     if book.is_paid:
         purchase = db.query(BookPurchase).filter(
@@ -97,7 +104,7 @@ async def download_book(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Purchase required to download this book",
             )
-    
+
     # Update download count
     book.downloads += 1
     db.commit()

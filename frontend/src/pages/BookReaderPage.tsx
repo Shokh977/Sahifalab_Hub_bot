@@ -25,7 +25,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Sun, Moon, SunDim, List, Play, Pause,
   ChevronLeft, ChevronRight, Timer, Flame, X,
-  Minimize2, Maximize2, BookOpen, Lock,
+  Minimize2, Maximize2, BookOpen, Lock, Settings2,
+  ZoomIn, ZoomOut, Type,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
@@ -58,6 +59,16 @@ interface TocEntry {
 }
 
 type Theme = 'light' | 'sepia' | 'dark'
+type FontFamily = 'serif' | 'sans' | 'mono'
+
+const FONT_FAMILIES: Record<FontFamily, { label: string; css: string }> = {
+  serif: { label: 'Serif',  css: 'Georgia, "Times New Roman", serif' },
+  sans:  { label: 'Sans',   css: 'system-ui, -apple-system, sans-serif' },
+  mono:  { label: 'Mono',   css: '"Courier New", Courier, monospace' },
+}
+
+const FONT_SIZE_MIN = 14
+const FONT_SIZE_MAX = 28
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 
@@ -305,6 +316,10 @@ const BookReaderPage: React.FC = () => {
   const [theme, setTheme] = useState<Theme>('light')
   const [tocOpen, setTocOpen] = useState(false)
   const [toc, setToc] = useState<TocEntry[]>([])
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [fontSize, setFontSize] = useState(18)
+  const [fontFamily, setFontFamily] = useState<FontFamily>('serif')
+  const [lineHeight, setLineHeight] = useState(1.8)
 
   // PDF-specific
   const [numPages, setNumPages] = useState(0)
@@ -436,26 +451,30 @@ const BookReaderPage: React.FC = () => {
     } catch { /* ignore */ }
   }, [])
 
+  // ── Apply EPUB rendition styles (theme + font settings) ──────────────────
+  const applyEpubStyles = useCallback((th: Theme, fs: number, ff: FontFamily, lh: number) => {
+    if (!renditionRef.current) return
+    renditionRef.current.themes.register('reader', {
+      body: {
+        background: THEMES[th].epubBg,
+        color: THEMES[th].epubFg,
+        fontSize: `${fs}px`,
+        lineHeight: String(lh),
+        fontFamily: FONT_FAMILIES[ff].css,
+        padding: '0 4px',
+      },
+      'p, div, span, li': {
+        color: THEMES[th].epubFg + ' !important',
+        fontFamily: FONT_FAMILIES[ff].css + ' !important',
+      },
+    })
+    renditionRef.current.themes.select('reader')
+  }, [])
+
   // ── EPUB rendition ready ──────────────────────────────────────────────────
   const getRendition = useCallback((rendition: any) => {
     renditionRef.current = rendition
-    const applyTheme = (th: Theme) => {
-      rendition.themes.register('reader', {
-        body: {
-          background: THEMES[th].epubBg,
-          color: THEMES[th].epubFg,
-          fontSize: '18px',
-          lineHeight: '1.8',
-          fontFamily: 'Georgia, "Times New Roman", serif',
-          padding: '0 4px',
-        },
-        'p, div, span': {
-          color: THEMES[th].epubFg + ' !important',
-        },
-      })
-      rendition.themes.select('reader')
-    }
-    applyTheme(theme)
+    applyEpubStyles(theme, fontSize, fontFamily, lineHeight)
     // Get navigation (ToC)
     rendition.book.loaded.navigation.then((nav: any) => {
       const conv = (items: any[]): TocEntry[] =>
@@ -469,21 +488,10 @@ const BookReaderPage: React.FC = () => {
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update EPUB theme when user cycles themes
+  // Re-apply EPUB styles whenever theme or font settings change
   useEffect(() => {
-    if (!renditionRef.current) return
-    renditionRef.current.themes.register('reader', {
-      body: {
-        background: THEMES[theme].epubBg,
-        color: THEMES[theme].epubFg,
-        fontSize: '18px',
-        lineHeight: '1.8',
-        fontFamily: 'Georgia, "Times New Roman", serif',
-      },
-      'p, div, span': { color: THEMES[theme].epubFg + ' !important' },
-    })
-    renditionRef.current.themes.select('reader')
-  }, [theme])
+    applyEpubStyles(theme, fontSize, fontFamily, lineHeight)
+  }, [theme, fontSize, fontFamily, lineHeight, applyEpubStyles])
 
   // ── ToC navigation dispatcher ─────────────────────────────────────────────
   const handleTocNav = useCallback((entry: TocEntry) => {
@@ -612,7 +620,102 @@ const BookReaderPage: React.FC = () => {
         >
           <ThemeIcon className="w-5 h-5" />
         </button>
+
+        {/* Settings toggle */}
+        <button
+          onClick={() => setSettingsOpen(o => !o)}
+          title="O'qish sozlamalari"
+          className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${t.hover} ${
+            settingsOpen ? 'bg-[#F15929]/15 text-[#F15929]' : ''
+          }`}
+        >
+          <Settings2 className="w-5 h-5" />
+        </button>
       </header>
+
+      {/* ── Settings panel ─────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <motion.div
+            key="settings-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className={`flex-shrink-0 overflow-hidden border-b ${t.toolbar}`}
+          >
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3">
+
+              {/* Font family (EPUB only — PDF is pre-rendered) */}
+              {fileType === 'epub' && (
+                <div className="flex items-center gap-2">
+                  <Type className={`w-4 h-4 flex-shrink-0 ${t.muted}`} />
+                  <div className="flex rounded-lg overflow-hidden border border-current/10">
+                    {(Object.keys(FONT_FAMILIES) as FontFamily[]).map(ff => (
+                      <button
+                        key={ff}
+                        onClick={() => setFontFamily(ff)}
+                        className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                          fontFamily === ff
+                            ? 'bg-[#F15929] text-white'
+                            : `${t.navBtn}`
+                        }`}
+                        style={{ fontFamily: FONT_FAMILIES[ff].css }}
+                      >
+                        {FONT_FAMILIES[ff].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Font size / zoom */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (fileType === 'epub') setFontSize(s => Math.max(FONT_SIZE_MIN, s - 2))
+                    else setPageWidth(w => Math.max(320, w - 60))
+                  }}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 ${t.navBtn}`}
+                  title="Kichikroq"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className={`text-xs tabular-nums font-mono w-10 text-center ${t.text}`}>
+                  {fileType === 'epub' ? `${fontSize}px` : `${Math.round((pageWidth / 640) * 100)}%`}
+                </span>
+                <button
+                  onClick={() => {
+                    if (fileType === 'epub') setFontSize(s => Math.min(FONT_SIZE_MAX, s + 2))
+                    else setPageWidth(w => Math.min(1200, w + 60))
+                  }}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 ${t.navBtn}`}
+                  title="Kattaroq"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Line height (EPUB only) */}
+              {fileType === 'epub' && (
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${t.muted}`}>Satr balandligi</span>
+                  <input
+                    type="range"
+                    min={1.2}
+                    max={2.4}
+                    step={0.1}
+                    value={lineHeight}
+                    onChange={e => setLineHeight(Number(e.target.value))}
+                    className="w-24 accent-[#F15929]"
+                  />
+                  <span className={`text-xs tabular-nums font-mono ${t.muted}`}>{lineHeight.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── PDF progress bar ─────────────────────────────────────────────────── */}
       {fileType === 'pdf' && numPages > 0 && (

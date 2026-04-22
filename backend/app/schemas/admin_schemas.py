@@ -125,6 +125,7 @@ class BookManagementCreate(BaseModel):
     file_url: str
     thumbnail_url: Optional[str] = None
     category: str
+    is_downloadable: bool = True
 
 class BookManagementUpdate(BaseModel):
     title: Optional[str] = None
@@ -136,6 +137,7 @@ class BookManagementUpdate(BaseModel):
     thumbnail_url: Optional[str] = None
     category: Optional[str] = None
     is_available: Optional[bool] = None
+    is_downloadable: Optional[bool] = None
 
 class BookManagementResponse(BaseModel):
     id: int
@@ -150,8 +152,9 @@ class BookManagementResponse(BaseModel):
     downloads: int
     rating: float
     is_available: bool
+    is_downloadable: bool
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 

@@ -67,6 +67,7 @@ ALLOWED_IMAGE_MIME = {
 
 ALLOWED_DOC_MIME = {
     "application/pdf",
+    "application/epub+zip",  # .epub
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -99,6 +100,7 @@ _MIME_EXT_MAP = {
     "image/gif":  ".gif",
     "image/svg+xml": ".svg",
     "application/pdf": ".pdf",
+    "application/epub+zip": ".epub",
     "application/msword": ".doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",

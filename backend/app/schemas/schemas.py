@@ -280,6 +280,7 @@ class BookResponse(BaseModel):
     downloads: int
     rating: float
     thumbnail_url: Optional[str] = None
+    is_downloadable: bool = True
 
     class Config:
         from_attributes = True
@@ -298,6 +299,7 @@ class BookListResponse(BaseModel):
     downloads: int
     rating: float
     thumbnail_url: Optional[str] = None
+    is_downloadable: bool = True
 
     class Config:
         from_attributes = True
