@@ -83,6 +83,7 @@ const NetworkPage = lazy(() => import('./pages/NetworkPage'))
 const JobsPage = lazy(() => import('./pages/JobsPage'))
 const CertificatePage = lazy(() => import('./pages/CertificatePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const SavedPostsPage = lazy(() => import('./pages/SavedPostsPage'))
 
 /** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
 const TeacherRedirect: React.FC = () => {
@@ -307,6 +308,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/book-summarizer" element={<Navigate to="/" replace />} />
           <Route path="/ai-companion"   element={<Navigate to="/" replace />} />
           <Route path="/notifications"  element={<NotificationsPage />} />
+          <Route path="/saved"           element={<AppLayout maxWidth="max-w-[680px]"><SavedPostsPage /></AppLayout>} />
           <Route path="/messenger"      element={<SlouthMessenger />} />
           <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 

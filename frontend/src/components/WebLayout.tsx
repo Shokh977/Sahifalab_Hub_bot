@@ -26,7 +26,7 @@ import {
   User, Trophy, X, Menu, Plus,
   Search, ChevronRight, Settings, HelpCircle, LogOut,
   Wallet, Shield, GraduationCap, Loader2, Sun, Moon, Timer,
-  BookMarked, ClipboardList,
+  BookMarked, ClipboardList, Bookmark,
 } from 'lucide-react'
 import GlobalProgressBar from './GlobalProgressBar'
 import EmailVerificationBanner from './EmailVerificationBanner'
@@ -59,9 +59,10 @@ const NAV_MAIN: NavItem[] = [
 ]
 
 const NAV_PROFILE: NavItem[] = [
-  { icon: BookMarked,    label: 'Kitoblar', path: '/kitoblar' },
-  { icon: ClipboardList, label: 'Test',     path: '/quiz' },
-  { icon: Trophy,        label: 'Reyting',  path: '/leaderboard' },
+  { icon: Bookmark,      label: 'Saqlangan', path: '/saved' },
+  { icon: BookMarked,    label: 'Kitoblar',  path: '/kitoblar' },
+  { icon: ClipboardList, label: 'Test',      path: '/quiz' },
+  { icon: Trophy,        label: 'Reyting',   path: '/leaderboard' },
 ]
 
 const BOTTOM_TABS = [

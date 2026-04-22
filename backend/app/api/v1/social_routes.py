@@ -120,6 +120,17 @@ def explore(
     return svc.get_explore(db, user_id, page, page_size)
 
 
+@router.get("/posts/saved")
+def get_saved_posts(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Return posts bookmarked by the current user, most recently saved first."""
+    return svc.get_saved_posts(db, user_id, page, page_size)
+
+
 @router.get("/posts/{post_id}")
 def get_post(
     post_id: int,

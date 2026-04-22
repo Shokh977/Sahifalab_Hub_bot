@@ -412,6 +412,74 @@ def unsave_post(db: Session, post_id: int, user_id: int) -> bool:
     return True
 
 
+def get_saved_posts(db: Session, user_id: int, page: int = 1, page_size: int = 20) -> dict:
+    """Return posts saved by the user, most recently saved first."""
+    offset = (page - 1) * page_size
+    rows = db.execute(text("""
+        SELECT
+            p.id, p.author_id, p.content, p.image_url, p.post_type, p.post_metadata,
+            p.likes_count, p.comments_count,
+            COALESCE(p.views_count, 0)    AS views_count,
+            COALESCE(p.reposts_count, 0)  AS reposts_count,
+            COALESCE(p.shares_count, 0)   AS shares_count,
+            COALESCE(p.saves_count, 0)    AS saves_count,
+            COALESCE(p.base_views_added, 0) AS base_views_added,
+            p.created_at, p.updated_at,
+            pr.first_name, pr.username, pr.photo_url, pr.level,
+            COALESCE(pr.is_verified, false) AS is_verified,
+            COALESCE(pr.account_type, 'student') AS account_type,
+            pr.role AS author_role,
+            EXISTS(
+                SELECT 1 FROM post_likes pl
+                WHERE pl.post_id = p.id AND pl.user_id = :uid
+            ) AS is_liked
+        FROM post_saves ps
+        JOIN posts p ON p.id = ps.post_id
+        LEFT JOIN profiles pr ON pr.telegram_id = p.author_id
+        WHERE ps.user_id = :uid
+        ORDER BY ps.created_at DESC
+        LIMIT :lim OFFSET :off
+    """), {"uid": user_id, "lim": page_size, "off": offset}).fetchall()
+
+    total = db.execute(
+        text("SELECT COUNT(*) FROM post_saves WHERE user_id = :uid"), {"uid": user_id}
+    ).scalar() or 0
+
+    posts = [
+        {
+            "id":               r.id,
+            "author": {
+                "telegram_id":  r.author_id,
+                "full_name":    r.first_name or "User",
+                "username":     r.username,
+                "photo_url":    r.photo_url,
+                "level":        r.level or 1,
+                "is_verified":  bool(r.is_verified),
+                "account_type": r.account_type,
+                "role":         r.author_role,
+            },
+            "content":          r.content,
+            "image_url":        r.image_url,
+            "post_type":        r.post_type or "text",
+            "post_metadata":    r.post_metadata,
+            "likes_count":      r.likes_count or 0,
+            "comments_count":   r.comments_count or 0,
+            "views_count":      r.views_count,
+            "reposts_count":    r.reposts_count,
+            "shares_count":     r.shares_count,
+            "saves_count":      r.saves_count,
+            "base_views_added": r.base_views_added,
+            "is_liked":         bool(r.is_liked),
+            "is_reposted":      False,
+            "is_saved":         True,
+            "created_at":       r.created_at,
+            "updated_at":       r.updated_at,
+        }
+        for r in rows
+    ]
+    return {"posts": posts, "total": total, "page": page, "page_size": page_size}
+
+
 def vote_poll(db: Session, post_id: int, user_id: int, option_idx: int) -> Optional[dict]:
     """Vote on a poll (upsert — handles first vote and vote-change atomically)."""
     post = db.query(Post).filter(Post.id == post_id).first()

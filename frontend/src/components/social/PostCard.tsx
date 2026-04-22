@@ -109,6 +109,7 @@ interface Props {
   onUnlike: (postId: number) => Promise<void>
   onDelete?: (postId: number) => Promise<void>
   onEdit?: (postId: number, content: string) => Promise<void>
+  onUnsave?: (postId: number) => void
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -241,7 +242,7 @@ const PollCard: React.FC<{
 // Main PostCard
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDelete, onEdit }) => {
+const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDelete, onEdit, onUnsave }) => {
   const [liked,         setLiked]         = useState(post.is_liked)
   const [likesCount,    setLikesCount]    = useState(post.likes_count)
   const [commentsCount, setCommentsCount] = useState(post.comments_count)
@@ -323,8 +324,10 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
   const handleSaveToggle = async () => {
     if (saved) {
       setSaved(false); setSavesCount(c => Math.max(0, c - 1))
-      try { await api.client.delete(`/api/v1/social/posts/${post.id}/save`) }
-      catch { setSaved(true); setSavesCount(c => c + 1) }
+      try {
+        await api.client.delete(`/api/v1/social/posts/${post.id}/save`)
+        onUnsave?.(post.id)
+      } catch { setSaved(true); setSavesCount(c => c + 1) }
     } else {
       setSaved(true); setSavesCount(c => c + 1)
       try { await api.client.post(`/api/v1/social/posts/${post.id}/save`) }

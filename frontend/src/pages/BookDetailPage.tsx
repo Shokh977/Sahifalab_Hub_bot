@@ -13,7 +13,7 @@ import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
 import { ArrowDownTrayIcon, ArrowLeftIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
-import { BookOpen } from 'lucide-react'
+import { BookOpen, Share2 } from 'lucide-react'
 import PaymentModal from '../components/PaymentModal'
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -78,6 +78,24 @@ const BookDetailPage: React.FC = () => {
   const [purchased, setPurchased] = useState(false)
   const [purchaseChecking, setPurchaseChecking] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
+
+  // Share state
+  const [shareCopied, setShareCopied] = useState(false)
+
+  const handleShare = useCallback(async () => {
+    if (!book) return
+    const url  = `${window.location.origin}/kitoblar/${book.id}`
+    const text = `${book.title} — ${book.author} · SAHIFALAB da o'qing!`
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({ title: book.title, text, url })
+      } else {
+        await navigator.clipboard.writeText(url)
+        setShareCopied(true)
+        setTimeout(() => setShareCopied(false), 2500)
+      }
+    } catch { /* user cancelled */ }
+  }, [book])
 
   // Rating state
   const [myRating, setMyRating] = useState(0)
@@ -187,13 +205,22 @@ const BookDetailPage: React.FC = () => {
 
   return (
     <PageWrapper>
-      {/* Back */}
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-1 text-sm text-sahifa-600 dark:text-sahifa-400 font-medium mb-4"
-      >
-        <ArrowLeftIcon className="w-4 h-4" /> Kitoblar
-      </button>
+      {/* Back + Share row */}
+      <div className="flex items-center justify-between mb-4">
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-1 text-sm text-sahifa-600 dark:text-sahifa-400 font-medium"
+        >
+          <ArrowLeftIcon className="w-4 h-4" /> Kitoblar
+        </button>
+        <button
+          onClick={handleShare}
+          className="flex items-center gap-1.5 text-sm font-medium text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-700 dark:hover:text-sahifa-300 transition-colors"
+        >
+          <Share2 className="w-4 h-4" />
+          {shareCopied ? 'Nusxalandi!' : 'Ulashish'}
+        </button>
+      </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-md">
         {/* Cover */}
