@@ -289,7 +289,7 @@ class Quote(Base):
 
 class Quiz(Base):
     __tablename__ = "quiz"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255))
     book_title = Column(String(255))
@@ -297,10 +297,13 @@ class Quiz(Base):
     difficulty = Column(String(20), default='medium')  # easy, medium, hard
     category = Column(String(100))
     total_questions = Column(Integer)
+    # Optional FK linking quiz to a specific book
+    book_id = Column(Integer, ForeignKey("book.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relationships
     questions = relationship("QuizQuestion", back_populates="quiz", cascade="all, delete-orphan")
+    linked_book = relationship("Book", foreign_keys=[book_id])
 
 class QuizQuestion(Base):
     __tablename__ = "quiz_question"

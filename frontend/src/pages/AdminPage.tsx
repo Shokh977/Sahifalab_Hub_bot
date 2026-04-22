@@ -168,6 +168,7 @@ interface QuizForm {
   description: string
   difficulty: 'easy' | 'medium' | 'hard'
   category: string
+  book_id: number | null   // linked book (optional)
 }
 
 const EMPTY_QUESTION: QuizQuestionForm = {
@@ -183,6 +184,7 @@ const EMPTY_QUIZ: QuizForm = {
   description: '',
   difficulty: 'easy',
   category: 'programming',
+  book_id: null,
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -1470,6 +1472,34 @@ const AdminPage: React.FC = () => {
                   placeholder="Masalan: Automate the Boring Stuff"
                   className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
                 />
+              </div>
+
+              {/* Link to a specific book in the library */}
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  📚 Kutubxona kitobiga bog'lash <span className="text-gray-400">(ixtiyoriy)</span>
+                </label>
+                <select
+                  value={quizForm.book_id ?? ''}
+                  onChange={(e) => setQuizForm({
+                    ...quizForm,
+                    book_id: e.target.value ? Number(e.target.value) : null,
+                    // Auto-fill book_title if not already set
+                    book_title: quizForm.book_title ||
+                      books.find(b => b.id === Number(e.target.value))?.title || quizForm.book_title,
+                  })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                >
+                  <option value="">— Bog'lamaslik —</option>
+                  {books.map(b => (
+                    <option key={b.id} value={b.id}>{b.title}</option>
+                  ))}
+                </select>
+                {quizForm.book_id && (
+                  <p className="text-[11px] text-green-500 mt-1">
+                    ✓ Kitob sahifasida "Bilimingizni sinab ko'ring" bo'limida ko'rinadi
+                  </p>
+                )}
               </div>
 
               <div>

@@ -174,6 +174,7 @@ class QuizCreate(BaseModel):
     description: Optional[str] = None
     difficulty: str = "medium"
     category: str
+    book_id: Optional[int] = None   # FK to book table
     questions: List[QuizQuestionCreate]
 
 class QuizResponse(BaseModel):
@@ -183,7 +184,8 @@ class QuizResponse(BaseModel):
     difficulty: str
     category: str
     total_questions: int
-    
+    book_id: Optional[int] = None
+
     class Config:
         from_attributes = True
 
@@ -210,6 +212,7 @@ class QuizDetailPublic(BaseModel):
     difficulty: str
     category: str
     total_questions: int
+    book_id: Optional[int] = None
     questions: List[QuizQuestionPublic]
 
     class Config:

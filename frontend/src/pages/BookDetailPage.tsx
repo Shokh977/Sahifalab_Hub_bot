@@ -7,16 +7,25 @@
  */
 import React, { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
+import { Helmet } from 'react-helmet-async'
 import apiService from '@services/apiService'
 import { fetchBook, fetchMyRating } from '../lib/supabase'
 import PageWrapper from '../components/PageWrapper'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
 import { ArrowDownTrayIcon, ArrowLeftIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
-import { BookOpen, Share2 } from 'lucide-react'
+import { BookOpen, Share2, Brain, ChevronRight } from 'lucide-react'
 import PaymentModal from '../components/PaymentModal'
+import { API_BASE } from '../lib/apiUrl'
 
 // ── Types ──────────────────────────────────────────────────────────────────
+
+interface LinkedQuiz {
+  id: number
+  title: string
+  total_questions: number
+  difficulty: string
+}
 
 interface Book {
   id: number
@@ -80,23 +89,25 @@ const BookDetailPage: React.FC = () => {
   const [purchaseChecking, setPurchaseChecking] = useState(false)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
 
-  // Share state
+  // Share state — use backend OG URL so Telegram shows a rich preview
   const [shareCopied, setShareCopied] = useState(false)
-
   const handleShare = useCallback(async () => {
     if (!book) return
-    const url  = `${window.location.origin}/kitoblar/${book.id}`
-    const text = `${book.title} — ${book.author} · SAHIFALAB da o'qing!`
+    const ogUrl = `${API_BASE}/api/og/book/${book.id}`
+    const text  = `${book.title} — ${book.author} · SAHIFALAB da o'qing!`
     try {
       if (typeof navigator.share === 'function') {
-        await navigator.share({ title: book.title, text, url })
+        await navigator.share({ title: book.title, text, url: ogUrl })
       } else {
-        await navigator.clipboard.writeText(url)
+        await navigator.clipboard.writeText(ogUrl)
         setShareCopied(true)
         setTimeout(() => setShareCopied(false), 2500)
       }
     } catch { /* user cancelled */ }
   }, [book])
+
+  // Linked quiz
+  const [linkedQuizzes, setLinkedQuizzes] = useState<LinkedQuiz[]>([])
 
   // Rating state
   const [myRating, setMyRating] = useState(0)
@@ -111,6 +122,14 @@ const BookDetailPage: React.FC = () => {
       .then(data => setBook(data as Book))
       .catch(() => setError('Kitob topilmadi'))
       .finally(() => setLoading(false))
+  }, [id])
+
+  // Load linked quizzes for this book
+  useEffect(() => {
+    if (!id) return
+    apiService.client.get(`/api/quizzes/by-book/${id}`)
+      .then(r => setLinkedQuizzes(r.data || []))
+      .catch(() => {})
   }, [id])
 
   // Check purchase status for paid books
@@ -203,9 +222,28 @@ const BookDetailPage: React.FC = () => {
   }
 
   const categoryLabel = CATEGORY_LABELS[book.category?.toLowerCase()] ?? book.category
+  const ogUrl   = `${API_BASE}/api/og/book/${book.id}`
+  const ogTitle = `${book.title} — ${book.author}`
+  const ogDesc  = (book.description || '').slice(0, 200)
+  const ogImage = book.thumbnail_url || 'https://sahifalab-hub-bot.vercel.app/sahifalab.jpg'
 
   return (
     <PageWrapper>
+      <Helmet>
+        <title>{ogTitle} | SAHIFALAB</title>
+        <meta name="description" content={ogDesc} />
+        <meta property="og:type"        content="website" />
+        <meta property="og:site_name"   content="SAHIFALAB" />
+        <meta property="og:title"       content={ogTitle} />
+        <meta property="og:description" content={ogDesc} />
+        <meta property="og:image"       content={ogImage} />
+        <meta property="og:url"         content={ogUrl} />
+        <meta name="twitter:card"        content="summary_large_image" />
+        <meta name="twitter:title"       content={ogTitle} />
+        <meta name="twitter:description" content={ogDesc} />
+        <meta name="twitter:image"       content={ogImage} />
+      </Helmet>
+
       {/* Back + Share row */}
       <div className="flex items-center justify-between mb-4">
         <button
@@ -394,6 +432,45 @@ const BookDetailPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* ── Linked quizzes ─────────────────────────────────────────── */}
+      {linkedQuizzes.length > 0 && (
+        <div className="mt-4 bg-white dark:bg-gray-800 rounded-3xl overflow-hidden shadow-md p-5 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Brain className="w-4 h-4 text-sahifa-500" />
+            <h2 className="text-sm font-bold text-gray-900 dark:text-white">
+              Bilimingizni sinab ko'ring
+            </h2>
+          </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Bu kitob bo'yicha maxsus testlar mavjud
+          </p>
+          {linkedQuizzes.map(quiz => (
+            <Link
+              key={quiz.id}
+              to={`/testlar/${quiz.id}`}
+              className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-sahifa-50 dark:bg-sahifa-900/20 border border-sahifa-100 dark:border-sahifa-800/30 hover:bg-sahifa-100 dark:hover:bg-sahifa-900/40 transition-colors group"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
+                  {quiz.title}
+                </p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                  {quiz.total_questions} ta savol
+                  {' · '}
+                  <span className={
+                    quiz.difficulty === 'hard'   ? 'text-red-400' :
+                    quiz.difficulty === 'medium' ? 'text-yellow-400' : 'text-green-400'
+                  }>
+                    {quiz.difficulty === 'hard' ? 'Qiyin' : quiz.difficulty === 'medium' ? "O'rtacha" : 'Oson'}
+                  </span>
+                </p>
+              </div>
+              <ChevronRight className="w-4 h-4 text-sahifa-400 flex-shrink-0 group-hover:translate-x-0.5 transition-transform" />
+            </Link>
+          ))}
+        </div>
+      )}
     </PageWrapper>
   )
 }

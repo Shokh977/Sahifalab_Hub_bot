@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
@@ -53,6 +53,9 @@ api_router.include_router(certificates.router, prefix="/certificates")
 
 # User settings
 api_router.include_router(settings.router)
+
+# OG redirect — dynamic link previews for Telegram/Twitter/Facebook
+api_router.include_router(og.router, prefix="/og", tags=["og"])
 
 # Internal maintenance (secret-key protected)
 api_router.include_router(cron.router)

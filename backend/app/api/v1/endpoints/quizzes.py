@@ -125,6 +125,7 @@ async def get_quiz(quiz_id: int, db: Session = Depends(get_db)):
         "difficulty": quiz.difficulty,
         "category": quiz.category,
         "total_questions": quiz.total_questions,
+        "book_id": quiz.book_id,
         "questions": [
             {
                 "id": q.id,
@@ -264,6 +265,7 @@ async def create_quiz(
         description=quiz_data.description,
         difficulty=quiz_data.difficulty,
         category=quiz_data.category,
+        book_id=quiz_data.book_id,
         total_questions=len(quiz_data.questions),
     )
     db.add(db_quiz)
@@ -283,3 +285,26 @@ async def create_quiz(
     db.commit()
     db.refresh(db_quiz)
     return db_quiz
+
+
+@router.get("/by-book/{book_id}", response_model=list[QuizResponse])
+async def get_quizzes_by_book(book_id: int, db: Session = Depends(get_db)):
+    """Return all quizzes linked to a specific book."""
+    return db.query(Quiz).filter(Quiz.book_id == book_id).all()
+
+
+@router.patch("/{quiz_id}/link-book", response_model=QuizResponse)
+async def link_quiz_to_book(
+    quiz_id: int,
+    book_id: Optional[int],
+    db: Session = Depends(get_db),
+    admin_id: int = Depends(_require_admin),
+):
+    """Set or clear the book_id link on a quiz (admin only)."""
+    quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
+    if not quiz:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Quiz topilmadi")
+    quiz.book_id = book_id
+    db.commit()
+    db.refresh(quiz)
+    return quiz

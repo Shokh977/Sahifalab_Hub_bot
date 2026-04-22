@@ -15,7 +15,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import {
   Star, MessageCircle, Trash2, Pencil, MoreHorizontal,
   Loader2, X, Check, Repeat2, Eye, Bookmark, CheckCircle2,
-  Award, BookOpen, BarChart2, BadgeCheck,
+  Award, BookOpen, BarChart2, BadgeCheck, Share2,
 } from 'lucide-react'
 import { getLevelTitle, getLevelEmoji } from '../../utils/levelTitles'
 import { useNavigate } from 'react-router-dom'
@@ -25,6 +25,7 @@ import DeleteConfirmModal from './DeleteConfirmModal'
 import UnifiedComment from './UnifiedComment'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
+import { API_BASE } from '../../lib/apiUrl'
 import { showToast } from '../ErrorBoundary'
 import { markViewed } from '../../utils/viewBuffer'
 import { useGuestGuard } from '../../hooks/useGuestGuard'
@@ -335,6 +336,23 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
     }
   }
 
+  // ── Share ─────────────────────────────────────────────────────────────────────
+  const [shareToast, setShareToast] = React.useState(false)
+  const handleShare = async () => {
+    // Use backend OG redirect URL so Telegram shows a rich preview
+    const ogUrl = `${API_BASE}/api/og/post/${post.id}`
+    const text  = (post.content || '').slice(0, 80)
+    try {
+      if (typeof navigator.share === 'function') {
+        await navigator.share({ title: 'SAHIFALAB post', text, url: ogUrl })
+      } else {
+        await navigator.clipboard.writeText(ogUrl)
+        setShareToast(true)
+        setTimeout(() => setShareToast(false), 2000)
+      }
+    } catch { /* user cancelled */ }
+  }
+
   // ── Comments ─────────────────────────────────────────────────────────────────
   const handleToggleComments = async () => {
     if (showComments) { setShowComments(false); return }
@@ -628,10 +646,21 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
 
           {/* Views */}
           {(viewsCount > 0) && (
-            <span className="flex items-center gap-1 text-xs text-white/20 tabular-nums ml-auto">
+            <span className="flex items-center gap-1 text-xs text-white/20 tabular-nums">
               <Eye className="w-3.5 h-3.5" /> {fmtCount(viewsCount)}
             </span>
           )}
+
+          {/* Share */}
+          <button
+            onClick={handleShare}
+            className={`flex items-center gap-1 text-sm transition-colors ml-auto ${
+              shareToast ? 'text-sky-400' : 'text-white/30 hover:text-sky-400'
+            }`}
+          >
+            <Share2 className="w-4 h-4" />
+            {shareToast && <span className="text-[10px]">Nusxalandi</span>}
+          </button>
 
           {/* Save (📌 Bookmark) */}
           <motion.button

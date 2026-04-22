@@ -14,6 +14,7 @@
  *   Dark:  #1C1C22 bg + deep slate glass containers
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { API_BASE } from '../lib/apiUrl'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Helmet } from 'react-helmet-async'
@@ -402,7 +403,7 @@ const CourseDetailPage: React.FC = () => {
 
   const handleShareCourse = useCallback(async () => {
     if (!course) return
-    const url  = `${window.location.origin}/courses/${course.id}`
+    const url  = `${API_BASE}/api/og/course/${course.id}`
     const text = `${course.title} — SAHIFALAB da o'rganing!`
     try {
       if (typeof navigator.share === 'function') {
