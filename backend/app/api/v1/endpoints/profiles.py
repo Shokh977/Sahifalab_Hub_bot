@@ -302,22 +302,45 @@ async def get_heatmap(
     db: Session = Depends(get_db),
 ):
     """
-    Per-day quiz-completion activity for the GitHub-style heatmap.
-    Returns [{date: 'YYYY-MM-DD', count: int}] for the last `days` days.
-    Uses user_quiz_completion.completed_at as the study-activity proxy.
+    Per-day activity for the GitHub-style heatmap.
+    Returns [{date, quiz, focus_xp, total}] for the last `days` days.
+    Combines quiz completions and DEEP_WORK XP logs so the heatmap shows
+    all study activity, not just quizzes.
     """
     from sqlalchemy import text as _text
     cutoff = datetime.now(UTC) - timedelta(days=days)
     try:
-        rows = db.execute(_text("""
+        quiz_rows = db.execute(_text("""
             SELECT completed_at::date AS day, COUNT(*) AS count
             FROM user_quiz_completion
             WHERE telegram_id = :tid
               AND completed_at >= :cutoff
             GROUP BY completed_at::date
-            ORDER BY completed_at::date
         """), {"tid": telegram_id, "cutoff": cutoff}).fetchall()
-        return [{"date": str(r.day), "count": int(r.count)} for r in rows]
+        quiz_map = {str(r.day): int(r.count) for r in quiz_rows}
+
+        focus_rows = db.execute(_text("""
+            SELECT created_at::date AS day, COALESCE(SUM(amount), 0) AS xp
+            FROM xp_logs
+            WHERE user_id = :tid
+              AND source = 'DEEP_WORK'
+              AND created_at >= :cutoff
+            GROUP BY created_at::date
+        """), {"tid": telegram_id, "cutoff": cutoff}).fetchall()
+        focus_map = {str(r.day): int(r.xp) for r in focus_rows}
+
+        all_days = set(quiz_map.keys()) | set(focus_map.keys())
+        result = []
+        for day in sorted(all_days):
+            quiz  = quiz_map.get(day, 0)
+            focus = focus_map.get(day, 0)
+            result.append({
+                "date":      day,
+                "quiz":      quiz,
+                "focus_xp":  focus,
+                "total":     quiz + (1 if focus > 0 else 0),
+            })
+        return result
     except Exception:
         return []
 

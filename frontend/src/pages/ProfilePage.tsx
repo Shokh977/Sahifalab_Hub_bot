@@ -16,7 +16,7 @@
  *   POST/DELETE/PUT /api/connections/*  — connect / disconnect
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -1417,118 +1417,279 @@ const RecentActivitySection: React.FC<{ activities: ActivityItem[] }> = ({ activ
 // Tab: Faollik (heatmap + focus hours + activity list)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-interface HeatmapDay { date: string; count: number }
+interface HeatmapDay { date: string; quiz: number; focus_xp: number; total: number }
+type TimeRange = 'week' | 'month' | 'year'
+
+const MONTHS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
+const WEEK_DAYS_UZ = ['Yak', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh']
 
 const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; focusHours: number }> = ({
   activities, telegramId, focusHours,
 }) => {
-  const [heatmap, setHeatmap] = useState<HeatmapDay[]>([])
+  const [heatmap, setHeatmap]     = useState<HeatmapDay[]>([])
+  const [range, setRange]         = useState<TimeRange>('year')
 
   useEffect(() => {
     api.client.get('/api/profiles/heatmap', { params: { telegram_id: telegramId, days: 365 } })
-      .then(r => setHeatmap(r.data || []))
+      .then(r => {
+        const raw = r.data || []
+        // Normalize: legacy format (count) → new format
+        setHeatmap(raw.map((d: any) => ({
+          date:     d.date,
+          quiz:     d.quiz     ?? d.count ?? 0,
+          focus_xp: d.focus_xp ?? 0,
+          total:    d.total    ?? (d.quiz ?? d.count ?? 0),
+        })))
+      })
       .catch(() => {})
   }, [telegramId])
 
-  // Build a full 52-week grid (364 days back from today)
-  const grid = (() => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    const map = new Map(heatmap.map(d => [d.date, d.count]))
-    const weeks: { date: string; count: number }[][] = []
-    // start on the Sunday 364 days ago
+  const today = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d
+  }, [])
+
+  const dataMap = useMemo(
+    () => new Map(heatmap.map(d => [d.date, d])),
+    [heatmap],
+  )
+
+  // ── Cell color: quiz=orange, focus=purple, both=bright, none=dim ─────────
+  const cellStyle = (day: HeatmapDay | undefined): React.CSSProperties => {
+    if (!day || (day.quiz === 0 && day.focus_xp === 0)) return { background: 'rgba(255,255,255,0.04)' }
+    const hasQuiz  = day.quiz > 0
+    const hasFocus = day.focus_xp > 0
+    if (hasQuiz && hasFocus) return { background: '#e8792f' }               // both  → orange
+    if (hasQuiz)             return { background: 'rgba(232,121,47,0.55)' } // quiz  → mid-orange
+    // focus only — intensity by XP
+    const pct = Math.min(1, day.focus_xp / 50)
+    const alpha = 0.25 + pct * 0.55
+    return { background: `rgba(139,92,246,${alpha.toFixed(2)})` }           // focus → purple
+  }
+
+  const tooltip = (iso: string, day: HeatmapDay | undefined) => {
+    if (!day || (day.quiz === 0 && day.focus_xp === 0)) return iso
+    const parts = []
+    if (day.quiz > 0)     parts.push(`${day.quiz} test`)
+    if (day.focus_xp > 0) parts.push(`${day.focus_xp} XP fokus`)
+    return `${iso}: ${parts.join(', ')}`
+  }
+
+  // ── Build week grid (last 7 days) ────────────────────────────────────────
+  const weekDays = useMemo(() => {
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i)
+      const iso = d.toISOString().slice(0, 10)
+      days.push({ iso, weekDay: WEEK_DAYS_UZ[d.getDay()], data: dataMap.get(iso) })
+    }
+    return days
+  }, [today, dataMap])
+
+  // ── Build month grid (last 30 days) ──────────────────────────────────────
+  const monthDays = useMemo(() => {
+    const days = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i)
+      const iso = d.toISOString().slice(0, 10)
+      days.push({ iso, day: d.getDate(), data: dataMap.get(iso) })
+    }
+    return days
+  }, [today, dataMap])
+
+  // ── Build year grid (52-week) ────────────────────────────────────────────
+  const yearGrid = useMemo(() => {
     const start = new Date(today)
     start.setDate(start.getDate() - 363)
     start.setDate(start.getDate() - start.getDay()) // back to Sunday
+    const weeks: { iso: string; data: HeatmapDay | undefined }[][] = []
     let cur = new Date(start)
     while (cur <= today) {
-      const week: { date: string; count: number }[] = []
+      const week: { iso: string; data: HeatmapDay | undefined }[] = []
       for (let d = 0; d < 7; d++) {
         const iso = cur.toISOString().slice(0, 10)
-        week.push({ date: iso, count: map.get(iso) ?? 0 })
+        week.push({ iso, data: cur <= today ? dataMap.get(iso) : undefined })
         cur.setDate(cur.getDate() + 1)
       }
       weeks.push(week)
     }
     return weeks
-  })()
+  }, [today, dataMap])
 
-  const maxCount = Math.max(...heatmap.map(d => d.count), 1)
-  const totalDays = heatmap.length
-
-  const cellColor = (count: number) => {
-    if (count === 0) return 'bg-white/[0.04]'
-    const pct = count / maxCount
-    if (pct < 0.25) return 'bg-[#e8792f]/20'
-    if (pct < 0.5)  return 'bg-[#e8792f]/40'
-    if (pct < 0.75) return 'bg-[#e8792f]/65'
-    return 'bg-[#e8792f]'
-  }
-
-  const months = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
+  const activeDays  = heatmap.filter(d => d.total > 0).length
+  const totalQuizzes = heatmap.reduce((s, d) => s + d.quiz, 0)
+  const totalFocusXP = heatmap.reduce((s, d) => s + d.focus_xp, 0)
 
   return (
     <div className="space-y-4">
       {/* Stats row */}
-      <div className="grid grid-cols-2 gap-3">
-        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4 text-center">
-          <p className="text-2xl font-bold text-[#e8792f]">{focusHours}</p>
-          <p className="text-xs text-white/40 mt-0.5">soat diqqat</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
+          <p className="text-xl font-bold text-[#e8792f]">{focusHours}</p>
+          <p className="text-[10px] text-white/40 mt-0.5">soat fokus</p>
         </div>
-        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4 text-center">
-          <p className="text-2xl font-bold text-white">{totalDays}</p>
-          <p className="text-xs text-white/40 mt-0.5">faol kun</p>
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
+          <p className="text-xl font-bold text-white">{activeDays}</p>
+          <p className="text-[10px] text-white/40 mt-0.5">faol kun</p>
+        </div>
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
+          <p className="text-xl font-bold text-violet-400">{totalQuizzes}</p>
+          <p className="text-[10px] text-white/40 mt-0.5">test yechildi</p>
         </div>
       </div>
 
-      {/* Heatmap */}
+      {/* Heatmap card */}
       <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
-        <h2 className="text-sm font-bold text-white mb-4">O'qish faolligi</h2>
-        <div className="overflow-x-auto">
-          <div className="min-w-[600px]">
-            {/* Month labels */}
-            <div className="flex mb-1.5 pl-4">
-              {grid.filter((_, wi) => wi % 4 === 0).map((week, i) => {
-                const d = new Date(week[0].date)
-                return (
-                  <div key={i} className="flex-1 text-[9px] text-white/25">
-                    {months[d.getMonth()]}
-                  </div>
-                )
-              })}
-            </div>
-            {/* Day rows (Mon/Wed/Fri labels + cells) */}
-            <div className="flex gap-0.5">
-              {/* Day-of-week labels */}
-              <div className="flex flex-col gap-0.5 mr-1 pt-0">
-                {['', 'Sen', '', 'Chor', '', 'Jum', ''].map((label, di) => (
-                  <div key={di} className="h-[10px] w-5 text-[8px] text-white/20 flex items-center">{label}</div>
-                ))}
-              </div>
-              {/* Week columns */}
-              {grid.map((week, wi) => (
-                <div key={wi} className="flex flex-col gap-0.5">
-                  {week.map((day, di) => (
-                    <div
-                      key={di}
-                      title={`${day.date}: ${day.count} quiz`}
-                      className={`w-[10px] h-[10px] rounded-sm ${cellColor(day.count)}`}
-                    />
-                  ))}
-                </div>
-              ))}
-            </div>
-            {/* Legend */}
-            <div className="flex items-center gap-1.5 mt-3 justify-end">
-              <span className="text-[9px] text-white/25">Kam</span>
-              {[0, 0.25, 0.5, 0.75, 1].map(v => (
-                <div key={v} className={`w-[10px] h-[10px] rounded-sm ${cellColor(Math.ceil(v * maxCount))}`} />
-              ))}
-              <span className="text-[9px] text-white/25">Ko'p</span>
-            </div>
+        {/* Header + range tabs */}
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-bold text-white">Faollik</h2>
+          <div className="flex gap-1 bg-white/[0.05] rounded-lg p-0.5">
+            {(['week', 'month', 'year'] as TimeRange[]).map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                  range === r
+                    ? 'bg-[#e8792f] text-white'
+                    : 'text-white/40 hover:text-white/60'
+                }`}
+              >
+                {r === 'week' ? 'Hafta' : r === 'month' ? 'Oy' : 'Yil'}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* ── Week view ─────────────────────────────────────────────── */}
+        {range === 'week' && (
+          <div className="space-y-3">
+            {weekDays.map(({ iso, weekDay, data }) => {
+              const hasQuiz  = (data?.quiz ?? 0) > 0
+              const hasFocus = (data?.focus_xp ?? 0) > 0
+              const active   = hasQuiz || hasFocus
+              return (
+                <div key={iso} className="flex items-center gap-3">
+                  <p className="text-[11px] text-white/30 w-6 flex-shrink-0">{weekDay}</p>
+                  <div className="flex-1 flex items-center gap-1.5">
+                    {/* Focus bar */}
+                    <div
+                      className="h-5 rounded-lg flex items-center px-1.5 transition-all"
+                      style={{
+                        width: hasFocus ? `${Math.min(100, (data!.focus_xp / 100) * 70 + 30)}%` : '4px',
+                        ...cellStyle(data),
+                        opacity: active ? 1 : 0.3,
+                      }}
+                    >
+                      {hasFocus && (
+                        <span className="text-[9px] text-white font-bold">{data!.focus_xp} XP</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Badge row */}
+                  <div className="flex items-center gap-1 flex-shrink-0 w-20 justify-end">
+                    {hasQuiz  && <span className="text-[9px] bg-[#e8792f]/20 text-[#e8792f] rounded px-1.5 py-0.5">{data!.quiz} test</span>}
+                    {hasFocus && <span className="text-[9px] bg-violet-500/20 text-violet-400 rounded px-1.5 py-0.5">fokus</span>}
+                    {!active   && <span className="text-[9px] text-white/15">—</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── Month view ────────────────────────────────────────────── */}
+        {range === 'month' && (
+          <div className="grid grid-cols-10 gap-1">
+            {monthDays.map(({ iso, day, data }) => (
+              <div
+                key={iso}
+                title={tooltip(iso, data)}
+                className="aspect-square rounded-md flex items-center justify-center cursor-default"
+                style={cellStyle(data)}
+              >
+                <span className="text-[8px] text-white/50">{day}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Year view (52-week GitHub grid) ───────────────────────── */}
+        {range === 'year' && (
+          <div className="overflow-x-auto">
+            <div className="min-w-[580px]">
+              {/* Month labels */}
+              <div className="flex mb-1.5 pl-5">
+                {yearGrid.filter((_, wi) => wi % 4 === 0).map((week, i) => {
+                  const d = new Date(week[0].iso)
+                  return (
+                    <div key={i} className="flex-1 text-[9px] text-white/25">
+                      {MONTHS[d.getMonth()]}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex gap-0.5">
+                {/* Day-of-week labels */}
+                <div className="flex flex-col gap-0.5 mr-1">
+                  {['', 'Du', '', 'Ch', '', 'Ju', ''].map((label, di) => (
+                    <div key={di} className="h-[10px] w-4 text-[7px] text-white/20 flex items-center">{label}</div>
+                  ))}
+                </div>
+                {/* Week columns */}
+                {yearGrid.map((week, wi) => (
+                  <div key={wi} className="flex flex-col gap-0.5">
+                    {week.map(({ iso, data }, di) => (
+                      <div
+                        key={di}
+                        title={tooltip(iso, data)}
+                        className="w-[10px] h-[10px] rounded-sm cursor-default"
+                        style={cellStyle(data)}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+              {/* Legend */}
+              <div className="flex items-center gap-3 mt-3 justify-end">
+                <div className="flex items-center gap-1">
+                  <div className="w-[10px] h-[10px] rounded-sm" style={{ background: 'rgba(139,92,246,0.55)' }} />
+                  <span className="text-[9px] text-white/25">Fokus</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-[10px] h-[10px] rounded-sm" style={{ background: 'rgba(232,121,47,0.55)' }} />
+                  <span className="text-[9px] text-white/25">Test</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-[10px] h-[10px] rounded-sm" style={{ background: '#e8792f' }} />
+                  <span className="text-[9px] text-white/25">Ikkalasi</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* XP breakdown */}
+      {(totalFocusXP > 0 || totalQuizzes > 0) && (
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4">
+          <h3 className="text-xs font-bold text-white/60 uppercase tracking-wider mb-3">Yillik XP manbai</h3>
+          <div className="space-y-2">
+            {totalFocusXP > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
+                <p className="text-xs text-white/70 flex-1">Fokus sessiyalar</p>
+                <p className="text-xs font-bold text-violet-400">{totalFocusXP} XP</p>
+              </div>
+            )}
+            {totalQuizzes > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#e8792f] flex-shrink-0" />
+                <p className="text-xs text-white/70 flex-1">Test yechish</p>
+                <p className="text-xs font-bold text-[#e8792f]">{totalQuizzes * 25} XP</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Activity timeline */}
       {activities.length > 0 && (

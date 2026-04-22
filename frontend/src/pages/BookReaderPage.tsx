@@ -126,7 +126,7 @@ function detectType(url: string): 'pdf' | 'epub' {
 
 const FloatingFocusWidget: React.FC<{ theme: Theme }> = ({ theme }) => {
   const timer = useBackgroundTimer()
-  const { addFocusSeconds } = useProgressStore()
+  const { addFocusSeconds, flushFocusSeconds } = useProgressStore()
   const [readingXP, setReadingXP] = useState(0)
   const [minimized, setMinimized] = useState(false)
 
@@ -139,6 +139,12 @@ const FloatingFocusWidget: React.FC<{ theme: Theme }> = ({ theme }) => {
     const id = setInterval(() => addFocusSeconds(1), 1_000)
     return () => clearInterval(id)
   }, [activeAndFocus, addFocusSeconds])
+
+  // Flush accumulated XP when user leaves reading page
+  useEffect(() => {
+    return () => { flushFocusSeconds() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Local display counter: +1 per minute
   useEffect(() => {

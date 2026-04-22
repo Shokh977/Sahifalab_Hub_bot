@@ -357,46 +357,45 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
   const timer = useBackgroundTimer({ onComplete: handleTimerComplete })
 
   // -- Focus XP tracking ----------------------------------------------------
-  const { addFocusSeconds, syncToSupabase, pingPresence } = useProgressStore()
+  const { addFocusSeconds, flushFocusSeconds, pingPresence } = useProgressStore()
   const [motivBurst, setMotivBurst]   = useState(false)
 
-  // Session-local XP counter (+1 XP per minute of focus)
+  // Session-local display counter (minutes of focus this session)
   const [sessionXP, setSessionXP]     = useState(0)
-  const sessionStartRef = useRef<number | null>(null)
 
-  const focusStartRef    = useRef<number | null>(null)
+  // Per-second tick during focus: accumulates addFocusSeconds(1) so XP and
+  // daily counters are always up-to-date even across pauses and page navigation.
+  useEffect(() => {
+    if (!timer.isRunning || timer.isBreak) return
+    const iv = setInterval(() => addFocusSeconds(1), 1_000)
+    return () => clearInterval(iv)
+  }, [timer.isRunning, timer.isBreak, addFocusSeconds])
+
+  // Session XP display: +1 visible point per minute of focus
+  useEffect(() => {
+    if (!timer.isRunning || timer.isBreak) return
+    const iv = setInterval(() => setSessionXP(p => p + 1), 60_000)
+    return () => clearInterval(iv)
+  }, [timer.isRunning, timer.isBreak])
+
+  // Sync to server when focus pauses / timer completes / component unmounts
   const prevIsRunningRef = useRef(timer.isRunning)
   const prevIsBreakRef   = useRef(timer.isBreak)
-
   useEffect(() => {
     const wasRunning = prevIsRunningRef.current
     const wasBreak   = prevIsBreakRef.current
     prevIsRunningRef.current = timer.isRunning
     prevIsBreakRef.current   = timer.isBreak
-
-    // Focus started
-    if (!wasRunning && timer.isRunning && !timer.isBreak) {
-      focusStartRef.current = Date.now()
-      if (!sessionStartRef.current) sessionStartRef.current = Date.now()
-    }
-    // Focus paused/stopped → sync XP
     if (wasRunning && !timer.isRunning && !wasBreak) {
-      if (focusStartRef.current) {
-        const elapsed = Math.floor((Date.now() - focusStartRef.current) / 1000)
-        if (elapsed > 0) { addFocusSeconds(elapsed); syncToSupabase() }
-        focusStartRef.current = null
-      }
+      flushFocusSeconds()
     }
-  }, [timer.isRunning, timer.isBreak, addFocusSeconds, syncToSupabase])
+  }, [timer.isRunning, timer.isBreak, flushFocusSeconds])
 
-  // Live session XP: +1 XP per minute of active (non-break) focus
+  // Flush on unmount (user navigates away while timer is running)
   useEffect(() => {
-    if (!timer.isRunning || timer.isBreak) return
-    const iv = setInterval(() => {
-      setSessionXP(prev => prev + 1) // +1 XP per minute
-    }, 60_000)
-    return () => clearInterval(iv)
-  }, [timer.isRunning, timer.isBreak])
+    return () => { flushFocusSeconds() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Notify parent of timer state changes (for mini-indicator)
   useEffect(() => {
