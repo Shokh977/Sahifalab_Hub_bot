@@ -1763,6 +1763,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
   // Image upload state
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarRemoved, setAvatarRemoved] = useState(false)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [coverRemoved, setCoverRemoved] = useState(false)
@@ -1777,7 +1778,14 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setErr("Faqat JPG, PNG yoki WebP formatdagi rasmlar"); return }
     setAvatarFile(file)
     setAvatarPreview(URL.createObjectURL(file))
+    setAvatarRemoved(false)
     setErr(null)
+  }
+
+  function removeAvatar() {
+    setAvatarFile(null)
+    setAvatarPreview(null)
+    setAvatarRemoved(true)
   }
 
   function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1876,25 +1884,26 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     setSaving(true)
     setErr(null)
     try {
-      let newAvatarUrl = profile.photo_url
-      let newCoverUrl = coverRemoved ? null : profile.cover_image_url
+      let newAvatarUrl: string | null = avatarRemoved ? null : (profile.photo_url ?? null)
+      let newCoverUrl: string | null = coverRemoved ? null : (profile.cover_image_url ?? null)
 
       if (avatarFile) newAvatarUrl = await uploadImage(avatarFile, 'avatar')
       if (coverFile)  newCoverUrl  = await uploadImage(coverFile, 'cover')
 
-      const r = await api.client.put('/api/profile/me', {
-        ...form,
-        ...(avatarFile ? { photo_url: newAvatarUrl } : {}),
-        cover_image_url: newCoverUrl,
-      })
-      onSaved({ ...r.data, photo_url: newAvatarUrl ?? r.data.photo_url, cover_image_url: newCoverUrl ?? r.data.cover_image_url, experiences, education })
+      // Send '' (empty string) to explicitly clear an image — backend converts '' → NULL.
+      // Don't include the field at all when unchanged, to avoid accidental overwrites.
+      const photoBody = avatarFile ? { photo_url: newAvatarUrl } : avatarRemoved ? { photo_url: '' } : {}
+      const coverBody = coverFile  ? { cover_image_url: newCoverUrl } : coverRemoved ? { cover_image_url: '' } : {}
+
+      const r = await api.client.put('/api/profile/me', { ...form, ...photoBody, ...coverBody })
+      onSaved({ ...r.data, photo_url: newAvatarUrl, cover_image_url: newCoverUrl, experiences, education })
     } catch (e: any) {
       setErr(e?.response?.data?.detail || "Xatolik yuz berdi")
     }
     setSaving(false)
   }
 
-  const hasCover = coverPreview || (profile.cover_image_url?.startsWith('http') ? profile.cover_image_url : null)
+  const hasCover = coverRemoved ? null : (coverPreview || (profile.cover_image_url?.startsWith('http') ? profile.cover_image_url : null))
 
   return (
     <motion.div
@@ -1980,7 +1989,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
               onClick={() => avatarInputRef.current?.click()}
               style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', position: 'relative', cursor: 'pointer', flexShrink: 0 }}
             >
-              {(avatarPreview || profile.photo_url) ? (
+              {!avatarRemoved && (avatarPreview || profile.photo_url) ? (
                 <img src={avatarPreview || profile.photo_url!} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Avatar" />
               ) : (
                 <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e8792f, #8b2a10)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 800, color: '#fff' }}>
@@ -1995,6 +2004,12 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
             <div>
               <div className="text-sm font-semibold text-white">Profil rasmi</div>
               <div className="text-xs text-white/40">JPG, PNG · Maksimum 5MB</div>
+              {!avatarRemoved && (avatarPreview || profile.photo_url) && (
+                <button type="button" onClick={removeAvatar}
+                  className="mt-1 text-xs font-medium text-red-400 hover:text-red-300 transition-colors">
+                  🗑 Rasmni olib tashlash
+                </button>
+              )}
             </div>
           </div>
 

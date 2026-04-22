@@ -236,15 +236,14 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
 
     existing = db.query(Profile).filter(Profile.telegram_id == data.id).first()
     is_new = existing is None
-    cdn_host = (settings.BUNNY_CDN_HOSTNAME or "").rstrip("/")
-    has_custom_photo = bool(
-        existing and existing.photo_url and cdn_host and cdn_host in existing.photo_url
-    )
+    # Only sync Telegram photo when the user has no photo set yet.
+    # Once any photo is stored (Telegram or custom CDN), preserve it on login.
+    has_any_photo = bool(existing and existing.photo_url)
     profile = _upsert_profile(
         db, data.id,
         first_name=data.first_name, username=data.username,
         app_last_login=datetime.now(UTC),
-        **({} if has_custom_photo else {"photo_url": data.photo_url}),
+        **({"photo_url": data.photo_url} if not has_any_photo else {}),
     )
     if is_new:
         _send_welcome(data.id, data.first_name or "")
@@ -286,15 +285,12 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
 
     existing = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     is_new = existing is None
-    cdn_host = (settings.BUNNY_CDN_HOSTNAME or "").rstrip("/")
-    has_custom_photo = bool(
-        existing and existing.photo_url and cdn_host and cdn_host in existing.photo_url
-    )
+    has_any_photo = bool(existing and existing.photo_url)
     profile = _upsert_profile(
         db, telegram_id,
         first_name=first_name, username=username,
         app_last_login=datetime.now(UTC),
-        **({} if has_custom_photo else {"photo_url": photo_url}),
+        **({"photo_url": photo_url} if not has_any_photo else {}),
     )
     if is_new:
         _send_welcome(telegram_id, first_name or "")
