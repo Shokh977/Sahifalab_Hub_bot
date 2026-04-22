@@ -1,8 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, UTC
 from typing import Optional
+import httpx
 from app.db.session import get_db
 from app.models.models import Book, BookRating, BookReadProgress, BookPurchase
 from app.schemas.schemas import BookResponse, BookListResponse, BookCreate, BookRateRequest, BookProgressRequest
@@ -225,6 +227,57 @@ async def save_book_progress(
         ))
     db.commit()
     return {"success": True}
+
+@router.get("/{book_id}/file")
+async def proxy_book_file(
+    book_id: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Stream the book file (PDF or EPUB) through the backend so epub.js can load
+    it without hitting CDN CORS restrictions.  Paid books require a valid JWT
+    with a completed purchase; free books are served without auth.
+    """
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book or not book.file_url:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.is_paid:
+        caller_id: Optional[int] = None
+        if authorization:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0] == "Bearer":
+                caller_id = decode_token(parts[1])
+        if not caller_id:
+            raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
+        purchase = db.query(BookPurchase).filter(
+            BookPurchase.book_id == book_id,
+            BookPurchase.telegram_id == caller_id,
+            BookPurchase.status == "completed",
+        ).first()
+        if not purchase:
+            raise HTTPException(status_code=403, detail="Purchase required")
+
+    url = book.file_url
+    ext = url.lower().split("?")[0].rsplit(".", 1)[-1]
+    mime = "application/epub+zip" if ext == "epub" else "application/pdf"
+
+    async def _stream():
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            async with client.stream("GET", url) as r:
+                async for chunk in r.aiter_bytes(chunk_size=65536):
+                    yield chunk
+
+    return StreamingResponse(
+        _stream(),
+        media_type=mime,
+        headers={
+            "Content-Disposition": f'inline; filename="book.{ext}"',
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
 
 @router.put("/{book_id}", response_model=BookResponse)
 async def update_book(

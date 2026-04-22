@@ -330,6 +330,8 @@ const BookReaderPage: React.FC = () => {
 
   // EPUB-specific
   const [epubLocation, setEpubLocation] = useState<string | number | null>(null)
+  const [epubReady, setEpubReady] = useState(false)
+  const [epubFailed, setEpubFailed] = useState(false)
   const renditionRef = useRef<any>(null)
 
   // Progress
@@ -487,6 +489,13 @@ const BookReaderPage: React.FC = () => {
   const getRendition = useCallback((rendition: any) => {
     renditionRef.current = rendition
     applyEpubStyles(theme, fontSize, fontFamily, lineHeight)
+
+    // Mark ready on first section render
+    rendition.on('rendered', () => setEpubReady(true))
+
+    // Catch epub.js-level errors
+    rendition.book.ready.catch(() => setEpubFailed(true))
+
     // Get navigation (ToC)
     rendition.book.loaded.navigation.then((nav: any) => {
       const conv = (items: any[]): TocEntry[] =>
@@ -499,6 +508,15 @@ const BookReaderPage: React.FC = () => {
       setToc(conv(nav.toc ?? []))
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 20-second timeout: if EPUB never renders, mark as failed
+  useEffect(() => {
+    if (fileType !== 'epub' || !hasAccess) return
+    const t = setTimeout(() => {
+      if (!epubReady) setEpubFailed(true)
+    }, 20_000)
+    return () => clearTimeout(t)
+  }, [fileType, hasAccess, epubReady])
 
   // Re-apply EPUB styles whenever theme or font settings change
   useEffect(() => {
@@ -842,10 +860,10 @@ const BookReaderPage: React.FC = () => {
         )}
 
         {/* ── EPUB viewer ─────────────────────────────────────────────────── */}
-        {fileType === 'epub' && (
+        {fileType === 'epub' && !epubFailed && (
           <div className="absolute inset-0">
             <ReactReader
-              url={book.file_url}
+              url={apiService.bookFileUrl(book.id)}
               location={epubLocation}
               locationChanged={setEpubLocation as (loc: string) => void}
               getRendition={getRendition}
@@ -871,6 +889,25 @@ const BookReaderPage: React.FC = () => {
                 },
               }}
             />
+          </div>
+        )}
+
+        {/* ── EPUB load failure fallback ───────────────────────────────────── */}
+        {fileType === 'epub' && epubFailed && (
+          <div className={`absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center ${t.outer}`}>
+            <BookOpen className={`w-12 h-12 opacity-30 ${t.muted}`} />
+            <p className={`text-sm font-semibold ${t.text}`}>EPUB yuklanmadi</p>
+            <p className={`text-xs max-w-xs ${t.muted}`}>
+              Fayl brauzerda to'g'ridan-to'g'ri ochilishi mumkin.
+            </p>
+            <a
+              href={book.file_url ?? ''}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-5 py-2.5 rounded-xl bg-[#F15929] text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
+            >
+              Yangi tabda ochish →
+            </a>
           </div>
         )}
       </div>

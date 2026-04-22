@@ -166,6 +166,10 @@ class ApiService {
     return this.axiosInstance.get(`/api/books/${bookId}/download`)
   }
 
+  bookFileUrl(bookId: number): string {
+    return `${API_BASE_URL}/api/books/${bookId}/file`
+  }
+
   async rateBook(bookId: number, telegramId: number, rating: number) {
     return this.axiosInstance.post(`/api/books/${bookId}/rate`, {
       telegram_id: telegramId,
