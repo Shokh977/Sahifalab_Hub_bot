@@ -122,6 +122,8 @@ class PlannerTask(Base):
     linked_course_id = Column(Integer, nullable=True)
     linked_lesson_id = Column(Integer, nullable=True)
     xp_claimed       = Column(Boolean, default=False)   # prevents done→todo→done XP farming
+    scheduled_at     = Column(DateTime(timezone=True), nullable=True)
+    duration_minutes = Column(Integer, default=30)
     created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 

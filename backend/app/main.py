@@ -308,6 +308,15 @@ async def startup_event():
                         conn.execute(_sa_text(_widen))
                     except Exception:
                         pass  # already BIGINT or column missing — safe to skip
+                # 9. Calendar fields for planner_tasks
+                for _col in [
+                    "ALTER TABLE planner_tasks ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ",
+                    "ALTER TABLE planner_tasks ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 30",
+                ]:
+                    try:
+                        conn.execute(_sa_text(_col))
+                    except Exception:
+                        pass
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)

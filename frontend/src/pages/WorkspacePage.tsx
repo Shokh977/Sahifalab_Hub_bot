@@ -20,8 +20,8 @@
 import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { LayoutGrid, BookOpen, Timer, StickyNote, BookCheck, Pause, Zap } from 'lucide-react'
-import KanbanBoard, { type PlannerTask } from '../components/workspace/KanbanBoard'
+import { BookOpen, Timer, StickyNote, BookCheck, Pause, Zap, Calendar } from 'lucide-react'
+import PlannerCalendar, { type PlannerTask } from '../components/workspace/PlannerCalendar'
 import { StudyTimer, type StudyTimerState } from './StudyPage'
 import NotesTab from '../components/workspace/NotesTab'
 import CoursesTab from '../components/workspace/CoursesTab'
@@ -29,7 +29,7 @@ import CoursesTab from '../components/workspace/CoursesTab'
 // ── Tab definitions ───────────────────────────────────────────────────────────
 
 const TABS = [
-  { key: 'kanban',  label: 'Reja',     icon: LayoutGrid, emoji: '📊' },
+  { key: 'kanban',  label: 'Reja',     icon: Calendar,   emoji: '📅' },
   { key: 'courses', label: "O'qish",   icon: BookOpen,   emoji: '📖' },
   { key: 'focus',   label: 'Fokus',    icon: Timer,      emoji: '⏱' },
   { key: 'notes',   label: 'Qaydlar',  icon: StickyNote,  emoji: '📝' },
@@ -203,10 +203,10 @@ const WorkspacePage: React.FC = () => {
           <StudyTimer embedded onTimerStateChange={handleTimerStateChange} />
         </div>
 
-        {/* Kanban — mounted on first visit, kept alive thereafter */}
+        {/* Calendar planner — mounted on first visit, kept alive thereafter */}
         {mountedTabs.has('kanban') && (
           <div className={activeTab === 'kanban' ? '' : 'hidden'}>
-            <KanbanBoard onPlayTask={handlePlayTask} />
+            <PlannerCalendar onPlayTask={handlePlayTask} />
           </div>
         )}
 
