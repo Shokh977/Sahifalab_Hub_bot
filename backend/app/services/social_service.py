@@ -413,27 +413,34 @@ def unsave_post(db: Session, post_id: int, user_id: int) -> bool:
 
 
 def vote_poll(db: Session, post_id: int, user_id: int, option_idx: int) -> Optional[dict]:
-    """Vote on a poll. Removes old vote if changing option."""
+    """Vote on a poll (upsert — handles first vote and vote-change atomically)."""
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post or getattr(post, "post_type", "text") != "poll":
         return None
-    # Remove existing vote if any
-    existing = db.query(PollVote).filter(PollVote.post_id == post_id, PollVote.user_id == user_id).first()
-    if existing:
-        if existing.option_idx == option_idx:
-            return {"voted": True, "option_idx": option_idx}  # no change
-        db.delete(existing)
-    vote = PollVote(post_id=post_id, user_id=user_id, option_idx=option_idx)
-    db.add(vote)
+
+    # Single atomic upsert avoids the unique-constraint race that happens when
+    # delete + insert are batched in one autoflush=False session commit.
+    db.execute(text("""
+        INSERT INTO poll_votes (post_id, user_id, option_idx)
+        VALUES (:post_id, :user_id, :option_idx)
+        ON CONFLICT (post_id, user_id)
+        DO UPDATE SET option_idx = :option_idx, created_at = NOW()
+    """), {"post_id": post_id, "user_id": user_id, "option_idx": option_idx})
     db.commit()
-    # Return updated vote counts per option
-    meta = dict(post.post_metadata or {})
-    options = meta.get("options", [])
-    vote_rows = db.query(PollVote.option_idx).filter(PollVote.post_id == post_id).all()
+
+    # Return live counts straight from the votes table
+    rows = db.execute(
+        text("SELECT option_idx FROM poll_votes WHERE post_id = :pid"),
+        {"pid": post_id},
+    ).fetchall()
     counts: dict = {}
-    for (idx,) in vote_rows:
+    for (idx,) in rows:
         counts[idx] = counts.get(idx, 0) + 1
-    total_votes = len(vote_rows)
+    total_votes = len(rows)
+
+    db.refresh(post)
+    meta = dict(post.post_metadata or {})
+    options = list(meta.get("options", []))
     for i, opt in enumerate(options):
         opt["votes_count"] = counts.get(i, 0)
     meta["options"] = options
