@@ -400,6 +400,53 @@ async def upload_file(
     }
 
 
+# ── POST /upload/post-image — any authenticated user (social post images) ────
+from fastapi import Header as _FHeader
+from app.services.auth_service import decode_token as _decode_tok
+
+
+@router.post("/post-image")
+async def upload_post_image(
+    file: UploadFile = File(...),
+    authorization: str | None = _FHeader(None),
+):
+    """
+    Upload a post image. Requires a valid JWT but NOT teacher/admin role —
+    any logged-in user can upload images for social posts.
+    Stored in posts/<uuid>.webp on Bunny CDN.
+    Returns { url }.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        raise HTTPException(status_code=401, detail="Noto'g'ri avtorizatsiya")
+    if not _decode_tok(parts[1]):
+        raise HTTPException(status_code=401, detail="Token muddati tugagan")
+
+    if file.content_type not in ALLOWED_IMAGE_MIME:
+        raise HTTPException(
+            status_code=415,
+            detail="Faqat rasm fayllari qabul qilinadi: jpg, png, webp, gif.",
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Rasm hajmi 10 MB dan oshmasligi kerak.")
+
+    if file.content_type in RASTER_IMAGE_MIME:
+        file_bytes  = _compress_to_webp(file_bytes, max_px=1200, quality=82)
+        upload_ct   = "image/webp"
+        ext         = ".webp"
+    else:
+        upload_ct = file.content_type or "image/webp"
+        ext       = _MIME_EXT_MAP.get(upload_ct, ".webp")
+
+    remote_path = f"posts/{uuid.uuid4().hex}{ext}"
+    cdn_url = await _upload_to_bunny(file_bytes, remote_path, upload_ct)
+    return {"url": cdn_url, "remote_path": remote_path}
+
+
 # ── DELETE /upload/file ───────────────────────────────────────────────────────
 @router.delete("/file")
 async def delete_file(

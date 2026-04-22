@@ -349,7 +349,7 @@ const SocialFeed: React.FC = () => {
     const formData = new FormData()
     formData.append('file', blob, 'post.webp')
     formData.append('category', 'posts')
-    const res = await api.client.post('/api/v1/upload/file', formData)
+    const res = await api.client.post('/api/upload/post-image', formData)
     return res.data.url
   }
 
