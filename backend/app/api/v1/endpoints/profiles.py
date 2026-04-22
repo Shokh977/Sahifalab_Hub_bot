@@ -306,24 +306,20 @@ async def get_heatmap(
     Returns [{date: 'YYYY-MM-DD', count: int}] for the last `days` days.
     Uses user_quiz_completion.completed_at as the study-activity proxy.
     """
-    from sqlalchemy import func, cast
-    from sqlalchemy.types import Date as SQLDate
-
+    from sqlalchemy import text as _text
     cutoff = datetime.now(UTC) - timedelta(days=days)
-    rows = (
-        db.query(
-            cast(UserQuizCompletion.completed_at, SQLDate).label("day"),
-            func.count().label("count"),
-        )
-        .filter(
-            UserQuizCompletion.telegram_id == telegram_id,
-            UserQuizCompletion.completed_at >= cutoff,
-        )
-        .group_by(cast(UserQuizCompletion.completed_at, SQLDate))
-        .order_by(cast(UserQuizCompletion.completed_at, SQLDate))
-        .all()
-    )
-    return [{"date": str(r.day), "count": int(r.count)} for r in rows]
+    try:
+        rows = db.execute(_text("""
+            SELECT completed_at::date AS day, COUNT(*) AS count
+            FROM user_quiz_completion
+            WHERE telegram_id = :tid
+              AND completed_at >= :cutoff
+            GROUP BY completed_at::date
+            ORDER BY completed_at::date
+        """), {"tid": telegram_id, "cutoff": cutoff}).fetchall()
+        return [{"date": str(r.day), "count": int(r.count)} for r in rows]
+    except Exception:
+        return []
 
 
 @router.get("/{telegram_id}")

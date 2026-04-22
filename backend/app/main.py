@@ -299,6 +299,15 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS ix_user_education_user ON user_education(user_id)"
                 ))
+                # 8. Widen telegram_id columns that were declared as INTEGER (32-bit)
+                #    to BIGINT — Telegram IDs now exceed 2^31 and overflow INTEGER.
+                for _widen in [
+                    "ALTER TABLE user_quiz_completion ALTER COLUMN telegram_id TYPE BIGINT",
+                ]:
+                    try:
+                        conn.execute(_sa_text(_widen))
+                    except Exception:
+                        pass  # already BIGINT or column missing — safe to skip
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
