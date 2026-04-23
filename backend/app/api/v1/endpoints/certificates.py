@@ -58,8 +58,8 @@ def get_shared_certificate(
             cc.skill_tags,
             c.title   AS course_name,
             c.thumbnail_url AS course_thumbnail,
-            p.first_name    AS student_name,
-            p.username      AS student_username,
+            p.first_name       AS student_name,
+            p.site_username    AS student_username,
             p.photo_url     AS student_photo,
             COALESCE(p.level, 1)       AS student_level,
             COALESCE(p.total_xp, 0)   AS student_xp

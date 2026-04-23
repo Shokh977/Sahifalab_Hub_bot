@@ -18,7 +18,8 @@ class Profile(Base):
 
     telegram_id       = Column(BigInteger, primary_key=True)
     first_name        = Column(String(255), nullable=True)
-    username          = Column(String(255), nullable=True)
+    username          = Column(String(255), nullable=True)   # Telegram username — internal only, never exposed publicly
+    site_username     = Column(String(50),  nullable=True, index=True)  # Public handle used in profile URLs
     photo_url         = Column(String(1000), nullable=True)
     role              = Column(String(50), default='student')   # student | teacher | admin
     status            = Column(String(50), default='active')    # active | pending | suspended

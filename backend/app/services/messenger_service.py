@@ -15,7 +15,7 @@ def _profile_brief(p: Profile) -> dict:
     return {
         "telegram_id": p.telegram_id,
         "full_name": getattr(p, "full_name", None) or getattr(p, "first_name", None),
-        "username": p.username,
+        "username": p.site_username,
         "photo_url": p.photo_url,
         "role": p.role or "student",
         "level": p.level or 1,

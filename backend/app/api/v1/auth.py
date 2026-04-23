@@ -4,6 +4,7 @@ auth.py — SAHIFALAB authentication endpoints.
 All profile/user data is accessed via SQLAlchemy ORM (direct Postgres TCP),
 bypassing Supabase's REST API entirely — unaffected by cached-egress quota.
 """
+import re
 from fastapi import APIRouter, HTTPException, Header, Depends
 from fastapi import UploadFile, File
 from fastapi.responses import JSONResponse
@@ -18,7 +19,7 @@ import httpx
 import bcrypt
 from pydantic import BaseModel, HttpUrl, EmailStr
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 
 try:
     from google.oauth2 import id_token as google_id_token
@@ -139,17 +140,34 @@ def _get_profile(db: Session, telegram_id: int) -> Optional[Profile]:
     return db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
 
 
+def _gen_site_username(db: Session, first_name: Optional[str], telegram_id: int) -> str:
+    """Generate a unique public handle from first_name + telegram_id suffix."""
+    base = re.sub(r'[^a-z0-9]', '', (first_name or '').lower())[:15] or 'user'
+    suffix = str(abs(telegram_id) % 100000)
+    candidate = f"{base}_{suffix}"
+    taken = db.query(Profile).filter(
+        func.lower(Profile.site_username) == candidate.lower()
+    ).first()
+    if not taken:
+        return candidate
+    return f"{base}_{abs(telegram_id)}"
+
+
 def _upsert_profile(db: Session, telegram_id: int, **kwargs) -> Profile:
     """Create or update a profile row via ORM (no Supabase REST involved)."""
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
         if "app_created_at" not in kwargs:
             kwargs["app_created_at"] = datetime.now(UTC)
+        if "site_username" not in kwargs or not kwargs.get("site_username"):
+            kwargs["site_username"] = _gen_site_username(db, kwargs.get("first_name"), telegram_id)
         profile = Profile(telegram_id=telegram_id, **kwargs)
         db.add(profile)
     else:
         for key, value in kwargs.items():
             setattr(profile, key, value)
+        if not profile.site_username:
+            profile.site_username = _gen_site_username(db, profile.first_name, telegram_id)
     try:
         db.commit()
         db.refresh(profile)
@@ -250,7 +268,7 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
     token_data = create_access_token(data.id, profile.role or "student")
     return {
         "success": True, "telegram_id": data.id,
-        "first_name": data.first_name, "username": data.username,
+        "first_name": data.first_name, "username": profile.site_username,
         "photo_url": profile.photo_url or data.photo_url,
         "role": profile.role or "student", "status": profile.status or "active",
         **token_data,
@@ -319,7 +337,7 @@ async def get_current_user(
         raise HTTPException(status_code=404, detail="User not found")
     return {
         "telegram_id": profile.telegram_id, "first_name": profile.first_name,
-        "username": profile.username, "photo_url": profile.photo_url,
+        "username": profile.site_username, "photo_url": profile.photo_url,
         "email": profile.email,
         "email_verified": profile.email_verified,
         "role": profile.role or "student", "status": profile.status or "active",
@@ -591,7 +609,7 @@ async def list_teacher_requests(
     return [
         {
             "telegram_id": p.telegram_id, "first_name": p.first_name,
-            "username": p.username, "photo_url": p.photo_url,
+            "username": p.site_username, "photo_url": p.photo_url,
             "total_xp": p.total_xp, "level": p.level,
             **(
                 {
@@ -663,7 +681,7 @@ async def list_users(
     return [
         {
             "telegram_id": p.telegram_id, "first_name": p.first_name,
-            "username": p.username, "photo_url": p.photo_url,
+            "username": p.site_username, "photo_url": p.photo_url,
             "role": p.role, "status": p.status,
             "total_xp": p.total_xp, "level": p.level,
             "app_created_at": p.app_created_at.isoformat() if p.app_created_at else None,
@@ -786,7 +804,7 @@ async def email_login(body: EmailLoginRequest, db: Session = Depends(get_db)):
     return {
         "status": "ok",
         "telegram_id": profile.telegram_id, "first_name": profile.first_name or "",
-        "username": profile.username, "photo_url": profile.photo_url,
+        "username": profile.site_username, "photo_url": profile.photo_url,
         "email": profile.email,
         "email_verified": profile.email_verified,
         "role": profile.role or "student", "status_account": profile.status or "active",

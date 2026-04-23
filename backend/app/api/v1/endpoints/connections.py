@@ -78,7 +78,7 @@ def _mini(p: Profile) -> dict:
     return {
         "id":           p.telegram_id,
         "name":         p.first_name or "",
-        "username":     p.username,
+        "username":     p.site_username,
         "avatar_url":   p.photo_url,
         "headline":     getattr(p, "headline", None),
         "level":        p.level or 1,
@@ -457,7 +457,7 @@ def get_mutual(
             WHERE (requester_id = :tid OR receiver_id = :tid)
               AND status = 'accepted'
         )
-        SELECT p.telegram_id, p.first_name, p.username, p.photo_url,
+        SELECT p.telegram_id, p.first_name, p.site_username, p.photo_url,
                p.level, p.total_xp,
                COALESCE(p.headline, '')     AS headline,
                COALESCE(p.account_type, 'student') AS account_type,
@@ -474,7 +474,7 @@ def get_mutual(
             {
                 "id":           r["telegram_id"],
                 "name":         r["first_name"] or "",
-                "username":     r["username"],
+                "username":     r["site_username"],
                 "avatar_url":   r["photo_url"],
                 "headline":     r["headline"],
                 "level":        r["level"] or 1,
@@ -542,7 +542,7 @@ def get_suggestions(
         SELECT
             p.telegram_id,
             p.first_name,
-            p.username,
+            p.site_username,
             p.photo_url,
             COALESCE(p.headline,      '')        AS headline,
             COALESCE(p.location_city, '')        AS location_city,
@@ -633,7 +633,7 @@ def get_suggestions(
         {
             "id":             r["telegram_id"],
             "name":           r["first_name"] or "",
-            "username":       r["username"],
+            "username":       r["site_username"],
             "avatar_url":     r["photo_url"],
             "headline":       r["headline"],
             "location_city":  r["location_city"],
@@ -670,7 +670,7 @@ def list_connections(
             c.accepted_at,
             p.telegram_id,
             p.first_name,
-            p.username,
+            p.site_username,
             p.photo_url,
             COALESCE(p.headline,      '')        AS headline,
             COALESCE(p.location_city, '')        AS location_city,
@@ -687,8 +687,8 @@ def list_connections(
           AND c.status = 'accepted'
           AND (
                CAST(:search AS text) IS NULL
-               OR p.first_name ILIKE '%' || CAST(:search AS text) || '%'
-               OR p.username   ILIKE '%' || CAST(:search AS text) || '%'
+               OR p.first_name    ILIKE '%' || CAST(:search AS text) || '%'
+               OR p.site_username ILIKE '%' || CAST(:search AS text) || '%'
           )
         ORDER BY c.accepted_at DESC
     """), {"vid": viewer_id, "search": search or None}).mappings().fetchall()
@@ -700,7 +700,7 @@ def list_connections(
             "user": {
                 "id":            r["telegram_id"],
                 "name":          r["first_name"] or "",
-                "username":      r["username"],
+                "username":      r["site_username"],
                 "avatar_url":    r["photo_url"],
                 "headline":      r["headline"],
                 "location_city": r["location_city"],

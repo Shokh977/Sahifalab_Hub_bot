@@ -18,7 +18,7 @@ def _profile_to_author(p: Profile) -> dict:
     return {
         "telegram_id": p.telegram_id,
         "full_name": p.first_name or "",
-        "username": p.username,
+        "username": p.site_username,
         "photo_url": p.photo_url,
         "role": p.role or "student",
         "level": p.level or 1,
@@ -425,7 +425,7 @@ def get_saved_posts(db: Session, user_id: int, page: int = 1, page_size: int = 2
             COALESCE(p.saves_count, 0)    AS saves_count,
             COALESCE(p.base_views_added, 0) AS base_views_added,
             p.created_at, p.updated_at,
-            pr.first_name, pr.username, pr.photo_url, pr.level,
+            pr.first_name, pr.site_username, pr.photo_url, pr.level,
             COALESCE(pr.is_verified, false) AS is_verified,
             COALESCE(pr.account_type, 'student') AS account_type,
             pr.role AS author_role,
@@ -451,7 +451,7 @@ def get_saved_posts(db: Session, user_id: int, page: int = 1, page_size: int = 2
             "author": {
                 "telegram_id":  r.author_id,
                 "full_name":    r.first_name or "User",
-                "username":     r.username,
+                "username":     r.site_username,
                 "photo_url":    r.photo_url,
                 "level":        r.level or 1,
                 "is_verified":  bool(r.is_verified),

@@ -87,7 +87,7 @@ def _search_people(db: Session, q: str, viewer_id: int, limit: int) -> list[dict
             SELECT
                 p.telegram_id,
                 p.first_name,
-                p.username,
+                p.site_username,
                 p.photo_url,
                 COALESCE(p.headline,      '')        AS headline,
                 COALESCE(p.location_city, '')        AS location_city,
@@ -96,10 +96,10 @@ def _search_people(db: Session, q: str, viewer_id: int, limit: int) -> list[dict
                 COALESCE(p.level, 1)                 AS level,
                 COALESCE(p.total_xp, 0)              AS total_xp,
                 CASE
-                    WHEN p.username   ILIKE :q OR p.first_name ILIKE :q   THEN 1.0
-                    WHEN p.username   ILIKE :q_pct OR p.first_name ILIKE :q_pct THEN 0.85
-                    WHEN p.headline   ILIKE :q_pct                         THEN 0.7
-                    WHEN p.bio        ILIKE :q_pct                         THEN 0.5
+                    WHEN p.site_username ILIKE :q OR p.first_name ILIKE :q   THEN 1.0
+                    WHEN p.site_username ILIKE :q_pct OR p.first_name ILIKE :q_pct THEN 0.85
+                    WHEN p.headline      ILIKE :q_pct                         THEN 0.7
+                    WHEN p.bio           ILIKE :q_pct                         THEN 0.5
                     WHEN p.telegram_id IN (SELECT user_id FROM skill_matches) THEN 0.5
                     ELSE 0.3
                 END AS relevance,
@@ -125,10 +125,10 @@ def _search_people(db: Session, q: str, viewer_id: int, limit: int) -> list[dict
             WHERE p.telegram_id != :vid
               AND COALESCE(p.status, 'active') = 'active'
               AND (
-                   p.first_name    ILIKE :q_pct
-                OR p.username      ILIKE :q_pct
-                OR p.headline      ILIKE :q_pct
-                OR p.bio           ILIKE :q_pct
+                   p.first_name      ILIKE :q_pct
+                OR p.site_username   ILIKE :q_pct
+                OR p.headline        ILIKE :q_pct
+                OR p.bio             ILIKE :q_pct
                 OR p.telegram_id IN (SELECT user_id FROM skill_matches)
               )
         ) sub
@@ -147,7 +147,7 @@ def _search_people(db: Session, q: str, viewer_id: int, limit: int) -> list[dict
         {
             "id":            r["telegram_id"],
             "name":          r["first_name"] or "",
-            "username":      r["username"],
+            "username":      r["site_username"],
             "avatar_url":    r["photo_url"],
             "headline":      r["headline"],
             "location_city": r["location_city"],
@@ -176,8 +176,8 @@ def _search_courses(db: Session, q: str, limit: int) -> list[dict]:
                 c.level,
                 c.rating,
                 c.enrolled_count,
-                p.first_name AS teacher_name,
-                p.username   AS teacher_username,
+                p.first_name      AS teacher_name,
+                p.site_username   AS teacher_username,
                 CASE
                     WHEN c.title       ILIKE :q      THEN 1.0
                     WHEN c.title       ILIKE :q_pct  THEN 0.8
@@ -232,8 +232,8 @@ def _search_jobs(db: Session, q: str, limit: int) -> list[dict]:
             j.required_skills,
             j.created_at,
             j.expires_at,
-            p.first_name AS poster_name,
-            p.username   AS poster_username
+            p.first_name      AS poster_name,
+            p.site_username   AS poster_username
         FROM jobs j
         LEFT JOIN profiles p ON p.telegram_id = j.posted_by
         WHERE j.is_active = TRUE
@@ -284,8 +284,8 @@ def _search_posts(db: Session, q: str, limit: int) -> list[dict]:
             po.views_count,
             po.created_at,
             p.telegram_id AS author_id,
-            p.first_name  AS author_name,
-            p.username    AS author_username,
+            p.first_name      AS author_name,
+            p.site_username   AS author_username,
             p.photo_url   AS author_avatar
         FROM posts po
         JOIN profiles p ON p.telegram_id = po.author_id

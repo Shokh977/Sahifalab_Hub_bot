@@ -168,7 +168,7 @@ def list_jobs(
                j.posted_by,
                p.first_name AS poster_name,
                p.photo_url  AS poster_photo,
-               p.username   AS poster_username,
+               p.site_username AS poster_username,
                (SELECT COUNT(*) FROM job_applications a WHERE a.job_id = j.id) AS applicants_count
         FROM jobs j
         LEFT JOIN profiles p ON p.telegram_id = j.posted_by
@@ -236,7 +236,7 @@ def matched_jobs(
                j.posted_by,
                p.first_name AS poster_name,
                p.photo_url  AS poster_photo,
-               p.username   AS poster_username,
+               p.site_username AS poster_username,
                (SELECT COUNT(*) FROM job_applications a WHERE a.job_id = j.id) AS applicants_count
         FROM jobs j
         LEFT JOIN profiles p ON p.telegram_id = j.posted_by
@@ -289,7 +289,7 @@ def get_job(
                j.posted_by,
                p.first_name AS poster_name,
                p.photo_url  AS poster_photo,
-               p.username   AS poster_username,
+               p.site_username AS poster_username,
                (SELECT COUNT(*) FROM job_applications a WHERE a.job_id = j.id) AS applicants_count,
                (SELECT status FROM job_applications
                 WHERE job_id = j.id AND applicant_id = :vid LIMIT 1) AS my_application_status
@@ -474,7 +474,7 @@ def list_applicants(
 
     rows = db.execute(text("""
         SELECT a.id, a.applicant_id, a.message, a.status, a.created_at,
-               p.first_name, p.username, p.photo_url,
+               p.first_name, p.site_username AS username, p.photo_url,
                COALESCE(p.headline, '') AS headline,
                COALESCE(p.level, 1) AS level
         FROM job_applications a

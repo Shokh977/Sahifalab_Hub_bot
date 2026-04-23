@@ -112,7 +112,7 @@ async def og_post(post_id: int, db: Session = Depends(get_db)):
     try:
         row = db.execute(_text("""
             SELECT p.content, p.image_url,
-                   pr.first_name, pr.username
+                   pr.first_name, pr.site_username
             FROM posts p
             JOIN profiles pr ON pr.telegram_id = p.author_id
             WHERE p.id = :pid
@@ -123,7 +123,7 @@ async def og_post(post_id: int, db: Session = Depends(get_db)):
     if not row:
         return RedirectResponse(f"{FRONTEND}/feed")
 
-    author = row.first_name or row.username or "Foydalanuvchi"
+    author = row.first_name or row.site_username or "Foydalanuvchi"
     snippet = (row.content or "")[:120].replace("\n", " ")
     title   = f"{author} yozdi: {snippet[:60]}…" if len(snippet) > 60 else f"{author}: {snippet}"
     desc    = (row.content or "")[:200]

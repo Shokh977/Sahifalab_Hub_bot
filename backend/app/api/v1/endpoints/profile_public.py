@@ -119,6 +119,7 @@ class ProfileUpdateRequest(BaseModel):
     cover_image_url: Optional[str] = None
     website_url:     Optional[str] = None
     photo_url:       Optional[str] = None
+    site_username:   Optional[str] = None
 
     @field_validator("headline")
     @classmethod
@@ -132,6 +133,16 @@ class ProfileUpdateRequest(BaseModel):
     def validate_bio(cls, v):
         if v is not None and len(v) > 500:
             raise ValueError("Bio 500 ta belgidan oshmasligi kerak")
+        return v
+
+    @field_validator("site_username")
+    @classmethod
+    def validate_site_username(cls, v):
+        import re
+        if v is not None:
+            v = v.strip().lower()
+            if not re.match(r'^[a-z0-9_]{3,30}$', v):
+                raise ValueError("Foydalanuvchi nomi 3-30 ta harf, raqam yoki _ belgidan iborat bo'lishi kerak")
         return v
 
 
@@ -200,7 +211,7 @@ def _serialize_profile_user(p: Profile) -> dict:
     return {
         "id":                p.telegram_id,
         "name":              p.first_name or "",
-        "username":          p.username,
+        "username":          p.site_username,
         "headline":          getattr(p, "headline", None),
         "bio":               p.bio,
         "avatar_url":        p.photo_url,
@@ -339,7 +350,7 @@ def get_my_views(
         recent_viewers.append({
             "id":         vp.telegram_id,
             "name":       vp.first_name or "",
-            "username":   vp.username,
+            "username":   vp.site_username,
             "avatar_url": vp.photo_url,
             "viewed_at":  row.viewed_at.isoformat(),
         })
@@ -361,8 +372,7 @@ def get_my_profile(
     profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Profil topilmadi")
-    # Re-use the existing full-profile endpoint by delegating via the username/id
-    identifier = profile.username or str(profile.telegram_id)
+    identifier = profile.site_username or str(profile.telegram_id)
     return get_public_profile(username=identifier, authorization=authorization, db=db)
 
 
@@ -405,6 +415,21 @@ def update_my_profile(
     if body.photo_url is not None:
         profile.photo_url = body.photo_url.strip() or None
         updated["photo_url"] = profile.photo_url
+    if body.site_username is not None:
+        new_su = body.site_username.strip().lower()
+        if new_su:
+            conflict = (
+                db.query(Profile)
+                .filter(
+                    func.lower(Profile.site_username) == new_su,
+                    Profile.telegram_id != viewer_id,
+                )
+                .first()
+            )
+            if conflict:
+                raise HTTPException(status_code=409, detail="Bu foydalanuvchi nomi band")
+            profile.site_username = new_su
+            updated["site_username"] = new_su
 
     if not updated:
         return {"ok": True}
@@ -485,11 +510,10 @@ def get_public_profile(
     if not username:
         raise HTTPException(status_code=400, detail="Foydalanuvchi nomi noto'g'ri")
 
-    # Try username lookup first; fall back to numeric telegram_id so that
-    # /profile/me → /profile/12345 works for users with no username.
+    # Look up by site_username first; fall back to numeric telegram_id.
     profile = (
         db.query(Profile)
-        .filter(func.lower(Profile.username) == username.lower())
+        .filter(func.lower(Profile.site_username) == username.lower())
         .first()
     )
     if not profile:
@@ -878,7 +902,7 @@ def get_public_profile(
     return {
         # Identity
         "telegram_id":         tid,
-        "username":            profile.username,
+        "username":            profile.site_username,
         "first_name":          profile.first_name or "",
         "photo_url":           profile.photo_url,
         "cover_image_url":     getattr(profile, "cover_image_url", None),
@@ -940,7 +964,7 @@ def get_user_skills(
     username = username.lstrip("@").strip()
     profile = (
         db.query(Profile)
-        .filter(func.lower(Profile.username) == username.lower())
+        .filter(func.lower(Profile.site_username) == username.lower())
         .first()
     )
     if not profile:

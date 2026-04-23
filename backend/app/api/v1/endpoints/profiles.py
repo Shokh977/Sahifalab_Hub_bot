@@ -3,7 +3,9 @@ profiles.py — proxy endpoints for gamification progress and cabinet data.
 
 All queries use SQLAlchemy ORM (direct Postgres TCP), bypassing Supabase REST.
 """
+import re
 from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, UTC, timedelta
@@ -15,6 +17,24 @@ from app.models.models import Profile, UserQuizCompletion, BookPurchase, BookRat
 from app.services.auth_service import decode_token, decode_token_payload
 
 router = APIRouter()
+
+
+def _generate_site_username(db: Session, first_name: Optional[str], telegram_id: int) -> str:
+    """
+    Derive a unique public handle from first_name + telegram_id.
+    Telegram username is never used here — site_username is fully independent.
+    """
+    base = re.sub(r'[^a-z0-9]', '', (first_name or '').lower())[:15] or 'user'
+    suffix = str(abs(telegram_id) % 100000)
+    candidate = f"{base}_{suffix}"
+    taken = db.query(Profile).filter(
+        func.lower(Profile.site_username) == candidate.lower()
+    ).first()
+    if not taken:
+        return candidate
+    # Collision fallback: use full telegram_id for guaranteed uniqueness
+    return f"{base}_{abs(telegram_id)}"
+
 
 # ── Module-level motivation state (single Railway dyno, ephemeral) ────────────
 # Resets on redeploy — motivation is intentionally ephemeral.
@@ -99,7 +119,7 @@ async def get_leaderboard(limit: int = 10, db: Session = Depends(get_db)):
         {
             "telegram_id":        p.telegram_id,
             "first_name":         p.first_name,
-            "username":           p.username,
+            "username":           p.site_username,
             "photo_url":          p.photo_url,
             "total_xp":           p.total_xp          or 0,
             "level":              p.level              or 1,
@@ -172,10 +192,12 @@ async def upsert_profile(
     telegram_id = caller_id
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
+        site_uname = _generate_site_username(db, body.first_name, telegram_id)
         profile = Profile(
             telegram_id=telegram_id,
             first_name=body.first_name,
             username=body.username,
+            site_username=site_uname,
             app_created_at=datetime.now(UTC),
         )
         db.add(profile)
@@ -183,6 +205,8 @@ async def upsert_profile(
         profile.first_name = body.first_name
         if body.username is not None:
             profile.username = body.username
+        if not profile.site_username:
+            profile.site_username = _generate_site_username(db, profile.first_name, telegram_id)
     try:
         db.commit()
     except Exception as e:
@@ -211,13 +235,18 @@ async def sync_progress(
 
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
+        fname = body.first_name or "Foydalanuvchi"
+        site_uname = _generate_site_username(db, fname, telegram_id)
         profile = Profile(
             telegram_id=telegram_id,
-            first_name=body.first_name or "Foydalanuvchi",
+            first_name=fname,
             username=body.username,
+            site_username=site_uname,
             app_created_at=datetime.now(UTC),
         )
         db.add(profile)
+    elif not profile.site_username:
+        profile.site_username = _generate_site_username(db, profile.first_name, telegram_id)
 
     # Only allow cosmetic/presence fields — XP, level, quizzes are server-authoritative
     if body.first_name           is not None: profile.first_name           = body.first_name
@@ -252,7 +281,7 @@ async def get_teachers_gallery(db: Session = Depends(get_db)):
         SELECT
             p.telegram_id,
             p.first_name,
-            p.username,
+            p.site_username,
             p.photo_url,
             COALESCE(tp.specialization, '')   AS specialization,
             tp.experience_years,
@@ -282,7 +311,7 @@ async def get_teachers_gallery(db: Session = Depends(get_db)):
         {
             "telegram_id":      row.telegram_id,
             "first_name":       row.first_name or "O'qituvchi",
-            "username":         row.username,
+            "username":         row.site_username,
             "photo_url":        row.photo_url,
             "specialization":   row.specialization,
             "experience_years": row.experience_years,
@@ -360,7 +389,7 @@ async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
         "level":                profile.level              or 1,
         "quizzes_completed":    profile.quizzes_completed  or 0,
         "first_name":           profile.first_name,
-        "username":             profile.username,
+        "username":             profile.site_username,
         "photo_url":            profile.photo_url,
         "role":                 profile.role   or "student",
         "status":               profile.status or "active",
