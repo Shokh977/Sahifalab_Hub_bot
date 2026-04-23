@@ -177,6 +177,14 @@ async def _get_caller(creds: HTTPAuthorizationCredentials) -> dict:
     return payload
 
 
+async def _get_any_caller(creds: HTTPAuthorizationCredentials) -> dict:
+    """Decode JWT for any authenticated user (student, teacher, admin)."""
+    payload = decode_token_payload(creds.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return payload
+
+
 async def _upload_to_bunny(file_bytes: bytes, remote_path: str, content_type: str) -> str:
     """Upload raw bytes to Bunny.net storage, return CDN URL."""
     if not settings.BUNNY_STORAGE_ZONE or not settings.BUNNY_API_KEY:
@@ -401,14 +409,10 @@ async def upload_file(
 
 
 # ── POST /upload/post-image — any authenticated user (social post images) ────
-from fastapi import Header as _FHeader
-from app.services.auth_service import decode_token as _decode_tok
-
-
 @router.post("/post-image")
 async def upload_post_image(
     file: UploadFile = File(...),
-    authorization: str | None = _FHeader(None),
+    creds: HTTPAuthorizationCredentials = Depends(_security),
 ):
     """
     Upload a post image. Requires a valid JWT but NOT teacher/admin role —
@@ -416,13 +420,7 @@ async def upload_post_image(
     Stored in posts/<uuid>.webp on Bunny CDN.
     Returns { url }.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
-    parts = authorization.split()
-    if len(parts) != 2 or parts[0] != "Bearer":
-        raise HTTPException(status_code=401, detail="Noto'g'ri avtorizatsiya")
-    if not _decode_tok(parts[1]):
-        raise HTTPException(status_code=401, detail="Token muddati tugagan")
+    await _get_any_caller(creds)
 
     if file.content_type not in ALLOWED_IMAGE_MIME:
         raise HTTPException(
