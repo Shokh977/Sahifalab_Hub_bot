@@ -17,6 +17,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
 import api from '../services/apiService'
+import { API_BASE } from '../lib/apiUrl'
 import PostCard from '../components/social/PostCard'
 import type { PostData } from '../components/social/PostCard'
 
@@ -348,8 +349,20 @@ const SocialFeed: React.FC = () => {
   const handleUploadImage = async (blob: Blob): Promise<string> => {
     const formData = new FormData()
     formData.append('file', blob, 'post.webp')
-    const res = await api.client.post('/api/upload/post-image', formData)
-    return res.data.url
+    // Use fetch directly so browser sets correct multipart/form-data boundary
+    // (axios default Content-Type: application/json can interfere with FormData)
+    const token = localStorage.getItem('tma_auth_token') || localStorage.getItem('auth_token')
+    const res = await fetch(`${API_BASE}/api/upload/post-image`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err?.detail || `Upload failed: ${res.status}`)
+    }
+    const data = await res.json()
+    return data.url
   }
 
   // Interaction handlers
