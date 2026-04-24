@@ -1,18 +1,31 @@
 """
 OG redirect endpoints — /api/og/{type}/{id}
 
-Telegram's link-preview bot fetches the URL server-side *before* JavaScript
-runs, so react-helmet OG tags are invisible to it.  These endpoints return
-a minimal static HTML page that:
-  1. Contains the correct og:title / og:description / og:image tags
-  2. Immediately redirects browsers to the real SPA URL
+Telegram's link-preview bot (and WhatsApp, Twitter, LinkedIn, etc.) fetch the
+shared URL server-side *before* JavaScript runs, so react-helmet OG tags are
+invisible to them. These endpoints return minimal HTML that:
 
-Share any content using  {API_BASE}/api/og/book/5  instead of the SPA URL,
-and Telegram will display a rich preview while users still land on the SPA.
+  1. Contains the correct og:title / og:description / og:image tags
+  2. Sets og:url to THIS endpoint URL (self-referential — see note below)
+  3. Immediately redirects human browsers to the real SPA deep-link
+
+WHY og:url must be self-referential
+────────────────────────────────────
+WhatsApp, LinkedIn, and Facebook follow the og:url value to fetch "canonical"
+OG data. If og:url points to the React SPA, those platforms re-fetch Vercel's
+index.html which has the generic site-level meta tags — showing the wrong
+preview. Pointing og:url back to this endpoint prevents that re-fetch.
+
+WHY we never return RedirectResponse (HTTP 302)
+───────────────────────────────────────────────
+Most link-preview bots follow HTTP redirects. A 302 to the SPA causes them to
+fetch index.html and read its static fallback meta tags. We always return 200
+HTML with a client-side redirect instead.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+import html as _h
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text as _text
 from app.db.session import get_db
@@ -20,37 +33,55 @@ from app.models.models import Book, Quiz
 
 router = APIRouter()
 
-FRONTEND = "https://sahifalab-hub-bot.vercel.app"
+FRONTEND      = "https://sahifalab-hub-bot.vercel.app"
+BACKEND       = "https://sahifalabhubbot-production-c7e2.up.railway.app"
 DEFAULT_IMAGE = f"{FRONTEND}/sahifalab.jpg"
-SITE_NAME = "SAHIFALAB"
+SITE_NAME     = "SAHIFALAB"
 
 
-def _html(title: str, description: str, image: str, dest: str) -> HTMLResponse:
-    """Return a minimal OG meta page that instantly redirects to `dest`."""
-    title       = title.replace('"', '&quot;')
-    description = description.replace('"', '&quot;')
-    image       = image or DEFAULT_IMAGE
+def _og_html(
+    title: str,
+    description: str,
+    image: str,
+    dest: str,
+    canonical: str,
+) -> HTMLResponse:
+    """
+    Return a 200 HTML page with OG/Twitter meta tags that instantly redirects
+    browsers to `dest`.
+
+    canonical  — og:url; must be THIS endpoint's own URL so platforms don't
+                 re-fetch a different URL for canonical OG data.
+    dest       — where humans land (SPA deep-link).
+    """
+    t   = _h.escape(title or SITE_NAME)
+    d   = _h.escape((description or "")[:200])
+    img = _h.escape(image or DEFAULT_IMAGE)
+    can = _h.escape(canonical)
+    dst = _h.escape(dest)
+
     content = f"""<!DOCTYPE html>
 <html lang="uz">
 <head>
 <meta charset="utf-8"/>
-<title>{title} | {SITE_NAME}</title>
-<meta name="description" content="{description}"/>
+<title>{t} | {_h.escape(SITE_NAME)}</title>
+<meta name="description" content="{d}"/>
 <meta property="og:type"        content="website"/>
-<meta property="og:site_name"   content="{SITE_NAME}"/>
-<meta property="og:title"       content="{title}"/>
-<meta property="og:description" content="{description}"/>
-<meta property="og:image"       content="{image}"/>
-<meta property="og:url"         content="{dest}"/>
+<meta property="og:site_name"   content="{_h.escape(SITE_NAME)}"/>
+<meta property="og:title"       content="{t}"/>
+<meta property="og:description" content="{d}"/>
+<meta property="og:image"       content="{img}"/>
+<meta property="og:url"         content="{can}"/>
 <meta name="twitter:card"        content="summary_large_image"/>
-<meta name="twitter:title"       content="{title}"/>
-<meta name="twitter:description" content="{description}"/>
-<meta name="twitter:image"       content="{image}"/>
-<meta http-equiv="refresh" content="0;url={dest}"/>
+<meta name="twitter:title"       content="{t}"/>
+<meta name="twitter:description" content="{d}"/>
+<meta name="twitter:image"       content="{img}"/>
+<link rel="canonical"            href="{can}"/>
+<meta http-equiv="refresh" content="0;url={dst}"/>
 </head>
 <body>
-<script>window.location.replace("{dest}");</script>
-<p><a href="{dest}">{title}</a></p>
+<script>window.location.replace("{dst}");</script>
+<p><a href="{dst}">{t}</a></p>
 </body>
 </html>"""
     return HTMLResponse(content=content, status_code=200)
@@ -60,28 +91,23 @@ def _html(title: str, description: str, image: str, dest: str) -> HTMLResponse:
 
 @router.get("/book/{book_id}", response_class=HTMLResponse)
 async def og_book(book_id: int, db: Session = Depends(get_db)):
-    book = db.query(Book).filter(Book.id == book_id, Book.is_available == True).first()
-    if not book:
-        return RedirectResponse(f"{FRONTEND}/kitoblar")
-    title = f"{book.title} — {book.author}"
-    desc  = (book.description or "")[:200]
-    image = book.thumbnail_url or DEFAULT_IMAGE
-    dest  = f"{FRONTEND}/kitoblar/{book_id}"
-    return _html(title, desc, image, dest)
+    book  = db.query(Book).filter(Book.id == book_id).first()
+    title = f"{book.title} — {book.author}" if book else SITE_NAME
+    desc  = (book.description or "") if book else ""
+    image = (book.thumbnail_url or DEFAULT_IMAGE) if book else DEFAULT_IMAGE
+    dest  = f"{FRONTEND}/kitoblar/{book_id}" if book else f"{FRONTEND}/kitoblar"
+    return _og_html(title, desc, image, dest, f"{BACKEND}/api/og/book/{book_id}")
 
 
 # ── Quiz ─────────────────────────────────────────────────────────────────────
 
 @router.get("/quiz/{quiz_id}", response_class=HTMLResponse)
 async def og_quiz(quiz_id: int, db: Session = Depends(get_db)):
-    quiz = db.query(Quiz).filter(Quiz.id == quiz_id).first()
-    if not quiz:
-        return RedirectResponse(f"{FRONTEND}/testlar")
-    title = quiz.title
-    desc  = quiz.description or f"{quiz.total_questions or 0} ta savol · {quiz.category or 'Umumiy'}"
-    image = DEFAULT_IMAGE
-    dest  = f"{FRONTEND}/testlar/{quiz_id}"
-    return _html(title, desc, image, dest)
+    quiz  = db.query(Quiz).filter(Quiz.id == quiz_id).first()
+    title = quiz.title if quiz else SITE_NAME
+    desc  = (quiz.description or f"{quiz.total_questions or 0} ta savol · {quiz.category or 'Umumiy'}") if quiz else ""
+    dest  = f"{FRONTEND}/testlar/{quiz_id}" if quiz else f"{FRONTEND}/testlar"
+    return _og_html(title, desc, DEFAULT_IMAGE, dest, f"{BACKEND}/api/og/quiz/{quiz_id}")
 
 
 # ── Course ───────────────────────────────────────────────────────────────────
@@ -91,18 +117,15 @@ async def og_course(course_id: int, db: Session = Depends(get_db)):
     try:
         row = db.execute(_text("""
             SELECT title, description, thumbnail_url
-            FROM courses
-            WHERE id = :cid AND is_published = true
+            FROM courses WHERE id = :cid
         """), {"cid": course_id}).fetchone()
     except Exception:
         row = None
-    if not row:
-        return RedirectResponse(f"{FRONTEND}/courses")
-    title = row.title or "Kurs"
-    desc  = (row.description or "")[:200]
-    image = row.thumbnail_url or DEFAULT_IMAGE
-    dest  = f"{FRONTEND}/courses/{course_id}"
-    return _html(title, desc, image, dest)
+    title = (row.title or "Kurs") if row else SITE_NAME
+    desc  = (row.description or "") if row else ""
+    image = (row.thumbnail_url or DEFAULT_IMAGE) if row else DEFAULT_IMAGE
+    dest  = f"{FRONTEND}/courses/{course_id}" if row else f"{FRONTEND}/courses"
+    return _og_html(title, desc, image, dest, f"{BACKEND}/api/og/course/{course_id}")
 
 
 # ── Post (social feed) ───────────────────────────────────────────────────────
@@ -120,13 +143,17 @@ async def og_post(post_id: int, db: Session = Depends(get_db)):
     except Exception:
         row = None
 
-    if not row:
-        return RedirectResponse(f"{FRONTEND}/feed")
+    if row:
+        author  = row.first_name or row.site_username or "Foydalanuvchi"
+        snippet = (row.content or "").replace("\n", " ")
+        title   = f"{author}: {snippet[:60]}{'…' if len(snippet) > 60 else ''}"
+        desc    = snippet
+        image   = row.image_url or DEFAULT_IMAGE
+        dest    = f"{FRONTEND}/feed?post={post_id}"
+    else:
+        title = SITE_NAME
+        desc  = "SAHIFALAB ijtimoiy tarmog'i"
+        image = DEFAULT_IMAGE
+        dest  = f"{FRONTEND}/feed"
 
-    author = row.first_name or row.site_username or "Foydalanuvchi"
-    snippet = (row.content or "")[:120].replace("\n", " ")
-    title   = f"{author} yozdi: {snippet[:60]}…" if len(snippet) > 60 else f"{author}: {snippet}"
-    desc    = (row.content or "")[:200]
-    image   = row.image_url or DEFAULT_IMAGE
-    dest    = f"{FRONTEND}/feed?post={post_id}"
-    return _html(title, desc, image, dest)
+    return _og_html(title, desc, image, dest, f"{BACKEND}/api/og/post/{post_id}")
