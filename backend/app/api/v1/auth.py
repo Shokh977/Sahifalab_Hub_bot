@@ -340,6 +340,7 @@ async def get_current_user(
         "username": profile.site_username, "photo_url": profile.photo_url,
         "email": profile.email,
         "email_verified": profile.email_verified,
+        "has_password": bool(profile.password_hash),
         "role": profile.role or "student", "status": profile.status or "active",
         "level": profile.level or 1, "total_xp": profile.total_xp or 0,
         "bio": getattr(profile, "bio", None),

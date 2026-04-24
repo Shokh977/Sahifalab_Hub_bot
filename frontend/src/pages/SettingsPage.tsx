@@ -803,7 +803,7 @@ const AccountSection: React.FC = () => {
 
   const currentEmail   = (user as any)?.email as string | null ?? null
   const emailVerified  = Boolean((user as any)?.email_verified)
-  const hasPassword    = Boolean((user as any)?.password_hash ?? (currentEmail && emailVerified))
+  const hasPassword    = Boolean((user as any)?.has_password)
 
   return (
     <>
