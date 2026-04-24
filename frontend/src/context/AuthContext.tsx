@@ -67,6 +67,8 @@ interface AuthContextValue {
   loginWithCode: (data: Record<string, any>) => void
   /** Update the user email in-memory after a successful link-email call */
   updateUserEmail: (email: string) => void
+  /** Merge arbitrary fields into the in-memory user object */
+  updateUser: (patch: Partial<Record<string, any>>) => void
   /** Web-only: clears JWT and user */
   logout: () => void
 }
@@ -217,6 +219,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWebUser(prev => prev ? { ...prev, email } : prev)
   }, [])
 
+  const updateUser = useCallback((patch: Partial<Record<string, any>>) => {
+    setWebUser(prev => prev ? { ...prev, ...patch } : prev)
+  }, [])
+
   // ── Listen for apiService token-expiry signal ──────────────────────────────
   // When the interceptor detects a 401 on /api/auth/me, it dispatches 'auth:expired'.
   // We clear the in-memory state here so the next AuthGuard check redirects to login.
@@ -249,7 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, updateUserEmail, logout }}
+      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, updateUserEmail, updateUser, logout }}
     >
       {children}
     </AuthContext.Provider>

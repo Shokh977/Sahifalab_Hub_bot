@@ -536,7 +536,8 @@ const PasswordModal: React.FC<{
   emailVerified: boolean
   hasPassword: boolean
   onClose: () => void
-}> = ({ userEmail, emailVerified, hasPassword, onClose }) => {
+  onSaved: () => void
+}> = ({ userEmail, emailVerified, hasPassword, onClose, onSaved }) => {
   const [form, setForm]     = useState({ current: '', next: '', confirm: '' })
   const [show, setShow]     = useState({ current: false, next: false, confirm: false })
   const [saving, setSaving] = useState(false)
@@ -561,6 +562,7 @@ const PasswordModal: React.FC<{
     setSaving(true); setError(null)
     try {
       await api.client.post('/api/auth/set-password', { new_password: form.next })
+      onSaved()
       setDone(true)
       setTimeout(onClose, 1800)
     } catch (err: any) {
@@ -574,6 +576,7 @@ const PasswordModal: React.FC<{
     setSaving(true); setError(null)
     try {
       await api.client.put('/api/auth/change-password', { current_password: form.current, new_password: form.next })
+      onSaved()
       setDone(true)
       setTimeout(onClose, 1800)
     } catch (err: any) {
@@ -796,7 +799,7 @@ const DeleteAccountModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
 }
 
 const AccountSection: React.FC = () => {
-  const { user, updateUserEmail } = useAuth()
+  const { user, updateUserEmail, updateUser } = useAuth()
   const [emailModal,  setEmailModal]  = useState(false)
   const [pwModal,     setPwModal]     = useState(false)
   const [deleteModal, setDeleteModal] = useState(false)
@@ -877,6 +880,7 @@ const AccountSection: React.FC = () => {
             emailVerified={emailVerified}
             hasPassword={hasPassword}
             onClose={() => setPwModal(false)}
+            onSaved={() => updateUser({ has_password: true })}
           />
         )}
         {deleteModal && <DeleteAccountModal onClose={() => setDeleteModal(false)} />}
