@@ -515,6 +515,15 @@ const EmailModal: React.FC<{
               Tushunarli
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => { setEmail(sentEmail); setError(null); setStep('enter') }}
+            className="w-full text-xs text-center py-1"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            Noto'g'ri email? Boshqasini kiriting →
+          </button>
         </div>
       )}
     </ModalShell>

@@ -1045,7 +1045,7 @@ async def resend_verification(body: ResendVerificationRequest, db: Session = Dep
     profile = db.query(Profile).filter(Profile.email == email_lower).first()
 
     # Always return success — don't reveal if email exists
-    if not profile or not profile.password_hash:
+    if not profile:
         return {"ok": True, "message": "Agar bu email ro'yxatdan o'tgan bo'lsa, tasdiqlash havolasi yuborildi."}
 
     if profile.email_verified:
