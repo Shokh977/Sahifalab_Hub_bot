@@ -280,7 +280,7 @@ def get_feed(
 
     paginated = candidates[(page - 1) * page_size : page * page_size]
     if not paginated:
-        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+        return {"posts": [], "total": total, "page": page, "page_size": page_size, "has_more": False}
 
     # 4. Batch-load interaction sets
     paged_posts = [item[2] for item in paginated]
@@ -324,7 +324,7 @@ def get_feed(
         )
         for _, _, post, reposter in paginated
     ]
-    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
+    return {"posts": enriched, "total": total, "page": page, "page_size": page_size, "has_more": (page * page_size) < total}
 
 
 def get_explore(
@@ -360,7 +360,7 @@ def get_explore(
 
     paginated_posts = [p for _, p in scored[(page - 1) * page_size : page * page_size]]
     if not paginated_posts:
-        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+        return {"posts": [], "total": total, "page": page, "page_size": page_size, "has_more": False}
 
     paged_post_ids = [p.id for p in paginated_posts]
     liked_set: set = set()
@@ -387,7 +387,7 @@ def get_explore(
                      is_saved=post.id in saved_set)
         for post in paginated_posts
     ]
-    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
+    return {"posts": enriched, "total": total, "page": page, "page_size": page_size, "has_more": (page * page_size) < total}
 
 
 def save_post(db: Session, post_id: int, user_id: int) -> bool:

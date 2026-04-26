@@ -246,6 +246,52 @@ def _email_to_internal_id(email: str) -> int:
 # AUTH ENDPOINTS
 # ══════════════════════════════════════════════════════════════════════════════
 
+@router.get("/telegram-widget-page")
+async def telegram_widget_page(redirect: str = ""):
+    """
+    Serves a minimal HTML page embedding the Telegram Login Widget.
+    Used by the Android app — opens in WebBrowser, on success redirects
+    to the app deep link (sahifalab://auth/telegram-callback?id=...&hash=...).
+    """
+    from fastapi.responses import HTMLResponse
+    safe_redirect = redirect.replace('"', '%22')
+    content = f"""<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Telegram bilan kirish — SAHIFALAB</title>
+<style>
+  body {{
+    margin:0; display:flex; align-items:center; justify-content:center;
+    min-height:100vh; background:#13141a; font-family:sans-serif;
+  }}
+  .card {{
+    text-align:center; padding:40px 24px;
+  }}
+  h1 {{ color:#e8792f; font-size:24px; margin-bottom:8px; }}
+  p  {{ color:rgba(255,255,255,0.5); font-size:14px; margin-bottom:32px; }}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>SAHIFALAB</h1>
+  <p>Telegram bilan tizimga kirish</p>
+  <script
+    async
+    src="https://telegram.org/js/telegram-widget.js?22"
+    data-telegram-login="{BOT_USERNAME}"
+    data-size="large"
+    data-radius="8"
+    data-auth-url="{safe_redirect}"
+    data-request-access="write">
+  </script>
+</div>
+</body>
+</html>"""
+    return HTMLResponse(content=content, status_code=200)
+
+
 @router.post("/telegram")
 async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
     """Authenticate with Telegram Login Widget data."""
