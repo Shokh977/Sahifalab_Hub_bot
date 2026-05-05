@@ -47,7 +47,8 @@ class PostUpdate(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    content: str = Field(..., min_length=1, max_length=1000)
+    content:   str           = Field(..., min_length=1, max_length=1000)
+    parent_id: Optional[int] = None
 
 
 class CommentUpdate(BaseModel):
@@ -94,6 +95,11 @@ class FollowOut(BaseModel):
 
 class MessageCreate(BaseModel):
     content: str = Field(..., min_length=1, max_length=4000)
+    reply_to_id: Optional[int] = None
+
+
+class ReactionCreate(BaseModel):
+    emoji: str = Field(..., min_length=1, max_length=10)
 
 
 class MessageOut(BaseModel):

@@ -5,7 +5,7 @@ from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, 
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
-from app.api.v1 import social_routes, messenger_routes
+from app.api.v1 import social_routes, messenger_routes, group_routes
 
 api_router = APIRouter()
 
@@ -44,8 +44,9 @@ api_router.include_router(search_router,      prefix="/search",      tags=["sear
 # from the live router to eliminate unauthenticated CRUD attack surface.
 
 # Social ecosystem — mounted under /v1 to match frontend expectations
-api_router.include_router(social_routes.router, prefix="/v1")
+api_router.include_router(social_routes.router,   prefix="/v1")
 api_router.include_router(messenger_routes.router, prefix="/v1")
+api_router.include_router(group_routes.router,     prefix="/v1")
 
 # Jobs & Certificates
 api_router.include_router(jobs.router,         prefix="/jobs")

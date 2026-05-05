@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
-from app.schemas.social_schemas import MessageCreate
+from app.schemas.social_schemas import MessageCreate, ReactionCreate
 from app.services import messenger_service as msvc
 from app.models.social_models import Connection
 
@@ -97,7 +97,7 @@ def send_message(
     user_id: int = Depends(get_current_user_id),
 ):
     try:
-        return msvc.send_message(db, conversation_id, user_id, body.content)
+        return msvc.send_message(db, conversation_id, user_id, body.content, body.reply_to_id)
     except ValueError as e:
         raise HTTPException(400, str(e))
 
@@ -153,6 +153,18 @@ def delete_message(
     if not msvc.delete_message(db, message_id, user_id):
         raise HTTPException(404, "Message not found or not yours")
     return {"ok": True}
+
+
+# ── Reactions ────────────────────────────────────────────────────────────────
+
+@router.post("/messages/{message_id}/react")
+def react_to_message(
+    message_id: int,
+    body: ReactionCreate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return msvc.toggle_reaction(db, message_id, user_id, body.emoji)
 
 
 # ── Unread count ─────────────────────────────────────────────────────────────

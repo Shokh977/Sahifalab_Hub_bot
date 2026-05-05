@@ -3,8 +3,10 @@ Social API routes — posts, likes, comments, follows, feed, discovery.
 """
 
 import asyncio
+import threading
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -17,22 +19,27 @@ from app.models.models import Profile
 
 
 def _fire_notification(user_id: int, notif_type: str, category: str = "SOCIAL", meta: dict = {}):
-    """Fire-and-forget notification from sync context.
+    """Fire-and-forget notification from a sync route (thread-pool context).
 
-    Skips negative/zero IDs — those are email/Google synthetic accounts with no
-    real Telegram chat to push to. Uses run_coroutine_threadsafe which is the
-    correct way to schedule a coroutine from a thread-pool (sync route) context.
+    Sync FastAPI routes run in a thread pool — asyncio.get_event_loop() there
+    returns a non-running loop, so run_coroutine_threadsafe silently does nothing.
+    Instead we spin up a daemon thread with its own event loop so the coroutine
+    always executes regardless of which thread we're called from.
     """
     if user_id <= 0:
-        return  # not a real Telegram user — nothing to notify
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                send_notification(user_id, notif_type, category, meta), loop
-            )
-    except Exception:
-        pass  # no event loop or scheduling failed — skip silently
+        return  # synthetic account (email/Google) — no Telegram push target
+
+    def _run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(send_notification(user_id, notif_type, category, meta))
+        except Exception:
+            pass
+        finally:
+            loop.close()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 router = APIRouter(prefix="/social", tags=["social"])
 
@@ -320,7 +327,7 @@ def get_comments(
     db: Session = Depends(get_db),
     user_id: Optional[int] = Depends(get_optional_user_id),
 ):
-    return svc.get_comments(db, post_id, page)
+    return svc.get_comments(db, post_id, page, viewer_id=user_id)
 
 
 @router.post("/posts/{post_id}/comments")
@@ -330,15 +337,17 @@ def create_comment(
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):
-    result = svc.create_comment(db, post_id, user_id, body.content.strip())
-    post = svc.get_post(db, post_id, user_id)
-    if post and post.get("author", {}).get("telegram_id") and post["author"]["telegram_id"] != user_id:
-        actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
-        _fire_notification(post["author"]["telegram_id"], "comment", "SOCIAL", {
-            "actor_id": user_id,
-            "actor_name": actor.first_name or "" if actor else "",
-            "post_id": post_id,
-        })
+    result = svc.create_comment(db, post_id, user_id, body.content.strip(), body.parent_id)
+    # Notify post author only for top-level comments (replies are notified via reply-notify)
+    if not body.parent_id:
+        post = svc.get_post(db, post_id, user_id)
+        if post and post.get("author", {}).get("telegram_id") and post["author"]["telegram_id"] != user_id:
+            actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+            _fire_notification(post["author"]["telegram_id"], "comment", "SOCIAL", {
+                "actor_id":   user_id,
+                "actor_name": actor.first_name or "" if actor else "",
+                "post_id":    post_id,
+            })
     return result
 
 
@@ -364,6 +373,51 @@ def edit_comment(
     if not result:
         raise HTTPException(404, "Comment not found or not yours")
     return result
+
+
+@router.post("/comments/{comment_id}/like")
+def like_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    svc.like_comment(db, comment_id, user_id)
+    return {"ok": True}
+
+
+@router.delete("/comments/{comment_id}/like")
+def unlike_comment(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    svc.unlike_comment(db, comment_id, user_id)
+    return {"ok": True}
+
+
+@router.post("/comments/{comment_id}/reply-notify")
+def reply_notify(
+    comment_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    """Notify the author of `comment_id` that the current user replied to their comment."""
+    from sqlalchemy import text as _text
+    row = db.execute(
+        _text("SELECT author_id FROM post_comments WHERE id = :id"),
+        {"id": comment_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "Comment not found")
+    author_id = row[0]
+    if author_id != user_id:
+        actor = db.query(Profile).filter(Profile.telegram_id == user_id).first()
+        _fire_notification(author_id, "comment_reply", "SOCIAL", {
+            "actor_id":   user_id,
+            "actor_name": actor.first_name or "" if actor else "",
+            "comment_id": comment_id,
+        })
+    return {"ok": True}
 
 
 # ── Follows ──────────────────────────────────────────────────────────────────
@@ -413,6 +467,43 @@ def get_following(
     user_id: int = Depends(get_current_user_id),
 ):
     return svc.get_following(db, target_id, page)
+
+
+@router.get("/users/{target_id}/connections")
+def get_user_connections(
+    target_id: int,
+    db: Session = Depends(get_db),
+):
+    """Public list of a user's accepted connections (up to 100)."""
+    rows = db.execute(text("""
+        SELECT
+            p.telegram_id,
+            p.first_name,
+            p.site_username AS username,
+            p.photo_url,
+            p.headline
+        FROM connections c
+        JOIN profiles p
+          ON p.telegram_id = CASE
+               WHEN c.requester_id = :tid THEN c.receiver_id
+               ELSE c.requester_id
+             END
+        WHERE (c.requester_id = :tid OR c.receiver_id = :tid)
+          AND c.status = 'accepted'
+        ORDER BY c.accepted_at DESC
+        LIMIT 100
+    """), {"tid": target_id}).mappings().fetchall()
+
+    return [
+        {
+            "telegram_id": r["telegram_id"],
+            "first_name":  r["first_name"] or "",
+            "username":    r["username"],
+            "photo_url":   r["photo_url"],
+            "headline":    r["headline"],
+        }
+        for r in rows
+    ]
 
 
 # ── Profile / Discovery ─────────────────────────────────────────────────────

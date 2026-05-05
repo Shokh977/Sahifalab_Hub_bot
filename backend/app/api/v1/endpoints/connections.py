@@ -124,12 +124,7 @@ def _ensure_follow(db: Session, follower_id: int, following_id: int) -> bool:
     if existing:
         return False
     db.add(Follow(follower_id=follower_id, following_id=following_id))
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: Profile.following_count + 1}, synchronize_session=False
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: Profile.followers_count + 1}, synchronize_session=False
-    )
+    # counts maintained by sync_follower_counts DB trigger (migration 030)
     return True
 
 
@@ -142,14 +137,7 @@ def _remove_follow(db: Session, follower_id: int, following_id: int) -> bool:
     if not follow:
         return False
     db.delete(follow)
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: func.greatest(Profile.following_count - 1, 0)},
-        synchronize_session=False,
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: func.greatest(Profile.followers_count - 1, 0)},
-        synchronize_session=False,
-    )
+    # counts maintained by sync_follower_counts DB trigger (migration 030)
     return True
 
 

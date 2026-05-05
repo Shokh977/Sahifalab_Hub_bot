@@ -8,7 +8,7 @@ from sqlalchemy import desc, func, and_, or_, exists, text
 from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
-from app.models.social_models import Post, PostLike, PostComment, Follow, Repost, PostSave, PollVote
+from app.models.social_models import Post, PostLike, PostComment, CommentLike, Follow, Repost, PostSave, PollVote
 from app.models.models import Profile
 
 
@@ -676,7 +676,8 @@ def unlike_post(db: Session, post_id: int, user_id: int) -> bool:
 
 # ── Comments ─────────────────────────────────────────────────────────────────
 
-def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50) -> List[dict]:
+def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50,
+                 viewer_id: Optional[int] = None) -> List[dict]:
     comments = (
         db.query(PostComment)
         .filter(PostComment.post_id == post_id)
@@ -685,37 +686,81 @@ def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50) 
         .limit(page_size)
         .all()
     )
+    if not comments:
+        return []
+
     author_ids = list({c.author_id for c in comments})
     authors_map = {
         p.telegram_id: p
         for p in db.query(Profile).filter(Profile.telegram_id.in_(author_ids)).all()
-    } if author_ids else {}
+    }
+
+    # Fetch which comments the viewer has liked (single query)
+    liked_ids: set[int] = set()
+    if viewer_id:
+        comment_ids = [c.id for c in comments]
+        rows = db.query(CommentLike.comment_id).filter(
+            CommentLike.comment_id.in_(comment_ids),
+            CommentLike.user_id == viewer_id,
+        ).all()
+        liked_ids = {r.comment_id for r in rows}
 
     return [
         {
-            "id": c.id,
-            "post_id": c.post_id,
-            "author": _profile_to_author(authors_map.get(c.author_id)),
-            "content": c.content,
-            "created_at": c.created_at,
+            "id":          c.id,
+            "post_id":     c.post_id,
+            "parent_id":   c.parent_id,
+            "author":      _profile_to_author(authors_map.get(c.author_id)),
+            "content":     c.content,
+            "likes_count": c.likes_count,
+            "is_liked":    c.id in liked_ids,
+            "created_at":  c.created_at,
         }
         for c in comments
     ]
 
 
-def create_comment(db: Session, post_id: int, author_id: int, content: str) -> dict:
-    comment = PostComment(post_id=post_id, author_id=author_id, content=content)
+def create_comment(db: Session, post_id: int, author_id: int, content: str,
+                   parent_id: Optional[int] = None) -> dict:
+    comment = PostComment(
+        post_id=post_id, author_id=author_id, content=content, parent_id=parent_id,
+    )
     db.add(comment)
     db.commit()
     db.refresh(comment)
     author = db.query(Profile).filter(Profile.telegram_id == author_id).first()
     return {
-        "id": comment.id,
-        "post_id": comment.post_id,
-        "author": _profile_to_author(author),
-        "content": comment.content,
-        "created_at": comment.created_at,
+        "id":          comment.id,
+        "post_id":     comment.post_id,
+        "parent_id":   comment.parent_id,
+        "author":      _profile_to_author(author),
+        "content":     comment.content,
+        "likes_count": 0,
+        "is_liked":    False,
+        "created_at":  comment.created_at,
     }
+
+
+def like_comment(db: Session, comment_id: int, user_id: int) -> bool:
+    exists_ = db.query(CommentLike).filter(
+        CommentLike.comment_id == comment_id, CommentLike.user_id == user_id
+    ).first()
+    if exists_:
+        return False
+    db.add(CommentLike(comment_id=comment_id, user_id=user_id))
+    db.commit()
+    return True
+
+
+def unlike_comment(db: Session, comment_id: int, user_id: int) -> bool:
+    like = db.query(CommentLike).filter(
+        CommentLike.comment_id == comment_id, CommentLike.user_id == user_id
+    ).first()
+    if not like:
+        return False
+    db.delete(like)
+    db.commit()
+    return True
 
 
 def delete_comment(db: Session, comment_id: int, user_id: int) -> bool:
@@ -760,13 +805,7 @@ def follow_user(db: Session, follower_id: int, following_id: int) -> bool:
     if existing:
         return False
     db.add(Follow(follower_id=follower_id, following_id=following_id))
-    # Update denormalized counts
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: Profile.following_count + 1}, synchronize_session=False
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: Profile.followers_count + 1}, synchronize_session=False
-    )
+    # counts are maintained by the sync_follower_counts DB trigger (migration 030)
     db.commit()
     return True
 
@@ -778,13 +817,7 @@ def unfollow_user(db: Session, follower_id: int, following_id: int) -> bool:
     if not follow:
         return False
     db.delete(follow)
-    # Update denormalized counts
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: func.greatest(Profile.following_count - 1, 0)}, synchronize_session=False
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: func.greatest(Profile.followers_count - 1, 0)}, synchronize_session=False
-    )
+    # counts are maintained by the sync_follower_counts DB trigger (migration 030)
     db.commit()
     return True
 

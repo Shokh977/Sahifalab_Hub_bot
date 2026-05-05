@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   MapPin, Link2, Users, Calendar, CheckCircle2, Shield,
   Star, Zap, Eye, BookOpen, Award, Clock, Share2,
-  UserPlus, UserCheck, UserMinus, MessageCircle, Edit3,
+  UserPlus, UserCheck, UserMinus, MessageSquare, Edit3,
   ChevronRight, ChevronDown, X, Plus, GripVertical, Copy,
   Loader2, AlertCircle, ExternalLink, ArrowLeft,
 } from 'lucide-react'
@@ -659,6 +659,7 @@ const ProfilePage: React.FC = () => {
           <RelListModal
             profile={profile}
             mode={relModal}
+            myId={myId}
             onClose={() => setRelModal(null)}
           />
         )}
@@ -821,9 +822,9 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
       </div>
 
       {/* ── Action buttons ── */}
-      <div className="flex gap-2 pt-1 flex-wrap">
+      <div className="flex flex-col gap-2 pt-1">
         {isOwn ? (
-          <>
+          <div className="flex gap-2 flex-wrap">
             <button onClick={onEdit}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.10] text-white text-sm font-medium border border-white/[0.08] transition-colors">
               <Edit3 className="w-3.5 h-3.5" /> Profilni tahrirlash
@@ -832,116 +833,113 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.10] text-white text-sm font-medium border border-white/[0.08] transition-colors">
               <Share2 className="w-3.5 h-3.5" /> Ulashish
             </button>
-          </>
+          </div>
         ) : (
           <>
-            {/* ── Connect button (with dropdown when connected or pending_sent) ── */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  if (status === 'accepted' || status === 'pending_sent') {
-                    setConnDropOpen(v => !v)
-                  } else {
-                    onConnect()
+            {/* ── Row 1: Bog'lanish (flex-1) + Kuzatish (flex-1) ── */}
+            <div className="flex gap-2">
+
+              {/* Connect button */}
+              <div className="relative flex-1">
+                <button
+                  onClick={() => {
+                    if (status === 'accepted' || status === 'pending_sent') {
+                      setConnDropOpen(v => !v)
+                    } else {
+                      onConnect()
+                    }
+                  }}
+                  disabled={connLoading}
+                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
+                    status === 'accepted'
+                      ? 'bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10'
+                      : status === 'pending_sent'
+                      ? 'bg-white/[0.04] text-white/40 border border-white/[0.06]'
+                      : status === 'pending_received'
+                      ? 'bg-[#e8792f] hover:bg-[#c44a1a] text-white'
+                      : 'bg-[#e8792f] hover:bg-[#c44a1a] text-white'
+                  }`}
+                >
+                  {connLoading
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : status === 'accepted'
+                    ? <UserCheck className="w-3.5 h-3.5" />
+                    : <UserPlus className="w-3.5 h-3.5" />
                   }
-                }}
-                disabled={connLoading}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
-                  connBtn.variant === 'primary'
-                    ? 'bg-[#e8792f] hover:bg-[#c44a1a] text-white'
-                    : connBtn.variant === 'active'
-                    ? 'bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10'
-                    : 'bg-white/[0.04] text-white/40 border border-white/[0.06]'
-                }`}
-              >
-                {connLoading
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <connBtn.icon className="w-3.5 h-3.5" />
-                }
-                {connBtn.label}
-                {(status === 'accepted' || status === 'pending_sent') && (
-                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                  {status === 'accepted'     ? "Bog'langan"
+                   : status === 'pending_sent'     ? "So'rov yuborilgan"
+                   : status === 'pending_received' ? 'Qabul qilish'
+                   : "Bog'lanish"}
+                  {(status === 'accepted' || status === 'pending_sent') && (
+                    <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                  )}
+                </button>
+                {connDropOpen && (
+                  <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[160px]">
+                    {status === 'accepted' && (
+                      <button
+                        onClick={() => { setConnDropOpen(false); onConnect() }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
+                      >
+                        <UserMinus className="w-3.5 h-3.5" /> Aloqani uzish
+                      </button>
+                    )}
+                    {status === 'pending_sent' && (
+                      <button
+                        onClick={() => { setConnDropOpen(false); onConnect() }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
+                      >
+                        <X className="w-3.5 h-3.5" /> Bekor qilish
+                      </button>
+                    )}
+                  </div>
                 )}
-              </button>
-              {connDropOpen && (
-                <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[160px]">
-                  {status === 'accepted' && (
+              </div>
+
+              {/* Follow button */}
+              <div className="relative flex-1">
+                <button
+                  onClick={() => {
+                    if (profile.is_following) setFollowDropOpen(v => !v)
+                    else onFollow()
+                  }}
+                  disabled={followLoading}
+                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
+                    profile.is_following
+                      ? 'bg-transparent border border-white/[0.15] text-white/70 hover:bg-white/[0.06]'
+                      : 'bg-white/[0.06] hover:bg-white/[0.10] text-white border border-white/[0.08]'
+                  }`}
+                >
+                  {followLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {profile.is_following ? 'Kuzatilgan' : 'Kuzatish'}
+                  {profile.is_following && <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />}
+                </button>
+                {followDropOpen && (
+                  <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[180px]">
                     <button
-                      onClick={() => { setConnDropOpen(false); onConnect() }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
+                      onClick={() => { setFollowDropOpen(false); onFollow() }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors"
                     >
-                      <UserMinus className="w-3.5 h-3.5" /> Aloqani uzish
+                      Kuzatishni to'xtatish
                     </button>
-                  )}
-                  {status === 'pending_sent' && (
-                    <button
-                      onClick={() => { setConnDropOpen(false); onConnect() }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
-                    >
-                      <X className="w-3.5 h-3.5" /> Bekor qilish
-                    </button>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* ── Accept / Decline (pending_received) ── */}
-            {status === 'pending_received' && (
-              <button
-                onClick={onConnect}
-                disabled={connLoading}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-[#e8792f] hover:bg-[#c44a1a] text-white transition-all disabled:opacity-60"
-              >
-                {connLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-                Qabul qilish
-              </button>
-            )}
-
-            {/* ── Follow button (with dropdown when following) ── */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  if (profile.is_following) setFollowDropOpen(v => !v)
-                  else onFollow()
-                }}
-                disabled={followLoading}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
-                  profile.is_following
-                    ? 'bg-transparent border border-white/[0.15] text-white/70 hover:bg-white/[0.06]'
-                    : 'bg-white/[0.06] hover:bg-white/[0.10] text-white border border-white/[0.08]'
-                }`}
-              >
-                {followLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                {profile.is_following ? 'Kuzatilmoqda' : 'Kuzatish'}
-                {profile.is_following && <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />}
-              </button>
-              {followDropOpen && (
-                <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[180px]">
-                  <button
-                    onClick={() => { setFollowDropOpen(false); onFollow() }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors"
-                  >
-                    Kuzatishni to'xtatish
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ── Message button (only when can_message) ── */}
-            {profile.can_message ? (
-              <button onClick={onMessage}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10 text-sm font-semibold transition-colors">
-                <MessageCircle className="w-3.5 h-3.5" /> Xabar
-              </button>
-            ) : (
-              <button
-                title="Xabar yuborish uchun avval bog'laning"
-                disabled
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.03] text-white/20 border border-white/[0.05] text-sm font-semibold cursor-not-allowed"
-              >
-                <MessageCircle className="w-3.5 h-3.5" /> Xabar
-              </button>
-            )}
+            {/* ── Row 2: Xabar — full width, disabled unless connected ── */}
+            <button
+              onClick={status === 'accepted' ? onMessage : undefined}
+              disabled={status !== 'accepted'}
+              title={status !== 'accepted' ? "Xabar yuborish uchun avval bog'laning" : undefined}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                status === 'accepted'
+                  ? 'bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10 cursor-pointer'
+                  : 'bg-white/[0.03] text-white/20 border border-white/[0.05] cursor-not-allowed'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> Xabar
+            </button>
           </>
         )}
       </div>
@@ -954,22 +952,24 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const StatsRow: React.FC<{ profile: ProfileData }> = ({ profile }) => {
+  const levelTitle = getLevelTitle(profile.level ?? 1)
   const stats = [
-    { label: 'XP', value: (profile.total_xp ?? 0).toLocaleString(), icon: Zap, color: '#e8792f' },
-    { label: 'Fokus', value: `${profile.focus_hours ?? 0}h`, icon: Clock, color: '#60a5fa' },
-    { label: 'Testlar', value: (profile.courses_completed ?? 0).toString(), icon: Award, color: '#34d399' },
-    { label: "Ko'rishlar", value: (profile.profile_views_week ?? 0).toString(), icon: Eye, color: '#a78bfa' },
+    { label: 'XP',          value: (profile.total_xp ?? 0).toLocaleString(),    icon: Zap,   color: '#e8792f' },
+    { label: 'Fokus',       value: `${profile.focus_hours ?? 0}h`,               icon: Clock, color: '#60a5fa' },
+    { label: 'Sertifikat',  value: (profile.certificates_count ?? 0).toString(), icon: Award, color: '#34d399' },
+    { label: "Ko'rishlar",  value: (profile.profile_views_week ?? 0).toString(), icon: Eye,   color: '#a78bfa' },
+    { label: levelTitle,    value: `Lv.${profile.level ?? 1}`,                   icon: Star,  color: '#f59e0b' },
   ]
 
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className="grid grid-cols-5 gap-2">
       {stats.map(s => {
         const Icon = s.icon
         return (
-          <div key={s.label} className="rounded-xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
-            <Icon className="w-4 h-4 mx-auto mb-1.5" style={{ color: s.color }} />
-            <p className="text-base font-bold text-white leading-none">{s.value}</p>
-            <p className="text-[10px] text-white/40 mt-1">{s.label}</p>
+          <div key={s.label} className="rounded-xl bg-[#1c1d27] border border-white/[0.06] p-2.5 text-center">
+            <Icon className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: s.color }} />
+            <p className="text-sm font-bold text-white leading-none">{s.value}</p>
+            <p className="text-[9px] text-white/40 mt-1 leading-tight truncate">{s.label}</p>
           </div>
         )
       })}
@@ -1428,8 +1428,10 @@ const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; foc
 }) => {
   const [heatmap, setHeatmap]     = useState<HeatmapDay[]>([])
   const [range, setRange]         = useState<TimeRange>('year')
+  const [heatmapLoading, setHeatmapLoading] = useState(true)
 
   useEffect(() => {
+    setHeatmapLoading(true)
     api.client.get('/api/profiles/heatmap', { params: { telegram_id: telegramId, days: 365 } })
       .then(r => {
         const raw = r.data || []
@@ -1442,6 +1444,7 @@ const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; foc
         })))
       })
       .catch(() => {})
+      .finally(() => setHeatmapLoading(false))
   }, [telegramId])
 
   const today = useMemo(() => {
@@ -1515,16 +1518,22 @@ const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; foc
     return weeks
   }, [today, dataMap])
 
-  const activeDays  = heatmap.filter(d => d.total > 0).length
+  const activeDays   = heatmap.filter(d => d.total > 0).length
   const totalQuizzes = heatmap.reduce((s, d) => s + d.quiz, 0)
   const totalFocusXP = heatmap.reduce((s, d) => s + d.focus_xp, 0)
+
+  // Derive focus hours from heatmap DB data (25 XP ≈ 1 focus session ≈ ~1h)
+  // Fall back to profile.focus_hours while heatmap is still loading
+  const displayFocusHours = !heatmapLoading && heatmap.length > 0
+    ? Math.round(totalFocusXP / 25 * 10) / 10
+    : focusHours
 
   return (
     <div className="space-y-4">
       {/* Stats row */}
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
-          <p className="text-xl font-bold text-[#e8792f]">{focusHours}</p>
+          <p className="text-xl font-bold text-[#e8792f]">{displayFocusHours}h</p>
           <p className="text-[10px] text-white/40 mt-0.5">soat fokus</p>
         </div>
         <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
@@ -1541,7 +1550,10 @@ const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; foc
       <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
         {/* Header + range tabs */}
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-bold text-white">Faollik</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-white">Faollik</h2>
+            {heatmapLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-white/30" />}
+          </div>
           <div className="flex gap-1 bg-white/[0.05] rounded-lg p-0.5">
             {(['week', 'month', 'year'] as TimeRange[]).map(r => (
               <button
@@ -1553,7 +1565,7 @@ const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; foc
                     : 'text-white/40 hover:text-white/60'
                 }`}
               >
-                {r === 'week' ? 'Hafta' : r === 'month' ? 'Oy' : 'Yil'}
+                {r === 'week' ? 'Xafta' : r === 'month' ? 'Oy' : 'Yil'}
               </button>
             ))}
           </div>
@@ -1824,6 +1836,51 @@ const YutuqlarTab: React.FC<{ profile: ProfileData; viewerLevel: number }> = ({ 
           )}
         </div>
       </div>
+
+      {/* ── Level comparison (only when viewing another user) ── */}
+      {viewerLevel !== currentLevel && viewerLevel > 0 && (
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5 space-y-4">
+          <h3 className="text-sm font-bold text-white">Daraja taqqoslash</h3>
+
+          {/* Profile user */}
+          <div>
+            <div className="flex justify-between text-xs text-white/50 mb-1.5">
+              <span>{getLevelEmoji(currentLevel)} {getLevelTitle(currentLevel)}</span>
+              <span className="text-white/30">Lv. {currentLevel} / 29</span>
+            </div>
+            <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-[#e8792f] to-[#c44a1a] transition-all duration-700"
+                style={{ width: `${Math.round((currentLevel / 29) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Viewer (Siz) */}
+          <div>
+            <div className="flex justify-between text-xs text-violet-400/80 mb-1.5">
+              <span className="flex items-center gap-1">
+                <span className="text-[8px] font-bold border border-violet-500/40 rounded px-1 py-0.5 text-violet-400">SIZ</span>
+                {getLevelEmoji(viewerLevel)} {getLevelTitle(viewerLevel)}
+              </span>
+              <span className="text-violet-400/50">Lv. {viewerLevel} / 29</span>
+            </div>
+            <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-violet-500/70 transition-all duration-700"
+                style={{ width: `${Math.round((viewerLevel / 29) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-white/25 pt-1">
+            {currentLevel > viewerLevel
+              ? `${profile.first_name} sizdan ${currentLevel - viewerLevel} daraja oldinda`
+              : `Siz ${profile.first_name}dan ${viewerLevel - currentLevel} daraja oldindasiz`
+            }
+          </p>
+        </div>
+      )}
 
       {/* 29-level grid */}
       <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
@@ -2457,8 +2514,9 @@ interface RelUser {
 const RelListModal: React.FC<{
   profile: ProfileData
   mode: 'connections' | 'followers' | 'following'
+  myId: number | undefined
   onClose: () => void
-}> = ({ profile, mode, onClose }) => {
+}> = ({ profile, mode, myId, onClose }) => {
   const [users, setUsers] = useState<RelUser[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -2472,8 +2530,13 @@ const RelListModal: React.FC<{
   useEffect(() => {
     setLoading(true)
     const tid = profile.telegram_id
+    const isOwn = !!myId && myId === tid
+
+    // For connections: use current-user endpoint when viewing own profile,
+    // otherwise use the public per-user connections endpoint so that User B's
+    // connections are shown, not User A's.
     const url = mode === 'connections'
-      ? `/api/connections?search=`
+      ? (isOwn ? `/api/connections` : `/api/v1/social/users/${tid}/connections`)
       : mode === 'followers'
       ? `/api/v1/social/users/${tid}/followers`
       : `/api/v1/social/users/${tid}/following`
@@ -2486,7 +2549,7 @@ const RelListModal: React.FC<{
           return {
             id:         u.telegram_id ?? u.id,
             name:       u.first_name ?? u.full_name ?? u.name ?? '',
-            username:   u.username ?? null,
+            username:   u.username ?? u.site_username ?? null,
             avatar_url: u.photo_url ?? u.avatar_url ?? null,
             headline:   u.headline ?? null,
           }
@@ -2494,7 +2557,7 @@ const RelListModal: React.FC<{
       })
       .catch(() => setUsers([]))
       .finally(() => setLoading(false))
-  }, [mode, profile.telegram_id])
+  }, [mode, profile.telegram_id, myId])
 
   const filtered = users.filter(u =>
     !search ||
