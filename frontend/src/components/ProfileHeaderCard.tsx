@@ -152,7 +152,7 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
 
           {/* Name + badges + edit icon */}
           <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 group/name">
-            <span className="text-lg font-bold text-gray-900 dark:text-white truncate">
+            <span className="text-lg font-bold text-gray-900 dark:text-white truncate max-w-[240px]">
               {displayName}
             </span>
             {isTeacher && (

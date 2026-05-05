@@ -904,7 +904,10 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
                 {replyingTo && (
                   <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#e8792f]/10 border-l-2 border-[#e8792f] mx-0 mt-1">
                     <CornerDownRight className="w-3 h-3 text-[#e8792f] flex-shrink-0" />
-                    <span className="text-[11px] text-[#e8792f] flex-1">{replyingTo.authorName}ga javob</span>
+                    <span className="text-[11px] text-[#e8792f] flex-1 flex items-center gap-0.5 min-w-0">
+                      <span className="truncate max-w-[120px]">{replyingTo.authorName}</span>
+                      <span className="flex-shrink-0">ga javob</span>
+                    </span>
                     <button onClick={() => setReplyingTo(null)} className="text-white/30 hover:text-white/60 transition-colors">
                       <X className="w-3 h-3" />
                     </button>
