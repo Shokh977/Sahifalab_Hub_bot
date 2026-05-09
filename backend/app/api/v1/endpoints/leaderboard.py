@@ -3,12 +3,13 @@ leaderboard.py — XP leaderboard.
 
 GET /api/leaderboard/weekly?scope=global|friends&period=week|month|all
 
-  period=week   — XP earned since Monday of the current week (xp_logs)
-  period=month  — XP earned since 1st of the current month (xp_logs)
-  period=all    — All-time total XP (profiles.total_xp, covers all 1400+ users)
+  period=week   — XP + focus minutes since Monday of the current week
+  period=month  — XP + focus minutes since 1st of the current month
+  period=all    — All-time total XP + total focus minutes
 
-  global  — top 100 users
-  friends — top 50 followed users + caller
+Each entry includes:
+  score   — XP earned in the period
+  minutes — focus session minutes in the period
 """
 
 from typing import Optional
@@ -36,10 +37,9 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 
 
 def _since(period: str) -> str:
-    """Return a SQL expression for the start of the given period."""
     if period == "week":
-        return "date_trunc('week', NOW())"   # Monday 00:00 UTC of current week
-    return "date_trunc('month', NOW())"      # 1st of current month 00:00 UTC
+        return "date_trunc('week', NOW())"
+    return "date_trunc('month', NOW())"
 
 
 @router.get("/weekly")
@@ -54,8 +54,6 @@ async def weekly_leaderboard(
     if period not in ("week", "month", "all"):
         raise HTTPException(status_code=422, detail="period must be 'week', 'month', or 'all'")
 
-    # ── Build main ranking SQL ────────────────────────────────────────────────
-
     if period == "all":
         if scope == "friends":
             sql = text("""
@@ -65,38 +63,51 @@ async def weekly_leaderboard(
                     WHERE  follower_id = :uid
                     UNION  SELECT :uid
                 ),
+                focus_all AS (
+                    SELECT user_id, SUM(minutes) AS minutes
+                    FROM   focus_sessions
+                    GROUP  BY user_id
+                ),
                 ranked AS (
                     SELECT
                         p.telegram_id,
                         p.first_name,
-                        p.site_username  AS username,
+                        p.site_username          AS username,
                         p.photo_url,
                         p.level,
-                        COALESCE(p.total_xp, 0) AS score,
+                        COALESCE(p.total_xp, 0)  AS score,
+                        COALESCE(f.minutes, 0)   AS minutes,
                         RANK() OVER (ORDER BY COALESCE(p.total_xp, 0) DESC) AS rank
                     FROM profiles p
                     JOIN pool ON pool.telegram_id = p.telegram_id
+                    LEFT JOIN focus_all f ON f.user_id = p.telegram_id
                 )
                 SELECT * FROM ranked ORDER BY rank LIMIT 50
             """)
         else:
             sql = text("""
-                WITH ranked AS (
+                WITH focus_all AS (
+                    SELECT user_id, SUM(minutes) AS minutes
+                    FROM   focus_sessions
+                    GROUP  BY user_id
+                ),
+                ranked AS (
                     SELECT
-                        telegram_id,
-                        first_name,
-                        site_username    AS username,
-                        photo_url,
-                        level,
-                        COALESCE(total_xp, 0) AS score,
-                        RANK() OVER (ORDER BY COALESCE(total_xp, 0) DESC) AS rank
-                    FROM profiles
-                    WHERE COALESCE(total_xp, 0) > 0
+                        p.telegram_id,
+                        p.first_name,
+                        p.site_username          AS username,
+                        p.photo_url,
+                        p.level,
+                        COALESCE(p.total_xp, 0)  AS score,
+                        COALESCE(f.minutes, 0)   AS minutes,
+                        RANK() OVER (ORDER BY COALESCE(p.total_xp, 0) DESC) AS rank
+                    FROM profiles p
+                    LEFT JOIN focus_all f ON f.user_id = p.telegram_id
+                    WHERE COALESCE(p.total_xp, 0) > 0
                 )
                 SELECT * FROM ranked ORDER BY rank LIMIT 100
             """)
     else:
-        # week or month — sum from xp_logs since the period start
         since = _since(period)
         if scope == "friends":
             sql = text(f"""
@@ -113,17 +124,27 @@ async def weekly_leaderboard(
                       AND  user_id IN (SELECT telegram_id FROM pool)
                     GROUP  BY user_id
                 ),
+                focus_period AS (
+                    SELECT user_id, SUM(minutes) AS minutes
+                    FROM   focus_sessions
+                    WHERE  created_at >= {since}
+                      AND  user_id IN (SELECT telegram_id FROM pool)
+                    GROUP  BY user_id
+                ),
                 ranked AS (
                     SELECT
                         p.telegram_id,
                         p.first_name,
-                        p.site_username  AS username,
+                        p.site_username        AS username,
                         p.photo_url,
                         p.level,
                         x.score,
+                        COALESCE(fp.minutes, 0) AS minutes,
                         RANK() OVER (ORDER BY x.score DESC) AS rank
                     FROM profiles p
-                    JOIN xp_period x ON x.user_id = p.telegram_id
+                    JOIN pool        ON pool.telegram_id = p.telegram_id
+                    JOIN xp_period x ON x.user_id        = p.telegram_id
+                    LEFT JOIN focus_period fp ON fp.user_id = p.telegram_id
                 )
                 SELECT * FROM ranked ORDER BY rank LIMIT 50
             """)
@@ -135,17 +156,25 @@ async def weekly_leaderboard(
                     WHERE  created_at >= {since}
                     GROUP  BY user_id
                 ),
+                focus_period AS (
+                    SELECT user_id, SUM(minutes) AS minutes
+                    FROM   focus_sessions
+                    WHERE  created_at >= {since}
+                    GROUP  BY user_id
+                ),
                 ranked AS (
                     SELECT
                         p.telegram_id,
                         p.first_name,
-                        p.site_username  AS username,
+                        p.site_username        AS username,
                         p.photo_url,
                         p.level,
                         x.score,
+                        COALESCE(fp.minutes, 0) AS minutes,
                         RANK() OVER (ORDER BY x.score DESC) AS rank
                     FROM profiles p
                     JOIN xp_period x ON x.user_id = p.telegram_id
+                    LEFT JOIN focus_period fp ON fp.user_id = p.telegram_id
                 )
                 SELECT * FROM ranked ORDER BY rank LIMIT 100
             """)
@@ -166,16 +195,16 @@ async def weekly_leaderboard(
             "photo_url":   r.photo_url,
             "level":       int(r.level or 1),
             "score":       int(r.score),
+            "minutes":     int(r.minutes),
             "is_me":       is_me,
         })
 
-    # ── Caller rank when outside the top list ─────────────────────────────────
+    # Caller rank when outside the top list
     if my_rank is None and scope == "global":
         if period == "all":
             rank_row = db.execute(
                 text("""
-                    SELECT COUNT(*) + 1 AS rank
-                    FROM profiles
+                    SELECT COUNT(*) + 1 AS rank FROM profiles
                     WHERE COALESCE(total_xp, 0) > (
                         SELECT COALESCE(total_xp, 0) FROM profiles WHERE telegram_id = :uid
                     )
