@@ -51,44 +51,46 @@ skills_router  = APIRouter(tags=["skills"])
 # Must mirror the SQL calculate_level_from_xp() function (see 038_xp_gamification).
 
 _LEVEL_NAMES = {
-    1:  "Yangi boshlash",
-    2:  "O'rganuvchi",
-    3:  "O'rganuvchi",
-    4:  "Rivojlanuvchi",
-    5:  "Rivojlanuvchi",
-    6:  "Rivojlanuvchi",
-    7:  "Faol",
-    8:  "Faol",
-    9:  "Faol",
-    10: "Mutaxassis",
-    11: "Mutaxassis",
-    12: "Mutaxassis",
-    13: "Tajribali",
-    14: "Tajribali",
-    15: "Tajribali",
-    16: "Tajribali",
-    17: "Senior",
-    18: "Senior",
-    19: "Senior",
-    20: "Senior",
-    21: "Ekspert",
-    22: "Ekspert",
-    23: "Ekspert",
-    24: "Ekspert",
-    25: "Usta",
-    26: "Usta",
-    27: "Grandmaster",
+    1:  "Navkar",
+    2:  "Chokar",
+    3:  "G'ulom",
+    4:  "Yasovul",
+    5:  "Munshiy",
+    6:  "Mirzo",
+    7:  "Mahram",
+    8:  "Ko'kalosh",
+    9:  "To'qsabo",
+    10: "Yuzboshi",
+    11: "Mingboshi",
+    12: "Darug'a",
+    13: "Parvonachi",
+    14: "Shog'ovul",
+    15: "Otaliq",
+    16: "Inoq",
+    17: "Bijiy",
+    18: "Bek",
+    19: "Biy",
+    20: "Beklarbegi",
+    21: "Noib",
+    22: "Qo'shbegi",
+    23: "Amir",
+    24: "Sulton",
+    25: "Xon",
+    26: "Xoqon",
+    27: "Sohibqiron",
+    28: "Shahanshoh",
+    29: "Zulqarnayn",
 }
 
 
 def _level_name(level: int) -> str:
-    return _LEVEL_NAMES.get(level, "Grandmaster")
+    return _LEVEL_NAMES.get(level, "Zulqarnayn")
 
 
 def _next_level_xp(level: int) -> int:
     """XP required to reach the next level (mirrors SQL formula)."""
-    if level >= 27:
-        return 0  # already max level
+    if level >= 29:
+        return 0  # max level reached
     return math.ceil(100 * (level + 1) ** 2.5)
 
 
