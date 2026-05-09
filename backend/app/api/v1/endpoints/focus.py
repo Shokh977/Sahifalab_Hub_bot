@@ -6,6 +6,7 @@ GET  /api/focus/stats      — today/week/streak stats for the caller
 GET  /api/focus/weekly     — 7-day breakdown [{ date, minutes, goal_met }]
 """
 
+import json
 from datetime import datetime, UTC, timedelta
 from typing import Optional
 
@@ -75,6 +76,22 @@ async def complete_focus_session(
         {"min": body.minutes, "uid": caller_id},
     )
     db.commit()
+
+    # Append focus session to activity_log (best-effort, non-fatal)
+    try:
+        db.execute(
+            text("""
+                INSERT INTO activity_log (user_id, activity_type, metadata)
+                VALUES (:uid, 'focus_session', :meta::jsonb)
+            """),
+            {
+                "uid":  caller_id,
+                "meta": json.dumps({"minutes": body.minutes, "xp": result["xp_added"]}),
+            },
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
 
     row = db.execute(
         text("SELECT total_xp, level, streak_days FROM profiles WHERE telegram_id = :uid"),
