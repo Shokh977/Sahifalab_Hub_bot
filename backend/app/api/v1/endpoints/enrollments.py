@@ -195,16 +195,45 @@ async def my_enrollments(authorization: Optional[str] = Header(None)):
     _ensure_supabase()
 
     async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.get(
+        # Step 1: get enrolled course IDs (no join — avoids FK schema cache dependency)
+        enroll_res = await client.get(
             f"{SUPABASE_URL}/rest/v1/course_enrollments",
             params={
                 "student_id": f"eq.{caller_id}",
-                "is_active": "eq.true",
-                "select": "course_id, created_at, courses(id, title, slug, thumbnail_url, is_paid, price, total_lessons, total_duration_minutes, enrolled_count, rating, is_published)",
-                "order": "created_at.desc",
+                "is_active":  "eq.true",
+                "select":     "course_id, created_at",
+                "order":      "created_at.desc",
             },
             headers=_supabase_headers(),
         )
-    if res.status_code != 200:
-        raise HTTPException(status_code=502, detail=f"Supabase error: {res.text}")
-    return res.json()
+    if enroll_res.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Supabase error: {enroll_res.text}")
+
+    enrollments = enroll_res.json()
+    if not enrollments:
+        return []
+
+    # Step 2: fetch course details for those IDs in one query
+    course_ids = ",".join(str(e["course_id"]) for e in enrollments)
+    async with httpx.AsyncClient(timeout=10) as client:
+        courses_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={
+                "id":     f"in.({course_ids})",
+                "select": "id, title, slug, thumbnail_url, is_paid, price, total_lessons, total_duration_minutes, enrolled_count, rating, is_published",
+            },
+            headers=_supabase_headers(),
+        )
+    courses_by_id = (
+        {c["id"]: c for c in courses_res.json()}
+        if courses_res.status_code == 200 else {}
+    )
+
+    return [
+        {
+            "course_id":  e["course_id"],
+            "created_at": e["created_at"],
+            "courses":    courses_by_id.get(e["course_id"]),
+        }
+        for e in enrollments
+    ]
