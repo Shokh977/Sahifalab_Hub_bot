@@ -1,5 +1,5 @@
 from datetime import datetime, UTC
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, Date, ForeignKey, Table, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from app.db.session import Base
@@ -53,8 +53,12 @@ class Profile(Base):
     account_type       = Column(String(50), default='student')   # student | teacher | company | admin
     user_settings      = Column(JSONB, nullable=True)
     # Email verification & password management (049_auth_tokens_email_verification)
-    email_verified     = Column(Boolean, nullable=True, default=None)
+    email_verified      = Column(Boolean, nullable=True, default=None)
     password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    # Focus / streak tracking (055_focus_sessions)
+    daily_goal_minutes  = Column(Integer, default=20, nullable=True)
+    streak_days         = Column(Integer, default=0,  nullable=True)
+    streak_last_date    = Column(Date, nullable=True)
 
 
 class AuthCode(Base):
@@ -357,13 +361,14 @@ class BookPurchase(Base):
 
 
 class BookRating(Base):
-    """Stores individual user ratings for books (1-5 stars)."""
+    """Stores individual user ratings and text reviews for books."""
     __tablename__ = "book_rating"
 
     id = Column(Integer, primary_key=True, index=True)
     book_id = Column(Integer, ForeignKey("book.id"), index=True)
     telegram_id = Column(Integer, index=True)
     rating = Column(Integer)  # 1-5
+    review = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

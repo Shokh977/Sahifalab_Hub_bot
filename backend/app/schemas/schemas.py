@@ -261,8 +261,9 @@ class BookCreate(BaseModel):
     thumbnail_url: Optional[str] = None
 
 class BookRateRequest(BaseModel):
-    telegram_id: int
+    telegram_id: Optional[int] = None  # ignored — identity comes from JWT
     rating: int  # 1-5
+    review: Optional[str] = None
 
 
 class BookProgressRequest(BaseModel):

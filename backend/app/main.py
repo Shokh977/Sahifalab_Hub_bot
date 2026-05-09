@@ -101,16 +101,22 @@ _CACHE_RULES: list[tuple[str, str]] = [
 ]
 
 
+_NO_CACHE_SUFFIXES = (
+    "/reviews", "/my-rating", "/progress", "/file", "/download",
+    "/my-enrollment", "/my-progress", "/certificate",
+)
+
 @app.middleware("http")
 async def cache_control_middleware(request, call_next):
     response = await call_next(request)
     path = request.url.path
-    # Only apply to GET requests
+    # Only apply to GET requests; skip user-specific endpoints entirely
     if request.method == "GET" and "Cache-Control" not in response.headers:
-        for prefix, header in _CACHE_RULES:
-            if path.startswith(prefix):
-                response.headers["Cache-Control"] = header
-                break
+        if not any(path.endswith(s) for s in _NO_CACHE_SUFFIXES):
+            for prefix, header in _CACHE_RULES:
+                if path.startswith(prefix):
+                    response.headers["Cache-Control"] = header
+                    break
     return response
 
 # Include API routes
@@ -363,6 +369,29 @@ async def startup_event():
                 ))
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS ix_job_applications_applicant ON job_applications(applicant_id)"
+                ))
+                # 11. Focus session tracking (055_focus_sessions)
+                for _col in [
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_goal_minutes INTEGER NOT NULL DEFAULT 20",
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS streak_days INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS streak_last_date DATE",
+                ]:
+                    try:
+                        conn.execute(_sa_text(_col))
+                    except Exception:
+                        pass
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS focus_sessions (
+                        id           BIGSERIAL    PRIMARY KEY,
+                        user_id      BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        minutes      INTEGER      NOT NULL CHECK (minutes > 0),
+                        xp_awarded   INTEGER      NOT NULL DEFAULT 0,
+                        session_date DATE         NOT NULL DEFAULT CURRENT_DATE,
+                        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_focus_sessions_user_date ON focus_sessions(user_id, session_date)"
                 ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:

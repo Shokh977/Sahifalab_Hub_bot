@@ -200,7 +200,7 @@ async def my_enrollments(authorization: Optional[str] = Header(None)):
             params={
                 "student_id": f"eq.{caller_id}",
                 "is_active": "eq.true",
-                "select": "course_id, created_at, courses(id, title, slug, thumbnail_url, is_paid, price)",
+                "select": "course_id, created_at, courses(id, title, slug, thumbnail_url, is_paid, price, total_lessons, total_duration_minutes, enrolled_count, rating, is_published)",
                 "order": "created_at.desc",
             },
             headers=_supabase_headers(),

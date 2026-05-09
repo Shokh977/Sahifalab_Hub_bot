@@ -85,10 +85,11 @@ class PhotoUpdateRequest(BaseModel):
     photo_url: HttpUrl
 
 class ProfileUpdateRequest(BaseModel):
-    first_name: Optional[str] = None
-    username:   Optional[str] = None
-    bio:        Optional[str] = None
-    about_me:   Optional[str] = None
+    first_name:         Optional[str] = None
+    username:           Optional[str] = None
+    bio:                Optional[str] = None
+    about_me:           Optional[str] = None
+    daily_goal_minutes: Optional[int] = None
 
 class ApplyTeacherRequest(BaseModel):
     specialization:   str
@@ -382,15 +383,21 @@ async def get_current_user(
     if not profile:
         raise HTTPException(status_code=404, detail="User not found")
     return {
-        "telegram_id": profile.telegram_id, "first_name": profile.first_name,
-        "username": profile.site_username, "photo_url": profile.photo_url,
-        "email": profile.email,
+        "telegram_id":   profile.telegram_id,
+        "first_name":    profile.first_name,
+        "username":      profile.site_username,
+        "photo_url":     profile.photo_url,
+        "email":         profile.email,
         "email_verified": profile.email_verified,
-        "has_password": bool(profile.password_hash),
-        "role": profile.role or "student", "status": profile.status or "active",
-        "level": profile.level or 1, "total_xp": profile.total_xp or 0,
-        "bio": getattr(profile, "bio", None),
-        "about_me": getattr(profile, "about_me", None),
+        "has_password":  bool(profile.password_hash),
+        "role":          profile.role   or "student",
+        "status":        profile.status or "active",
+        "level":         profile.level  or 1,
+        "total_xp":      profile.total_xp or 0,
+        "bio":           getattr(profile, "bio",      None),
+        "about_me":      getattr(profile, "about_me", None),
+        "streak_days":   getattr(profile, "streak_days",        0) or 0,
+        "daily_goal_minutes": getattr(profile, "daily_goal_minutes", 20) or 20,
     }
 
 
@@ -458,6 +465,8 @@ async def update_my_profile(
         payload["bio"] = body.bio.strip()[:150] or None      # short bio, max 150 chars
     if body.about_me is not None:
         payload["about_me"] = body.about_me.strip() or None
+    if body.daily_goal_minutes is not None:
+        payload["daily_goal_minutes"] = max(5, min(480, body.daily_goal_minutes))
     if not payload:
         return {"ok": True}
     _upsert_profile(db, telegram_id, **payload)

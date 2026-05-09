@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -6,7 +6,7 @@ from datetime import datetime, UTC
 from typing import Optional
 import httpx
 from app.db.session import get_db
-from app.models.models import Book, BookRating, BookReadProgress, BookPurchase
+from app.models.models import Book, BookRating, BookReadProgress, BookPurchase, Profile
 from app.schemas.schemas import BookResponse, BookListResponse, BookCreate, BookRateRequest, BookProgressRequest
 from app.services.auth_service import decode_token, decode_token_payload
 
@@ -114,6 +114,43 @@ async def download_book(
     # Redirect to file URL
     return {"download_url": book.file_url}
 
+@router.get("/{book_id}/reviews")
+async def get_book_reviews(
+    book_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    response.headers["Cache-Control"] = "no-store"
+    """Return all reviews for a book, joined with profile info."""
+    ratings = (
+        db.query(BookRating)
+        .filter(BookRating.book_id == book_id)
+        .order_by(BookRating.created_at.desc())
+        .all()
+    )
+    result = []
+    for r in ratings:
+        profile = db.query(Profile).filter(Profile.telegram_id == r.telegram_id).first()
+        try:
+            review_text = r.review
+        except Exception:
+            review_text = None
+        result.append({
+            "id": r.id,
+            "user_id": r.telegram_id,
+            "rating": r.rating,
+            "review": review_text,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "profiles": {
+                "first_name": profile.first_name if profile else "Foydalanuvchi",
+                "username": profile.username if profile else None,
+                "photo_url": profile.photo_url if profile else None,
+            },
+        })
+    return result
+
+
 @router.get("/{book_id}/my-rating")
 async def get_my_rating(
     book_id: int,
@@ -125,7 +162,11 @@ async def get_my_rating(
         BookRating.book_id == book_id,
         BookRating.telegram_id == caller_id,
     ).first()
-    return {"rating": rating.rating if rating else 0}
+    try:
+        review_text = rating.review if rating else None
+    except Exception:
+        review_text = None
+    return {"rating": rating.rating if rating else 0, "review": review_text}
 
 @router.post("/{book_id}/rate")
 async def rate_book(
@@ -151,12 +192,17 @@ async def rate_book(
     if existing:
         existing.rating = body.rating
         existing.updated_at = datetime.utcnow()
+        try:
+            existing.review = body.review
+        except Exception:
+            pass
     else:
-        db.add(BookRating(
-            book_id=book_id,
-            telegram_id=telegram_id,
-            rating=body.rating,
-        ))
+        kwargs: dict = dict(book_id=book_id, telegram_id=telegram_id, rating=body.rating)
+        try:
+            kwargs["review"] = body.review
+        except Exception:
+            pass
+        db.add(BookRating(**kwargs))
 
     db.flush()
 
