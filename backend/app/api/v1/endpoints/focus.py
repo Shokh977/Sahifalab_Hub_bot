@@ -265,7 +265,8 @@ async def get_focus_stats(
         text("""
             SELECT
                 COALESCE(SUM(minutes) FILTER (WHERE session_date = CURRENT_DATE), 0) AS today_minutes,
-                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0)    AS week_minutes
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0)    AS week_minutes,
+                COALESCE(COUNT(*)     FILTER (WHERE session_date = CURRENT_DATE), 0) AS today_sessions
             FROM focus_sessions
             WHERE user_id = :uid
         """),
@@ -310,6 +311,7 @@ async def get_focus_stats(
 
     return {
         "today_minutes":       int(agg.today_minutes)                     if agg     else 0,
+        "today_sessions":      int(agg.today_sessions)                    if agg     else 0,
         "week_minutes":        int(agg.week_minutes)                      if agg     else 0,
         "streak_days":         int(profile.streak_days        or 0)       if profile else 0,
         "daily_goal":          int(profile.daily_goal_minutes or 20)      if profile else 20,

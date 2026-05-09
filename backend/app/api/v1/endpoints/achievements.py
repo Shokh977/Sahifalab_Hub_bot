@@ -334,6 +334,7 @@ async def list_achievements(
 
         result.append({
             "id":               ach["id"],
+            "key":              ach["key"],
             "name":             ach["name"],
             "description":      ach["description"],
             "icon_url":         None,
