@@ -141,12 +141,39 @@ async def get_focus_stats(
         {"uid": caller_id},
     ).fetchone()
 
+    sessions_row = db.execute(
+        text("SELECT COUNT(*) AS cnt FROM focus_sessions WHERE user_id = :uid"),
+        {"uid": caller_id},
+    ).fetchone()
+
+    # Longest consecutive-day streak computed from session history
+    longest_row = db.execute(
+        text("""
+            WITH daily AS (
+                SELECT DISTINCT session_date FROM focus_sessions WHERE user_id = :uid
+            ),
+            gaps AS (
+                SELECT session_date,
+                       session_date - (ROW_NUMBER() OVER (ORDER BY session_date) * INTERVAL '1 day') AS grp
+                FROM daily
+            ),
+            streaks AS (
+                SELECT COUNT(*) AS streak_len FROM gaps GROUP BY grp
+            )
+            SELECT COALESCE(MAX(streak_len), 0) AS longest FROM streaks
+        """),
+        {"uid": caller_id},
+    ).fetchone()
+
     return {
-        "today_minutes": int(agg.today_minutes)                      if agg     else 0,
-        "week_minutes":  int(agg.week_minutes)                       if agg     else 0,
-        "streak_days":   int(profile.streak_days         or 0)       if profile else 0,
-        "daily_goal":    int(profile.daily_goal_minutes  or 20)      if profile else 20,
-        "last_study_at": last_row.last_at.isoformat() if last_row and last_row.last_at else None,
+        "today_minutes":       int(agg.today_minutes)                     if agg     else 0,
+        "week_minutes":        int(agg.week_minutes)                      if agg     else 0,
+        "streak_days":         int(profile.streak_days        or 0)       if profile else 0,
+        "daily_goal":          int(profile.daily_goal_minutes or 20)      if profile else 20,
+        "last_study_at":       last_row.last_at.isoformat() if last_row and last_row.last_at else None,
+        "total_focus_minutes": int(profile.total_focus_minutes or 0)      if profile else 0,
+        "sessions_count":      int(sessions_row.cnt or 0)                 if sessions_row else 0,
+        "longest_streak":      int(longest_row.longest or 0)              if longest_row else 0,
     }
 
 
