@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
@@ -65,6 +65,9 @@ api_router.include_router(leaderboard.router, prefix="/leaderboard", tags=["lead
 # Profile gamification
 api_router.include_router(achievements.router, prefix="/achievements", tags=["achievements"])
 api_router.include_router(activity.router,     prefix="/activity",     tags=["activity"])
+
+# Streak system — freeze purchase, freeze use, streak detail
+api_router.include_router(streaks.router, prefix="/streaks", tags=["streaks"])
 
 # Internal maintenance (secret-key protected)
 api_router.include_router(cron.router)

@@ -275,7 +275,8 @@ async def get_focus_stats(
 
     profile = db.execute(
         text("""
-            SELECT streak_days, streak_last_date, daily_goal_minutes, total_focus_minutes
+            SELECT streak_days, streak_last_date, daily_goal_minutes, total_focus_minutes,
+                   COALESCE(freeze_count, 0) AS freeze_count
             FROM profiles WHERE telegram_id = :uid
         """),
         {"uid": caller_id},
@@ -319,6 +320,7 @@ async def get_focus_stats(
         "total_focus_minutes": int(profile.total_focus_minutes or 0)      if profile else 0,
         "sessions_count":      int(sessions_row.cnt or 0)                 if sessions_row else 0,
         "longest_streak":      int(longest_row.longest or 0)              if longest_row else 0,
+        "freeze_count":        int(profile.freeze_count or 0)             if profile else 0,
     }
 
 

@@ -393,6 +393,22 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS ix_focus_sessions_user_date ON focus_sessions(user_id, session_date)"
                 ))
+                # 12. Streak freeze columns (061_streak_freeze)
+                conn.execute(_sa_text(
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS freeze_count INT NOT NULL DEFAULT 0"
+                ))
+                conn.execute(_sa_text(
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS freeze_used_dates DATE[] NOT NULL DEFAULT '{}'"
+                ))
+                try:
+                    conn.execute(_sa_text(
+                        "ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_freeze_count_check"
+                    ))
+                    conn.execute(_sa_text(
+                        "ALTER TABLE profiles ADD CONSTRAINT profiles_freeze_count_check CHECK (freeze_count >= 0)"
+                    ))
+                except Exception:
+                    pass  # constraint may already exist with same definition
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
