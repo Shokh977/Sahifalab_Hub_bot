@@ -98,6 +98,12 @@ async def complete_focus_session(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
+    pre = db.execute(
+        text("SELECT level FROM profiles WHERE telegram_id = :uid"),
+        {"uid": caller_id},
+    ).fetchone()
+    old_level = int(pre.level or 1) if pre else 1
+
     xp_amount = focus_minutes_to_xp(body.minutes)
     try:
         result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=xp_amount)
@@ -167,14 +173,13 @@ async def complete_focus_session(
         {"uid": caller_id},
     ).fetchone()
 
-    old_level = result["new_level"]
-    new_level  = int(row.level or 1) if row else result["new_level"]
+    new_level = int(row.level or 1) if row else result["new_level"]
 
     return {
         "xp_awarded":          result["xp_added"],
         "total_xp":            int(row.total_xp or 0) if row else result["new_xp"],
         "level":               new_level,
-        "level_up":            result["new_level"] > old_level,
+        "level_up":            new_level > old_level,
         "achievements_earned": [],
         "challenges_completed": newly_completed,
     }

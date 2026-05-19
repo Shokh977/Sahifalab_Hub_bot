@@ -19,6 +19,7 @@ from app.schemas.schemas import (
 from app.services.auth_service import decode_token, decode_token_payload
 from app.models.admin_models import AdminUser
 from app.services.integration_service import hook_quiz_passed
+from app.services.xp_service import add_xp, DEFAULT_QUIZ_XP
 
 router = APIRouter()
 
@@ -220,8 +221,12 @@ async def verify_quiz(
             "Scoring continues without XP dedup. Error: %s", exc
         )
 
-    # ── HOOK 2: quiz/test passed for the first time ───────────────────────────
+    # ── Award XP + fire hook on first pass ───────────────────────────────────
     if xp_awarded:
+        try:
+            add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
+        except Exception:
+            pass  # XP failure must not block the response
         # skill_tags: quizzes don't have a first-class skill_tags column yet —
         # pass empty list; future migration can add it to the Quiz model.
         hook_quiz_passed(
