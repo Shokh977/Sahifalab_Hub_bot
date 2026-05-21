@@ -114,6 +114,14 @@ class EmailLoginRequest(BaseModel):
     email:    EmailStr
     password: str
 
+class BotClaimCodeRequest(BaseModel):
+    code:        str
+    telegram_id: int
+    first_name:  str = ""
+    username:    Optional[str] = None
+    photo_url:   Optional[str] = None
+    bot_secret:  str  # must match TELEGRAM_BOT_TOKEN — proves request came from the bot
+
 class LinkEmailRequest(BaseModel):
     email: EmailStr
 
@@ -568,6 +576,40 @@ async def request_code(db: Session = Depends(get_db)):
         "bot_link": f"https://t.me/{BOT_USERNAME}?start=auth_{code}",
         "expires_in_seconds": CODE_TTL_MINUTES * 60,
     }
+
+
+@router.post("/bot-claim-code")
+async def bot_claim_code(body: BotClaimCodeRequest, db: Session = Depends(get_db)):
+    """
+    Called by the Telegram bot when a user sends /start auth_{code}.
+    Validates the shared secret (bot token), then writes the user's Telegram ID
+    into the auth_codes row so the polling /verify-code endpoint can proceed.
+    """
+    if not BOT_TOKEN or body.bot_secret != BOT_TOKEN:
+        raise HTTPException(status_code=403, detail="Unauthorized")
+
+    auth_code = db.query(AuthCode).filter(AuthCode.code == body.code).first()
+    if not auth_code:
+        raise HTTPException(status_code=404, detail="Code not found")
+
+    expires = auth_code.expires_at
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=UTC)
+    if auth_code.used or datetime.now(UTC) > expires:
+        raise HTTPException(status_code=410, detail="Code expired or already used")
+
+    auth_code.telegram_id = body.telegram_id
+    auth_code.first_name  = body.first_name or ""
+    auth_code.username    = body.username
+    auth_code.photo_url   = body.photo_url
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error")
+
+    return {"ok": True}
 
 
 @router.get("/verify-code/{code}")
