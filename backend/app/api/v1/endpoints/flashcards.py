@@ -19,7 +19,7 @@ GET    /flashcards/stats               — overall stats (due count, mastered, e
 from datetime import datetime, UTC, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -365,13 +365,34 @@ async def delete_card(
 @router.get("/decks/{deck_id}/study")
 async def get_study_session(
     deck_id: int,
+    practice: bool = Query(False, description="Return all cards regardless of due date"),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
     _get_deck_or_404(db, deck_id, caller_id)
     now = datetime.now(UTC)
 
-    # Due cards (status != new, next_review <= now), ordered by most overdue
+    if practice:
+        # Practice mode: all cards in deck ordered by status (new → learning → reviewing → mastered)
+        rows = db.execute(
+            text("""
+                SELECT * FROM flashcards
+                WHERE deck_id = :did
+                ORDER BY
+                    CASE status
+                        WHEN 'new'       THEN 1
+                        WHEN 'learning'  THEN 2
+                        WHEN 'reviewing' THEN 3
+                        ELSE 4
+                    END,
+                    COALESCE(next_review, created_at) ASC
+            """),
+            {"did": deck_id},
+        ).fetchall()
+        all_cards = [_card_row(r) for r in rows]
+        return {"cards": all_cards, "total": len(all_cards), "due_count": 0, "new_count": 0}
+
+    # Normal mode: failed/due cards first, then new cards (max 10)
     due = db.execute(
         text("""
             SELECT * FROM flashcards
@@ -383,7 +404,6 @@ async def get_study_session(
         {"did": deck_id, "now": now},
     ).fetchall()
 
-    # New cards (never reviewed), max 10
     new_cards = db.execute(
         text("""
             SELECT * FROM flashcards
@@ -456,6 +476,19 @@ async def review_card(
         },
     )
 
+    # Check if card already reviewed today (before logging, for XP dedup)
+    already_today = db.execute(
+        text("""
+            SELECT 1 FROM flashcard_reviews
+            WHERE user_id = :uid AND card_id = :cid
+              AND DATE(reviewed_at) = CURRENT_DATE
+              AND rating != 99
+            LIMIT 1
+        """),
+        {"uid": caller_id, "cid": card_id},
+    ).fetchone()
+    first_review_today = not bool(already_today)
+
     # Log review
     db.execute(
         text("""
@@ -478,17 +511,18 @@ async def review_card(
 
     db.commit()
 
-    # XP: +2 per review, +3 bonus on good/easy, +5 if newly mastered
-    xp_base   = XP_PER_REVIEW
-    xp_bonus  = XP_BONUS_RECALL if body.rating >= 3 else 0
-    xp_mastery = XP_MASTERY_CARD if newly_mastered else 0
-    total_xp  = xp_base + xp_bonus + xp_mastery
-
+    # XP only on first review of this card today (subsequent practice = no XP)
     xp_result = {"xp_added": 0}
-    try:
-        xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=total_xp)
-    except Exception:
-        pass
+    total_xp  = 0
+    if first_review_today:
+        xp_base    = XP_PER_REVIEW
+        xp_bonus   = XP_BONUS_RECALL if body.rating >= 3 else 0
+        xp_mastery = XP_MASTERY_CARD if newly_mastered else 0
+        total_xp   = xp_base + xp_bonus + xp_mastery
+        try:
+            xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=total_xp)
+        except Exception:
+            pass
 
     # Check deck mastery (100% of cards mastered)
     deck_bonus_xp = 0
