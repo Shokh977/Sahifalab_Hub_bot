@@ -179,7 +179,8 @@ async def list_decks(
     rows = db.execute(
         text("""
             SELECT d.*, COUNT(fc.id) FILTER (
-                WHERE fc.next_review IS NOT NULL AND fc.next_review <= :now AND fc.status != 'mastered'
+                WHERE fc.status != 'mastered'
+                  AND (fc.next_review IS NULL OR fc.next_review <= :now)
             ) AS due_count
             FROM flashcard_decks d
             LEFT JOIN flashcards fc ON fc.deck_id = d.id
@@ -226,7 +227,8 @@ async def get_deck(
     row = db.execute(
         text("""
             SELECT d.*, COUNT(fc.id) FILTER (
-                WHERE fc.next_review IS NOT NULL AND fc.next_review <= :now AND fc.status != 'mastered'
+                WHERE fc.status != 'mastered'
+                  AND (fc.next_review IS NULL OR fc.next_review <= :now)
             ) AS due_count
             FROM flashcard_decks d
             LEFT JOIN flashcards fc ON fc.deck_id = d.id
