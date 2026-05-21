@@ -146,6 +146,61 @@ class PlannerNote(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
+class FlashcardDeck(Base):
+    """User-created flashcard deck — groups cards by topic."""
+    __tablename__ = "flashcard_decks"
+
+    id             = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id        = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    title          = Column(String(200), nullable=False)
+    description    = Column(Text, nullable=True)
+    color          = Column(String(7), default='#F5A623')
+    icon           = Column(String(50), nullable=True)
+    card_count     = Column(Integer, default=0)
+    mastered_count = Column(Integer, default=0)
+    is_public      = Column(Boolean, default=False)
+    course_id      = Column(Integer, nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    cards = relationship("Flashcard", back_populates="deck", cascade="all, delete-orphan")
+
+
+class Flashcard(Base):
+    """Individual flashcard — belongs to a deck, stores SM-2 spaced repetition state."""
+    __tablename__ = "flashcards"
+
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    deck_id       = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    front_text    = Column(Text, nullable=False)
+    back_text     = Column(Text, nullable=False)
+    front_image   = Column(String(500), nullable=True)
+    back_image    = Column(String(500), nullable=True)
+    position      = Column(Integer, default=0)
+    ease_factor   = Column(Float, default=2.5)
+    interval_days = Column(Integer, default=0)
+    repetitions   = Column(Integer, default=0)
+    next_review   = Column(DateTime(timezone=True), nullable=True)
+    last_reviewed = Column(DateTime(timezone=True), nullable=True)
+    status        = Column(String(20), default='new')  # new|learning|reviewing|mastered
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    deck = relationship("FlashcardDeck", back_populates="cards")
+
+
+class FlashcardReview(Base):
+    """Audit log of every card review — used for session stats and XP verification."""
+    __tablename__ = "flashcard_reviews"
+
+    id           = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id      = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    card_id      = Column(BigInteger, ForeignKey("flashcards.id", ondelete="CASCADE"), nullable=False)
+    deck_id      = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating       = Column(Integer, nullable=False)   # 1=forgot 2=hard 3=good 4=easy
+    reviewed_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    time_spent_ms = Column(Integer, nullable=True)
+
+
 class TeacherProfile(Base):
     """Teacher application data — mirrors the Supabase 'teacher_profiles' table."""
     __tablename__ = "teacher_profiles"

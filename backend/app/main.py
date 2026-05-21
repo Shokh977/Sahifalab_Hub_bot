@@ -409,6 +409,70 @@ async def startup_event():
                     ))
                 except Exception:
                     pass  # constraint may already exist with same definition
+                # 13. Flashcard system (step-11-flashcards)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS flashcard_decks (
+                        id             BIGSERIAL    PRIMARY KEY,
+                        user_id        BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        title          VARCHAR(200) NOT NULL,
+                        description    TEXT,
+                        color          VARCHAR(7)   NOT NULL DEFAULT '#F5A623',
+                        icon           VARCHAR(50),
+                        card_count     INTEGER      NOT NULL DEFAULT 0,
+                        mastered_count INTEGER      NOT NULL DEFAULT 0,
+                        is_public      BOOLEAN      NOT NULL DEFAULT FALSE,
+                        course_id      INTEGER,
+                        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcard_decks_user ON flashcard_decks(user_id)"
+                ))
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS flashcards (
+                        id            BIGSERIAL   PRIMARY KEY,
+                        deck_id       BIGINT      NOT NULL REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+                        front_text    TEXT        NOT NULL,
+                        back_text     TEXT        NOT NULL,
+                        front_image   VARCHAR(500),
+                        back_image    VARCHAR(500),
+                        position      INTEGER     NOT NULL DEFAULT 0,
+                        ease_factor   REAL        NOT NULL DEFAULT 2.5,
+                        interval_days INTEGER     NOT NULL DEFAULT 0,
+                        repetitions   INTEGER     NOT NULL DEFAULT 0,
+                        next_review   TIMESTAMPTZ,
+                        last_reviewed TIMESTAMPTZ,
+                        status        VARCHAR(20) NOT NULL DEFAULT 'new',
+                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcards_deck ON flashcards(deck_id)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcards_deck_status ON flashcards(deck_id, status)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcards_next_review ON flashcards(next_review)"
+                ))
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS flashcard_reviews (
+                        id            BIGSERIAL   PRIMARY KEY,
+                        user_id       BIGINT      NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        card_id       BIGINT      NOT NULL REFERENCES flashcards(id) ON DELETE CASCADE,
+                        deck_id       BIGINT      NOT NULL REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+                        rating        SMALLINT    NOT NULL,
+                        reviewed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        time_spent_ms INTEGER
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcard_reviews_user ON flashcard_reviews(user_id, reviewed_at)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcard_reviews_deck ON flashcard_reviews(deck_id)"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
