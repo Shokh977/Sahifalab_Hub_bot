@@ -239,7 +239,35 @@ def signed_hls_url(video_id: str, expires_seconds: int = 14400) -> str:
     return base
 
 
-# ── 7. Thumbnail URL ─────────────────────────────────────────────────────────
+# ── 7. Signed MP4 download URL ───────────────────────────────────────────────
+
+def signed_mp4_url(video_id: str, resolution: str = "720p", expires_seconds: int = 3600) -> str:
+    """
+    Generate a signed direct MP4 download URL for offline use.
+
+    Uses the same token formula as signed_hls_url — the Bunny Stream CDN pull zone
+    validates tokens by (token_key + video_id + expires), not by path, so the same
+    token covers both playlist.m3u8 and play_{resolution}.mp4 under the same video_id.
+
+    expires_seconds is intentionally short (1 h default) since the URL is fetched
+    immediately before download starts.
+    """
+    cdn_host = settings.BUNNY_STREAM_CDN_HOST
+    if not cdn_host:
+        raise ValueError("BUNNY_STREAM_CDN_HOST is not configured")
+
+    base = f"https://{cdn_host}/{video_id}/play_{resolution}.mp4"
+
+    if settings.BUNNY_STREAM_TOKEN_KEY:
+        exp = int(time.time()) + expires_seconds
+        raw = f"{settings.BUNNY_STREAM_TOKEN_KEY}{video_id}{exp}"
+        token = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return f"{base}?token={token}&expires={exp}"
+
+    return base
+
+
+# ── 8. Thumbnail URL ──────────────────────────────────────────────────────────
 
 def thumbnail_url(video_id: str) -> str:
     """

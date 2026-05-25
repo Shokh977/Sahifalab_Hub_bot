@@ -30,6 +30,8 @@ import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
 import api from '../services/apiService'
 import { getLevelTitle, getLevelEmoji, LEVEL_TITLES } from '../utils/levelTitles'
+// import { TierBadge } from '../components/TierBadge'
+// import { LEVELS } from '../lib/tier-data'
 import PostCard from '../components/social/PostCard'
 import type { PostData } from '../components/social/PostCard'
 
@@ -542,6 +544,11 @@ const ProfilePage: React.FC = () => {
           {/* 4. XP progress */}
           <XPBar profile={profile} />
 
+          {/* 4a. Tier Badge — featured */}
+          {/* <div className="flex justify-center py-4">
+            <TierBadge level={profile.level ?? 1} size={200} featured />
+          </div> */}
+
           {/* 4b. Profile completeness prompt (own profile only, < 60%) */}
           {isOwn && (profile.profile_completeness ?? 100) < 60 && (
             <CompletenessPrompt completeness={profile.profile_completeness ?? 0} onEdit={() => setEditOpen(true)} />
@@ -701,10 +708,6 @@ const CoverHeader: React.FC<{ profile: ProfileData }> = ({ profile }) => {
                   <span className="text-white text-2xl font-bold">{(profile.first_name || '?').charAt(0).toUpperCase()}</span>
                 </div>
             }
-          </div>
-          {/* Level badge */}
-          <div className="absolute bottom-0.5 right-0.5 w-6 h-6 rounded-full bg-[#e8792f] border-2 border-[#1c1d27] flex items-center justify-center">
-            <span className="text-white text-[9px] font-bold">{profile.level ?? 1}</span>
           </div>
         </div>
       </div>
@@ -1882,47 +1885,22 @@ const YutuqlarTab: React.FC<{ profile: ProfileData; viewerLevel: number }> = ({ 
         </div>
       )}
 
-      {/* 29-level grid */}
-      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+      {/* 29-level badge grid */}
+      {/* <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
         <h2 className="text-sm font-bold text-white mb-4">Barcha darajalar</h2>
-        <div className="grid grid-cols-3 gap-2.5">
-          {LEVEL_TITLES.map(lvl => {
-            const unlocked = currentLevel >= lvl.level
-            const isCurrent = viewerLevel === lvl.level
-            return (
-              <div
-                key={lvl.level}
-                className={`rounded-xl p-3 border text-center transition-all relative ${
-                  isCurrent
-                    ? 'bg-[#e8792f]/15 border-[#e8792f]/40 ring-1 ring-[#e8792f]/30'
-                    : unlocked
-                    ? 'bg-white/[0.04] border-white/[0.08]'
-                    : 'bg-white/[0.02] border-white/[0.04] opacity-40'
-                }`}
-              >
-                {isCurrent && (
-                  <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[8px] font-bold text-[#e8792f] bg-[#1c1d27] px-1.5 rounded-full border border-[#e8792f]/30 whitespace-nowrap">
-                    SIZ
-                  </div>
-                )}
-                <div
-                  className="text-xl mb-1"
-                  style={{ filter: unlocked ? 'none' : 'grayscale(100%)' }}
-                >
-                  {getLevelEmoji(lvl.level)}
-                </div>
-                <p className="text-[10px] font-bold text-white/80 leading-tight">{lvl.level}. {lvl.title}</p>
-                {!unlocked && (
-                  <p className="text-[9px] text-white/25 mt-0.5">{xpForLevel(lvl.level).toLocaleString()} XP</p>
-                )}
-                {unlocked && !isCurrent && (
-                  <div className="mt-1 text-[9px] font-bold text-[#e8792f]/70">✓</div>
-                )}
-              </div>
-            )
-          })}
+        <div className="flex flex-wrap justify-center gap-3">
+          {LEVELS.map(l => (
+            <TierBadge
+              key={l.n}
+              level={l}
+              size={100}
+              locked={currentLevel < l.n}
+              showLabel={false}
+              animated={false}
+            />
+          ))}
         </div>
-      </div>
+      </div> */}
 
       {/* Next milestone hint */}
       {currentLevel < 29 && (() => {

@@ -22,6 +22,9 @@ Security:
 from fastapi import APIRouter, HTTPException, Header, Request, Form
 from pydantic import BaseModel
 from typing import Optional, Literal
+from collections import defaultdict
+from datetime import datetime, UTC, timedelta
+import asyncio
 import logging
 
 from app.services.auth_service import decode_token
@@ -30,6 +33,26 @@ from app.services import payment_service as ps
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+# ── Per-user rate limit for /init (5 attempts per minute per user) ────────────
+_init_history: dict[int, list[datetime]] = defaultdict(list)
+_init_lock = asyncio.Lock()
+_INIT_MAX_PER_MINUTE = 5
+
+
+async def _check_init_rate_limit(user_id: int) -> None:
+    """Raise 429 if user has already called /init 5+ times in the last 60 seconds."""
+    async with _init_lock:
+        now = datetime.now(UTC)
+        cutoff = now - timedelta(seconds=60)
+        history = [t for t in _init_history[user_id] if t > cutoff]
+        _init_history[user_id] = history
+        if len(history) >= _INIT_MAX_PER_MINUTE:
+            raise HTTPException(
+                status_code=429,
+                detail="Juda ko'p so'rov. 1 daqiqadan so'ng urinib ko'ring.",
+            )
+        _init_history[user_id].append(now)
 
 
 # ── Schemas ──────────────────────────────────────────────────────────────────
@@ -152,6 +175,7 @@ async def init_payment(body: InitPaymentRequest, authorization: Optional[str] = 
     JWT required. Uses idempotency key to prevent duplicate records on rapid clicks.
     """
     caller_id = await _resolve_caller(authorization)
+    await _check_init_rate_limit(caller_id)
     item = await _get_item_info(body.item_type, body.item_id)
 
     if not item["is_paid"] or item["price"] <= 0:

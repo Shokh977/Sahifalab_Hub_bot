@@ -6,6 +6,7 @@ import { HelmetProvider } from 'react-helmet-async'
 import { queryClient } from './lib/queryClient'
 import App from './App'
 import './styles/globals.css'
+import './styles/tier-badge.css'
 import { DEV_MOCK, initMockAuth, seedSupabaseCache } from './lib/mockAdapter'
 
 // ── Option A: Runtime console override (safety net) ───────────────────────────
