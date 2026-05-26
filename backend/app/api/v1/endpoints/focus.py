@@ -362,3 +362,102 @@ async def get_weekly_focus(
         }
         for i in range(7)
     ]
+
+
+@router.get("/weekly-report")
+async def get_weekly_report(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    """Rich weekly report data for the in-app report card screen."""
+    today     = datetime.now(UTC).date()
+    week_ago  = today - timedelta(days=6)
+    prev_start = today - timedelta(days=13)
+
+    # ── This week's daily breakdown ───────────────────────────────────────────
+    day_rows = db.execute(
+        text("""
+            SELECT session_date, SUM(minutes) AS minutes
+            FROM focus_sessions
+            WHERE user_id = :uid AND session_date >= :week_ago
+            GROUP BY session_date
+        """),
+        {"uid": caller_id, "week_ago": week_ago},
+    ).fetchall()
+    by_date = {r.session_date: int(r.minutes) for r in day_rows}
+
+    # ── Aggregate: this week vs previous week ─────────────────────────────────
+    agg = db.execute(
+        text("""
+            SELECT
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0)   AS this_week,
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :prev_start
+                                              AND   session_date <  :week_ago), 0)   AS prev_week,
+                COALESCE(COUNT(DISTINCT session_date) FILTER (WHERE session_date >= :week_ago), 0) AS days_active
+            FROM focus_sessions
+            WHERE user_id = :uid AND session_date >= :prev_start
+        """),
+        {"uid": caller_id, "week_ago": week_ago, "prev_start": prev_start},
+    ).fetchone()
+
+    this_week_min = int(agg.this_week)   if agg else 0
+    prev_week_min = int(agg.prev_week)   if agg else 0
+    days_active   = int(agg.days_active) if agg else 0
+
+    # ── XP earned this week ───────────────────────────────────────────────────
+    xp_row = db.execute(
+        text("""
+            SELECT COALESCE(SUM(amount), 0) AS xp
+            FROM xp_logs
+            WHERE user_id = :uid AND created_at >= :week_start
+        """),
+        {"uid": caller_id, "week_start": datetime.combine(week_ago, datetime.min.time()).replace(tzinfo=UTC)},
+    ).fetchone()
+    week_xp = int(xp_row.xp) if xp_row else 0
+
+    # ── Profile: streak + daily goal ─────────────────────────────────────────
+    profile = db.execute(
+        text("SELECT streak_days, daily_goal_minutes, first_name FROM profiles WHERE telegram_id = :uid"),
+        {"uid": caller_id},
+    ).fetchone()
+    streak     = int(profile.streak_days or 0)        if profile else 0
+    daily_goal = int(profile.daily_goal_minutes or 20) if profile else 20
+    first_name = profile.first_name or ""              if profile else ""
+
+    # ── Best day ──────────────────────────────────────────────────────────────
+    best_date    = max(by_date, key=by_date.get) if by_date else None
+    best_minutes = by_date[best_date] if best_date else 0
+
+    # ── Percent change ────────────────────────────────────────────────────────
+    if prev_week_min > 0:
+        pct_change = round((this_week_min - prev_week_min) / prev_week_min * 100)
+    elif this_week_min > 0:
+        pct_change = 100
+    else:
+        pct_change = 0
+
+    # ── Day-by-day list (last 7 days, oldest first) ───────────────────────────
+    days = [
+        {
+            "date":     (week_ago + timedelta(days=i)).isoformat(),
+            "minutes":  by_date.get(week_ago + timedelta(days=i), 0),
+            "goal_met": by_date.get(week_ago + timedelta(days=i), 0) >= daily_goal,
+        }
+        for i in range(7)
+    ]
+
+    return {
+        "first_name":    first_name,
+        "week_start":    week_ago.isoformat(),
+        "week_end":      today.isoformat(),
+        "total_minutes": this_week_min,
+        "prev_minutes":  prev_week_min,
+        "pct_change":    pct_change,
+        "week_xp":       week_xp,
+        "streak_days":   streak,
+        "days_active":   days_active,
+        "daily_goal":    daily_goal,
+        "best_day":      best_date.isoformat() if best_date else None,
+        "best_minutes":  best_minutes,
+        "days":          days,
+    }

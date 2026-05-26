@@ -2,22 +2,25 @@
 cron.py — Scheduled / internal maintenance endpoints.
 
 Routes (secret-key protected, NOT JWT):
-  POST /api/cron/weekly-reset   — reset profile_views_week for all users
+  POST /api/cron/weekly-reset    — reset profile_views_week for all users
+  POST /api/cron/weekly-report   — send weekly study report push notifications
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
-Configure Railway cron job to call:
-    POST https://<your-app>.railway.app/api/cron/weekly-reset
-    X-Cron-Secret: <CRON_SECRET>
-    Schedule: 0 0 * * 1   (every Monday at 00:00 UTC)
+Configure Railway cron jobs:
+    POST /api/cron/weekly-reset   — schedule: 0 0 * * 1  (Monday 00:00 UTC)
+    POST /api/cron/weekly-report  — schedule: 0 8 * * 1  (Monday 08:00 UTC)
 """
 
 import os
 import logging
+import asyncio
 
+import httpx
 from fastapi import APIRouter, Header, HTTPException
 from sqlalchemy.orm import Session
 from fastapi import Depends
 from sqlalchemy import text
+from datetime import datetime, UTC, timedelta
 
 from app.db.session import get_db
 
@@ -57,3 +60,196 @@ def weekly_reset(
         db.rollback()
         logger.error("weekly_reset failed: %s", exc)
         raise HTTPException(status_code=500, detail=f"Reset failed: {exc}")
+
+
+def _fmt_time(minutes: int) -> str:
+    """Convert minutes to Uzbek-readable string: '3 soat 20 daqiqa' or '45 daqiqa'."""
+    if minutes <= 0:
+        return "0 daqiqa"
+    h, m = divmod(minutes, 60)
+    if h and m:
+        return f"{h} soat {m} daqiqa"
+    if h:
+        return f"{h} soat"
+    return f"{m} daqiqa"
+
+
+def _motivational(minutes: int, pct_change: int, days_active: int) -> str:
+    if minutes == 0:
+        return "Bu hafta o'qish amalga oshmadi. Kelasi haftada yangi boshlang! 💪"
+    if days_active >= 6:
+        return "Deyarli har kuni o'qidingiz — bu juda katta yutuq! 🏆"
+    if pct_change >= 50:
+        return f"Ajoyib! O'tgan haftadan {pct_change}% ko'p o'qidingiz! 🚀"
+    if pct_change >= 20:
+        return f"Zo'r ish! O'tgan haftadan {pct_change}% ko'proq vaqt ajratdingiz 📈"
+    if pct_change > 0:
+        return "Izchillik — muvaffaqiyatning kaliti. Davom eting! ✨"
+    if pct_change < -20:
+        return "Bu hafta qiyin o'tdi. Kelasi hafta qaytib keling — siz uddalaysiz! 💙"
+    if minutes >= 120:
+        return f"{_fmt_time(minutes)} — bu kuchli natija! Shu sur'atni saqlang 🔥"
+    return "Har bir daqiqa hisob! Biroz ko'proq vaqt ajratsak yana yaxshiroq bo'ladi 📚"
+
+
+async def _send_expo_push(tokens: list[str], title: str, body: str, data: dict) -> dict:
+    """Batch-send Expo push notifications. Returns {sent, failed}."""
+    if not tokens:
+        return {"sent": 0, "failed": 0}
+    messages = [
+        {"to": token, "title": title, "body": body, "data": data, "sound": "default"}
+        for token in tokens
+    ]
+    sent = failed = 0
+    # Expo accepts up to 100 per request
+    for i in range(0, len(messages), 100):
+        batch = messages[i:i + 100]
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    json=batch,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                )
+                results = resp.json().get("data", [])
+                for r in results:
+                    if r.get("status") == "ok":
+                        sent += 1
+                    else:
+                        failed += 1
+                        logger.warning("expo push failed: %s", r)
+        except Exception as exc:
+            logger.error("expo batch send error: %s", exc)
+            failed += len(batch)
+    return {"sent": sent, "failed": failed}
+
+
+@router.post("/weekly-report")
+async def send_weekly_reports(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Compute each opted-in user's weekly study stats and send a push notification
+    with a deep link to the in-app weekly report screen.
+
+    Schedule: 0 8 * * 1  (every Monday at 08:00 UTC)
+    """
+    today    = datetime.now(UTC).date()
+    week_ago = today - timedelta(days=7)
+
+    # Fetch all users with expo_push_token + weekly notif enabled
+    rows = db.execute(text("""
+        SELECT
+            telegram_id,
+            first_name,
+            daily_goal_minutes,
+            streak_days,
+            user_settings
+        FROM profiles
+        WHERE
+            user_settings->>'expo_push_token' IS NOT NULL
+            AND user_settings->>'expo_push_token' != ''
+            AND (
+                user_settings->'notification_prefs'->>'weekly' IS NULL
+                OR user_settings->'notification_prefs'->>'weekly' = 'true'
+            )
+    """)).fetchall()
+
+    if not rows:
+        return {"ok": True, "sent": 0, "skipped": 0}
+
+    tokens_and_stats: list[tuple[str, int, int, int]] = []  # (token, uid, minutes, pct)
+
+    for row in rows:
+        uid         = row.telegram_id
+        daily_goal  = int(row.daily_goal_minutes or 20)
+
+        agg = db.execute(text("""
+            SELECT
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0)         AS this_week,
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :prev_start
+                                              AND   session_date <  :week_ago), 0)         AS prev_week,
+                COALESCE(COUNT(DISTINCT session_date) FILTER (WHERE session_date >= :week_ago), 0) AS days_active
+            FROM focus_sessions
+            WHERE user_id = :uid AND session_date >= :prev_start
+        """), {
+            "uid": uid,
+            "week_ago":   week_ago,
+            "prev_start": today - timedelta(days=14),
+        }).fetchone()
+
+        this_week = int(agg.this_week)   if agg else 0
+        prev_week = int(agg.prev_week)   if agg else 0
+        days_active = int(agg.days_active) if agg else 0
+
+        if prev_week > 0:
+            pct = round((this_week - prev_week) / prev_week * 100)
+        elif this_week > 0:
+            pct = 100
+        else:
+            pct = 0
+
+        settings = row.user_settings or {}
+        token = settings.get("expo_push_token", "")
+        if token:
+            tokens_and_stats.append((token, uid, this_week, pct, days_active,
+                                     row.first_name or "", int(row.streak_days or 0)))
+
+    # Build per-user notifications (personalised title + body)
+    messages_by_token: dict[str, dict] = {}
+    for token, uid, minutes, pct, days_active, first_name, streak in tokens_and_stats:
+        time_str = _fmt_time(minutes)
+        if minutes == 0:
+            title = "Bu hafta hali boshlanmadi! 📚"
+        elif pct >= 20:
+            title = f"Bu hafta {pct}% ko'proq o'qidingiz! 🚀"
+        else:
+            title = f"Haftalik hisobotingiz tayyor 📊"
+
+        body = _motivational(minutes, pct, days_active)
+        messages_by_token[token] = {
+            "title": title,
+            "body":  body,
+            "data":  {
+                "screen":   "weekly_report",
+                "minutes":  minutes,
+                "pct":      pct,
+            },
+        }
+
+    # Group into a single batch per unique (title, body) is not feasible easily,
+    # so just collect tokens list and send individually via the Expo batch API
+    expo_messages = []
+    for token, payload in messages_by_token.items():
+        expo_messages.append({
+            "to":    token,
+            "title": payload["title"],
+            "body":  payload["body"],
+            "data":  payload["data"],
+            "sound": "default",
+        })
+
+    sent = failed = 0
+    for i in range(0, len(expo_messages), 100):
+        batch = expo_messages[i:i + 100]
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    json=batch,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                )
+                results = resp.json().get("data", [])
+                for r in results:
+                    if r.get("status") == "ok":
+                        sent += 1
+                    else:
+                        failed += 1
+                        logger.warning("weekly_report push failed: %s", r)
+        except Exception as exc:
+            logger.error("weekly_report batch error: %s", exc)
+            failed += len(batch)
+
+    logger.info("weekly_report: sent=%d failed=%d total_users=%d", sent, failed, len(rows))
+    return {"ok": True, "sent": sent, "failed": failed, "total_users": len(rows)}

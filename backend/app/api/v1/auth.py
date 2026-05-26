@@ -139,6 +139,12 @@ class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
 
+class NotifPrefsBody(BaseModel):
+    prefs: dict = {}
+
+class PushTokenBody(BaseModel):
+    token: str
+
 class NewPasswordRequest(BaseModel):
     new_password: str
 
@@ -558,6 +564,66 @@ async def upload_my_photo(
     public_url = f"https://{settings.BUNNY_CDN_HOSTNAME.rstrip('/')}/{remote_path}"
     _upsert_profile(db, telegram_id, photo_url=public_url)
     return {"ok": True, "photo_url": public_url, "remote_path": remote_path}
+
+
+@router.post("/push-token")
+async def save_push_token(
+    body: PushTokenBody,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Save the device's Expo push token so the server can send notifications."""
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    current = dict(profile.user_settings or {})
+    current["expo_push_token"] = body.token.strip()
+    profile.user_settings = current
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+    return {"ok": True}
+
+
+@router.get("/notification-prefs")
+async def get_notification_prefs(
+    authorization: str = Header(None), db: Session = Depends(get_db)
+):
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    prefs = (profile.user_settings or {}).get("notification_prefs", {})
+    return {
+        "streak":  prefs.get("streak",  True),
+        "course":  prefs.get("course",  True),
+        "achieve": prefs.get("achieve", True),
+        "weekly":  prefs.get("weekly",  True),
+    }
+
+
+@router.put("/notification-prefs")
+async def update_notification_prefs(
+    body: NotifPrefsBody,
+    authorization: str = Header(None),
+    db: Session = Depends(get_db),
+):
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+    current = dict(profile.user_settings or {})
+    current["notification_prefs"] = body.prefs
+    profile.user_settings = current
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+    return {"ok": True}
 
 
 @router.post("/logout")
