@@ -481,6 +481,20 @@ async def update_my_profile(
     return {"ok": True, **payload}
 
 
+@router.delete("/me")
+async def delete_my_account(
+    authorization: str = Header(None), db: Session = Depends(get_db)
+):
+    """Permanently delete the currently-authenticated user's account."""
+    telegram_id = _require_bearer(authorization)
+    profile = _get_profile(db, telegram_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+    db.delete(profile)
+    db.commit()
+    return {"ok": True}
+
+
 @router.post("/me/photo/upload")
 async def upload_my_photo(
     file: UploadFile = File(...),
