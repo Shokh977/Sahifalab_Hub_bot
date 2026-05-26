@@ -9,6 +9,7 @@ GET  /api/focus/challenges     — all streak challenges with per-user progress
 GET  /api/focus/weekly         — 7-day breakdown [{ date, minutes, goal_met }]
 """
 
+import asyncio
 import json
 from datetime import datetime, UTC, timedelta
 from typing import Optional
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, focus_minutes_to_xp
+from app.api.v1.endpoints.notifications import send_notification
 
 router = APIRouter()
 
@@ -174,6 +176,18 @@ async def complete_focus_session(
     ).fetchone()
 
     new_level = int(row.level or 1) if row else result["new_level"]
+
+    # Fire push notifications (non-blocking, best-effort)
+    if new_level > old_level:
+        asyncio.create_task(send_notification(
+            caller_id, "level_up", category="SYSTEM",
+            meta={"level": new_level},
+        ))
+    for ch in newly_completed:
+        asyncio.create_task(send_notification(
+            caller_id, "achievement", category="SYSTEM",
+            meta={"challenge_key": ch.get("key", ""), "bonus_xp": ch.get("bonus_xp", 0)},
+        ))
 
     return {
         "xp_awarded":          result["xp_added"],
