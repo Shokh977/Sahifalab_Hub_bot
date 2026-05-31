@@ -40,7 +40,7 @@ export const extractYouTubeId = (url: string): string | null => {
 
 export const toEmbedUrl = (url: string): string | null => {
   const id = extractYouTubeId(url)
-  return id ? `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1` : null
+  return id ? `https://www.youtube.com/embed/${id}?rel=0&modestbranding=1&playsinline=1` : null
 }
 
 // ── Tab button ────────────────────────────────────────────────────────────────
