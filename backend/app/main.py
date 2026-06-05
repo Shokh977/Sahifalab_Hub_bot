@@ -484,7 +484,56 @@ async def startup_event():
 
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
+
+    # ── APScheduler: streak reminder + weekly report ──────────────────────────
+    _start_cron_scheduler()
+
     logger.info("Background tasks started")
+
+
+def _start_cron_scheduler():
+    """Start APScheduler for streak reminders and weekly reports."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.cron  import CronTrigger
+    from app.api.v1.endpoints.cron  import send_streak_reminders, send_weekly_reports
+    from app.db.session             import get_db
+
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if not cron_secret:
+        logger.warning("[SCHEDULER] CRON_SECRET not set — scheduled jobs will not run")
+        return
+
+    def _db():
+        """Return a single DB session for scheduled jobs."""
+        return next(get_db())
+
+    async def _run_streak_reminder():
+        db = _db()
+        try:
+            result = await send_streak_reminders(db=db, _=None)
+            logger.info("[SCHEDULER] streak-reminder: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] streak-reminder failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_weekly_report():
+        db = _db()
+        try:
+            result = await send_weekly_reports(db=db, _=None)
+            logger.info("[SCHEDULER] weekly-report: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] weekly-report failed: %s", exc)
+        finally:
+            db.close()
+
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    # Daily 15:00 UTC ≈ 20:00 Tashkent
+    scheduler.add_job(_run_streak_reminder, CronTrigger(hour=15, minute=0))
+    # Every Monday 08:00 UTC
+    scheduler.add_job(_run_weekly_report,   CronTrigger(day_of_week="mon", hour=8, minute=0))
+    scheduler.start()
+    logger.info("[SCHEDULER] APScheduler started — streak @15:00 UTC daily, report @08:00 UTC Monday")
 
 
 if __name__ == "__main__":

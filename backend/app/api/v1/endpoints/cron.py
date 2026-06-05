@@ -2,13 +2,15 @@
 cron.py — Scheduled / internal maintenance endpoints.
 
 Routes (secret-key protected, NOT JWT):
-  POST /api/cron/weekly-reset    — reset profile_views_week for all users
-  POST /api/cron/weekly-report   — send weekly study report push notifications
+  POST /api/cron/weekly-reset      — reset profile_views_week for all users
+  POST /api/cron/weekly-report     — send weekly study report push notifications
+  POST /api/cron/streak-reminder   — send daily streak reminder to users who haven't studied today
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
 Configure Railway cron jobs:
-    POST /api/cron/weekly-reset   — schedule: 0 0 * * 1  (Monday 00:00 UTC)
-    POST /api/cron/weekly-report  — schedule: 0 8 * * 1  (Monday 08:00 UTC)
+    POST /api/cron/weekly-reset      — schedule: 0 0 * * 1   (Monday 00:00 UTC)
+    POST /api/cron/weekly-report     — schedule: 0 8 * * 1   (Monday 08:00 UTC)
+    POST /api/cron/streak-reminder   — schedule: 0 15 * * *  (Daily 15:00 UTC = ~20:00 Tashkent)
 """
 
 import os
@@ -253,3 +255,109 @@ async def send_weekly_reports(
 
     logger.info("weekly_report: sent=%d failed=%d total_users=%d", sent, failed, len(rows))
     return {"ok": True, "sent": sent, "failed": failed, "total_users": len(rows)}
+
+
+@router.post("/streak-reminder")
+async def send_streak_reminders(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Send a streak reminder to users who:
+      - Have an active streak (streak_days > 0)
+      - Have NOT completed a focus session today
+      - Have streak notifications enabled (or preference not set)
+      - Have an Expo push token registered
+
+    Schedule: 0 15 * * *  (daily 15:00 UTC ≈ 20:00 Tashkent time)
+    """
+    today = datetime.now(UTC).date()
+
+    rows = db.execute(text("""
+        SELECT
+            p.telegram_id,
+            p.first_name,
+            p.streak_days,
+            p.user_settings->>'expo_push_token' AS token
+        FROM profiles p
+        WHERE
+            p.streak_days > 0
+            AND p.user_settings->>'expo_push_token' IS NOT NULL
+            AND p.user_settings->>'expo_push_token' != ''
+            AND (
+                p.user_settings->'notification_prefs'->>'streak' IS NULL
+                OR p.user_settings->'notification_prefs'->>'streak' = 'true'
+            )
+            AND p.telegram_id NOT IN (
+                SELECT DISTINCT user_id
+                FROM focus_sessions
+                WHERE session_date = :today
+            )
+    """), {"today": today}).fetchall()
+
+    if not rows:
+        return {"ok": True, "sent": 0, "eligible": 0}
+
+    def _streak_body(streak: int, name: str) -> tuple[str, str]:
+        if streak >= 100:
+            return (
+                f"💎 {streak} kunlik seriya! Qo'ldan chiqarmang!",
+                f"{name}, siz {streak} kundan beri har kuni o'qiyapsiz — bugun ham davom eting!",
+            )
+        if streak >= 30:
+            return (
+                f"🏆 {streak} kun — ajoyib! Bugun ham o'qing",
+                f"Seriyangiz {streak} kunga yetdi. Bugun o'tkazib yubormang!",
+            )
+        if streak >= 7:
+            return (
+                f"🔥 {streak} kunlik seriya xavf ostida!",
+                f"Bugun o'qimay qolsangiz {streak} kunlik seriyangiz tugaydi. 5 daqiqa kifoya!",
+            )
+        return (
+            "⚡ Bugun dars o'tmaganiz!",
+            f"Seriyangizni saqlash uchun hozir o'qing — {streak} kun ketadi!",
+        )
+
+    messages = []
+    for row in rows:
+        title, body = _streak_body(int(row.streak_days or 1), row.first_name or "Salom")
+        messages.append({
+            "to":    row.token,
+            "title": title,
+            "body":  body,
+            "data":  {"screen": "streak_reminder", "type": "streak_reminder"},
+            "sound": "default",
+        })
+
+    result = await _send_expo_push(
+        [m["to"] for m in messages],
+        "",   # title handled per-message below — use batch directly
+        "",
+        {},
+    )
+
+    # Override _send_expo_push for per-message personalisation
+    sent = failed = 0
+    for i in range(0, len(messages), 100):
+        batch = messages[i:i + 100]
+        try:
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    "https://exp.host/--/api/v2/push/send",
+                    json=batch,
+                    headers={"Content-Type": "application/json", "Accept": "application/json"},
+                )
+                results = resp.json().get("data", [])
+                for r in results:
+                    if r.get("status") == "ok":
+                        sent += 1
+                    else:
+                        failed += 1
+                        logger.warning("streak_reminder push failed: %s", r)
+        except Exception as exc:
+            logger.error("streak_reminder batch error: %s", exc)
+            failed += len(batch)
+
+    logger.info("streak_reminder: sent=%d failed=%d eligible=%d", sent, failed, len(rows))
+    return {"ok": True, "sent": sent, "failed": failed, "eligible": len(rows)}
