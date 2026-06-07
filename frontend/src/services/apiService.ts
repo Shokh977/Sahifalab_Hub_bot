@@ -363,6 +363,7 @@ class ApiService {
     bio: string
     course_idea: string
     motivation: string
+    contact: string
   }) {
     return this.axiosInstance.post('/api/auth/apply-teacher', data)
   }

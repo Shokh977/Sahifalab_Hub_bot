@@ -37,6 +37,7 @@ interface FormData {
   bio:              string
   course_idea:      string
   motivation:       string
+  contact:          string
 }
 
 type State = 'form' | 'loading' | 'success' | 'already_pending' | 'already_teacher' | 'error'
@@ -113,6 +114,7 @@ const TeacherApplyPage: React.FC = () => {
     bio:              '',
     course_idea:      '',
     motivation:       '',
+    contact:          '',
   })
 
   const updateField = (k: keyof FormData) => (
@@ -125,7 +127,8 @@ const TeacherApplyPage: React.FC = () => {
     form.experience_years.trim() &&
     form.bio.trim().length >= 20 &&
     form.course_idea.trim().length >= 20 &&
-    form.motivation.trim().length >= 20
+    form.motivation.trim().length >= 20 &&
+    form.contact.trim().length > 0
 
   const formRef = useRef<HTMLFormElement>(null)
   const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -142,6 +145,7 @@ const TeacherApplyPage: React.FC = () => {
         bio:              form.bio.trim(),
         course_idea:      form.course_idea.trim(),
         motivation:       form.motivation.trim(),
+        contact:          form.contact.trim(),
       })
       const data = res.data
       if (data.already_applied) {
@@ -458,6 +462,18 @@ const TeacherApplyPage: React.FC = () => {
             className={`${inputCls} resize-none`}
           />
           <p className="text-[10px] text-gray-400 text-right">{form.motivation.length}/1000</p>
+        </Field>
+
+        <Field label="Aloqa" required hint="Admin siz bilan bog'lanishi uchun email yoki telefon raqamingizni kiriting.">
+          <input
+            type="text"
+            value={form.contact}
+            onChange={updateField('contact')}
+            placeholder="email@example.com yoki +998 90 123 45 67"
+            maxLength={120}
+            required
+            className={inputCls}
+          />
         </Field>
 
         <AnimatePresence>
