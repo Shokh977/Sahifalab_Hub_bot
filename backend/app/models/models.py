@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, Date, ForeignKey, Table, Boolean, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -205,7 +205,7 @@ class TeacherProfile(Base):
     """Teacher application data — mirrors the Supabase 'teacher_profiles' table."""
     __tablename__ = "teacher_profiles"
 
-    id               = Column(Integer, primary_key=True, autoincrement=True)
+    id               = Column(PGUUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
     telegram_id      = Column(BigInteger, unique=True, index=True)
     specialization   = Column(String(255), nullable=True)
     experience_years = Column(Integer, nullable=True)
