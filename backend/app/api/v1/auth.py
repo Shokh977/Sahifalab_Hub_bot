@@ -780,7 +780,7 @@ async def list_teacher_requests(
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
     _require_admin(db, authorization)
-    profiles = db.query(Profile).filter(Profile.role == "teacher", Profile.status == "pending").all()
+    profiles = db.query(Profile).filter(Profile.status == "pending").all()
     tids     = [p.telegram_id for p in profiles]
     tp_map   = {}
     if tids:
@@ -800,6 +800,7 @@ async def list_teacher_requests(
                     "bio": tp_map[p.telegram_id].bio,
                     "course_idea": tp_map[p.telegram_id].course_idea,
                     "motivation": tp_map[p.telegram_id].motivation,
+                    "contact": tp_map[p.telegram_id].contact,
                     "applied_at": (
                         tp_map[p.telegram_id].applied_at.isoformat()
                         if tp_map[p.telegram_id].applied_at else None
@@ -807,7 +808,7 @@ async def list_teacher_requests(
                 }
                 if p.telegram_id in tp_map else
                 {"specialization": None, "experience_years": None, "bio": None,
-                 "course_idea": None, "motivation": None, "applied_at": None}
+                 "course_idea": None, "motivation": None, "contact": None, "applied_at": None}
             ),
         }
         for p in profiles

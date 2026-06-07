@@ -94,6 +94,7 @@ interface TeacherRequest {
   bio:              string | null
   course_idea:      string | null
   motivation:       string | null
+  contact:          string | null
   applied_at:       string | null
 }
 
@@ -2150,18 +2151,22 @@ const AdminPage: React.FC = () => {
                   >
                     {/* Header: avatar + name + badge */}
                     <div className="flex items-center gap-3 mb-3">
-                      {req.photo_url ? (
-                        <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold shrink-0">
-                          {(req.first_name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
+                      <a href={`/profile/${req.telegram_id}`} target="_blank" rel="noreferrer" className="shrink-0">
+                        {req.photo_url ? (
+                          <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover hover:opacity-80 transition-opacity" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold hover:opacity-80 transition-opacity">
+                            {(req.first_name || '?').charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                      </a>
                       <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                          {req.first_name || 'Noma\'lum'}
-                          {req.username && <span className="text-gray-400 ml-1 font-normal">@{req.username}</span>}
-                        </p>
+                        <a href={`/profile/${req.telegram_id}`} target="_blank" rel="noreferrer" className="hover:underline">
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                            {req.first_name || 'Noma\'lum'}
+                            {req.username && <span className="text-gray-400 ml-1 font-normal">@{req.username}</span>}
+                          </p>
+                        </a>
                         <p className="text-xs text-gray-400 dark:text-gray-500">
                           ID: {req.telegram_id} · Lv {req.level} · {req.total_xp} XP
                         </p>
@@ -2172,8 +2177,14 @@ const AdminPage: React.FC = () => {
                     </div>
 
                     {/* Application details */}
-                    {(req.specialization || req.course_idea || req.motivation || req.bio) && (
+                    {(req.specialization || req.course_idea || req.motivation || req.bio || req.contact) && (
                       <div className="mb-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                        {req.contact && (
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Aloqa</p>
+                            <p className="text-xs text-sahifa-600 dark:text-sahifa-400 mt-0.5 font-medium">{req.contact}</p>
+                          </div>
+                        )}
                         {req.specialization && (
                           <div>
                             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mutaxassislik</p>
