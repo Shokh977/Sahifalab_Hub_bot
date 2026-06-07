@@ -122,18 +122,36 @@ async def complete_focus_session(
         {"uid": caller_id, "min": body.minutes, "xp": result["xp_added"], "dt": today},
     )
 
-    # Streak logic: same day → no change; yesterday → +1; else → reset to 1
+    # Streak logic: only advance streak when today's total minutes meets the daily goal.
+    # The subquery runs after the INSERT above so it includes the just-added session.
     db.execute(
         text("""
             UPDATE profiles SET
                 total_focus_minutes = COALESCE(total_focus_minutes, 0) + :min,
                 streak_days = CASE
-                    WHEN streak_last_date = CURRENT_DATE     THEN COALESCE(streak_days, 0)
-                    WHEN streak_last_date = CURRENT_DATE - 1 THEN COALESCE(streak_days, 0) + 1
-                    ELSE 1
+                    WHEN (
+                        SELECT COALESCE(SUM(minutes), 0)
+                        FROM focus_sessions
+                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                    ) >= COALESCE(daily_goal_minutes, 20)
+                    THEN
+                        CASE
+                            WHEN streak_last_date = CURRENT_DATE     THEN COALESCE(streak_days, 0)
+                            WHEN streak_last_date = CURRENT_DATE - 1 THEN COALESCE(streak_days, 0) + 1
+                            ELSE 1
+                        END
+                    ELSE COALESCE(streak_days, 0)
                 END,
-                streak_last_date = CURRENT_DATE,
-                study_pulse_at   = NULL
+                streak_last_date = CASE
+                    WHEN (
+                        SELECT COALESCE(SUM(minutes), 0)
+                        FROM focus_sessions
+                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                    ) >= COALESCE(daily_goal_minutes, 20)
+                    THEN CURRENT_DATE
+                    ELSE streak_last_date
+                END,
+                study_pulse_at = NULL
             WHERE telegram_id = :uid
         """),
         {"min": body.minutes, "uid": caller_id},
@@ -314,7 +332,13 @@ async def get_focus_stats(
     longest_row = db.execute(
         text("""
             WITH daily AS (
-                SELECT DISTINCT session_date FROM focus_sessions WHERE user_id = :uid
+                SELECT session_date
+                FROM focus_sessions
+                WHERE user_id = :uid
+                GROUP BY session_date
+                HAVING SUM(minutes) >= (
+                    SELECT COALESCE(daily_goal_minutes, 20) FROM profiles WHERE telegram_id = :uid
+                )
             ),
             gaps AS (
                 SELECT session_date,

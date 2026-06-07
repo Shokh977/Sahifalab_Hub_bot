@@ -47,17 +47,19 @@ _FREEZE_PACKAGES = {
 _MILESTONES = [3, 7, 14, 30, 60, 100, 200, 365]
 
 
-def _build_calendar(db: Session, user_id: int, today: date, days: int = 30) -> list[dict]:
-    """Return the last `days` dates with study status."""
+def _build_calendar(db: Session, user_id: int, today: date, days: int = 30, daily_goal: int = 20) -> list[dict]:
+    """Return the last `days` dates with study status. A day is 'studied' only if its total minutes >= daily_goal."""
     start = today - timedelta(days=days - 1)
 
     rows = db.execute(
         text("""
-            SELECT DISTINCT session_date
+            SELECT session_date
             FROM focus_sessions
             WHERE user_id = :uid AND session_date >= :start
+            GROUP BY session_date
+            HAVING SUM(minutes) >= :goal
         """),
-        {"uid": user_id, "start": start},
+        {"uid": user_id, "start": start, "goal": daily_goal},
     ).fetchall()
     study_dates = {r.session_date for r in rows}
 
@@ -107,27 +109,37 @@ async def get_streak_detail(
     streak_days  = int(profile.streak_days or 0)
     freeze_count = int(profile.freeze_count or 0)
     last_date    = profile.streak_last_date
+    daily_goal   = int(profile.daily_goal_minutes or 20)
 
-    # Determine if streak is active (studied today or yesterday)
+    # Determine if streak is active (goal met today or yesterday)
     is_active = last_date is not None and last_date >= today - timedelta(days=1)
 
-    # Study days this week (Mon–Sun)
+    # Study days this week (Mon–Sun) — only count days where goal was met
     week_start = today - timedelta(days=today.weekday())
     week_row = db.execute(
         text("""
-            SELECT COUNT(DISTINCT session_date) AS cnt
-            FROM focus_sessions
-            WHERE user_id = :uid AND session_date >= :ws
+            SELECT COUNT(*) AS cnt
+            FROM (
+                SELECT session_date
+                FROM focus_sessions
+                WHERE user_id = :uid AND session_date >= :ws
+                GROUP BY session_date
+                HAVING SUM(minutes) >= :goal
+            ) sub
         """),
-        {"uid": caller_id, "ws": week_start},
+        {"uid": caller_id, "ws": week_start, "goal": daily_goal},
     ).fetchone()
     week_days = int(week_row.cnt or 0) if week_row else 0
 
-    # Longest streak
+    # Longest streak — based on goal-met days only
     longest_row = db.execute(
         text("""
             WITH daily AS (
-                SELECT DISTINCT session_date FROM focus_sessions WHERE user_id = :uid
+                SELECT session_date
+                FROM focus_sessions
+                WHERE user_id = :uid
+                GROUP BY session_date
+                HAVING SUM(minutes) >= :goal
             ),
             gaps AS (
                 SELECT session_date,
@@ -139,7 +151,7 @@ async def get_streak_detail(
             )
             SELECT COALESCE(MAX(streak_len), 0) AS longest FROM streaks
         """),
-        {"uid": caller_id},
+        {"uid": caller_id, "goal": daily_goal},
     ).fetchone()
     longest_streak = int(longest_row.longest or 0) if longest_row else 0
 
@@ -162,7 +174,7 @@ async def get_streak_detail(
             "pct":          min(100, round(streak_days / m * 100)),
         })
 
-    calendar = _build_calendar(db, caller_id, today, days=30)
+    calendar = _build_calendar(db, caller_id, today, days=30, daily_goal=daily_goal)
 
     return {
         "streak_days":    streak_days,

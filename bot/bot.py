@@ -509,7 +509,7 @@ class TelegramBotHandler:
             f"{user_line}\n\n"
             f"💬 Savol:\n{text}\n\n"
             f"━━━━━━━━━━━━━━━━\n"
-            f"Javob berish uchun shu xabarga *reply* qiling\n"
+            f"Javob berish uchun shu xabarga reply qiling\n"
             f"yoki: /answer {qid} [javob]"
         )
         qna_map = await self._get_qna_msg_map()
@@ -518,7 +518,6 @@ class TelegramBotHandler:
                 sent_msg = await bot.send_message(
                     chat_id=admin_id,
                     text=msg_text,
-                    parse_mode="Markdown",
                 )
                 qna_map[f"{admin_id}:{sent_msg.message_id}"] = qid
             except Exception as e:
