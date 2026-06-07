@@ -345,7 +345,7 @@ const LessonCreatePage: React.FC = () => {
                   <Field
                     label="Video"
                     icon={CloudArrowUpIcon}
-                    hint="YouTube yoki Bunny.net dan yuklang"
+                    hint="YouTube yoki video fayl yuklang"
                   >
                     <VideoSourcePicker
                       courseId={cId || undefined}

@@ -333,7 +333,7 @@ const VideoUploadWidget: React.FC<Props> = ({
               </p>
               <p className="text-[10px] text-emerald-500 dark:text-emerald-400 truncate">
                 {videoId
-                  ? `Bunny Stream · ${videoId.slice(0, 8)}...`
+                  ? `Video · ${videoId.slice(0, 8)}...`
                   : cdnUrl}
               </p>
             </div>
@@ -405,7 +405,7 @@ const VideoUploadWidget: React.FC<Props> = ({
               />
             </div>
             <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center">
-              Bunny Stream ga yuklanmoqda...
+              Video yuklanmoqda...
             </p>
           </motion.div>
 
@@ -446,7 +446,7 @@ const VideoUploadWidget: React.FC<Props> = ({
                 mp4 · webm · mov · mkv — maks. {MAX_MB > 999 ? `${(MAX_MB / 1024).toFixed(0)} GB` : `${MAX_MB} MB`}
               </p>
               <p className="text-[10px] text-blue-500 dark:text-blue-400 mt-1">
-                ⚡ Bunny Stream — adaptive HLS streaming
+                ⚡ Adaptive HLS streaming
               </p>
             </div>
             <input

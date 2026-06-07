@@ -97,6 +97,7 @@ class ApplyTeacherRequest(BaseModel):
     bio:              str
     course_idea:      str
     motivation:       str
+    contact:          str
 
 class SetUserRoleRequest(BaseModel):
     role:   str
@@ -762,6 +763,7 @@ async def apply_teacher(
     tp.bio              = body.bio
     tp.course_idea      = body.course_idea
     tp.motivation       = body.motivation
+    tp.contact          = body.contact.strip()
     tp.applied_at       = datetime.now(UTC)
     try:
         db.commit()

@@ -116,7 +116,7 @@ const VideoSourcePicker: React.FC<Props> = ({
         <Tab active={source === 'bunny'} onClick={() => handleSourceTab('bunny')}>
           <span className="inline-flex items-center gap-1.5">
             <CloudArrowUpIcon className="w-4 h-4" />
-            Bunny.net (pullik)
+            Video yuklash (pullik)
           </span>
         </Tab>
       </div>
@@ -185,7 +185,7 @@ const VideoSourcePicker: React.FC<Props> = ({
               disabled={disabled}
             />
             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1.5">
-              Bunny Stream — adaptive HLS, faqat to'lov qilgan talabalar ko'radi.
+              Adaptive HLS streaming — faqat to'lov qilgan talabalar ko'radi.
             </p>
           </motion.div>
         )}

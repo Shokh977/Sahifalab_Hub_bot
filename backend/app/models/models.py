@@ -212,6 +212,7 @@ class TeacherProfile(Base):
     bio              = Column(Text, nullable=True)
     course_idea      = Column(Text, nullable=True)
     motivation       = Column(Text, nullable=True)
+    contact          = Column(String(255), nullable=True)
     applied_at       = Column(DateTime(timezone=True), nullable=True)
 
 # Association table for cart items
