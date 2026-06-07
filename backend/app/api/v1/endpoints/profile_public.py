@@ -890,6 +890,33 @@ def get_public_profile(
     # ── Profile completeness ──────────────────────────────────────────────────
     completeness = calculate_profile_completeness(db, tid)
 
+    # ── Longest streak (goal-filtered, same CTE as streaks.py) ──────────────
+    daily_goal = int(profile.daily_goal_minutes or 20)
+    longest_streak = _db_fallback(
+        db,
+        "longest_streak",
+        0,
+        lambda: int(db.execute(text("""
+            WITH daily AS (
+                SELECT session_date
+                FROM focus_sessions
+                WHERE user_id = :uid
+                GROUP BY session_date
+                HAVING SUM(minutes) >= :goal
+            ),
+            gaps AS (
+                SELECT session_date,
+                       session_date - (ROW_NUMBER() OVER (ORDER BY session_date)
+                                       * INTERVAL '1 day')::interval AS grp
+                FROM daily
+            ),
+            streaks AS (
+                SELECT COUNT(*) AS streak_len FROM gaps GROUP BY grp
+            )
+            SELECT COALESCE(MAX(streak_len), 0) AS longest FROM streaks
+        """), {"uid": tid, "goal": daily_goal}).scalar() or 0),
+    )
+
     # ── XP percent to next level ──────────────────────────────────────────────
     total_xp = profile.total_xp or 0
     lvl = profile.level or 1
@@ -923,6 +950,8 @@ def get_public_profile(
         "xp_percent":          xp_pct,
         # Activity
         "focus_hours":         round((profile.total_focus_minutes or 0) / 60, 1),
+        "streak_days":         int(profile.streak_days or 0),
+        "longest_streak":      longest_streak,
         "profile_views":       getattr(profile, "profile_views", 0) or 0,
         "profile_views_week":  getattr(profile, "profile_views_week", 0) or 0,
         "posts_count":         posts_count,

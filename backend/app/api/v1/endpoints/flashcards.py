@@ -16,6 +16,7 @@ POST   /flashcards/decks/:id/complete  — session done: session XP + daily goal
 GET    /flashcards/stats               — overall stats (due count, mastered, etc.)
 """
 
+import asyncio
 from datetime import datetime, UTC, timedelta
 from typing import Optional
 
@@ -27,6 +28,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
+from app.api.v1.endpoints.notifications import send_notification
+from app.api.v1.endpoints.focus import _check_and_award_challenges
 
 router = APIRouter()
 
@@ -579,12 +582,36 @@ async def complete_session(
     _get_deck_or_404(db, deck_id, caller_id)
     now = datetime.now(UTC)
 
-    # Award session XP
+    # Award session XP once per deck per day (sentinel rating=98)
+    already_session_xp = db.execute(
+        text("""
+            SELECT 1 FROM flashcard_reviews
+            WHERE user_id = :uid AND deck_id = :did AND rating = 98
+              AND DATE(reviewed_at) = CURRENT_DATE
+            LIMIT 1
+        """),
+        {"uid": caller_id, "did": deck_id},
+    ).fetchone()
+
     xp_result = {"xp_added": 0}
-    try:
-        xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=XP_SESSION_DONE)
-    except Exception:
-        pass
+    if not already_session_xp:
+        try:
+            xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=XP_SESSION_DONE)
+            # Record sentinel so subsequent sessions today give no XP
+            any_card = db.execute(
+                text("SELECT id FROM flashcards WHERE deck_id = :did LIMIT 1"),
+                {"did": deck_id},
+            ).fetchone()
+            if any_card:
+                db.execute(
+                    text("""
+                        INSERT INTO flashcard_reviews (user_id, card_id, deck_id, rating, reviewed_at)
+                        VALUES (:uid, :cid, :did, 98, :now)
+                    """),
+                    {"uid": caller_id, "cid": int(any_card.id), "did": deck_id, "now": now},
+                )
+        except Exception:
+            pass
 
     # Count flashcard study time toward daily goal (1 min = 1 min)
     flash_minutes = max(1, body.total_time_ms // 60_000) if body.total_time_ms > 0 else 1
@@ -598,17 +625,34 @@ async def complete_session(
         {"uid": caller_id, "min": flash_minutes, "xp": xp_result.get("xp_added", 0)},
     )
 
-    # Update streak
+    # Update streak — only advance when today's total meets the daily goal
     db.execute(
         text("""
             UPDATE profiles SET
                 total_focus_minutes = COALESCE(total_focus_minutes, 0) + :min,
                 streak_days = CASE
-                    WHEN streak_last_date = CURRENT_DATE     THEN COALESCE(streak_days, 0)
-                    WHEN streak_last_date = CURRENT_DATE - 1 THEN COALESCE(streak_days, 0) + 1
-                    ELSE 1
+                    WHEN (
+                        SELECT COALESCE(SUM(minutes), 0)
+                        FROM focus_sessions
+                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                    ) >= COALESCE(daily_goal_minutes, 20)
+                    THEN
+                        CASE
+                            WHEN streak_last_date = CURRENT_DATE     THEN COALESCE(streak_days, 0)
+                            WHEN streak_last_date = CURRENT_DATE - 1 THEN COALESCE(streak_days, 0) + 1
+                            ELSE 1
+                        END
+                    ELSE COALESCE(streak_days, 0)
                 END,
-                streak_last_date = CURRENT_DATE
+                streak_last_date = CASE
+                    WHEN (
+                        SELECT COALESCE(SUM(minutes), 0)
+                        FROM focus_sessions
+                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                    ) >= COALESCE(daily_goal_minutes, 20)
+                    THEN CURRENT_DATE
+                    ELSE streak_last_date
+                END
             WHERE telegram_id = :uid
         """),
         {"min": flash_minutes, "uid": caller_id},
@@ -635,13 +679,27 @@ async def complete_session(
     daily_goal    = int(stats_row.daily_goal)     if stats_row else 20
     goal_met      = today_minutes >= daily_goal
 
+    # Check and award streak milestone challenges
+    newly_completed = _check_and_award_challenges(db, caller_id, streak_days)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    for ch in newly_completed:
+        asyncio.create_task(send_notification(
+            caller_id, "achievement", category="SYSTEM",
+            meta={"challenge_key": ch.get("key", ""), "bonus_xp": ch.get("bonus_xp", 0)},
+        ))
+
     return {
-        "ok":           True,
-        "xp_awarded":   xp_result.get("xp_added", XP_SESSION_DONE),
-        "flash_minutes": flash_minutes,
-        "today_minutes": today_minutes,
-        "streak_days":  streak_days,
-        "goal_met":     goal_met,
+        "ok":                  True,
+        "xp_awarded":          xp_result.get("xp_added", XP_SESSION_DONE),
+        "flash_minutes":       flash_minutes,
+        "today_minutes":       today_minutes,
+        "streak_days":         streak_days,
+        "goal_met":            goal_met,
+        "challenges_completed": newly_completed,
     }
 
 

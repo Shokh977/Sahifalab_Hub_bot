@@ -98,7 +98,6 @@ class ProgressSyncRequest(BaseModel):
     username:             Optional[str] = None
     total_xp:             Optional[int] = None
     focus_seconds:        Optional[int] = None
-    total_focus_minutes:  Optional[int] = None   # new: derived from focus_seconds
     level:                Optional[int] = None
     quizzes_completed:    Optional[int] = None
     app_online_at:        Optional[str] = None   # ISO-8601
@@ -252,7 +251,6 @@ async def sync_progress(
     if body.first_name           is not None: profile.first_name           = body.first_name
     if body.username             is not None: profile.username             = body.username
     if body.focus_seconds        is not None: profile.focus_seconds        = body.focus_seconds
-    if body.total_focus_minutes  is not None: profile.total_focus_minutes  = body.total_focus_minutes
     if body.app_online_at        is not None:
         try:
             profile.app_online_at = datetime.fromisoformat(
