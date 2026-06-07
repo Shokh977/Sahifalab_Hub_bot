@@ -748,10 +748,12 @@ async def apply_teacher(
         raise HTTPException(status_code=404, detail="Profile not found")
     if profile.role == "admin":
         raise HTTPException(status_code=400, detail="Admin cannot apply as teacher")
-    if profile.role == "teacher":
-        return {"success": True, "already_applied": True, "status": profile.status}
+    if profile.role == "teacher" and profile.status == "active":
+        return {"success": True, "already_applied": True, "status": "active"}
+    if profile.status == "pending":
+        return {"success": True, "already_applied": True, "status": "pending"}
 
-    profile.role = "teacher"
+    # Mark as pending WITHOUT granting teacher role — role is only set on admin approval
     profile.status = "pending"
 
     tp = db.query(TeacherProfile).filter(TeacherProfile.telegram_id == telegram_id).first()

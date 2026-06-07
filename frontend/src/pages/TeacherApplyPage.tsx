@@ -100,9 +100,9 @@ const TeacherApplyPage: React.FC = () => {
   const navigate = useNavigate()
 
   const initialState: State =
-    user?.role === 'admin'                                      ? 'already_teacher' :
-    user?.role === 'teacher' && user.status === 'active'       ? 'already_teacher' :
-    user?.role === 'teacher' && user.status === 'pending'      ? 'already_pending' :
+    user?.role === 'admin'                                   ? 'already_teacher' :
+    user?.role === 'teacher' && user.status === 'active'     ? 'already_teacher' :
+    user?.status === 'pending'                               ? 'already_pending' :
     'form'
 
   const [state, setState]     = useState<State>(initialState)
