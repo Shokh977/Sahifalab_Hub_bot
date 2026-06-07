@@ -3,6 +3,7 @@
  * Authentication: Admin enters their Telegram ID; backend validates against AdminUser table.
  */
 import React, { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp, RefreshCw, Users, BookOpen, GraduationCap, Star,
   BadgeDollarSign, CheckCircle, Lock, Percent, Wallet, Target, Inbox,
@@ -213,6 +214,7 @@ const formatFocusTime = (seconds: number): string => {
 const AdminPage: React.FC = () => {
   const { user: tgUser } = useTelegramWebApp()
   const { user: authUser, token } = useAuth()
+  const navigate = useNavigate()
   const [telegramId, setTelegramId] = useState('')
   const [adminId, setAdminId] = useState<number | null>(null)
   const [authError, setAuthError] = useState('')
@@ -634,6 +636,16 @@ const AdminPage: React.FC = () => {
       setTeacherMsg('❌ Xatolik yuz berdi')
     } finally {
       setTeacherActionId(null)
+    }
+  }
+
+  const handleMessageTeacher = async (telegramId: number) => {
+    try {
+      const r = await apiService.client.post(`/api/v1/messenger/conversations/${telegramId}`)
+      navigate(`/messenger/${r.data.id}`)
+    } catch (err: any) {
+      console.error('[Admin] handleMessageTeacher error:', err?.response?.data?.detail || err?.message)
+      setTeacherMsg('❌ Xabar yuborishda xatolik')
     }
   }
 
@@ -2217,21 +2229,29 @@ const AdminPage: React.FC = () => {
                       </div>
                     )}
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 flex-col">
                       <button
-                        onClick={() => handleApproveTeacher(req.telegram_id)}
-                        disabled={teacherActionId === req.telegram_id}
-                        className="flex-1 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                        onClick={() => handleMessageTeacher(req.telegram_id)}
+                        className="w-full py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-colors border border-blue-200 dark:border-blue-800"
                       >
-                        {teacherActionId === req.telegram_id ? '…' : '✅ Tasdiqlash'}
+                        💬 Xabar yuborish
                       </button>
-                      <button
-                        onClick={() => handleRejectTeacher(req.telegram_id)}
-                        disabled={teacherActionId === req.telegram_id}
-                        className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
-                      >
-                        {teacherActionId === req.telegram_id ? '…' : '🚫 Rad etish'}
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApproveTeacher(req.telegram_id)}
+                          disabled={teacherActionId === req.telegram_id}
+                          className="flex-1 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
+                        >
+                          {teacherActionId === req.telegram_id ? '…' : '✅ Tasdiqlash'}
+                        </button>
+                        <button
+                          onClick={() => handleRejectTeacher(req.telegram_id)}
+                          disabled={teacherActionId === req.telegram_id}
+                          className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
+                        >
+                          {teacherActionId === req.telegram_id ? '…' : '🚫 Rad etish'}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

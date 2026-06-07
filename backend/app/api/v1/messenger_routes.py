@@ -11,6 +11,7 @@ from app.services.auth_service import decode_token
 from app.schemas.social_schemas import MessageCreate, ReactionCreate
 from app.services import messenger_service as msvc
 from app.models.social_models import Connection
+from app.models.models import Profile
 
 router = APIRouter(prefix="/messenger", tags=["messenger"])
 
@@ -37,9 +38,17 @@ def list_conversations(
 def _can_message(db: Session, sender_id: int, receiver_id: int) -> bool:
     """
     Returns True when sender_id may open a DM with receiver_id:
-      1. They have an accepted connection, OR
-      2. One is enrolled in a course the other teaches.
+      1. Either party is an admin (admins can message anyone), OR
+      2. They have an accepted connection, OR
+      3. One is enrolled in a course the other teaches.
     """
+    admin = db.query(Profile).filter(
+        Profile.telegram_id.in_([sender_id, receiver_id]),
+        Profile.role == "admin",
+    ).first()
+    if admin:
+        return True
+
     connected = db.query(Connection).filter(
         or_(
             and_(Connection.requester_id == sender_id,   Connection.receiver_id == receiver_id),
