@@ -300,6 +300,7 @@ _PUSH_TITLES: dict[str, str] = {
     "new_sale":            "Yangi sotish",
     "payout":              "To'lov o'tkazildi",
     "welcome":             "Sahifalab'ga xush kelibsiz",
+    "teacher_approved":    "Ariza qabul qilindi 🎉",
 }
 
 # Body templates — {actor} is replaced with the actor's name at send time
@@ -323,6 +324,7 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "new_sale":            "Yangi daromad tushdi.",
     "payout":              "Daromadingiz hisobingizga o'tkazildi.",
     "welcome":             "Ilm yo'liga xush kelibsiz. Profilingizni to'ldiring.",
+    "teacher_approved":    "Tabriklaymiz! Siz endi o'qituvchi sifatida tasdiqlangansiz. Kurs yaratishni boshlashingiz mumkin.",
 }
 
 # Keep _PUSH_BODIES as fallback alias
@@ -446,6 +448,7 @@ def _expo_screen_data(notif_type: str, meta: dict) -> dict:
         "new_student":         {"screen": "teacher_dashboard"},
         "new_sale":            {"screen": "teacher_dashboard"},
         "payout":              {"screen": "teacher_dashboard"},
+        "teacher_approved":    {"screen": "teacher_dashboard"},
     }
     return mapping.get(notif_type, {"screen": "notifications"})
 

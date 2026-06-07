@@ -824,6 +824,16 @@ async def approve_teacher(
     profile.role = "teacher"
     profile.status = "active"
     db.commit()
+    try:
+        from app.api.v1.endpoints.notifications import send_notification
+        await send_notification(
+            target_telegram_id,
+            "teacher_approved",
+            "TIZIM",
+            {"first_name": profile.first_name or ""},
+        )
+    except Exception:
+        pass
     return {"success": True, "message": "Teacher approved", "telegram_id": target_telegram_id}
 
 
