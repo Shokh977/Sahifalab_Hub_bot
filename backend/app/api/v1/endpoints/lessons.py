@@ -9,14 +9,18 @@ Routes:
   DELETE /api/lessons/{id}           — delete lesson (owner/admin)
   PATCH /api/lessons/reorder         — bulk reorder lessons (owner/admin)
 """
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional, List
 import os
 import logging
 import httpx
 
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
 from app.services.auth_service import decode_token
+from app.services.xp_service import add_xp, DEFAULT_COURSE_XP
 
 logger = logging.getLogger(__name__)
 
@@ -527,7 +531,11 @@ async def save_video_position(
 
 
 @router.post("/{lesson_id}/complete")
-async def complete_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
+async def complete_lesson(
+    lesson_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """Student marks lesson as completed (tracked per user+lesson)."""
     caller_id = await _resolve_caller(authorization)
     _ensure_supabase()
@@ -603,6 +611,12 @@ async def complete_lesson(lesson_id: int, authorization: Optional[str] = Header(
                     headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
                 )
             certificate_issued = cert_res.status_code in (200, 201)
+
+            # Award course completion XP (deduplicated by course_id — one-time only)
+            try:
+                add_xp(db, user_id=caller_id, source="COURSE", amount=DEFAULT_COURSE_XP, reference_id=course_id)
+            except Exception as e:
+                logger.warning("Failed to award course XP for course %s, student %s: %s", course_id, caller_id, e)
     except Exception as e:
         logger.warning("Failed to auto-issue course certificate for course %s, student %s: %s", course_id, caller_id, e)
 

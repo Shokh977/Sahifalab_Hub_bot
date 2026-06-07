@@ -55,10 +55,18 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
-def _send_welcome(user_id: int, first_name: str = ""):
-    """Fire welcome notification for newly registered users (fire-and-forget)."""
+def _send_welcome(user_id: int, first_name: str = "", db: Session = None):
+    """Award 100 welcome XP and fire a welcome notification for new users."""
     if user_id <= 0:
         return
+    # Award 100 XP — 'WELCOME' source falls through add_xp with no cap/dedup
+    if db is not None:
+        try:
+            from app.services.xp_service import add_xp
+            add_xp(db, user_id=user_id, source="WELCOME", amount=100)
+        except Exception:
+            pass
+    # Push notification (fire-and-forget)
     try:
         from app.api.v1.endpoints.notifications import send_notification
         loop = asyncio.get_event_loop()
@@ -326,7 +334,7 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
         **({"photo_url": data.photo_url} if not has_any_photo else {}),
     )
     if is_new:
-        _send_welcome(data.id, data.first_name or "")
+        _send_welcome(data.id, data.first_name or "", db)
     token_data = create_access_token(data.id, profile.role or "student")
     return {
         "success": True, "telegram_id": data.id,
@@ -373,7 +381,7 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
         **({"photo_url": photo_url} if not has_any_photo else {}),
     )
     if is_new:
-        _send_welcome(telegram_id, first_name or "")
+        _send_welcome(telegram_id, first_name or "", db)
     token_data = create_access_token(telegram_id, profile.role or "student")
     logger.info("tma_init: authenticated user_id=%s (%s)", telegram_id, username or first_name)
     return {
@@ -446,7 +454,7 @@ async def google_sign_in(body: GoogleSignInRequest, db: Session = Depends(get_db
         photo_url=photo_url, email=email, app_last_login=datetime.now(UTC),
     )
     if is_new:
-        _send_welcome(telegram_id, first_name or "")
+        _send_welcome(telegram_id, first_name or "", db)
     token_data = create_access_token(telegram_id, profile.role or "student")
     return {
         "status": "ok", "telegram_id": telegram_id,

@@ -323,7 +323,7 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "new_student":         "Yangi o'quvchi kursingizga yozildi.",
     "new_sale":            "Yangi daromad tushdi.",
     "payout":              "Daromadingiz hisobingizga o'tkazildi.",
-    "welcome":             "Ilm yo'liga xush kelibsiz. Profilingizni to'ldiring.",
+    "welcome":             "Ilm yo'liga xush kelibsiz! Sizga 100 XP sovg'a qilindi 🎁 Profilingizni to'ldiring.",
     "teacher_approved":    "Tabriklaymiz! Siz endi o'qituvchi sifatida tasdiqlangansiz. Kurs yaratishni boshlashingiz mumkin.",
 }
 

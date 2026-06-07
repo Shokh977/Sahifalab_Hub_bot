@@ -28,7 +28,7 @@ import { API_BASE } from '../lib/apiUrl'
 function _authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
   try {
-    const t = localStorage.getItem('auth_token')
+    const t = localStorage.getItem('tma_auth_token') || localStorage.getItem('auth_token')
     if (t) h['Authorization'] = `Bearer ${t}`
   } catch { /* SSR / Telegram WebView fallback */ }
   return h
@@ -237,14 +237,14 @@ export const useProgressStore = create<ProgressState>((set, get) => {
 
   // ── addQuizXP ───────────────────────────────────────────────────────────
   // Flat 25 XP per quiz (score/total params kept for backward compat).
-  // Optimistic local update; server enforces the 100 XP/day daily cap.
+  // XP is already awarded server-side by /api/quizzes/{id}/verify — this
+  // only updates the local store optimistically so the UI reflects it instantly.
   addQuizXP: (_score: number, _total: number) => {
     const state = get()
     if (!state.telegramId) return
 
     const QUIZ_XP = 25
 
-    // Optimistic update — corrected by server response below
     set(s => {
       const newDailyQuiz = s.dailyQuizCount + 1
       saveDaily({ date: todayUTC(), focusSeconds: s.dailyFocusSeconds, quizCount: newDailyQuiz })
@@ -256,27 +256,6 @@ export const useProgressStore = create<ProgressState>((set, get) => {
         dailyQuizCount:   newDailyQuiz,
       }
     })
-
-    // Server enforces daily cap and writes the audit log
-    fetch(`${API_BASE}/api/xp/add`, {
-      method:  'POST',
-      headers: _authHeaders({ 'Content-Type': 'application/json' }),
-      body:    JSON.stringify({
-        telegram_id: state.telegramId,
-        source:      'QUIZ',
-        amount:      QUIZ_XP,
-      }),
-    })
-      .then(r => r.json())
-      .then(data => {
-        if (data.new_xp !== undefined) {
-          set({
-            totalXP: data.new_xp,
-            level:   data.new_level ?? calcLevel(data.new_xp),
-          })
-        }
-      })
-      .catch(() => { /* silent — optimistic state stays until next init */ })
   },
 
   // ── addCourseXP ─────────────────────────────────────────────────────────
@@ -316,33 +295,30 @@ export const useProgressStore = create<ProgressState>((set, get) => {
 
     set({ isSyncing: true })
     const pendingSeconds = state.pendingFocusSeconds
-    const focusXPDelta   = focusSecondsToXP(pendingSeconds)
+    const pendingMinutes = Math.floor(pendingSeconds / 60)
     const totalFocusMin  = Math.floor(state.focusSeconds / 60)
 
     try {
-      // 1. Report DEEP_WORK XP delta via anti-cheat RPC
-      if (focusXPDelta > 0) {
-        const xpRes = await fetch(`${API_BASE}/api/xp/add`, {
+      // 1. Report focus minutes via /api/focus/complete — awards XP AND creates
+      //    a focus_sessions row so streak + daily goal logic runs correctly.
+      if (pendingMinutes > 0) {
+        const focusRes = await fetch(`${API_BASE}/api/focus/complete`, {
           method:  'POST',
           headers: _authHeaders({ 'Content-Type': 'application/json' }),
-          body:    JSON.stringify({
-            telegram_id: state.telegramId,
-            source:      'DEEP_WORK',
-            amount:      focusXPDelta,
-          }),
+          body:    JSON.stringify({ minutes: pendingMinutes }),
         })
-        if (xpRes.ok) {
-          const data = await xpRes.json()
-          if (data.new_xp !== undefined) {
+        if (focusRes.ok) {
+          const data = await focusRes.json()
+          if (data.total_xp !== undefined) {
             set({
-              totalXP: data.new_xp,
-              level:   data.new_level ?? calcLevel(data.new_xp),
+              totalXP: data.total_xp,
+              level:   calcLevel(data.total_xp),
             })
           }
         }
       }
 
-      // 2. Sync presence + focus seconds (server owns total_xp via add_xp)
+      // 2. Sync presence + focus seconds
       await fetch(`${API_BASE}/api/profiles/sync`, {
         method:  'POST',
         headers: _authHeaders({ 'Content-Type': 'application/json' }),
@@ -358,7 +334,7 @@ export const useProgressStore = create<ProgressState>((set, get) => {
       })
 
       set({
-        pendingFocusSeconds: 0,
+        pendingFocusSeconds: pendingSeconds % 60,  // keep sub-minute remainder for next sync
         totalFocusMinutes:   totalFocusMin,
       })
     } catch {
