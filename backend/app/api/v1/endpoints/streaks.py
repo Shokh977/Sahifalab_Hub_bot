@@ -11,7 +11,7 @@ import math
 from datetime import datetime, UTC, timedelta, date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -21,6 +21,16 @@ from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 
 router = APIRouter()
+
+
+def _parse_local_date(local_date: Optional[str]) -> date:
+    """Return the client's local calendar date, or UTC today as fallback."""
+    if local_date:
+        try:
+            return date.fromisoformat(local_date)
+        except ValueError:
+            pass
+    return datetime.now(UTC).date()
 
 
 async def _require_token(authorization: Optional[str] = Header(None)) -> int:
@@ -88,10 +98,11 @@ def _build_calendar(db: Session, user_id: int, today: date, days: int = 30, dail
 
 @router.get("/detail")
 async def get_streak_detail(
+    local_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    today = datetime.now(UTC).date()
+    today = _parse_local_date(local_date)
 
     profile = db.execute(
         text("""
@@ -243,11 +254,12 @@ async def purchase_freeze(
 
 @router.post("/freeze/use")
 async def use_freeze(
+    local_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
     """Manually consume one freeze to protect today's streak."""
-    today = datetime.now(UTC).date()
+    today = _parse_local_date(local_date)
 
     profile = db.execute(
         text("""

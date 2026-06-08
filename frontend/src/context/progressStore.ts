@@ -302,10 +302,12 @@ export const useProgressStore = create<ProgressState>((set, get) => {
       // 1. Report focus minutes via /api/focus/complete — awards XP AND creates
       //    a focus_sessions row so streak + daily goal logic runs correctly.
       if (pendingMinutes > 0) {
+        const d = new Date()
+        const localDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
         const focusRes = await fetch(`${API_BASE}/api/focus/complete`, {
           method:  'POST',
           headers: _authHeaders({ 'Content-Type': 'application/json' }),
-          body:    JSON.stringify({ minutes: pendingMinutes }),
+          body:    JSON.stringify({ minutes: pendingMinutes, local_date: localDate }),
         })
         if (focusRes.ok) {
           const data = await focusRes.json()

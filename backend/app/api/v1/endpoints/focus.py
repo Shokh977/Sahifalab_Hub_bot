@@ -11,10 +11,10 @@ GET  /api/focus/weekly         — 7-day breakdown [{ date, minutes, goal_met }]
 
 import asyncio
 import json
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, UTC, timedelta, date as Date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -90,8 +90,19 @@ def _check_and_award_challenges(db: Session, caller_id: int, streak_days: int) -
     return newly_done
 
 
+def _parse_local_date(local_date: Optional[str]) -> Date:
+    """Return the client's local calendar date, or UTC today as fallback."""
+    if local_date:
+        try:
+            return Date.fromisoformat(local_date)
+        except ValueError:
+            pass
+    return datetime.now(UTC).date()
+
+
 class CompleteSessionRequest(BaseModel):
     minutes: int = Field(..., ge=1, le=480)
+    local_date: Optional[str] = None   # YYYY-MM-DD from device calendar
 
 
 @router.post("/complete")
@@ -112,7 +123,8 @@ async def complete_focus_session(
     except Exception:
         raise HTTPException(status_code=500, detail="XP award failed")
 
-    today = datetime.now(UTC).date()
+    today = _parse_local_date(body.local_date)
+    yesterday = today - timedelta(days=1)
 
     db.execute(
         text("""
@@ -132,12 +144,12 @@ async def complete_focus_session(
                     WHEN (
                         SELECT COALESCE(SUM(minutes), 0)
                         FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                        WHERE user_id = :uid AND session_date = :today
                     ) >= COALESCE(daily_goal_minutes, 20)
                     THEN
                         CASE
-                            WHEN streak_last_date = CURRENT_DATE     THEN COALESCE(streak_days, 0)
-                            WHEN streak_last_date = CURRENT_DATE - 1 THEN COALESCE(streak_days, 0) + 1
+                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
+                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
                             ELSE 1
                         END
                     ELSE COALESCE(streak_days, 0)
@@ -146,15 +158,15 @@ async def complete_focus_session(
                     WHEN (
                         SELECT COALESCE(SUM(minutes), 0)
                         FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                        WHERE user_id = :uid AND session_date = :today
                     ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN CURRENT_DATE
+                    THEN :today
                     ELSE streak_last_date
                 END,
                 study_pulse_at = NULL
             WHERE telegram_id = :uid
         """),
-        {"min": body.minutes, "uid": caller_id},
+        {"min": body.minutes, "uid": caller_id, "today": today, "yesterday": yesterday},
     )
     db.commit()
 
@@ -293,21 +305,23 @@ async def get_challenges(
 
 @router.get("/stats")
 async def get_focus_stats(
+    local_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    week_ago = datetime.now(UTC).date() - timedelta(days=6)
+    today    = _parse_local_date(local_date)
+    week_ago = today - timedelta(days=6)
 
     agg = db.execute(
         text("""
             SELECT
-                COALESCE(SUM(minutes) FILTER (WHERE session_date = CURRENT_DATE), 0) AS today_minutes,
-                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0)    AS week_minutes,
-                COALESCE(COUNT(*)     FILTER (WHERE session_date = CURRENT_DATE), 0) AS today_sessions
+                COALESCE(SUM(minutes) FILTER (WHERE session_date = :today), 0)     AS today_minutes,
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0) AS week_minutes,
+                COALESCE(COUNT(*)     FILTER (WHERE session_date = :today), 0)     AS today_sessions
             FROM focus_sessions
             WHERE user_id = :uid
         """),
-        {"uid": caller_id, "week_ago": week_ago},
+        {"uid": caller_id, "week_ago": week_ago, "today": today},
     ).fetchone()
 
     profile = db.execute(
@@ -369,10 +383,11 @@ async def get_focus_stats(
 
 @router.get("/weekly")
 async def get_weekly_focus(
+    local_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    week_ago = datetime.now(UTC).date() - timedelta(days=6)
+    week_ago = _parse_local_date(local_date) - timedelta(days=6)
 
     rows = db.execute(
         text("""
@@ -404,11 +419,12 @@ async def get_weekly_focus(
 
 @router.get("/weekly-report")
 async def get_weekly_report(
+    local_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
     """Rich weekly report data for the in-app report card screen."""
-    today     = datetime.now(UTC).date()
+    today     = _parse_local_date(local_date)
     week_ago  = today - timedelta(days=6)
     prev_start = today - timedelta(days=13)
 
