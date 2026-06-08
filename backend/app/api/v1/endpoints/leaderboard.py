@@ -75,8 +75,9 @@ async def weekly_leaderboard(
                         p.site_username          AS username,
                         p.photo_url,
                         p.level,
-                        COALESCE(p.total_xp, 0)  AS score,
-                        COALESCE(f.minutes, 0)   AS minutes,
+                        COALESCE(p.total_xp, 0)       AS score,
+                        COALESCE(f.minutes, 0)         AS minutes,
+                        COALESCE(p.account_type, 'student') AS account_type,
                         RANK() OVER (ORDER BY COALESCE(p.total_xp, 0) DESC) AS rank
                     FROM profiles p
                     JOIN pool ON pool.telegram_id = p.telegram_id
@@ -98,8 +99,9 @@ async def weekly_leaderboard(
                         p.site_username          AS username,
                         p.photo_url,
                         p.level,
-                        COALESCE(p.total_xp, 0)  AS score,
-                        COALESCE(f.minutes, 0)   AS minutes,
+                        COALESCE(p.total_xp, 0)       AS score,
+                        COALESCE(f.minutes, 0)         AS minutes,
+                        COALESCE(p.account_type, 'student') AS account_type,
                         RANK() OVER (ORDER BY COALESCE(p.total_xp, 0) DESC) AS rank
                     FROM profiles p
                     LEFT JOIN focus_all f ON f.user_id = p.telegram_id
@@ -139,7 +141,8 @@ async def weekly_leaderboard(
                         p.photo_url,
                         p.level,
                         x.score,
-                        COALESCE(fp.minutes, 0) AS minutes,
+                        COALESCE(fp.minutes, 0)             AS minutes,
+                        COALESCE(p.account_type, 'student') AS account_type,
                         RANK() OVER (ORDER BY x.score DESC) AS rank
                     FROM profiles p
                     JOIN pool        ON pool.telegram_id = p.telegram_id
@@ -170,7 +173,8 @@ async def weekly_leaderboard(
                         p.photo_url,
                         p.level,
                         x.score,
-                        COALESCE(fp.minutes, 0) AS minutes,
+                        COALESCE(fp.minutes, 0)             AS minutes,
+                        COALESCE(p.account_type, 'student') AS account_type,
                         RANK() OVER (ORDER BY x.score DESC) AS rank
                     FROM profiles p
                     JOIN xp_period x ON x.user_id = p.telegram_id
@@ -188,15 +192,16 @@ async def weekly_leaderboard(
         if is_me:
             my_rank = int(r.rank)
         entries.append({
-            "rank":        int(r.rank),
-            "telegram_id": r.telegram_id,
-            "first_name":  r.first_name or "",
-            "username":    r.username or "",
-            "photo_url":   r.photo_url,
-            "level":       int(r.level or 1),
-            "score":       int(r.score),
-            "minutes":     int(r.minutes),
-            "is_me":       is_me,
+            "rank":         int(r.rank),
+            "telegram_id":  r.telegram_id,
+            "first_name":   r.first_name or "",
+            "username":     r.username or "",
+            "photo_url":    r.photo_url,
+            "level":        int(r.level or 1),
+            "score":        int(r.score),
+            "minutes":      int(r.minutes),
+            "account_type": r.account_type or "student",
+            "is_me":        is_me,
         })
 
     # Caller rank when outside the top list
