@@ -324,21 +324,24 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
 
     existing = db.query(Profile).filter(Profile.telegram_id == data.id).first()
     is_new = existing is None
-    # Only sync Telegram photo when the user has no photo set yet.
-    # Once any photo is stored (Telegram or custom CDN), preserve it on login.
+    # Only sync Telegram profile fields when the user has no value set yet.
+    # Preserves any custom avatar, name, or username the user has set in the app.
     has_any_photo = bool(existing and existing.photo_url)
+    has_first_name = bool(existing and existing.first_name)
+    has_username   = bool(existing and existing.username)
     profile = _upsert_profile(
         db, data.id,
-        first_name=data.first_name, username=data.username,
         app_last_login=datetime.now(UTC),
-        **({"photo_url": data.photo_url} if not has_any_photo else {}),
+        **({"first_name": data.first_name} if not has_first_name else {}),
+        **({"username":   data.username}   if not has_username   else {}),
+        **({"photo_url":  data.photo_url}  if not has_any_photo  else {}),
     )
     if is_new:
         _send_welcome(data.id, data.first_name or "", db)
     token_data = create_access_token(data.id, profile.role or "student")
     return {
         "success": True, "telegram_id": data.id,
-        "first_name": data.first_name, "username": profile.site_username,
+        "first_name": profile.first_name, "username": profile.site_username,
         "photo_url": profile.photo_url or data.photo_url,
         "role": profile.role or "student", "status": profile.status or "active",
         **token_data,
@@ -373,12 +376,15 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
 
     existing = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     is_new = existing is None
-    has_any_photo = bool(existing and existing.photo_url)
+    has_any_photo  = bool(existing and existing.photo_url)
+    has_first_name = bool(existing and existing.first_name)
+    has_username   = bool(existing and existing.username)
     profile = _upsert_profile(
         db, telegram_id,
-        first_name=first_name, username=username,
         app_last_login=datetime.now(UTC),
-        **({"photo_url": photo_url} if not has_any_photo else {}),
+        **({"first_name": first_name} if not has_first_name else {}),
+        **({"username":   username}   if not has_username   else {}),
+        **({"photo_url":  photo_url}  if not has_any_photo  else {}),
     )
     if is_new:
         _send_welcome(telegram_id, first_name or "", db)
@@ -387,8 +393,8 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
     return {
         "success":     True,
         "telegram_id": telegram_id,
-        "first_name":  first_name,
-        "username":    username,
+        "first_name":  profile.first_name,
+        "username":    profile.username,
         "photo_url":   profile.photo_url or photo_url,
         "role":        profile.role   or "student",
         "status":      profile.status or "active",
@@ -728,14 +734,21 @@ async def verify_code(code: str, db: Session = Depends(get_db)):
     except Exception:
         db.rollback()
 
+    existing_profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
+    has_any_photo  = bool(existing_profile and existing_profile.photo_url)
+    has_first_name = bool(existing_profile and existing_profile.first_name)
+    has_username   = bool(existing_profile and existing_profile.username)
     profile = _upsert_profile(
-        db, telegram_id, first_name=first_name, username=username,
-        photo_url=photo_url, app_last_login=datetime.now(UTC),
+        db, telegram_id,
+        app_last_login=datetime.now(UTC),
+        **({"first_name": first_name} if not has_first_name else {}),
+        **({"username":   username}   if not has_username   else {}),
+        **({"photo_url":  photo_url}  if not has_any_photo  else {}),
     )
     token_data = create_access_token(telegram_id, profile.role or "student")
     return {
         "status": "ok", "telegram_id": telegram_id,
-        "first_name": first_name, "username": username, "photo_url": photo_url,
+        "first_name": profile.first_name, "username": profile.username, "photo_url": profile.photo_url or photo_url,
         "email": profile.email,
         "role": profile.role or "student", "status_account": profile.status or "active",
         **token_data,

@@ -337,12 +337,24 @@ async def get_lesson_download_url(
 
     try:
         from app.services import bunny_stream_service as bss
-        url = bss.signed_mp4_url(bunny_vid, resolution="720p", expires_seconds=3600)
+        # Pick the best available resolution (Bunny only transcodes up to the
+        # source resolution, so 720p may not exist for lower-quality uploads).
+        resolution = "720p"
+        try:
+            video_info = await bss.get_video(bunny_vid)
+            available  = video_info.get("availableResolutions") or ""
+            for r in ("1080p", "720p", "480p", "360p"):
+                if r in available:
+                    resolution = r
+                    break
+        except Exception:
+            pass  # Use 720p as best-effort default
+        url = bss.signed_mp4_url(bunny_vid, resolution=resolution, expires_seconds=3600)
     except Exception as e:
         logger.warning("signed_mp4_url failed for lesson %s: %s", lesson_id, e)
         raise HTTPException(status_code=503, detail="Yuklab olish URL yaratilmadi")
 
-    return {"download_url": url, "expires_in": 3600}
+    return {"download_url": url, "expires_in": 3600, "resolution": resolution}
 
 
 @router.post("")
