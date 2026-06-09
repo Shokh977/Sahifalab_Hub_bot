@@ -229,6 +229,7 @@ def _serialize_profile_user(p: Profile) -> dict:
         "profile_views_week": getattr(p, "profile_views_week", 0) or 0,
         "is_verified":       getattr(p, "is_verified", False) or False,
         "account_type":      getattr(p, "account_type", "student") or "student",
+        "role":              getattr(p, "role", "student") or "student",
         "joined_at":         p.app_created_at.isoformat() if p.app_created_at else None,
     }
 
