@@ -1007,6 +1007,8 @@ async def email_login(body: EmailLoginRequest, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Email yoki parol noto'g'ri")
     if profile.status == "suspended":
         raise HTTPException(status_code=403, detail="Akkauntingiz bloklangan")
+    if not profile.email_verified:
+        raise HTTPException(status_code=403, detail="EMAIL_NOT_VERIFIED")
 
     profile.app_last_login = datetime.now(UTC)
     try:
