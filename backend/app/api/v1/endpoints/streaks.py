@@ -57,7 +57,7 @@ _FREEZE_PACKAGES = {
 _MILESTONES = [3, 7, 14, 30, 60, 100, 200, 365]
 
 
-def _build_calendar(db: Session, user_id: int, today: date, days: int = 30, daily_goal: int = 20) -> list[dict]:
+def _build_calendar(db: Session, user_id: int, today: date, days: int = 7, daily_goal: int = 20) -> list[dict]:
     """Return the last `days` dates with study status. A day is 'studied' only if its total minutes >= daily_goal."""
     start = today - timedelta(days=days - 1)
 
@@ -99,6 +99,7 @@ def _build_calendar(db: Session, user_id: int, today: date, days: int = 30, dail
 @router.get("/detail")
 async def get_streak_detail(
     local_date: Optional[str] = Query(None),
+    days: int = Query(7, ge=7, le=30),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -122,40 +123,62 @@ async def get_streak_detail(
     last_date    = profile.streak_last_date
     daily_goal   = int(profile.daily_goal_minutes or 20)
 
-    # Determine if streak is active (goal met today or yesterday)
+    # Determine if streak is active (studied today or yesterday)
     is_active = last_date is not None and last_date >= today - timedelta(days=1)
 
-    # Study days this week (Mon–Sun) — only count days where goal was met
+    # Freeze is only valid when exactly one day was missed:
+    # last study must be exactly 2 days ago, yesterday must not already be frozen,
+    # and the user must have freeze charges.
+    missed_date = today - timedelta(days=1)
+    freeze_dates_all: set = set(profile.freeze_used_dates or [])
+    can_freeze = (
+        streak_days > 0
+        and not is_active
+        and last_date is not None
+        and last_date == today - timedelta(days=2)
+        and missed_date not in freeze_dates_all
+        and freeze_count > 0
+    )
+
+    # Study days this week (Mon–Sun) — studied days + frozen days
     week_start = today - timedelta(days=today.weekday())
     week_row = db.execute(
         text("""
-            SELECT COUNT(*) AS cnt
-            FROM (
-                SELECT session_date
+            SELECT COUNT(*) AS cnt FROM (
+                SELECT session_date AS d
                 FROM focus_sessions
-                WHERE user_id = :uid AND session_date >= :ws
+                WHERE user_id = :uid AND session_date >= :ws AND session_date <= :today
                 GROUP BY session_date
                 HAVING SUM(minutes) >= :goal
+                UNION
+                SELECT UNNEST(COALESCE(freeze_used_dates, '{}'))
+                FROM profiles
+                WHERE telegram_id = :uid
             ) sub
+            WHERE d >= :ws AND d <= :today
         """),
-        {"uid": caller_id, "ws": week_start, "goal": daily_goal},
+        {"uid": caller_id, "ws": week_start, "goal": daily_goal, "today": today},
     ).fetchone()
     week_days = int(week_row.cnt or 0) if week_row else 0
 
-    # Longest streak — based on goal-met days only
+    # Longest streak — studied days + frozen days treated as active
     longest_row = db.execute(
         text("""
-            WITH daily AS (
-                SELECT session_date
+            WITH active_days AS (
+                SELECT session_date AS d
                 FROM focus_sessions
                 WHERE user_id = :uid
                 GROUP BY session_date
                 HAVING SUM(minutes) >= :goal
+                UNION
+                SELECT UNNEST(COALESCE(freeze_used_dates, '{}'))
+                FROM profiles
+                WHERE telegram_id = :uid
             ),
             gaps AS (
-                SELECT session_date,
-                       session_date - (ROW_NUMBER() OVER (ORDER BY session_date) * INTERVAL '1 day')::interval AS grp
-                FROM daily
+                SELECT d AS session_date,
+                       d - (ROW_NUMBER() OVER (ORDER BY d) * INTERVAL '1 day') AS grp
+                FROM active_days
             ),
             streaks AS (
                 SELECT COUNT(*) AS streak_len FROM gaps GROUP BY grp
@@ -185,11 +208,12 @@ async def get_streak_detail(
             "pct":          min(100, round(streak_days / m * 100)),
         })
 
-    calendar = _build_calendar(db, caller_id, today, days=30, daily_goal=daily_goal)
+    calendar = _build_calendar(db, caller_id, today, days=days, daily_goal=daily_goal)
 
     return {
         "streak_days":    streak_days,
         "is_active":      is_active,
+        "can_freeze":     can_freeze,
         "longest_streak": longest_streak,
         "week_days":      week_days,
         "freeze_count":   freeze_count,
@@ -258,8 +282,15 @@ async def use_freeze(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    """Manually consume one freeze to protect today's streak."""
-    today = _parse_local_date(local_date)
+    """
+    Consume one freeze to bridge exactly one missed day.
+
+    local_date = the user's actual today (device local date).
+    The freeze is always applied to yesterday (today - 1), the missed day.
+    After this call the user must still study today to advance the streak.
+    """
+    today = _parse_local_date(local_date)           # actual today (device local)
+    missed_date = today - timedelta(days=1)         # the day that was missed
 
     profile = db.execute(
         text("""
@@ -277,25 +308,33 @@ async def use_freeze(
     if freeze_count <= 0:
         raise HTTPException(status_code=400, detail="No freezes available")
 
-    freeze_used = list(profile.freeze_used_dates or [])
-    if today in freeze_used:
-        raise HTTPException(status_code=400, detail="Freeze already used today")
+    freeze_used: list = list(profile.freeze_used_dates or [])
+    last_date = profile.streak_last_date
 
-    # Already studied today — no need to freeze
-    if profile.streak_last_date == today:
-        raise HTTPException(status_code=400, detail="Already studied today, no freeze needed")
+    # Streak is still active — no freeze needed
+    if last_date is not None and last_date >= missed_date:
+        raise HTTPException(status_code=400, detail="Streak is still active, no freeze needed")
 
-    freeze_used.append(today)
+    # Missed date already covered by a freeze
+    if missed_date in freeze_used:
+        raise HTTPException(status_code=400, detail="Freeze already applied to the missed date")
+
+    # More than one day was missed — freeze can only bridge a single gap
+    if last_date is None or last_date < missed_date - timedelta(days=1):
+        raise HTTPException(
+            status_code=400,
+            detail="More than one day was missed — freeze can only cover a single missed day",
+        )
 
     db.execute(
         text("""
             UPDATE profiles SET
                 freeze_count      = freeze_count - 1,
-                freeze_used_dates = array_append(COALESCE(freeze_used_dates, '{}'), :today),
-                streak_last_date  = :today
+                freeze_used_dates = array_append(COALESCE(freeze_used_dates, '{}'), :missed),
+                streak_last_date  = :missed
             WHERE telegram_id = :uid
         """),
-        {"today": today, "uid": caller_id},
+        {"missed": missed_date, "uid": caller_id},
     )
     db.commit()
 
@@ -303,5 +342,5 @@ async def use_freeze(
         "ok":           True,
         "freeze_count": freeze_count - 1,
         "streak_days":  int(profile.streak_days or 0),
-        "frozen_date":  today.isoformat(),
+        "frozen_date":  missed_date.isoformat(),
     }

@@ -17,7 +17,7 @@ GET    /flashcards/stats               — overall stats (due count, mastered, e
 """
 
 import asyncio
-from datetime import datetime, UTC, timedelta
+from datetime import datetime, UTC, timedelta, date as Date
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -139,9 +139,20 @@ class ReviewRequest(BaseModel):
     rating:        int = Field(..., ge=1, le=4)
     time_spent_ms: Optional[int] = None
 
+def _parse_local_date(local_date: Optional[str]) -> Date:
+    """Return the client's local calendar date, or UTC today as fallback."""
+    if local_date:
+        try:
+            return Date.fromisoformat(local_date)
+        except ValueError:
+            pass
+    return datetime.now(UTC).date()
+
+
 class CompleteSessionRequest(BaseModel):
     total_time_ms:  int = Field(..., ge=0)
     cards_reviewed: int = Field(..., ge=0)
+    local_date:     Optional[str] = None
 
 
 # ── Helper: verify deck ownership ─────────────────────────────────────────────
@@ -580,7 +591,9 @@ async def complete_session(
     caller_id: int = Depends(_require_token),
 ):
     _get_deck_or_404(db, deck_id, caller_id)
-    now = datetime.now(UTC)
+    now       = datetime.now(UTC)
+    today     = _parse_local_date(body.local_date)
+    yesterday = today - timedelta(days=1)
 
     # Award session XP once per deck per day (sentinel rating=98)
     already_session_xp = db.execute(
@@ -620,9 +633,9 @@ async def complete_session(
     db.execute(
         text("""
             INSERT INTO focus_sessions (user_id, minutes, xp_awarded, session_date)
-            VALUES (:uid, :min, :xp, CURRENT_DATE)
+            VALUES (:uid, :min, :xp, :today)
         """),
-        {"uid": caller_id, "min": flash_minutes, "xp": xp_result.get("xp_added", 0)},
+        {"uid": caller_id, "min": flash_minutes, "xp": xp_result.get("xp_added", 0), "today": today},
     )
 
     # Update streak — only advance when today's total meets the daily goal
@@ -634,12 +647,12 @@ async def complete_session(
                     WHEN (
                         SELECT COALESCE(SUM(minutes), 0)
                         FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                        WHERE user_id = :uid AND session_date = :today
                     ) >= COALESCE(daily_goal_minutes, 20)
                     THEN
                         CASE
-                            WHEN streak_last_date = CURRENT_DATE     THEN COALESCE(streak_days, 0)
-                            WHEN streak_last_date = CURRENT_DATE - 1 THEN COALESCE(streak_days, 0) + 1
+                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
+                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
                             ELSE 1
                         END
                     ELSE COALESCE(streak_days, 0)
@@ -648,14 +661,14 @@ async def complete_session(
                     WHEN (
                         SELECT COALESCE(SUM(minutes), 0)
                         FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = CURRENT_DATE
+                        WHERE user_id = :uid AND session_date = :today
                     ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN CURRENT_DATE
+                    THEN :today
                     ELSE streak_last_date
                 END
             WHERE telegram_id = :uid
         """),
-        {"min": flash_minutes, "uid": caller_id},
+        {"min": flash_minutes, "uid": caller_id, "today": today, "yesterday": yesterday},
     )
     db.commit()
 
@@ -663,7 +676,7 @@ async def complete_session(
     stats_row = db.execute(
         text("""
             SELECT
-                COALESCE(SUM(minutes) FILTER (WHERE session_date = CURRENT_DATE), 0) AS today_minutes,
+                COALESCE(SUM(minutes) FILTER (WHERE session_date = :today), 0) AS today_minutes,
                 COALESCE(streak_days, 0) AS streak_days,
                 COALESCE(daily_goal_minutes, 20) AS daily_goal
             FROM focus_sessions fs
@@ -671,7 +684,7 @@ async def complete_session(
             WHERE fs.user_id = :uid
             GROUP BY streak_days, daily_goal_minutes
         """),
-        {"uid": caller_id},
+        {"uid": caller_id, "today": today},
     ).fetchone()
 
     today_minutes = int(stats_row.today_minutes) if stats_row else flash_minutes

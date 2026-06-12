@@ -345,19 +345,23 @@ async def get_focus_stats(
 
     longest_row = db.execute(
         text("""
-            WITH daily AS (
-                SELECT session_date
+            WITH active_days AS (
+                SELECT session_date AS d
                 FROM focus_sessions
                 WHERE user_id = :uid
                 GROUP BY session_date
                 HAVING SUM(minutes) >= (
                     SELECT COALESCE(daily_goal_minutes, 20) FROM profiles WHERE telegram_id = :uid
                 )
+                UNION
+                SELECT UNNEST(COALESCE(freeze_used_dates, '{}'))
+                FROM profiles
+                WHERE telegram_id = :uid
             ),
             gaps AS (
-                SELECT session_date,
-                       session_date - (ROW_NUMBER() OVER (ORDER BY session_date) * INTERVAL '1 day') AS grp
-                FROM daily
+                SELECT d AS session_date,
+                       d - (ROW_NUMBER() OVER (ORDER BY d) * INTERVAL '1 day') AS grp
+                FROM active_days
             ),
             streaks AS (
                 SELECT COUNT(*) AS streak_len FROM gaps GROUP BY grp
