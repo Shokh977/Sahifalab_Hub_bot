@@ -27,6 +27,7 @@ Routes (mounted at /api/connections):
 
 import asyncio
 import logging
+import threading
 from datetime import datetime, UTC
 from typing import Optional
 
@@ -44,17 +45,21 @@ from app.api.v1.endpoints.notifications import send_notification
 
 
 def _fire_conn_notification(user_id: int, notif_type: str, meta: dict):
-    """Fire-and-forget notification from sync context."""
+    """Fire-and-forget notification — works from both sync and async route contexts."""
     if user_id <= 0:
         return
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            asyncio.run_coroutine_threadsafe(
-                send_notification(user_id, notif_type, "SOCIAL", meta), loop
-            )
-    except Exception:
-        pass
+
+    def _run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(send_notification(user_id, notif_type, "SOCIAL", meta))
+        except Exception:
+            pass
+        finally:
+            loop.close()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 logger = logging.getLogger(__name__)
 
