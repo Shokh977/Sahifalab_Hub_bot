@@ -313,7 +313,7 @@ async def get_lesson_download_url(
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.get(
             f"{SUPABASE_URL}/rest/v1/lessons",
-            params={"id": f"eq.{lesson_id}", "select": "id,course_id,bunny_video_id,video_source,title"},
+            params={"id": f"eq.{lesson_id}", "select": "id,course_id,bunny_video_id,video_source,hls_url,title"},
             headers=_supabase_headers(),
         )
     rows = res.json() if res.status_code == 200 else []
@@ -321,8 +321,17 @@ async def get_lesson_download_url(
         raise HTTPException(status_code=404, detail="Lesson not found")
     lesson = rows[0]
 
-    bunny_vid   = lesson.get("bunny_video_id") or ""
-    is_bunny    = lesson.get("video_source", "bunny") == "bunny"
+    bunny_vid = lesson.get("bunny_video_id") or ""
+    is_bunny  = lesson.get("video_source", "bunny") == "bunny"
+
+    # Many lessons have bunny_video_id unpopulated even though hls_url is a valid
+    # Bunny CDN URL.  Extract the UUID from the URL as a fallback.
+    if not bunny_vid and is_bunny:
+        import re as _re
+        hls_url = lesson.get("hls_url") or ""
+        m = _re.search(r'/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/', hls_url)
+        if m:
+            bunny_vid = m.group(1)
 
     if not bunny_vid or not is_bunny:
         raise HTTPException(status_code=422, detail="Bu dars uchun yuklab olish mavjud emas")
