@@ -269,12 +269,14 @@ def signed_hls_url(video_id: str, expires_seconds: int = 14400) -> str:
 
 # ── 7. Signed MP4 download URL ───────────────────────────────────────────────
 
-def signed_mp4_url(video_id: str, resolution: str = "720p", expires_seconds: int = 3600) -> str:
+def signed_mp4_url(video_id: str, resolution: str = "720p", expires_seconds: int = 3600, cdn_host_override: str = "") -> str:
     """
     Generate a signed direct MP4 download URL for offline use.
     expires_seconds is short (1 h) — client should download immediately.
+    cdn_host_override lets callers supply the hostname extracted from hls_url
+    when BUNNY_STREAM_CDN_HOST is not configured in the environment.
     """
-    cdn_host = settings.BUNNY_STREAM_CDN_HOST
+    cdn_host = cdn_host_override or settings.BUNNY_STREAM_CDN_HOST
     if not cdn_host:
         raise ValueError("BUNNY_STREAM_CDN_HOST is not configured")
 

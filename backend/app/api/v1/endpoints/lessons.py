@@ -344,6 +344,14 @@ async def get_lesson_download_url(
         if not enrolled:
             raise HTTPException(status_code=403, detail="Bu kursga yozilmagan")
 
+    # Extract CDN host from hls_url as a fallback when BUNNY_STREAM_CDN_HOST
+    # is not configured in the environment (e.g. fresh Railway deployments).
+    # hls_url format: https://{cdn_host}/{video_id}/playlist.m3u8
+    from urllib.parse import urlparse as _urlparse
+    _hls = lesson.get("hls_url") or ""
+    _parsed = _urlparse(_hls)
+    cdn_host_from_url = _parsed.netloc if _parsed.netloc else ""
+
     try:
         from app.services import bunny_stream_service as bss
         # Pick the best available resolution (Bunny only transcodes up to the
@@ -358,7 +366,7 @@ async def get_lesson_download_url(
                     break
         except Exception:
             pass  # Use 720p as best-effort default
-        url = bss.signed_mp4_url(bunny_vid, resolution=resolution, expires_seconds=3600)
+        url = bss.signed_mp4_url(bunny_vid, resolution=resolution, expires_seconds=3600, cdn_host_override=cdn_host_from_url)
     except Exception as e:
         logger.warning("signed_mp4_url failed for lesson %s: %s", lesson_id, e)
         raise HTTPException(status_code=503, detail="Yuklab olish URL yaratilmadi")
