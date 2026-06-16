@@ -351,6 +351,8 @@ const AdminPage: React.FC = () => {
   })
   const [annFormOpen, setAnnFormOpen] = useState(false)
   const [annSaving, setAnnSaving] = useState(false)
+  const [annImgUploading, setAnnImgUploading] = useState(false)
+  const [annImgPercent, setAnnImgPercent] = useState(0)
   const [coursesMsg, setCoursesMsg] = useState('')
 
   // ── Auto-login from Telegram WebApp ────────────────────────────────────
@@ -666,6 +668,43 @@ const AdminPage: React.FC = () => {
       setAnnList(prev => prev.map(a => a.id === ann.id ? { ...a, is_active: !a.is_active } : a))
     } catch (err: any) {
       console.error('[Admin] toggleAnnActive:', err?.response?.data?.detail || err?.message)
+    }
+  }
+
+  const uploadAnnImage = async (file: File) => {
+    const jwt = token || localStorage.getItem('auth_token')
+    if (!jwt) return
+    setAnnImgUploading(true)
+    setAnnImgPercent(0)
+    const apiBase = API_BASE.replace(/\/api\/?$/, '')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('folder', 'announcements')
+      const url = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `${apiBase}/api/upload/file`)
+        xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setAnnImgPercent(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText).url) }
+            catch { reject(new Error("Server javobi noto'g'ri")) }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Xato: ${xhr.status}`)) }
+            catch { reject(new Error(`Xato: ${xhr.status}`)) }
+          }
+        }
+        xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
+        xhr.send(form)
+      })
+      setAnnForm(f => ({ ...f, image_url: url }))
+    } catch (err: any) {
+      console.error('[Admin] uploadAnnImage:', err?.message)
+    } finally {
+      setAnnImgUploading(false)
     }
   }
 
@@ -2958,28 +2997,66 @@ const AdminPage: React.FC = () => {
                   onChange={e => setAnnForm(f => ({ ...f, body: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 resize-none"
                 />
-                <input
-                  type="url"
-                  placeholder="Rasm URL (ixtiyoriy)"
-                  value={annForm.image_url}
-                  onChange={e => setAnnForm(f => ({ ...f, image_url: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
-                />
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="CTA tugma matni (ixtiyoriy)"
-                    value={annForm.cta_text}
-                    onChange={e => setAnnForm(f => ({ ...f, cta_text: e.target.value }))}
-                    className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
-                  />
-                  <input
-                    type="url"
-                    placeholder="CTA havola"
-                    value={annForm.cta_link}
-                    onChange={e => setAnnForm(f => ({ ...f, cta_link: e.target.value }))}
-                    className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
-                  />
+                {/* Image upload */}
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Rasm (ixtiyoriy)</label>
+                  {annForm.image_url && (
+                    <div className="relative rounded-xl overflow-hidden h-28">
+                      <img src={annForm.image_url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setAnnForm(f => ({ ...f, image_url: '' }))}
+                        className="absolute top-1 right-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded-lg"
+                      >
+                        ✕ O'chirish
+                      </button>
+                    </div>
+                  )}
+                  {!annForm.image_url && (
+                    <label className={`flex items-center justify-center gap-2 w-full h-20 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+                      annImgUploading
+                        ? 'border-sahifa-400 bg-sahifa-50 dark:bg-sahifa-900/10'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-sahifa-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={annImgUploading}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadAnnImage(f) }}
+                      />
+                      {annImgUploading
+                        ? <span className="text-sm text-sahifa-600 dark:text-sahifa-400">⬆️ {annImgPercent}% yuklanmoqda…</span>
+                        : <span className="text-sm text-gray-400 dark:text-gray-500">🖼 Rasm yuklash (Bunny CDN)</span>
+                      }
+                    </label>
+                  )}
+                </div>
+
+                {/* CTA — tugma faqat ikkalasi to'ldirilganda ko'rinadi */}
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">
+                    Tugma (ixtiyoriy) — <span className="text-amber-500">ikkalasi to'ldirilsa ko'rinadi</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder='Tugma matni, mas. "Batafsil"'
+                      value={annForm.cta_text}
+                      onChange={e => setAnnForm(f => ({ ...f, cta_text: e.target.value }))}
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                    <input
+                      type="url"
+                      placeholder="https:// yoki sahifalab://..."
+                      value={annForm.cta_link}
+                      onChange={e => setAnnForm(f => ({ ...f, cta_link: e.target.value }))}
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    Havola: tashqi URL (https://...) yoki ichki link (sahifalab://course/123)
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   <div className="flex-1">
