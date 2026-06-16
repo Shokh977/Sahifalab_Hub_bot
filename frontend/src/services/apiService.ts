@@ -817,6 +817,32 @@ class ApiService {
       { params: { telegram_id: telegramId } },
     )
   }
+
+  // ── Announcements ────────────────────────────────────────────────────────────
+
+  async getAnnouncements() {
+    return this.axiosInstance.get('/api/announcements/admin')
+  }
+
+  async createAnnouncement(data: {
+    title: string; body: string; image_url?: string | null
+    cta_text?: string | null; cta_link?: string | null
+    starts_at?: string | null; expires_at?: string | null; is_active: boolean
+  }) {
+    return this.axiosInstance.post('/api/announcements/admin', data)
+  }
+
+  async updateAnnouncement(id: number, data: Partial<{
+    title: string; body: string; image_url: string | null
+    cta_text: string | null; cta_link: string | null
+    starts_at: string | null; expires_at: string | null; is_active: boolean
+  }>) {
+    return this.axiosInstance.put(`/api/announcements/admin/${id}`, data)
+  }
+
+  async deleteAnnouncement(id: number) {
+    return this.axiosInstance.delete(`/api/announcements/admin/${id}`)
+  }
 }
 
 export default new ApiService()

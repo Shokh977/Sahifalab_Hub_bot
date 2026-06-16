@@ -79,7 +79,21 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements'
+
+interface AdminAnnouncement {
+  id:         number
+  title:      string
+  body:       string
+  image_url:  string | null
+  cta_text:   string | null
+  cta_link:   string | null
+  starts_at:  string | null
+  expires_at: string | null
+  is_active:  boolean
+  view_count: number
+  created_at: string
+}
 
 interface TeacherRequest {
   telegram_id:      number
@@ -325,6 +339,18 @@ const AdminPage: React.FC = () => {
   const [adminCoursesError, setAdminCoursesError] = useState('')
   const [courseToggleId, setCourseToggleId] = useState<number | null>(null)
   const [courseDeleteId, setCourseDeleteId] = useState<number | null>(null)
+
+  // ── Announcements state ───────────────────────────────────────────────────
+  const [annList, setAnnList] = useState<AdminAnnouncement[]>([])
+  const [annLoading, setAnnLoading] = useState(false)
+  const [annDeleteId, setAnnDeleteId] = useState<number | null>(null)
+  const [annEditTarget, setAnnEditTarget] = useState<AdminAnnouncement | null>(null)
+  const [annForm, setAnnForm] = useState({
+    title: '', body: '', image_url: '', cta_text: '', cta_link: '',
+    starts_at: '', expires_at: '', is_active: true,
+  })
+  const [annFormOpen, setAnnFormOpen] = useState(false)
+  const [annSaving, setAnnSaving] = useState(false)
   const [coursesMsg, setCoursesMsg] = useState('')
 
   // ── Auto-login from Telegram WebApp ────────────────────────────────────
@@ -559,6 +585,90 @@ const AdminPage: React.FC = () => {
     }
   }
 
+  // ── Announcement handlers ─────────────────────────────────────────────────
+  const loadAnnouncements = useCallback(async () => {
+    setAnnLoading(true)
+    try {
+      const res = await apiService.getAnnouncements()
+      setAnnList(res.data ?? [])
+    } catch (err: any) {
+      console.error('[Admin] loadAnnouncements:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setAnnLoading(false)
+    }
+  }, [])
+
+  const openAnnCreate = () => {
+    setAnnEditTarget(null)
+    setAnnForm({ title: '', body: '', image_url: '', cta_text: '', cta_link: '', starts_at: '', expires_at: '', is_active: true })
+    setAnnFormOpen(true)
+  }
+
+  const openAnnEdit = (ann: AdminAnnouncement) => {
+    setAnnEditTarget(ann)
+    setAnnForm({
+      title:      ann.title,
+      body:       ann.body,
+      image_url:  ann.image_url  ?? '',
+      cta_text:   ann.cta_text   ?? '',
+      cta_link:   ann.cta_link   ?? '',
+      starts_at:  ann.starts_at  ? ann.starts_at.slice(0, 16)  : '',
+      expires_at: ann.expires_at ? ann.expires_at.slice(0, 16) : '',
+      is_active:  ann.is_active,
+    })
+    setAnnFormOpen(true)
+  }
+
+  const saveAnnouncement = async () => {
+    if (!annForm.title.trim() || !annForm.body.trim()) return
+    setAnnSaving(true)
+    const payload = {
+      title:      annForm.title.trim(),
+      body:       annForm.body.trim(),
+      image_url:  annForm.image_url.trim()  || null,
+      cta_text:   annForm.cta_text.trim()   || null,
+      cta_link:   annForm.cta_link.trim()   || null,
+      starts_at:  annForm.starts_at  ? new Date(annForm.starts_at).toISOString()  : null,
+      expires_at: annForm.expires_at ? new Date(annForm.expires_at).toISOString() : null,
+      is_active:  annForm.is_active,
+    }
+    try {
+      if (annEditTarget) {
+        await apiService.updateAnnouncement(annEditTarget.id, payload)
+      } else {
+        await apiService.createAnnouncement(payload)
+      }
+      setAnnFormOpen(false)
+      loadAnnouncements()
+    } catch (err: any) {
+      console.error('[Admin] saveAnnouncement:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setAnnSaving(false)
+    }
+  }
+
+  const deleteAnnouncement = async (id: number) => {
+    if (!window.confirm('Xabarni o\'chirasizmi?')) return
+    setAnnDeleteId(id)
+    try {
+      await apiService.deleteAnnouncement(id)
+      setAnnList(prev => prev.filter(a => a.id !== id))
+    } catch (err: any) {
+      console.error('[Admin] deleteAnnouncement:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setAnnDeleteId(null)
+    }
+  }
+
+  const toggleAnnActive = async (ann: AdminAnnouncement) => {
+    try {
+      await apiService.updateAnnouncement(ann.id, { is_active: !ann.is_active })
+      setAnnList(prev => prev.map(a => a.id === ann.id ? { ...a, is_active: !a.is_active } : a))
+    } catch (err: any) {
+      console.error('[Admin] toggleAnnActive:', err?.response?.data?.detail || err?.message)
+    }
+  }
+
   const searchUsers = useCallback(async (q?: string) => {
     if (!adminId) return
     setUserSearchLoading(true)
@@ -661,7 +771,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'analytics') loadPlatformAnalytics()
     if (activeTab === 'users') searchUsers()
     if (activeTab === 'courses') loadAdminCourses()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses])
+    if (activeTab === 'announcements') loadAnnouncements()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -1059,6 +1170,7 @@ const AdminPage: React.FC = () => {
             { id: 'analytics', label: '📈 Analitika' },
             { id: 'users', label: '👤 Foydalanuvchilar' },
             { id: 'courses', label: '🎬 Kurslar' },
+            { id: 'announcements', label: '📢 Xabarlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -2809,6 +2921,193 @@ const AdminPage: React.FC = () => {
                 </div>
               )
             })}
+          </div>
+        )}
+
+        {/* ── Announcements Tab ──────────────────────────────────────────── */}
+        {activeTab === 'announcements' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">📢 Xabarlar</h2>
+              <button
+                onClick={openAnnCreate}
+                className="px-4 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 text-white rounded-xl transition-colors"
+              >
+                + Yangi xabar
+              </button>
+            </div>
+
+            {/* Create / Edit form */}
+            {annFormOpen && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                  {annEditTarget ? 'Xabarni tahrirlash' : 'Yangi xabar yaratish'}
+                </h3>
+
+                <input
+                  type="text"
+                  placeholder="Sarlavha *"
+                  value={annForm.title}
+                  onChange={e => setAnnForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                />
+                <textarea
+                  placeholder="Matn *"
+                  rows={4}
+                  value={annForm.body}
+                  onChange={e => setAnnForm(f => ({ ...f, body: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 resize-none"
+                />
+                <input
+                  type="url"
+                  placeholder="Rasm URL (ixtiyoriy)"
+                  value={annForm.image_url}
+                  onChange={e => setAnnForm(f => ({ ...f, image_url: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="CTA tugma matni (ixtiyoriy)"
+                    value={annForm.cta_text}
+                    onChange={e => setAnnForm(f => ({ ...f, cta_text: e.target.value }))}
+                    className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                  />
+                  <input
+                    type="url"
+                    placeholder="CTA havola"
+                    value={annForm.cta_link}
+                    onChange={e => setAnnForm(f => ({ ...f, cta_link: e.target.value }))}
+                    className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Boshlanish vaqti</label>
+                    <input
+                      type="datetime-local"
+                      value={annForm.starts_at}
+                      onChange={e => setAnnForm(f => ({ ...f, starts_at: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Tugash vaqti</label>
+                    <input
+                      type="datetime-local"
+                      value={annForm.expires_at}
+                      onChange={e => setAnnForm(f => ({ ...f, expires_at: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={annForm.is_active}
+                    onChange={e => setAnnForm(f => ({ ...f, is_active: e.target.checked }))}
+                    className="w-4 h-4 accent-sahifa-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Faol (hoziroq ko'rsatish)</span>
+                </label>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={saveAnnouncement}
+                    disabled={annSaving || !annForm.title.trim() || !annForm.body.trim()}
+                    className="flex-1 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white rounded-xl transition-colors"
+                  >
+                    {annSaving ? 'Saqlanmoqda…' : annEditTarget ? 'Saqlash' : 'Yaratish'}
+                  </button>
+                  <button
+                    onClick={() => setAnnFormOpen(false)}
+                    className="px-4 py-2 text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors"
+                  >
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Loading */}
+            {annLoading && (
+              <div className="text-center py-10 text-gray-400 text-sm">Yuklanmoqda…</div>
+            )}
+
+            {/* Empty state */}
+            {!annLoading && annList.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
+                <span className="text-4xl">📢</span>
+                <p className="text-sm">Hali xabar yo'q</p>
+              </div>
+            )}
+
+            {/* Announcement cards */}
+            {!annLoading && annList.map(ann => (
+              <div
+                key={ann.id}
+                className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden"
+              >
+                {/* Image preview */}
+                {ann.image_url && (
+                  <img src={ann.image_url} alt="" className="w-full h-32 object-cover" />
+                )}
+
+                <div className="p-3 space-y-2">
+                  {/* Title + status badge */}
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 text-sm font-semibold text-gray-900 dark:text-white leading-snug">
+                      {ann.title}
+                    </p>
+                    <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      ann.is_active
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {ann.is_active ? 'Faol' : 'Nofaol'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                    {ann.body}
+                  </p>
+
+                  {/* Date range */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400 dark:text-gray-500">
+                    <span>📅 {ann.starts_at ? new Date(ann.starts_at).toLocaleDateString('uz-UZ') : 'Hozirdan'}</span>
+                    <span>⏱ {ann.expires_at ? new Date(ann.expires_at).toLocaleDateString('uz-UZ') : 'Muddatsiz'}</span>
+                    <span className="text-sahifa-600 dark:text-sahifa-400 font-medium">👁 {ann.view_count} ko'rish</span>
+                  </div>
+
+                  {/* Action row */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => toggleAnnActive(ann)}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        ann.is_active
+                          ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                          : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100'
+                      }`}
+                    >
+                      {ann.is_active ? '⏸ Nofaol' : '▶ Faol'}
+                    </button>
+                    <button
+                      onClick={() => openAnnEdit(ann)}
+                      className="flex-1 py-1.5 text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
+                    >
+                      ✏️ Tahrirlash
+                    </button>
+                    <button
+                      onClick={() => deleteAnnouncement(ann.id)}
+                      disabled={annDeleteId === ann.id}
+                      className="px-3 py-1.5 text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 rounded-lg transition-colors"
+                    >
+                      {annDeleteId === ann.id ? '⏳' : '🗑️'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
