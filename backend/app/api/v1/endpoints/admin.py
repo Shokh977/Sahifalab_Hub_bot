@@ -1431,3 +1431,228 @@ async def admin_list_courses(
     total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
 
     return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+class _CourseActionBody(BaseModel):
+    feedback: Optional[str] = None
+
+
+@router.post("/courses/{course_id}/approve")
+async def admin_approve_course(
+    course_id: int,
+    body: _CourseActionBody = _CourseActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Publish a draft/review course — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}"},
+            json={"is_published": True, "status": "published"},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+@router.post("/courses/{course_id}/reject")
+async def admin_reject_course(
+    course_id: int,
+    body: _CourseActionBody = _CourseActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Reject / send back a course to draft — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}"},
+            json={"is_published": False, "status": "draft"},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+# ── User payment history ────────────────────────────────────────────────────────
+
+@router.get("/users/{telegram_id}/payments")
+async def admin_user_payments(
+    telegram_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """All pending_enrollment rows for a user — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "user_id": f"eq.{telegram_id}",
+                "select": "id,course_id,reference_code,expected_amount,actual_amount,status,payment_method,admin_notes,created_at,processed_at,expires_at",
+                "order": "created_at.desc",
+                "limit": "50",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        return rows
+
+    course_ids = list({r["course_id"] for r in rows})
+    async with httpx.AsyncClient(timeout=10) as client:
+        c_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"in.({','.join(str(c) for c in course_ids)})", "select": "id,title"},
+            headers=_pending_supabase_headers(),
+        )
+    by_course = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
+
+    return [{**r, "course": by_course.get(r["course_id"])} for r in rows]
+
+
+# ── Teacher management ─────────────────────────────────────────────────────────
+
+class _TeacherActionBody(BaseModel):
+    feedback: Optional[str] = None
+    commission_rate: Optional[float] = None
+
+
+@router.get("/teachers")
+async def admin_list_teachers(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    page:          int = Query(1, ge=1),
+    page_size:     int = Query(20, ge=1, le=100),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """List all teacher records — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "select": "id,telegram_id,bio,experience,intro_video_url,status,commission_rate,created_at",
+        "order": "created_at.desc",
+        "limit": str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+    if status_filter:
+        params["status"] = f"eq.{status_filter}"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/teachers",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+
+    if res.status_code == 404:
+        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    if rows:
+        tids = [r["telegram_id"] for r in rows if r.get("telegram_id")]
+        if tids:
+            async with httpx.AsyncClient(timeout=10) as client:
+                p_res = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"telegram_id": f"in.({','.join(str(t) for t in tids)})",
+                            "select": "telegram_id,first_name,username,photo_url"},
+                    headers=_pending_supabase_headers(),
+                )
+            by_user = {p["telegram_id"]: p for p in (p_res.json() if p_res.status_code == 200 else [])}
+            rows = [{**r, "profile": by_user.get(r.get("telegram_id"))} for r in rows]
+
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+@router.post("/teachers/{teacher_id}/approve")
+async def admin_approve_teacher(
+    teacher_id: int,
+    body: _TeacherActionBody = _TeacherActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Approve a teacher application — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    patch: dict = {"status": "approved"}
+    if body.commission_rate is not None:
+        patch["commission_rate"] = body.commission_rate
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/teachers",
+            params={"id": f"eq.{teacher_id}"},
+            json=patch,
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+@router.post("/teachers/{teacher_id}/reject")
+async def admin_reject_teacher(
+    teacher_id: int,
+    body: _TeacherActionBody = _TeacherActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Reject a teacher application — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/teachers",
+            params={"id": f"eq.{teacher_id}"},
+            json={"status": "rejected", "rejection_reason": body.feedback},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+# ── User suspension ────────────────────────────────────────────────────────────
+
+class _SuspendBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/users/{telegram_id}/suspend")
+async def admin_suspend_user(
+    telegram_id: int,
+    body: _SuspendBody = _SuspendBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Suspend a user account — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params={"telegram_id": f"eq.{telegram_id}"},
+            json={"is_active": False, "suspension_reason": body.reason},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
