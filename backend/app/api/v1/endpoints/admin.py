@@ -22,8 +22,9 @@ from app.services.auth_service import decode_token_payload
 router = APIRouter()
 
 # â”€â”€ Supabase helpers (for course/enrollment/payment data) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+SUPABASE_URL  = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+PAYMENT_BOT_SECRET = os.getenv("PAYMENT_BOT_SECRET", "")
 
 
 def _supabase_headers() -> dict:
@@ -54,14 +55,28 @@ async def verify_admin(
     """
     if not authorization:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
         )
     parts = authorization.split()
-    if len(parts) != 2 or parts[0] != "Bearer":
+    if len(parts) != 2:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
+        )
+
+    # Payment bot service key auth (Authorization: Bot <secret>)
+    if parts[0] == "Bot" and PAYMENT_BOT_SECRET and parts[1] == PAYMENT_BOT_SECRET:
+        bot_admin = db.query(AdminUser).filter(AdminUser.role == "bot").first()
+        if not bot_admin:
+            bot_admin = AdminUser(telegram_id=0, role="bot", is_active=True)
+            db.add(bot_admin); db.commit(); db.refresh(bot_admin)
+        return bot_admin
+
+    if parts[0] != "Bearer":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
         )
 
     payload = decode_token_payload(parts[1])
@@ -96,8 +111,8 @@ async def verify_admin(
 
     if not admin:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found"
         )
     return admin
 
@@ -1037,6 +1052,45 @@ async def list_pending_enrollments(
     return {"items": enriched, "total": total, "page": page, "page_size": page_size}
 
 
+@router.get("/pending-enrollments/{pending_id}")
+async def admin_get_pending_enrollment(
+    pending_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Full detail for a single pending enrollment — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "*", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pending enrollment not found")
+
+    row = rows[0]
+    async with httpx.AsyncClient(timeout=10) as client:
+        p_res, c_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username,photo_url", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+        )
+    profiles = p_res.json() if p_res.status_code == 200 else []
+    courses  = c_res.json() if c_res.status_code == 200 else []
+    return {
+        **row,
+        "user":   profiles[0] if profiles else None,
+        "course": courses[0]  if courses  else None,
+    }
+
+
 @router.post("/pending-enrollments/{pending_id}/grant")
 async def grant_pending_enrollment(
     pending_id: int,
@@ -1312,6 +1366,67 @@ async def admin_stats_activity(
         }
         for r in rows
     ]
+
+
+@router.get("/stats/revenue")
+async def admin_stats_revenue(
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date:   Optional[str] = Query(None, alias="to"),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Revenue breakdown for a date range (defaults to current month) — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    now = datetime.now(timezone.utc)
+    range_from = from_date or now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    range_to   = to_date   or now.isoformat()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "status":       "eq.granted",
+                "processed_at": f"gte.{range_from}",
+                "select":       "id,course_id,expected_amount,actual_amount,payment_method,processed_at",
+                "order":        "processed_at.asc",
+                "limit":        "500",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+
+    # Also filter by to_date client-side (Supabase PostgREST supports lte on timestamp)
+    if range_to:
+        rows = [r for r in rows if r.get("processed_at", "") <= range_to]
+
+    total_revenue = sum((r.get("actual_amount") or r.get("expected_amount") or 0) for r in rows)
+
+    # Group by payment method
+    by_method: dict[str, dict] = {}
+    for r in rows:
+        m = r.get("payment_method") or "unknown"
+        if m not in by_method:
+            by_method[m] = {"payment_method": m, "count": 0, "total": 0}
+        by_method[m]["count"]  += 1
+        by_method[m]["total"]  += r.get("actual_amount") or r.get("expected_amount") or 0
+
+    # Group by day
+    by_day: dict[str, int] = {}
+    for r in rows:
+        day = (r.get("processed_at") or "")[:10]
+        if day:
+            by_day[day] = by_day.get(day, 0) + (r.get("actual_amount") or r.get("expected_amount") or 0)
+
+    return {
+        "from":          range_from,
+        "to":            range_to,
+        "total_revenue": total_revenue,
+        "count":         len(rows),
+        "by_method":     list(by_method.values()),
+        "by_day":        [{"date": k, "total": v} for k, v in sorted(by_day.items())],
+    }
 
 
 # ── User management ────────────────────────────────────────────────────────────
@@ -1651,6 +1766,100 @@ async def admin_suspend_user(
             f"{SUPABASE_URL}/rest/v1/profiles",
             params={"telegram_id": f"eq.{telegram_id}"},
             json={"is_active": False, "suspension_reason": body.reason},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+# ── Bot-specific endpoints ─────────────────────────────────────────────────────
+
+@router.get("/pending-enrollments/by-code/{reference_code}")
+async def admin_pending_by_code(
+    reference_code: str,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Look up a pending enrollment by reference code — used by the payment bot."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"reference_code": f"eq.{reference_code.upper()}", "select": "*", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Reference code not found")
+
+    row = rows[0]
+    if row["status"] in ("cancelled", "granted"):
+        raise HTTPException(status_code=410, detail=f"Code is no longer active (status: {row['status']})")
+
+    expires_at = row.get("expires_at")
+    if expires_at:
+        exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        if exp_dt < datetime.now(timezone.utc):
+            async with httpx.AsyncClient(timeout=5) as cl:
+                await cl.patch(
+                    f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+                    params={"id": f"eq.{row['id']}"},
+                    json={"status": "expired"},
+                    headers=_pending_supabase_headers(),
+                )
+            raise HTTPException(status_code=410, detail="Code expired")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        p_res, c_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+        )
+    profile = (p_res.json() or [{}])[0] if p_res.status_code == 200 else {}
+    course  = (c_res.json() or [{}])[0] if c_res.status_code == 200 else {}
+
+    return {
+        **row,
+        "user_name":        profile.get("first_name", f"#{row['user_id']}"),
+        "user_username":    profile.get("username"),
+        "course_title":     course.get("title",         f"#{row['course_id']}"),
+        "course_thumbnail": course.get("thumbnail_url"),
+    }
+
+
+class _MarkPaidBody(BaseModel):
+    payment_proof_url: Optional[str] = None
+    telegram_file_id:  Optional[str] = None
+
+
+@router.post("/pending-enrollments/{pending_id}/mark-paid")
+async def admin_mark_enrollment_paid(
+    pending_id: int,
+    body: _MarkPaidBody = _MarkPaidBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Mark pending enrollment as 'paid' (screenshot received) — used by payment bot."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    patch: dict = {"status": "paid"}
+    if body.payment_proof_url:
+        patch["payment_proof_url"] = body.payment_proof_url
+    elif body.telegram_file_id:
+        patch["payment_proof_url"] = f"tg://file/{body.telegram_file_id}"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "status": "neq.granted"},
+            json=patch,
             headers=_pending_supabase_headers(),
         )
     if res.status_code not in (200, 204):

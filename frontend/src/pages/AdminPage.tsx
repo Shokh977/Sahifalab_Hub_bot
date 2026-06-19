@@ -111,6 +111,8 @@ interface TeacherRequest {
   motivation:       string | null
   contact:          string | null
   applied_at:       string | null
+  intro_video_url:  string | null
+  status:           'pending' | 'approved' | 'rejected' | string
 }
 
 // ─── Platform analytics types (Step 15) ──────────────────────────────────────
@@ -286,6 +288,11 @@ const AdminPage: React.FC = () => {
   const [teacherReqError, setTeacherReqError] = useState('')
   const [teacherActionId, setTeacherActionId] = useState<number | null>(null)
   const [teacherMsg, setTeacherMsg] = useState('')
+  const [teacherFilter, setTeacherFilter] = useState<'pending' | 'approved' | 'rejected' | null>(null)
+  const [teacherApproveId, setTeacherApproveId] = useState<number | null>(null)
+  const [teacherCommission, setTeacherCommission] = useState('30')
+  const [teacherRejectId, setTeacherRejectId] = useState<number | null>(null)
+  const [teacherRejectFeedback, setTeacherRejectFeedback] = useState('')
 
   // Platform Analytics (Step 15)
   const [platformAnalytics, setPlatformAnalytics] = useState<PlatformAnalytics | null>(null)
@@ -301,6 +308,22 @@ const AdminPage: React.FC = () => {
   const [userDeleteConfirmId, setUserDeleteConfirmId] = useState<number | null>(null)
   const [userDeleteLoading, setUserDeleteLoading] = useState(false)
   const [userMsg, setUserMsg] = useState('')
+  const [openUserDetail, setOpenUserDetail] = useState<AdminUserProfile | null>(null)
+  const [userDetailTab, setUserDetailTab] = useState<'profil' | 'kurslar' | 'tolovlar' | 'faollik' | 'admin'>('profil')
+  const [userDetailData, setUserDetailData] = useState<any>(null)
+  const [userDetailPayments, setUserDetailPayments] = useState<any[]>([])
+  const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [grantOpen, setGrantOpen] = useState(false)
+  const [grantCourseId, setGrantCourseId] = useState('')
+  const [grantAmount, setGrantAmount] = useState('')
+  const [grantMethod, setGrantMethod] = useState('click_card')
+  const [grantProofUrl, setGrantProofUrl] = useState('')
+  const [grantNotes, setGrantNotes] = useState('')
+  const [grantLoading, setGrantLoading] = useState(false)
+  const [grantMsg, setGrantMsg] = useState('')
+  const [drawerSuspendText, setDrawerSuspendText] = useState('')
+  const [drawerSuspendOpen, setDrawerSuspendOpen] = useState(false)
+  const [drawerSuspending, setDrawerSuspending] = useState(false)
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -509,15 +532,17 @@ const AdminPage: React.FC = () => {
     setTeacherReqLoading(true)
     setTeacherReqError('')
     try {
-      const res = await apiService.getTeacherRequests()
-      setTeacherRequests(res.data ?? [])
+      const params = teacherFilter ? `?status=${teacherFilter}` : ''
+      const res = await apiService.client.get(`/api/v1/admin/teachers${params}`)
+      const raw = res.data
+      setTeacherRequests(Array.isArray(raw) ? raw : (raw?.items ?? []))
     } catch (err: any) {
       console.error('[Admin] loadTeacherRequests error:', err?.response?.data?.detail || err?.message)
       setTeacherReqError('Xatolik yuz berdi')
     } finally {
       setTeacherReqLoading(false)
     }
-  }, [adminId])
+  }, [adminId, teacherFilter])
 
   const loadPlatformAnalytics = useCallback(async () => {
     if (!adminId) return
@@ -761,8 +786,11 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.approveTeacher(telegramId)
+      await apiService.client.post(`/api/v1/admin/teachers/${telegramId}/approve`, {
+        commission_rate: teacherCommission ? Number(teacherCommission) : null,
+      })
       setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
+      setTeacherApproveId(null)
       loadTeacherRequests()
     } catch (err: any) {
       console.error('[Admin] handleApproveTeacher error:', err?.response?.data?.detail || err?.message)
@@ -773,12 +801,15 @@ const AdminPage: React.FC = () => {
   }
 
   const handleRejectTeacher = async (telegramId: number) => {
-    if (!window.confirm(`Arizani rad etasizmi? ID: ${telegramId}`)) return
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.rejectTeacher(telegramId)
+      await apiService.client.post(`/api/v1/admin/teachers/${telegramId}/reject`, {
+        feedback: teacherRejectFeedback || null,
+      })
       setTeacherMsg(`🚫 ${telegramId} rad etildi`)
+      setTeacherRejectId(null)
+      setTeacherRejectFeedback('')
       loadTeacherRequests()
     } catch (err: any) {
       console.error('[Admin] handleRejectTeacher error:', err?.response?.data?.detail || err?.message)
@@ -786,6 +817,55 @@ const AdminPage: React.FC = () => {
     } finally {
       setTeacherActionId(null)
     }
+  }
+
+  const openUserDrawer = async (u: AdminUserProfile) => {
+    setOpenUserDetail(u)
+    setUserDetailTab('profil')
+    setUserDetailData(null)
+    setUserDetailPayments([])
+    setUserDetailLoading(true)
+    try {
+      const [detailRes, paymentsRes] = await Promise.allSettled([
+        apiService.client.get(`/api/v1/admin/users/${u.telegram_id}`),
+        apiService.client.get(`/api/v1/admin/users/${u.telegram_id}/payments`),
+      ])
+      if (detailRes.status === 'fulfilled') setUserDetailData(detailRes.value.data)
+      if (paymentsRes.status === 'fulfilled') setUserDetailPayments(paymentsRes.value.data ?? [])
+    } catch { /* ignore */ }
+    finally { setUserDetailLoading(false) }
+  }
+
+  const handleGrant = async () => {
+    if (!openUserDetail || !grantCourseId) { setGrantMsg('Kurs ID kiriting'); return }
+    setGrantLoading(true); setGrantMsg('')
+    try {
+      await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/grant-course`, {
+        course_id: Number(grantCourseId),
+        payment_method: grantMethod,
+        amount: grantAmount ? Number(grantAmount) : null,
+        notes: grantNotes || null,
+        payment_proof_url: grantProofUrl || null,
+      })
+      setGrantMsg('✅ Kurs ochildi')
+      setGrantOpen(false)
+      setGrantCourseId(''); setGrantAmount(''); setGrantProofUrl(''); setGrantNotes('')
+    } catch (err: any) {
+      setGrantMsg('❌ ' + (err?.response?.data?.detail || err?.message))
+    } finally { setGrantLoading(false) }
+  }
+
+  const handleDrawerSuspend = async () => {
+    if (!openUserDetail) return
+    setDrawerSuspending(true)
+    try {
+      await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/suspend`, {
+        reason: drawerSuspendText || null,
+      })
+      setDrawerSuspendOpen(false); setDrawerSuspendText('')
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.message)
+    } finally { setDrawerSuspending(false) }
   }
 
   const handleMessageTeacher = async (telegramId: number) => {
@@ -2272,7 +2352,7 @@ const AdminPage: React.FC = () => {
         {activeTab === 'teachers' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">O'qituvchi arizalari</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">O'qituvchilar</h2>
               <button
                 onClick={loadTeacherRequests}
                 disabled={teacherReqLoading}
@@ -2280,6 +2360,28 @@ const AdminPage: React.FC = () => {
               >
                 {teacherReqLoading ? 'Yuklanmoqda…' : '↻ Yangilash'}
               </button>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { key: null,       label: 'Barchasi'     },
+                { key: 'pending',  label: 'Kutilmoqda'   },
+                { key: 'approved', label: 'Tasdiqlangan' },
+                { key: 'rejected', label: 'Rad etilgan'  },
+              ] as { key: typeof teacherFilter; label: string }[]).map(f => (
+                <button
+                  key={String(f.key)}
+                  onClick={() => setTeacherFilter(f.key)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                    teacherFilter === f.key
+                      ? 'bg-sahifa-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
             {teacherMsg && (
@@ -2303,109 +2405,183 @@ const AdminPage: React.FC = () => {
             ) : teacherRequests.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-6 text-center">
                 <div className="text-4xl mb-2">🎓</div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Hozircha pending ariza yo'q</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {teacherFilter === 'pending' ? "Kutilayotgan ariza yo'q" : "Ma'lumot topilmadi"}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {teacherRequests.map((req) => (
-                  <div
-                    key={req.telegram_id}
-                    className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm"
-                  >
-                    {/* Header: avatar + name + badge */}
-                    <div className="flex items-center gap-3 mb-3">
-                      <a href={`/profile/${req.telegram_id}`} target="_blank" rel="noreferrer" className="shrink-0">
-                        {req.photo_url ? (
-                          <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover hover:opacity-80 transition-opacity" />
-                        ) : (
-                          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold hover:opacity-80 transition-opacity">
-                            {(req.first_name || '?').charAt(0).toUpperCase()}
-                          </div>
-                        )}
-                      </a>
-                      <div className="flex-1 min-w-0">
-                        <a href={`/profile/${req.telegram_id}`} target="_blank" rel="noreferrer" className="hover:underline">
+                {teacherRequests.map((req) => {
+                  const statusColor =
+                    req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    req.status === 'rejected'  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                  const statusLabel =
+                    req.status === 'approved' ? '✅ Tasdiqlangan' :
+                    req.status === 'rejected'  ? '🚫 Rad etilgan'  : '⏳ Pending'
+                  const isBusy = teacherActionId === req.telegram_id
+
+                  return (
+                    <div key={req.telegram_id} className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm">
+                      {/* Header */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <a href={`/profile/${req.telegram_id}`} target="_blank" rel="noreferrer" className="shrink-0">
+                          {req.photo_url ? (
+                            <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover hover:opacity-80 transition-opacity" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold hover:opacity-80 transition-opacity">
+                              {(req.first_name || '?').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </a>
+                        <div className="flex-1 min-w-0">
                           <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                            {req.first_name || 'Noma\'lum'}
+                            {req.first_name || "Noma'lum"}
                             {req.username && <span className="text-gray-400 ml-1 font-normal">@{req.username}</span>}
                           </p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            ID: {req.telegram_id} · Lv {req.level} · {req.total_xp} XP
+                          </p>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      {/* Application details */}
+                      {(req.specialization || req.course_idea || req.motivation || req.bio || req.contact) && (
+                        <div className="mb-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                          {req.contact && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Aloqa</p>
+                              <p className="text-xs text-sahifa-600 dark:text-sahifa-400 mt-0.5 font-medium">{req.contact}</p>
+                            </div>
+                          )}
+                          {req.specialization && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mutaxassislik</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
+                                {req.specialization}
+                                {req.experience_years != null && (
+                                  <span className="ml-1 text-gray-400">· {req.experience_years} yil tajriba</span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          {req.bio && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">O'zi haqida</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.bio}</p>
+                            </div>
+                          )}
+                          {req.course_idea && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Kurs g'oyasi</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.course_idea}</p>
+                            </div>
+                          )}
+                          {req.motivation && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Motivatsiya</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.motivation}</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Intro video */}
+                      {req.intro_video_url && (
+                        <a href={req.intro_video_url} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:underline mb-3 block">
+                          ▶ Intro video
                         </a>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                          ID: {req.telegram_id} · Lv {req.level} · {req.total_xp} XP
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 shrink-0">
-                        ⏳ Pending
-                      </span>
-                    </div>
+                      )}
 
-                    {/* Application details */}
-                    {(req.specialization || req.course_idea || req.motivation || req.bio || req.contact) && (
-                      <div className="mb-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
-                        {req.contact && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Aloqa</p>
-                            <p className="text-xs text-sahifa-600 dark:text-sahifa-400 mt-0.5 font-medium">{req.contact}</p>
-                          </div>
-                        )}
-                        {req.specialization && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mutaxassislik</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
-                              {req.specialization}
-                              {req.experience_years != null && (
-                                <span className="ml-1 text-gray-400">· {req.experience_years} yil tajriba</span>
-                              )}
-                            </p>
-                          </div>
-                        )}
-                        {req.bio && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">O'zi haqida</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.bio}</p>
-                          </div>
-                        )}
-                        {req.course_idea && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Kurs g'oyasi</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.course_idea}</p>
-                          </div>
-                        )}
-                        {req.motivation && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Motivatsiya</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.motivation}</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
+                      {/* Actions */}
+                      <div className="flex gap-2 flex-col">
+                        <button
+                          onClick={() => handleMessageTeacher(req.telegram_id)}
+                          className="w-full py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-colors border border-blue-200 dark:border-blue-800"
+                        >
+                          💬 Xabar yuborish
+                        </button>
 
-                    <div className="flex gap-2 flex-col">
-                      <button
-                        onClick={() => handleMessageTeacher(req.telegram_id)}
-                        className="w-full py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-colors border border-blue-200 dark:border-blue-800"
-                      >
-                        💬 Xabar yuborish
-                      </button>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleApproveTeacher(req.telegram_id)}
-                          disabled={teacherActionId === req.telegram_id}
-                          className="flex-1 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
-                        >
-                          {teacherActionId === req.telegram_id ? '…' : '✅ Tasdiqlash'}
-                        </button>
-                        <button
-                          onClick={() => handleRejectTeacher(req.telegram_id)}
-                          disabled={teacherActionId === req.telegram_id}
-                          className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
-                        >
-                          {teacherActionId === req.telegram_id ? '…' : '🚫 Rad etish'}
-                        </button>
+                        {req.status === 'pending' && (
+                          teacherRejectId === req.telegram_id ? (
+                            <div className="flex flex-col gap-2">
+                              <textarea
+                                value={teacherRejectFeedback}
+                                onChange={e => setTeacherRejectFeedback(e.target.value)}
+                                placeholder="Rad etish sababi (ixtiyoriy)..."
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-red-400 resize-none"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => { setTeacherRejectId(null); setTeacherRejectFeedback('') }}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  Bekor
+                                </button>
+                                <button
+                                  onClick={() => handleRejectTeacher(req.telegram_id)}
+                                  disabled={isBusy}
+                                  className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                                >
+                                  {isBusy ? '…' : '🚫 Rad etish'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : teacherApproveId === req.telegram_id ? (
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-xl px-3 py-2">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Komissiya:</span>
+                                <input
+                                  type="number"
+                                  value={teacherCommission}
+                                  onChange={e => setTeacherCommission(e.target.value)}
+                                  min={0} max={100}
+                                  className="w-14 bg-transparent text-sm text-center text-gray-900 dark:text-white focus:outline-none"
+                                />
+                                <span className="text-xs text-gray-500 dark:text-gray-400">%</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setTeacherApproveId(null)}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  Bekor
+                                </button>
+                                <button
+                                  onClick={() => handleApproveTeacher(req.telegram_id)}
+                                  disabled={isBusy}
+                                  className="flex-1 py-2 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                                >
+                                  {isBusy ? '…' : '✅ Tasdiqlash'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setTeacherApproveId(req.telegram_id)}
+                                className="flex-1 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 text-xs font-semibold transition-colors border border-green-200 dark:border-green-800"
+                              >
+                                ✅ Tasdiqlash
+                              </button>
+                              <button
+                                onClick={() => setTeacherRejectId(req.telegram_id)}
+                                className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold transition-colors border border-red-200 dark:border-red-800"
+                              >
+                                🚫 Rad etish
+                              </button>
+                            </div>
+                          )
+                        )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -2632,7 +2808,7 @@ const AdminPage: React.FC = () => {
         {/* ── Users Tab ─────────────────────────────────────────────────── */}
         {activeTab === 'users' && (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">👤 Foydalanuvchilarni boshqarish</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">👤 Foydalanuvchilar</h2>
 
             {/* Search input */}
             <div className="flex gap-2">
@@ -2662,124 +2838,41 @@ const AdminPage: React.FC = () => {
               <p className="text-sm text-red-500 dark:text-red-400">❌ {userSearchError}</p>
             )}
 
-            {/* Results */}
             {userSearchResults.length === 0 && !userSearchLoading && (
               <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-6">
                 Qidirish uchun matn yozing va Enter bosing
               </p>
             )}
 
-            <div className="space-y-3">
+            {/* Clickable rows → open drawer */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
               {userSearchResults.map((u) => {
                 const roleBadge =
                   u.role === 'admin'   ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                   u.role === 'teacher' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                   'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                const statusBadge =
-                  u.status === 'active'    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                  u.status === 'pending'   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                const isBusy = userRoleActionId === u.telegram_id
                 return (
                   <div
                     key={u.telegram_id}
-                    className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm space-y-3"
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    onClick={() => openUserDrawer(u)}
                   >
-                    {/* User info row */}
-                    <div className="flex items-center gap-3">
-                      {u.photo_url ? (
-                        <img src={u.photo_url} alt={u.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                          {(u.first_name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                          {u.first_name || 'Noma\'lum'}
-                          {u.username && <span className="text-gray-400 ml-1 font-normal">@{u.username}</span>}
-                        </p>
-                        <p className="text-xs text-gray-400">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP</p>
-                      </div>
-                      <div className="flex flex-col gap-1 items-end shrink-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleBadge}`}>{u.role}</span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusBadge}`}>{u.status}</span>
-                      </div>
-                    </div>
-
-                    {/* Role action buttons */}
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, 'student', 'active')}
-                        disabled={isBusy || (u.role === 'student' && u.status === 'active')}
-                        className="py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40 transition-colors"
-                      >
-                        👤 Student
-                      </button>
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, 'teacher', 'active')}
-                        disabled={isBusy || (u.role === 'teacher' && u.status === 'active')}
-                        className="py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-40 transition-colors"
-                      >
-                        🎓 Teacher
-                      </button>
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, 'admin', 'active')}
-                        disabled={isBusy || u.role === 'admin'}
-                        className="py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-40 transition-colors"
-                      >
-                        🛠 Admin
-                      </button>
-                    </div>
-
-                    {/* Suspend/Activate quick actions */}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, u.role, 'active')}
-                        disabled={isBusy || u.status === 'active'}
-                        className="py-1.5 rounded-xl text-xs font-semibold bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-40 transition-colors"
-                      >
-                        ✅ Faollashtirish
-                      </button>
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, u.role, 'suspended')}
-                        disabled={isBusy || u.status === 'suspended'}
-                        className="py-1.5 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 disabled:opacity-40 transition-colors"
-                      >
-                        🚫 Bloklash
-                      </button>
-                    </div>
-
-                    {/* Delete user */}
-                    {userDeleteConfirmId === u.telegram_id ? (
-                      <div className="flex gap-1.5">
-                        <button
-                          onClick={() => setUserDeleteConfirmId(null)}
-                          className="flex-1 py-1.5 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 transition-colors"
-                        >
-                          Bekor qilish
-                        </button>
-                        <button
-                          onClick={() => handleAdminDeleteUser(u.telegram_id)}
-                          disabled={userDeleteLoading}
-                          className="flex-1 py-1.5 rounded-xl text-xs font-bold bg-red-600 hover:bg-red-700 text-white disabled:opacity-50 transition-colors"
-                        >
-                          {userDeleteLoading ? '⏳' : '🗑 Tasdiqlash'}
-                        </button>
-                      </div>
+                    {u.photo_url ? (
+                      <img src={u.photo_url} alt={u.first_name || ''} className="w-9 h-9 rounded-xl object-cover shrink-0" />
                     ) : (
-                      <button
-                        onClick={() => setUserDeleteConfirmId(u.telegram_id)}
-                        disabled={isBusy}
-                        className="w-full py-1.5 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-40 transition-colors"
-                      >
-                        🗑 Hisobni o'chirish
-                      </button>
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                        {(u.first_name || '?').charAt(0).toUpperCase()}
+                      </div>
                     )}
-
-                    {isBusy && (
-                      <p className="text-xs text-center text-gray-400 animate-pulse">Saqlanmoqda…</p>
-                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                        {u.first_name || "Noma'lum"}
+                        {u.username && <span className="text-gray-400 ml-1 font-normal">@{u.username}</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP</p>
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${roleBadge}`}>{u.role}</span>
+                    <span className="text-gray-400 dark:text-gray-500 text-sm">›</span>
                   </div>
                 )
               })}
@@ -3189,6 +3282,247 @@ const AdminPage: React.FC = () => {
         )}
 
       </div>
+
+      {/* ── User Detail Drawer ─────────────────────────────────────── */}
+      {openUserDetail && (() => {
+        const u = openUserDetail
+        const TABS = [
+          { key: 'profil',   label: 'Profil'    },
+          { key: 'kurslar',  label: 'Kurslar'   },
+          { key: 'tolovlar', label: "To'lovlar" },
+          { key: 'faollik',  label: 'Faollik'   },
+          { key: 'admin',    label: 'Admin'      },
+        ] as { key: typeof userDetailTab; label: string }[]
+
+        const PM_LABELS: Record<string, string> = {
+          click_card: 'Click', payme_card: 'Payme', uzcard: 'Uzcard',
+          humo: 'Humo', cash: 'Naqd', other: 'Boshqa',
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex">
+            <div className="flex-1 bg-black/50" onClick={() => setOpenUserDetail(null)} />
+            <div className="w-full max-w-lg bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-2xl">
+
+              {/* Drawer header */}
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                {u.photo_url
+                  ? <img src={u.photo_url} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                  : <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold flex-shrink-0">
+                      {(u.first_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-gray-900 dark:text-white font-semibold truncate">{u.first_name || "Noma'lum"}</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">{u.username ? `@${u.username}` : `#${u.telegram_id}`}</p>
+                </div>
+                <button onClick={() => setOpenUserDetail(null)} className="text-gray-400 hover:text-gray-700 dark:hover:text-white text-xl leading-none ml-3">✕</button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto flex-shrink-0">
+                {TABS.map(t => (
+                  <button key={t.key} onClick={() => setUserDetailTab(t.key)}
+                    className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                      userDetailTab === t.key
+                        ? 'border-sahifa-600 text-sahifa-600 dark:text-sahifa-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
+                    }`}>{t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {userDetailLoading
+                  ? <div className="text-center py-12 text-gray-400 text-sm">Yuklanmoqda…</div>
+                  : (
+                    <>
+                      {/* ── PROFIL ── */}
+                      {userDetailTab === 'profil' && (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              ['Telegram ID', u.telegram_id],
+                              ['Ism',         u.first_name ?? '—'],
+                              ['Username',    u.username ? `@${u.username}` : '—'],
+                              ['Rol',         u.role],
+                              ['Holat',       u.status],
+                              ['Daraja',      `Lv ${u.level}`],
+                              ['XP',          u.total_xp.toLocaleString()],
+                              ["Ro'yxat",     u.app_created_at ? new Date(u.app_created_at).toLocaleDateString('uz-UZ') : '—'],
+                            ].map(([k, v]) => (
+                              <div key={String(k)} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                                <p className="text-gray-400 dark:text-gray-500 text-xs mb-0.5">{k}</p>
+                                <p className="text-gray-900 dark:text-white text-sm font-medium truncate">{String(v)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── KURSLAR ── */}
+                      {userDetailTab === 'kurslar' && (
+                        <div className="space-y-3">
+                          <button
+                            onClick={() => { setGrantOpen(true); setGrantMsg('') }}
+                            className="w-full py-2.5 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/20 hover:bg-sahifa-100 dark:hover:bg-sahifa-900/40 border border-sahifa-200 dark:border-sahifa-800/60 text-sahifa-700 dark:text-sahifa-400 text-sm font-medium transition-colors"
+                          >
+                            + Yangi kurs ochish
+                          </button>
+
+                          {grantOpen && (
+                            <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 space-y-3 border border-gray-200 dark:border-gray-700">
+                              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Kurs ochish</h4>
+                              <input type="number" value={grantCourseId} onChange={e => setGrantCourseId(e.target.value)}
+                                placeholder="Kurs ID *"
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                              <input type="number" value={grantAmount} onChange={e => setGrantAmount(e.target.value)}
+                                placeholder="Summa (ixtiyoriy)"
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {(['click_card','payme_card','uzcard','humo','cash','other'] as const).map(m => (
+                                  <button key={m} onClick={() => setGrantMethod(m)}
+                                    className={`py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                                      grantMethod === m
+                                        ? 'bg-sahifa-600 text-white'
+                                        : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                                    }`}>{PM_LABELS[m]}
+                                  </button>
+                                ))}
+                              </div>
+                              <input value={grantNotes} onChange={e => setGrantNotes(e.target.value)}
+                                placeholder="Izoh (ixtiyoriy)"
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                              <div>
+                                <input value={grantProofUrl} onChange={e => setGrantProofUrl(e.target.value)}
+                                  placeholder="Screenshot URL (Telegram / Imgur havola)"
+                                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Screenshotni Telegram yoki Imgurga yuklang, havolani nusxalang</p>
+                              </div>
+                              {grantMsg && <p className={`text-xs ${grantMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'}`}>{grantMsg}</p>}
+                              <div className="flex gap-2">
+                                <button onClick={() => setGrantOpen(false)}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">
+                                  Bekor
+                                </button>
+                                <button onClick={handleGrant} disabled={grantLoading}
+                                  className="flex-[2] py-2 rounded-xl bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white text-sm font-semibold">
+                                  {grantLoading ? 'Saqlanmoqda…' : '✓ Kursni ochish'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {(!userDetailData?.enrollments || userDetailData.enrollments.length === 0)
+                            ? <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">Hech qanday kursga yozilmagan</p>
+                            : userDetailData.enrollments.map((e: any) => (
+                              <div key={e.course_id} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                                <span className="text-lg flex-shrink-0">📚</span>
+                                <p className="text-gray-900 dark:text-white text-sm flex-1 truncate">{e.course?.title ?? `Kurs #${e.course_id}`}</p>
+                                <span className="text-gray-400 dark:text-gray-500 text-xs">{e.enrolled_at ? new Date(e.enrolled_at).toLocaleDateString('uz-UZ') : ''}</span>
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )}
+
+                      {/* ── TO'LOVLAR ── */}
+                      {userDetailTab === 'tolovlar' && (
+                        <div className="space-y-3">
+                          {userDetailPayments.length === 0
+                            ? <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">To'lov tarixi yo'q</p>
+                            : userDetailPayments.map((p: any) => (
+                              <div key={p.id} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-mono text-sahifa-600 dark:text-sahifa-400 text-sm font-semibold">{p.reference_code ?? `#${p.id}`}</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                    p.status === 'granted'          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                    p.status === 'paid'             ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                    p.status === 'awaiting_payment' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                    'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                  }`}>{p.status}</span>
+                                </div>
+                                <p className="text-gray-900 dark:text-white text-sm truncate">{p.course?.title ?? `Kurs #${p.course_id}`}</p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-gray-400 dark:text-gray-500 text-xs">
+                                    {((p.actual_amount || p.expected_amount || 0) / 100).toLocaleString()} so'm
+                                    {p.payment_method && ` · ${PM_LABELS[p.payment_method] ?? p.payment_method}`}
+                                  </span>
+                                  <span className="text-gray-400 dark:text-gray-500 text-xs">{p.created_at ? new Date(p.created_at).toLocaleDateString('uz-UZ') : ''}</span>
+                                </div>
+                                {p.admin_notes && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1 italic">"{p.admin_notes}"</p>}
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )}
+
+                      {/* ── FAOLLIK ── */}
+                      {userDetailTab === 'faollik' && (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-3 gap-3">
+                            {[
+                              ['XP', u.total_xp.toLocaleString()],
+                              ['Daraja', `Lv ${u.level}`],
+                              ['Kurslar', userDetailData?.enrollments?.length ?? '—'],
+                            ].map(([k, v]) => (
+                              <div key={String(k)} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-3 text-center">
+                                <p className="text-gray-900 dark:text-white font-bold text-xl">{String(v)}</p>
+                                <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">{k}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-6">Batafsil faollik jurnali tez orada</p>
+                        </div>
+                      )}
+
+                      {/* ── ADMIN ── */}
+                      {userDetailTab === 'admin' && (
+                        <div className="space-y-3">
+                          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
+                            <h4 className="text-red-600 dark:text-red-400 font-semibold text-sm mb-3">Xavfli amallar</h4>
+                            {!drawerSuspendOpen
+                              ? (
+                                <button onClick={() => setDrawerSuspendOpen(true)}
+                                  className="w-full py-2.5 rounded-xl bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 border border-red-300 dark:border-red-800/50 text-red-600 dark:text-red-400 text-sm font-medium transition-colors">
+                                  🚫 Hisobni bloklash
+                                </button>
+                              ) : (
+                                <div className="space-y-2">
+                                  <input value={drawerSuspendText} onChange={e => setDrawerSuspendText(e.target.value)}
+                                    placeholder="Sabab (ixtiyoriy)…"
+                                    className="w-full px-3 py-2 text-sm rounded-xl border border-red-200 dark:border-red-800/60 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-red-500" />
+                                  <div className="flex gap-2">
+                                    <button onClick={() => setDrawerSuspendOpen(false)}
+                                      className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">Bekor</button>
+                                    <button onClick={handleDrawerSuspend} disabled={drawerSuspending}
+                                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold">
+                                      {drawerSuspending ? '…' : 'Tasdiqlash'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            }
+                          </div>
+                          <a
+                            href={u.username ? `https://t.me/${u.username}` : `tg://user?id=${u.telegram_id}`}
+                            target="_blank" rel="noreferrer"
+                            className="block text-center py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/40 text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
+                          >
+                            ✈ Telegramda yozing
+                          </a>
+                        </div>
+                      )}
+                    </>
+                  )
+                }
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
     </div>
   )
 }
