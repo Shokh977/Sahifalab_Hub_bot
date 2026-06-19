@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import httpx
@@ -1193,3 +1194,240 @@ async def direct_grant_course(
         pass
 
     return {"ok": True, "already_enrolled": False}
+
+
+# ── Stats & overview ───────────────────────────────────────────────────────────
+
+@router.get("/stats/overview")
+async def admin_stats_overview(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Platform-wide stats for the admin dashboard overview."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+
+    hdrs_count = {**_pending_supabase_headers(), "Prefer": "count=exact"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        pending_res, users_today_res, enroll_today_res, total_users_res, total_courses_res = (
+            await asyncio.gather(
+                client.get(f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+                           params={"status": "in.(awaiting_payment,paid)", "select": "id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                           params={"created_at": f"gte.{today_start}", "select": "telegram_id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                           params={"created_at": f"gte.{today_start}", "is_active": "eq.true", "select": "id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                           params={"select": "telegram_id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                           params={"select": "id"},
+                           headers=hdrs_count),
+            )
+        )
+
+    def _count(res): return int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    # Monthly revenue from granted enrollments
+    async with httpx.AsyncClient(timeout=10) as client:
+        rev_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"status": "eq.granted", "processed_at": f"gte.{month_start}",
+                    "select": "actual_amount,expected_amount"},
+            headers=_pending_supabase_headers(),
+        )
+    revenue_rows = rev_res.json() if rev_res.status_code == 200 else []
+    monthly_revenue = sum(
+        (r.get("actual_amount") or r.get("expected_amount") or 0) for r in revenue_rows
+    )
+
+    return {
+        "pending_payments":   _count(pending_res),
+        "users_today":        _count(users_today_res),
+        "enrollments_today":  _count(enroll_today_res),
+        "monthly_revenue":    monthly_revenue,
+        "total_users":        _count(total_users_res),
+        "total_courses":      _count(total_courses_res),
+    }
+
+
+@router.get("/stats/activity")
+async def admin_stats_activity(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Recent activity feed: latest 40 pending-enrollment events enriched with user+course names."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "select": "id,user_id,course_id,reference_code,status,created_at,processed_at,expected_amount",
+                "order":  "created_at.desc",
+                "limit":  "40",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        return []
+
+    user_ids   = list({r["user_id"]   for r in rows})
+    course_ids = list({r["course_id"] for r in rows})
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        p_res, c_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"in.({','.join(str(u) for u in user_ids)})",
+                               "select": "telegram_id,first_name,username"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                       params={"id": f"in.({','.join(str(c) for c in course_ids)})",
+                               "select": "id,title"},
+                       headers=_pending_supabase_headers()),
+        )
+
+    by_user   = {p["telegram_id"]: p for p in (p_res.json() if p_res.status_code == 200 else [])}
+    by_course = {c["id"]: c          for c in (c_res.json() if c_res.status_code == 200 else [])}
+
+    return [
+        {
+            **r,
+            "user_name":   by_user.get(r["user_id"],   {}).get("first_name", f"#{r['user_id']}"),
+            "username":    by_user.get(r["user_id"],   {}).get("username"),
+            "course_name": by_course.get(r["course_id"], {}).get("title",  f"#{r['course_id']}"),
+        }
+        for r in rows
+    ]
+
+
+# ── User management ────────────────────────────────────────────────────────────
+
+@router.get("/users")
+async def admin_list_users(
+    search:    Optional[str] = Query(None),
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Paginated user list with optional name/username search (Admin only)."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "select": "telegram_id,first_name,username,photo_url,created_at,streak_days",
+        "order":  "created_at.desc",
+        "limit":  str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+    if search:
+        params["or"] = f"(first_name.ilike.*{search}*,username.ilike.*{search}*)"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/users/{telegram_id}")
+async def admin_get_user(
+    telegram_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Full user detail with enrolled courses (Admin only)."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        profile_res, enroll_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"eq.{telegram_id}", "select": "*", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                       params={"student_id": f"eq.{telegram_id}", "is_active": "eq.true",
+                               "select": "course_id,created_at", "order": "created_at.desc"},
+                       headers=_pending_supabase_headers()),
+        )
+
+    profiles = profile_res.json() if profile_res.status_code == 200 else []
+    if not profiles:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    enrollments = enroll_res.json() if enroll_res.status_code == 200 else []
+    course_ids  = [e["course_id"] for e in enrollments]
+
+    courses_by_id: dict = {}
+    if course_ids:
+        async with httpx.AsyncClient(timeout=10) as client:
+            c_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/courses",
+                params={"id": f"in.({','.join(str(c) for c in course_ids)})",
+                        "select": "id,title,thumbnail_url,price"},
+                headers=_pending_supabase_headers(),
+            )
+        courses_by_id = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
+
+    return {
+        **profiles[0],
+        "enrollments": [
+            {"course_id": e["course_id"], "enrolled_at": e["created_at"],
+             "course": courses_by_id.get(e["course_id"])}
+            for e in enrollments
+        ],
+    }
+
+
+# ── Course management ──────────────────────────────────────────────────────────
+
+@router.get("/courses")
+async def admin_list_courses(
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    published: Optional[bool] = Query(None),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """List all courses (including unpublished) — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "select": "id,title,thumbnail_url,price,is_paid,is_published,enrolled_count,rating,created_at,teacher_id",
+        "order":  "created_at.desc",
+        "limit":  str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+    if published is not None:
+        params["is_published"] = f"eq.{str(published).lower()}"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
