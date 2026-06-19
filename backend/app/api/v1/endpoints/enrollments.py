@@ -2,16 +2,21 @@
 SAHIFALAB — Course enrollments endpoints
 
 Routes (Bearer JWT required):
-  GET    /api/enrollments/check?course_id={id}   — check if caller is enrolled
-  POST   /api/enrollments/enroll                 — enroll caller into a course (free only)
-  DELETE /api/enrollments/enroll?course_id={id}  — unenroll caller
-  GET    /api/enrollments/mine                   — list caller's active enrollments
+  GET    /api/enrollments/check?course_id={id}      — check if caller is enrolled
+  POST   /api/enrollments/enroll                    — enroll caller into a course (free only)
+  DELETE /api/enrollments/enroll?course_id={id}     — unenroll caller
+  GET    /api/enrollments/mine                      — list caller's active enrollments
+  POST   /api/enrollments/request-code              — generate/return payment reference code for paid course
+  GET    /api/enrollments/pending-status?course_id= — check if caller has a pending payment request
 """
 from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional
 import os
 import httpx
+import secrets
+import string
+from datetime import datetime, timezone, timedelta
 
 from app.services.auth_service import decode_token
 
@@ -187,6 +192,117 @@ async def unenroll_course(course_id: int = Query(...), authorization: Optional[s
 
     await _sync_enrolled_count(course_id)
     return {"ok": True}
+
+
+def _generate_ref_code() -> str:
+    chars = string.ascii_uppercase + string.digits
+    part1 = "".join(secrets.choice(chars) for _ in range(4))
+    part2 = "".join(secrets.choice(chars) for _ in range(4))
+    return f"PAY-{part1}-{part2}"
+
+
+TELEGRAM_BOT_URL = os.getenv("PAYMENT_BOT_URL", "https://t.me/sahifalab_pay_bot")
+
+
+class RequestCodeBody(BaseModel):
+    course_id: int
+
+
+@router.post("/request-code")
+async def request_enrollment_code(body: RequestCodeBody, authorization: Optional[str] = Header(None)):
+    caller_id = await _resolve_caller(authorization)
+    course = await _get_course(body.course_id)
+
+    if not course.get("is_paid"):
+        raise HTTPException(status_code=400, detail="Course is not paid")
+
+    already = await _is_enrolled(body.course_id, caller_id)
+    if already:
+        raise HTTPException(status_code=400, detail="Already enrolled in this course")
+
+    _ensure_supabase()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Return existing valid pending request if one exists
+    async with httpx.AsyncClient(timeout=10) as client:
+        existing_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "user_id":   f"eq.{caller_id}",
+                "course_id": f"eq.{body.course_id}",
+                "status":    "in.(awaiting_payment,paid)",
+                "expires_at": f"gt.{now_iso}",
+                "select":    "reference_code,expires_at,status",
+                "limit":     "1",
+            },
+            headers=_supabase_headers(),
+        )
+    existing = existing_res.json() if existing_res.status_code == 200 else []
+    if existing:
+        row = existing[0]
+        return {
+            "reference_code":  row["reference_code"],
+            "telegram_bot_url": TELEGRAM_BOT_URL,
+            "expires_at":      row["expires_at"],
+            "status":          row["status"],
+        }
+
+    ref_code  = _generate_ref_code()
+    expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        insert_res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            json={
+                "user_id":        caller_id,
+                "course_id":      body.course_id,
+                "reference_code": ref_code,
+                "expected_amount": int(course.get("price", 0)),
+                "status":         "awaiting_payment",
+                "expires_at":     expires_at,
+            },
+            headers=_supabase_headers(),
+        )
+    if insert_res.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="Failed to create enrollment request")
+
+    return {
+        "reference_code":  ref_code,
+        "telegram_bot_url": TELEGRAM_BOT_URL,
+        "expires_at":      expires_at,
+        "status":          "awaiting_payment",
+    }
+
+
+@router.get("/pending-status")
+async def pending_enrollment_status(course_id: int = Query(...), authorization: Optional[str] = Header(None)):
+    caller_id = await _resolve_caller(authorization)
+    _ensure_supabase()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "user_id":    f"eq.{caller_id}",
+                "course_id":  f"eq.{course_id}",
+                "status":     "in.(awaiting_payment,paid)",
+                "expires_at": f"gt.{now_iso}",
+                "select":     "reference_code,expires_at,status",
+                "limit":      "1",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        return {"has_pending": False}
+    row = rows[0]
+    return {
+        "has_pending":     True,
+        "reference_code":  row["reference_code"],
+        "status":          row["status"],
+        "expires_at":      row["expires_at"],
+    }
 
 
 @router.get("/mine")

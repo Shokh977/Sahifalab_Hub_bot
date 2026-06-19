@@ -473,6 +473,31 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS ix_flashcard_reviews_deck ON flashcard_reviews(deck_id)"
                 ))
+                # 14. Pending enrollments (step-12-admin-manual-enrollment)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS pending_enrollments (
+                        id                BIGSERIAL    PRIMARY KEY,
+                        user_id           BIGINT       NOT NULL,
+                        course_id         INTEGER      NOT NULL,
+                        reference_code    VARCHAR(20)  UNIQUE NOT NULL,
+                        expected_amount   BIGINT       NOT NULL DEFAULT 0,
+                        status            VARCHAR(20)  NOT NULL DEFAULT 'awaiting_payment',
+                        admin_notes       TEXT,
+                        actual_amount     BIGINT,
+                        payment_method    VARCHAR(50),
+                        payment_proof_url VARCHAR(500),
+                        processed_by      BIGINT,
+                        processed_at      TIMESTAMPTZ,
+                        created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        expires_at        TIMESTAMPTZ  NOT NULL
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_pending_enroll_status ON pending_enrollments(status, created_at DESC)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_pending_enroll_user_course ON pending_enrollments(user_id, course_id)"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)

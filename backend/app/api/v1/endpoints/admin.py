@@ -919,3 +919,277 @@ async def reject_payout(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="To'lovni rad etishda xatolik")
+
+
+# ── Pending enrollments (step-12 manual enrollment) ───────────────────────────
+
+def _pending_supabase_headers() -> dict:
+    return {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+    }
+
+
+class _GrantBody(BaseModel):
+    actual_amount:     Optional[int] = None
+    payment_method:    Optional[str] = None
+    notes:             Optional[str] = None
+    send_notification: bool = True
+
+
+class _CancelBody(BaseModel):
+    reason: Optional[str] = None
+
+
+class _DirectGrantBody(BaseModel):
+    course_id:      int
+    payment_method: Optional[str] = None
+    amount:         Optional[int] = None
+    notes:          Optional[str] = None
+
+
+@router.get("/pending-enrollments")
+async def list_pending_enrollments(
+    status:    str = Query("awaiting_payment"),
+    search:    Optional[str] = Query(None),
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """List pending enrollment requests with user + course info (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "status": f"eq.{status}",
+        "select": "id,user_id,course_id,reference_code,expected_amount,status,created_at,expires_at,admin_notes,actual_amount,payment_method",
+        "order":  "created_at.desc",
+        "limit":  str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    if not rows:
+        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
+    # Enrich: fetch profiles and course titles
+    user_ids   = list({r["user_id"]   for r in rows})
+    course_ids = list({r["course_id"] for r in rows})
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        profiles_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params={
+                "telegram_id": f"in.({','.join(str(u) for u in user_ids)})",
+                "select":      "telegram_id,first_name,username,photo_url",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    profiles_by_id = {
+        p["telegram_id"]: p
+        for p in (profiles_res.json() if profiles_res.status_code == 200 else [])
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        courses_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={
+                "id":     f"in.({','.join(str(c) for c in course_ids)})",
+                "select": "id,title,thumbnail_url,price",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    courses_by_id = {
+        c["id"]: c
+        for c in (courses_res.json() if courses_res.status_code == 200 else [])
+    }
+
+    enriched = [
+        {
+            **r,
+            "user":   profiles_by_id.get(r["user_id"]),
+            "course": courses_by_id.get(r["course_id"]),
+        }
+        for r in rows
+    ]
+
+    if search:
+        q = search.lower()
+        enriched = [
+            r for r in enriched
+            if q in r["reference_code"].lower()
+            or (r["user"] and q in (r["user"].get("first_name", "") + r["user"].get("username", "")).lower())
+            or (r["course"] and q in r["course"].get("title", "").lower())
+        ]
+
+    return {"items": enriched, "total": total, "page": page, "page_size": page_size}
+
+
+@router.post("/pending-enrollments/{pending_id}/grant")
+async def grant_pending_enrollment(
+    pending_id: int,
+    body:  _GrantBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Mark pending enrollment as granted and create real course_enrollment (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Fetch the pending row
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "*", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pending enrollment not found")
+    pending = rows[0]
+
+    if pending["status"] not in ("awaiting_payment", "paid"):
+        raise HTTPException(status_code=400, detail=f"Cannot grant: status is {pending['status']}")
+
+    user_id   = pending["user_id"]
+    course_id = pending["course_id"]
+
+    # Check if not already enrolled
+    async with httpx.AsyncClient(timeout=10) as client:
+        already_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id":  f"eq.{course_id}",
+                "student_id": f"eq.{user_id}",
+                "is_active":  "eq.true",
+                "select":     "id",
+                "limit":      "1",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    already = len(already_res.json() if already_res.status_code == 200 else []) > 0
+
+    if not already:
+        async with httpx.AsyncClient(timeout=10) as client:
+            enroll_res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                json={"course_id": course_id, "student_id": user_id, "is_active": True},
+                headers=_pending_supabase_headers(),
+            )
+        if enroll_res.status_code not in (200, 201):
+            raise HTTPException(status_code=502, detail="Failed to create enrollment")
+
+    # Update pending enrollment to 'granted'
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}"},
+            json={
+                "status":         "granted",
+                "actual_amount":  body.actual_amount,
+                "payment_method": body.payment_method,
+                "admin_notes":    body.notes,
+                "processed_by":   admin.telegram_id,
+                "processed_at":   now_iso,
+            },
+            headers=_pending_supabase_headers(),
+        )
+
+    if body.send_notification:
+        try:
+            from app.api.v1.endpoints.notifications import send_notification
+            await send_notification(
+                user_id, "course_granted", "COURSE",
+                {"course_id": course_id},
+            )
+        except Exception:
+            pass  # notification failure must not block the grant
+
+    return {"ok": True}
+
+
+@router.post("/pending-enrollments/{pending_id}/cancel")
+async def cancel_pending_enrollment(
+    pending_id: int,
+    body:  _CancelBody = _CancelBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Cancel a pending enrollment request (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}"},
+            json={
+                "status":      "cancelled",
+                "admin_notes": body.reason,
+                "processed_by": admin.telegram_id,
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            },
+            headers=_pending_supabase_headers(),
+        )
+
+    return {"ok": True}
+
+
+@router.post("/users/{telegram_id}/grant-course")
+async def direct_grant_course(
+    telegram_id: int,
+    body: _DirectGrantBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Directly enroll a user in a course, bypassing the reference-code flow (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    # Check already enrolled
+    async with httpx.AsyncClient(timeout=10) as client:
+        already_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id":  f"eq.{body.course_id}",
+                "student_id": f"eq.{telegram_id}",
+                "is_active":  "eq.true",
+                "select":     "id",
+                "limit":      "1",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    if len(already_res.json() if already_res.status_code == 200 else []) > 0:
+        return {"ok": True, "already_enrolled": True}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        enroll_res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            json={"course_id": body.course_id, "student_id": telegram_id, "is_active": True},
+            headers=_pending_supabase_headers(),
+        )
+    if enroll_res.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="Failed to create enrollment")
+
+    try:
+        from app.api.v1.endpoints.notifications import send_notification
+        await send_notification(
+            telegram_id, "course_granted", "COURSE",
+            {"course_id": body.course_id},
+        )
+    except Exception:
+        pass
+
+    return {"ok": True, "already_enrolled": False}
