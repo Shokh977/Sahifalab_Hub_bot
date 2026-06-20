@@ -3,7 +3,9 @@ profiles.py — proxy endpoints for gamification progress and cabinet data.
 
 All queries use SQLAlchemy ORM (direct Postgres TCP), bypassing Supabase REST.
 """
+import re
 from fastapi import APIRouter, Depends, Header, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from typing import Optional
 from datetime import datetime, UTC, timedelta
@@ -16,6 +18,24 @@ from app.services.auth_service import decode_token, decode_token_payload
 
 router = APIRouter()
 
+
+def _generate_site_username(db: Session, first_name: Optional[str], telegram_id: int) -> str:
+    """
+    Derive a unique public handle from first_name + telegram_id.
+    Telegram username is never used here — site_username is fully independent.
+    """
+    base = re.sub(r'[^a-z0-9]', '', (first_name or '').lower())[:15] or 'user'
+    suffix = str(abs(telegram_id) % 100000)
+    candidate = f"{base}_{suffix}"
+    taken = db.query(Profile).filter(
+        func.lower(Profile.site_username) == candidate.lower()
+    ).first()
+    if not taken:
+        return candidate
+    # Collision fallback: use full telegram_id for guaranteed uniqueness
+    return f"{base}_{abs(telegram_id)}"
+
+
 # ── Module-level motivation state (single Railway dyno, ephemeral) ────────────
 # Resets on redeploy — motivation is intentionally ephemeral.
 _last_motivation_ts: float = 0.0
@@ -27,13 +47,21 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
     """Extract telegram_id from Bearer JWT. Raises 401 on failure."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
+    
     parts = authorization.split(None, 1)  # split on first whitespace only
+    
     if len(parts) != 2 or parts[0].lower() not in ("bearer",):
+
         scheme = repr(parts[0]) if parts else "none"
+
+        # FIX: Extracting logic to a variable to avoid f-string SyntaxError
+        scheme = repr(parts[0]) if parts else 'none'
+ main
         raise HTTPException(
             status_code=401,
             detail=f"Invalid authorization header (scheme={scheme})"
         )
+        
     tid = decode_token(parts[1])
     if not tid:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -44,17 +72,21 @@ async def _require_admin(authorization: Optional[str] = Header(None)) -> int:
     """Require JWT with role=admin or role=teacher. Returns telegram_id."""
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
+    
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
         raise HTTPException(status_code=401, detail="Invalid authorization header")
+    
     payload = decode_token_payload(parts[1])
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
     if payload.get("role") not in ("admin", "teacher"):
         raise HTTPException(status_code=403, detail="Admin or teacher role required")
+    
     return payload["telegram_id"]
-_last_motivation_ts: float = 0.0
 
+_last_motivation_ts: float = 0.0
 
 # ── Request models ─────────────────────────────────────────────────────────────
 
@@ -70,7 +102,6 @@ class ProgressSyncRequest(BaseModel):
     username:             Optional[str] = None
     total_xp:             Optional[int] = None
     focus_seconds:        Optional[int] = None
-    total_focus_minutes:  Optional[int] = None   # new: derived from focus_seconds
     level:                Optional[int] = None
     quizzes_completed:    Optional[int] = None
     app_online_at:        Optional[str] = None   # ISO-8601
@@ -91,7 +122,7 @@ async def get_leaderboard(limit: int = 10, db: Session = Depends(get_db)):
         {
             "telegram_id":        p.telegram_id,
             "first_name":         p.first_name,
-            "username":           p.username,
+            "username":           p.site_username,
             "photo_url":          p.photo_url,
             "total_xp":           p.total_xp          or 0,
             "level":              p.level              or 1,
@@ -164,10 +195,12 @@ async def upsert_profile(
     telegram_id = caller_id
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
+        site_uname = _generate_site_username(db, body.first_name, telegram_id)
         profile = Profile(
             telegram_id=telegram_id,
             first_name=body.first_name,
             username=body.username,
+            site_username=site_uname,
             app_created_at=datetime.now(UTC),
         )
         db.add(profile)
@@ -175,6 +208,8 @@ async def upsert_profile(
         profile.first_name = body.first_name
         if body.username is not None:
             profile.username = body.username
+        if not profile.site_username:
+            profile.site_username = _generate_site_username(db, profile.first_name, telegram_id)
     try:
         db.commit()
     except Exception as e:
@@ -203,19 +238,23 @@ async def sync_progress(
 
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if profile is None:
+        fname = body.first_name or "Foydalanuvchi"
+        site_uname = _generate_site_username(db, fname, telegram_id)
         profile = Profile(
             telegram_id=telegram_id,
-            first_name=body.first_name or "Foydalanuvchi",
+            first_name=fname,
             username=body.username,
+            site_username=site_uname,
             app_created_at=datetime.now(UTC),
         )
         db.add(profile)
+    elif not profile.site_username:
+        profile.site_username = _generate_site_username(db, profile.first_name, telegram_id)
 
     # Only allow cosmetic/presence fields — XP, level, quizzes are server-authoritative
     if body.first_name           is not None: profile.first_name           = body.first_name
     if body.username             is not None: profile.username             = body.username
     if body.focus_seconds        is not None: profile.focus_seconds        = body.focus_seconds
-    if body.total_focus_minutes  is not None: profile.total_focus_minutes  = body.total_focus_minutes
     if body.app_online_at        is not None:
         try:
             profile.app_online_at = datetime.fromisoformat(
@@ -244,7 +283,7 @@ async def get_teachers_gallery(db: Session = Depends(get_db)):
         SELECT
             p.telegram_id,
             p.first_name,
-            p.username,
+            p.site_username,
             p.photo_url,
             COALESCE(tp.specialization, '')   AS specialization,
             tp.experience_years,
@@ -274,7 +313,7 @@ async def get_teachers_gallery(db: Session = Depends(get_db)):
         {
             "telegram_id":      row.telegram_id,
             "first_name":       row.first_name or "O'qituvchi",
-            "username":         row.username,
+            "username":         row.site_username,
             "photo_url":        row.photo_url,
             "specialization":   row.specialization,
             "experience_years": row.experience_years,
@@ -294,28 +333,47 @@ async def get_heatmap(
     db: Session = Depends(get_db),
 ):
     """
-    Per-day quiz-completion activity for the GitHub-style heatmap.
-    Returns [{date: 'YYYY-MM-DD', count: int}] for the last `days` days.
-    Uses user_quiz_completion.completed_at as the study-activity proxy.
+    Per-day activity for the GitHub-style heatmap.
+    Returns [{date, quiz, focus_xp, total}] for the last `days` days.
+    Combines quiz completions and DEEP_WORK XP logs so the heatmap shows
+    all study activity, not just quizzes.
     """
-    from sqlalchemy import func, cast
-    from sqlalchemy.types import Date as SQLDate
-
+    from sqlalchemy import text as _text
     cutoff = datetime.now(UTC) - timedelta(days=days)
-    rows = (
-        db.query(
-            cast(UserQuizCompletion.completed_at, SQLDate).label("day"),
-            func.count().label("count"),
-        )
-        .filter(
-            UserQuizCompletion.telegram_id == telegram_id,
-            UserQuizCompletion.completed_at >= cutoff,
-        )
-        .group_by(cast(UserQuizCompletion.completed_at, SQLDate))
-        .order_by(cast(UserQuizCompletion.completed_at, SQLDate))
-        .all()
-    )
-    return [{"date": str(r.day), "count": int(r.count)} for r in rows]
+    try:
+        quiz_rows = db.execute(_text("""
+            SELECT completed_at::date AS day, COUNT(*) AS count
+            FROM user_quiz_completion
+            WHERE telegram_id = :tid
+              AND completed_at >= :cutoff
+            GROUP BY completed_at::date
+        """), {"tid": telegram_id, "cutoff": cutoff}).fetchall()
+        quiz_map = {str(r.day): int(r.count) for r in quiz_rows}
+
+        focus_rows = db.execute(_text("""
+            SELECT created_at::date AS day, COALESCE(SUM(amount), 0) AS xp
+            FROM xp_logs
+            WHERE user_id = :tid
+              AND source = 'DEEP_WORK'
+              AND created_at >= :cutoff
+            GROUP BY created_at::date
+        """), {"tid": telegram_id, "cutoff": cutoff}).fetchall()
+        focus_map = {str(r.day): int(r.xp) for r in focus_rows}
+
+        all_days = set(quiz_map.keys()) | set(focus_map.keys())
+        result = []
+        for day in sorted(all_days):
+            quiz  = quiz_map.get(day, 0)
+            focus = focus_map.get(day, 0)
+            result.append({
+                "date":      day,
+                "quiz":      quiz,
+                "focus_xp":  focus,
+                "total":     quiz + (1 if focus > 0 else 0),
+            })
+        return result
+    except Exception:
+        return []
 
 
 @router.get("/{telegram_id}")
@@ -333,7 +391,7 @@ async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
         "level":                profile.level              or 1,
         "quizzes_completed":    profile.quizzes_completed  or 0,
         "first_name":           profile.first_name,
-        "username":             profile.username,
+        "username":             profile.site_username,
         "photo_url":            profile.photo_url,
         "role":                 profile.role   or "student",
         "status":               profile.status or "active",

@@ -51,6 +51,32 @@
   --sahifa-surface: #F4F5F7;
   --sahifa-border: #E5E7EB;
   --sahifa-card: #FFFFFF;
+
+  /* ── Semantic design tokens (light) ── */
+  --bg-primary:    #f0f0f4;
+  --bg-secondary:  #ffffff;
+  --bg-tertiary:   #f0f0f4;
+  --bg-elevated:   #ffffff;
+  --bg-sidebar:    #ffffff;
+
+  --text-primary:   #1a1a2e;
+  --text-secondary: rgba(26, 26, 46, 0.70);
+  --text-tertiary:  rgba(26, 26, 46, 0.50);
+  --text-muted:     rgba(26, 26, 46, 0.30);
+
+  --border-default: rgba(0, 0, 0, 0.08);
+  --border-hover:   rgba(0, 0, 0, 0.15);
+
+  --brand-primary:  #e8792f;
+  --brand-dark:     #c44a1a;
+  --brand-subtle:   rgba(232, 121, 47, 0.08);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.10);
+
+  --input-bg:       #f0f0f4;
+  --input-border:   rgba(0, 0, 0, 0.10);
+  --input-focus:    rgba(232, 121, 47, 0.40);
 }
 
 /* ── Dark mode ─────────────────────────────────────────────────────────────── */
@@ -70,6 +96,32 @@
   --sahifa-surface: #222230;
   --sahifa-border: #2E2E3A;
   --sahifa-card: #222230;
+
+  /* ── Semantic design tokens (dark) ── */
+  --bg-primary:    #13141a;
+  --bg-secondary:  #1c1d27;
+  --bg-tertiary:   #24253a;
+  --bg-elevated:   #2a2b3d;
+  --bg-sidebar:    #13141a;
+
+  --text-primary:   #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-tertiary:  rgba(255, 255, 255, 0.40);
+  --text-muted:     rgba(255, 255, 255, 0.25);
+
+  --border-default: rgba(255, 255, 255, 0.06);
+  --border-hover:   rgba(255, 255, 255, 0.12);
+
+  --brand-primary:  #e8792f;
+  --brand-dark:     #c44a1a;
+  --brand-subtle:   rgba(232, 121, 47, 0.12);
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.40);
+
+  --input-bg:       #24253a;
+  --input-border:   rgba(255, 255, 255, 0.08);
+  --input-focus:    rgba(232, 121, 47, 0.40);
 }
 
 * {
@@ -82,11 +134,9 @@ body {
   font-family: 'Oxygen', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background:
-    radial-gradient(circle at top, rgba(241, 89, 41, 0.05), transparent 24%),
-    var(--sahifa-bg);
-  color: var(--tg-theme-text-color);
-  transition: background-color 0.3s ease, color 0.3s ease;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  transition: background-color 0.25s ease, color 0.25s ease;
 }
 
 /* ── Light mode: soften all near-black text utilities ────────────────────────
@@ -100,9 +150,94 @@ html:not(.dark) .text-slate-800      { color: #3D4A5C !important; }  /* #1E293B 
 html:not(.dark) .text-gray-700       { color: #4C5A6A !important; }  /* #374151 → softer */
 html:not(.dark) .text-slate-700      { color: #4C5A6A !important; }  /* #334155 → softer */
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   LIGHT MODE: Override hardcoded dark-only Tailwind arbitrary-value classes.
+   These were written assuming a dark theme and break in light mode.
+   [class~="x"] matches an exact whitespace-separated token in the class attr.
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ─ Dark hex card/surface backgrounds → light surface colors ────────────── */
+html:not(.dark) [class~="bg-[#1c1d27]"],
+html:not(.dark) [class~="bg-[#1c1d22]"],
+html:not(.dark) [class~="bg-[#1C1C22]"],
+html:not(.dark) [class~="bg-[#222230]"],
+html:not(.dark) [class~="bg-[#1E1E2A]"] { background-color: var(--bg-secondary) !important; }
+
+html:not(.dark) [class~="bg-[#13141a]"],
+html:not(.dark) [class~="bg-[#13141A]"] { background-color: var(--bg-primary)   !important; }
+
+html:not(.dark) [class~="bg-[#24253a]"],
+html:not(.dark) [class~="bg-[#24253A]"] { background-color: var(--bg-tertiary)  !important; }
+
+html:not(.dark) [class~="bg-[#2a2b3d]"],
+html:not(.dark) [class~="bg-[#2E2E3A]"],
+html:not(.dark) [class~="bg-[#222230]"] { background-color: var(--bg-elevated)  !important; }
+
+/* ─ White-transparent ghost backgrounds → subtle light equivalents ────────── */
+html:not(.dark) [class~="bg-white/[0.03]"],
+html:not(.dark) [class~="bg-white/[0.04]"],
+html:not(.dark) [class~="bg-white/[0.05]"],
+html:not(.dark) [class~="bg-white/[0.06]"],
+html:not(.dark) [class~="bg-white/[0.07]"],
+html:not(.dark) [class~="bg-white/[0.08]"],
+html:not(.dark) [class~="bg-white/[0.09]"],
+html:not(.dark) [class~="bg-white/[0.10]"],
+html:not(.dark) [class~="bg-white/[0.12]"] { background-color: rgba(0,0,0,0.04) !important; }
+
+/* ─ White-opacity borders → semantic border token ──────────────────────────── */
+html:not(.dark) [class~="border-white/[0.04]"],
+html:not(.dark) [class~="border-white/[0.05]"],
+html:not(.dark) [class~="border-white/[0.06]"],
+html:not(.dark) [class~="border-white/[0.07]"],
+html:not(.dark) [class~="border-white/[0.08]"],
+html:not(.dark) [class~="border-white/[0.10]"],
+html:not(.dark) [class~="border-white/[0.12]"] { border-color: var(--border-default) !important; }
+html:not(.dark) [class~="border-white/20"],
+html:not(.dark) [class~="border-white/25"]     { border-color: var(--border-hover)   !important; }
+
+/* ─ White-opacity text → readable semantic text tokens ─────────────────────── */
+html:not(.dark) [class~="text-white/90"],
+html:not(.dark) [class~="text-white/80"],
+html:not(.dark) [class~="text-white/75"],
+html:not(.dark) [class~="text-white/70"] { color: var(--text-primary)   !important; }
+
+html:not(.dark) [class~="text-white/65"],
+html:not(.dark) [class~="text-white/60"] { color: var(--text-secondary) !important; }
+
+html:not(.dark) [class~="text-white/50"],
+html:not(.dark) [class~="text-white/45"],
+html:not(.dark) [class~="text-white/40"] { color: var(--text-tertiary)  !important; }
+
+html:not(.dark) [class~="text-white/35"],
+html:not(.dark) [class~="text-white/30"],
+html:not(.dark) [class~="text-white/25"],
+html:not(.dark) [class~="text-white/20"],
+html:not(.dark) [class~="text-white/15"] { color: var(--text-muted)     !important; }
+
+/* ── Placeholder text in light mode ─────────────────────────────────────────── */
+html:not(.dark) [class~="placeholder:text-white/25"]::placeholder,
+html:not(.dark) [class~="placeholder:text-white/30"]::placeholder,
+html:not(.dark) [class~="placeholder:text-white/35"]::placeholder,
+html:not(.dark) [class~="placeholder:text-white/40"]::placeholder,
+html:not(.dark) [class~="placeholder-white/25"]::placeholder,
+html:not(.dark) [class~="placeholder-white/30"]::placeholder,
+html:not(.dark) [class~="placeholder-white/35"]::placeholder,
+html:not(.dark) [class~="placeholder-white/40"]::placeholder { color: var(--text-tertiary) !important; }
+
+/* ─ Bare text-white (full opacity) → text-primary in light mode ─────────────
+   Exceptions: elements that also carry a solid colored background (buttons)  */
+html:not(.dark) [class~="text-white"]:not([class~="bg-[#e8792f]"]):not([class~="bg-[#c44a1a]"]):not([class~="bg-[#d4692a]"]):not([class~="bg-[#F15929]"]):not([class~="bg-[#e84e22]"]):not([class~="bg-[#d4451f]"]):not([class~="bg-[#2AABEE]"]):not([class~="bg-[#1d97d4]"]):not([class~="bg-[#1A1A1A]"]):not([class~="bg-red-500"]):not([class~="bg-red-600"]):not([class~="bg-emerald-500"]) {
+  color: var(--text-primary) !important;
+}
+
 #root {
   width: 100%;
   min-height: 100vh;
+}
+
+/* ── Messenger: theme-aware input placeholders ──────────────────────────── */
+.messenger-input::placeholder {
+  color: var(--text-muted);
 }
 
 /* ── Email link modal: prevent oversized native email contact icons in webviews ── */

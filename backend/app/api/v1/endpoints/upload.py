@@ -67,6 +67,7 @@ ALLOWED_IMAGE_MIME = {
 
 ALLOWED_DOC_MIME = {
     "application/pdf",
+    "application/epub+zip",  # .epub
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation",
@@ -99,6 +100,7 @@ _MIME_EXT_MAP = {
     "image/gif":  ".gif",
     "image/svg+xml": ".svg",
     "application/pdf": ".pdf",
+    "application/epub+zip": ".epub",
     "application/msword": ".doc",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
     "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
@@ -172,6 +174,14 @@ async def _get_caller(creds: HTTPAuthorizationCredentials) -> dict:
     role = payload.get("role", "student")
     if role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Faqat o'qituvchilar yuklashi mumkin")
+    return payload
+
+
+async def _get_any_caller(creds: HTTPAuthorizationCredentials) -> dict:
+    """Decode JWT for any authenticated user (student, teacher, admin)."""
+    payload = decode_token_payload(creds.credentials)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
     return payload
 
 
@@ -396,6 +406,43 @@ async def upload_file(
         "content_type":  upload_content_type,
         "original_name": original_name,
     }
+
+
+# ── POST /upload/post-image — any authenticated user (social post images) ────
+@router.post("/post-image")
+async def upload_post_image(
+    file: UploadFile = File(...),
+    creds: HTTPAuthorizationCredentials = Depends(_security),
+):
+    """
+    Upload a post image. Requires a valid JWT but NOT teacher/admin role —
+    any logged-in user can upload images for social posts.
+    Stored in posts/<uuid>.webp on Bunny CDN.
+    Returns { url }.
+    """
+    await _get_any_caller(creds)
+
+    if file.content_type not in ALLOWED_IMAGE_MIME:
+        raise HTTPException(
+            status_code=415,
+            detail="Faqat rasm fayllari qabul qilinadi: jpg, png, webp, gif.",
+        )
+
+    file_bytes = await file.read()
+    if len(file_bytes) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Rasm hajmi 10 MB dan oshmasligi kerak.")
+
+    if file.content_type in RASTER_IMAGE_MIME:
+        file_bytes  = _compress_to_webp(file_bytes, max_px=1200, quality=82)
+        upload_ct   = "image/webp"
+        ext         = ".webp"
+    else:
+        upload_ct = file.content_type or "image/webp"
+        ext       = _MIME_EXT_MAP.get(upload_ct, ".webp")
+
+    remote_path = f"posts/{uuid.uuid4().hex}{ext}"
+    cdn_url = await _upload_to_bunny(file_bytes, remote_path, upload_ct)
+    return {"url": cdn_url, "remote_path": remote_path}
 
 
 # ── DELETE /upload/file ───────────────────────────────────────────────────────

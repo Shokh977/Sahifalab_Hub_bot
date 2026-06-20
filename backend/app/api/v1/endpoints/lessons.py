@@ -9,14 +9,18 @@ Routes:
   DELETE /api/lessons/{id}           — delete lesson (owner/admin)
   PATCH /api/lessons/reorder         — bulk reorder lessons (owner/admin)
 """
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional, List
 import os
 import logging
 import httpx
 
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
 from app.services.auth_service import decode_token
+from app.services.xp_service import add_xp, DEFAULT_COURSE_XP
 
 logger = logging.getLogger(__name__)
 
@@ -292,6 +296,84 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
     return lesson
 
 
+@router.get("/{lesson_id}/download-url")
+async def get_lesson_download_url(
+    lesson_id: int,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Return a short-lived signed MP4 download URL for offline use.
+    Requires the caller to be enrolled in the course (or be the teacher/admin).
+    The URL expires in 1 hour — the client should download immediately.
+    """
+    _ensure_supabase()
+    caller_id = await _resolve_caller(authorization)
+
+    # Fetch lesson row
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lessons",
+            params={"id": f"eq.{lesson_id}", "select": "id,course_id,bunny_video_id,video_source,hls_url,title"},
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    lesson = rows[0]
+
+    bunny_vid = lesson.get("bunny_video_id") or ""
+    is_bunny  = lesson.get("video_source", "bunny") == "bunny"
+
+    # Many lessons have bunny_video_id unpopulated even though hls_url is a valid
+    # Bunny CDN URL.  Extract the UUID from the URL as a fallback.
+    if not bunny_vid and is_bunny:
+        import re as _re
+        hls_url = lesson.get("hls_url") or ""
+        m = _re.search(r'/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/', hls_url)
+        if m:
+            bunny_vid = m.group(1)
+
+    if not bunny_vid or not is_bunny:
+        raise HTTPException(status_code=422, detail="Bu dars uchun yuklab olish mavjud emas")
+
+    # Verify access
+    teacher_id      = await _get_course_teacher(lesson["course_id"])
+    is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
+    if not is_owner_or_admin:
+        enrolled = await _is_enrolled(lesson["course_id"], caller_id)
+        if not enrolled:
+            raise HTTPException(status_code=403, detail="Bu kursga yozilmagan")
+
+    # Extract CDN host from hls_url as a fallback when BUNNY_STREAM_CDN_HOST
+    # is not configured in the environment (e.g. fresh Railway deployments).
+    # hls_url format: https://{cdn_host}/{video_id}/playlist.m3u8
+    from urllib.parse import urlparse as _urlparse
+    _hls = lesson.get("hls_url") or ""
+    _parsed = _urlparse(_hls)
+    cdn_host_from_url = _parsed.netloc if _parsed.netloc else ""
+
+    try:
+        from app.services import bunny_stream_service as bss
+        # Pick the best available resolution (Bunny only transcodes up to the
+        # source resolution, so 720p may not exist for lower-quality uploads).
+        resolution = "720p"
+        try:
+            video_info = await bss.get_video(bunny_vid)
+            available  = video_info.get("availableResolutions") or ""
+            for r in ("1080p", "720p", "480p", "360p"):
+                if r in available:
+                    resolution = r
+                    break
+        except Exception:
+            pass  # Use 720p as best-effort default
+        url = bss.signed_mp4_url(bunny_vid, resolution=resolution, expires_seconds=3600, cdn_host_override=cdn_host_from_url)
+    except Exception as e:
+        logger.warning("signed_mp4_url failed for lesson %s: %s", lesson_id, e)
+        raise HTTPException(status_code=503, detail="Yuklab olish URL yaratilmadi")
+
+    return {"download_url": url, "expires_in": 3600, "resolution": resolution}
+
+
 @router.post("")
 async def create_lesson(body: LessonCreate, authorization: Optional[str] = Header(None)):
     """Teacher: create a new lesson in own course."""
@@ -413,8 +495,76 @@ async def update_lesson(
     return rows[0] if isinstance(rows, list) and rows else {"ok": True}
 
 
+@router.get("/{lesson_id}/position")
+async def get_video_position(lesson_id: int, authorization: Optional[str] = Header(None)):
+    """Return the saved video playback position (seconds) for the current user."""
+    caller_id = await _resolve_caller(authorization)
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lesson_progress",
+            params={
+                "lesson_id": f"eq.{lesson_id}",
+                "student_id": f"eq.{caller_id}",
+                "select": "video_position",
+                "limit": "1",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 and isinstance(res.json(), list) else []
+    return {"position": rows[0]["video_position"] if rows else 0}
+
+
+@router.patch("/{lesson_id}/position")
+async def save_video_position(
+    lesson_id: int,
+    body: dict,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Upsert video playback position (seconds) without marking lesson complete.
+    Called every 10 seconds during playback.
+    """
+    caller_id = await _resolve_caller(authorization)
+    position  = int(body.get("position_seconds", 0))
+    _ensure_supabase()
+
+    # Fetch lesson to get course_id
+    async with httpx.AsyncClient(timeout=10) as client:
+        lr = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lessons",
+            params={"id": f"eq.{lesson_id}", "select": "course_id"},
+            headers=_supabase_headers(),
+        )
+    lesson_rows = lr.json() if lr.status_code == 200 and isinstance(lr.json(), list) else []
+    if not lesson_rows:
+        raise HTTPException(status_code=404, detail="Lesson not found")
+    course_id = lesson_rows[0]["course_id"]
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/lesson_progress",
+            params={"on_conflict": "lesson_id,student_id"},
+            json={
+                "course_id":      course_id,
+                "lesson_id":      lesson_id,
+                "student_id":     caller_id,
+                "is_completed":   False,
+                "video_position": position,
+            },
+            headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=minimal"},
+        )
+    if res.status_code not in (200, 201, 204):
+        raise HTTPException(status_code=502, detail="Failed to save position")
+    return {"ok": True}
+
+
 @router.post("/{lesson_id}/complete")
-async def complete_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
+async def complete_lesson(
+    lesson_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """Student marks lesson as completed (tracked per user+lesson)."""
     caller_id = await _resolve_caller(authorization)
     _ensure_supabase()
@@ -490,6 +640,12 @@ async def complete_lesson(lesson_id: int, authorization: Optional[str] = Header(
                     headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
                 )
             certificate_issued = cert_res.status_code in (200, 201)
+
+            # Award course completion XP (deduplicated by course_id — one-time only)
+            try:
+                add_xp(db, user_id=caller_id, source="COURSE", amount=DEFAULT_COURSE_XP, reference_id=course_id)
+            except Exception as e:
+                logger.warning("Failed to award course XP for course %s, student %s: %s", course_id, caller_id, e)
     except Exception as e:
         logger.warning("Failed to auto-issue course certificate for course %s, student %s: %s", course_id, caller_id, e)
 

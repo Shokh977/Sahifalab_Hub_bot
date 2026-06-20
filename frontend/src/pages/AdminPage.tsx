@@ -3,6 +3,7 @@
  * Authentication: Admin enters their Telegram ID; backend validates against AdminUser table.
  */
 import React, { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp, RefreshCw, Users, BookOpen, GraduationCap, Star,
   BadgeDollarSign, CheckCircle, Lock, Percent, Wallet, Target, Inbox,
@@ -11,7 +12,7 @@ import apiService from '@services/apiService'
 import { API_BASE } from '../lib/apiUrl'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
 import { useAuth } from '../context/AuthContext'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { supabase, isSupabaseConfigured, invalidateCache } from '../lib/supabase'
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
@@ -38,6 +39,7 @@ interface AdminBook {
   author: string
   price: number
   is_paid: boolean
+  is_downloadable: boolean
   file_url: string
   thumbnail_url: string | null
   downloads: number
@@ -77,7 +79,21 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements'
+
+interface AdminAnnouncement {
+  id:         number
+  title:      string
+  body:       string
+  image_url:  string | null
+  cta_text:   string | null
+  cta_link:   string | null
+  starts_at:  string | null
+  expires_at: string | null
+  is_active:  boolean
+  view_count: number
+  created_at: string
+}
 
 interface TeacherRequest {
   telegram_id:      number
@@ -93,7 +109,10 @@ interface TeacherRequest {
   bio:              string | null
   course_idea:      string | null
   motivation:       string | null
+  contact:          string | null
   applied_at:       string | null
+  intro_video_url:  string | null
+  status:           'pending' | 'approved' | 'rejected' | string
 }
 
 // ─── Platform analytics types (Step 15) ──────────────────────────────────────
@@ -167,6 +186,7 @@ interface QuizForm {
   description: string
   difficulty: 'easy' | 'medium' | 'hard'
   category: string
+  book_id: number | null   // linked book (optional)
 }
 
 const EMPTY_QUESTION: QuizQuestionForm = {
@@ -182,6 +202,7 @@ const EMPTY_QUIZ: QuizForm = {
   description: '',
   difficulty: 'easy',
   category: 'programming',
+  book_id: null,
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -209,6 +230,7 @@ const formatFocusTime = (seconds: number): string => {
 const AdminPage: React.FC = () => {
   const { user: tgUser } = useTelegramWebApp()
   const { user: authUser, token } = useAuth()
+  const navigate = useNavigate()
   const [telegramId, setTelegramId] = useState('')
   const [adminId, setAdminId] = useState<number | null>(null)
   const [authError, setAuthError] = useState('')
@@ -248,7 +270,7 @@ const AdminPage: React.FC = () => {
   const [showNewBook, setShowNewBook] = useState(false)
   const [newBook, setNewBook] = useState({
     title: '', author: '', description: '', price: 0,
-    is_paid: false, file_url: '', thumbnail_url: '', category: 'programming',
+    is_paid: false, is_downloadable: true, file_url: '', thumbnail_url: '', category: 'programming',
   })
   // PDF upload (Supabase Storage)
   const [bookPdfFile, setBookPdfFile] = useState<File | null>(null)
@@ -266,6 +288,11 @@ const AdminPage: React.FC = () => {
   const [teacherReqError, setTeacherReqError] = useState('')
   const [teacherActionId, setTeacherActionId] = useState<number | null>(null)
   const [teacherMsg, setTeacherMsg] = useState('')
+  const [teacherFilter, setTeacherFilter] = useState<'pending' | 'approved' | 'rejected' | null>(null)
+  const [teacherApproveId, setTeacherApproveId] = useState<number | null>(null)
+  const [teacherCommission, setTeacherCommission] = useState('30')
+  const [teacherRejectId, setTeacherRejectId] = useState<number | null>(null)
+  const [teacherRejectFeedback, setTeacherRejectFeedback] = useState('')
 
   // Platform Analytics (Step 15)
   const [platformAnalytics, setPlatformAnalytics] = useState<PlatformAnalytics | null>(null)
@@ -278,7 +305,25 @@ const AdminPage: React.FC = () => {
   const [userSearchLoading, setUserSearchLoading] = useState(false)
   const [userSearchError, setUserSearchError] = useState('')
   const [userRoleActionId, setUserRoleActionId] = useState<number | null>(null)
+  const [userDeleteConfirmId, setUserDeleteConfirmId] = useState<number | null>(null)
+  const [userDeleteLoading, setUserDeleteLoading] = useState(false)
   const [userMsg, setUserMsg] = useState('')
+  const [openUserDetail, setOpenUserDetail] = useState<AdminUserProfile | null>(null)
+  const [userDetailTab, setUserDetailTab] = useState<'profil' | 'kurslar' | 'tolovlar' | 'faollik' | 'admin'>('profil')
+  const [userDetailData, setUserDetailData] = useState<any>(null)
+  const [userDetailPayments, setUserDetailPayments] = useState<any[]>([])
+  const [userDetailLoading, setUserDetailLoading] = useState(false)
+  const [grantOpen, setGrantOpen] = useState(false)
+  const [grantCourseId, setGrantCourseId] = useState('')
+  const [grantAmount, setGrantAmount] = useState('')
+  const [grantMethod, setGrantMethod] = useState('click_card')
+  const [grantProofUrl, setGrantProofUrl] = useState('')
+  const [grantNotes, setGrantNotes] = useState('')
+  const [grantLoading, setGrantLoading] = useState(false)
+  const [grantMsg, setGrantMsg] = useState('')
+  const [drawerSuspendText, setDrawerSuspendText] = useState('')
+  const [drawerSuspendOpen, setDrawerSuspendOpen] = useState(false)
+  const [drawerSuspending, setDrawerSuspending] = useState(false)
 
   // Ambient Sounds
   interface AmbientSoundItem { id: number; name: string; emoji: string; url: string; display_order: number; is_active: boolean; created_at: string }
@@ -317,6 +362,20 @@ const AdminPage: React.FC = () => {
   const [adminCoursesError, setAdminCoursesError] = useState('')
   const [courseToggleId, setCourseToggleId] = useState<number | null>(null)
   const [courseDeleteId, setCourseDeleteId] = useState<number | null>(null)
+
+  // ── Announcements state ───────────────────────────────────────────────────
+  const [annList, setAnnList] = useState<AdminAnnouncement[]>([])
+  const [annLoading, setAnnLoading] = useState(false)
+  const [annDeleteId, setAnnDeleteId] = useState<number | null>(null)
+  const [annEditTarget, setAnnEditTarget] = useState<AdminAnnouncement | null>(null)
+  const [annForm, setAnnForm] = useState({
+    title: '', body: '', image_url: '', cta_text: '', cta_link: '',
+    starts_at: '', expires_at: '', is_active: true,
+  })
+  const [annFormOpen, setAnnFormOpen] = useState(false)
+  const [annSaving, setAnnSaving] = useState(false)
+  const [annImgUploading, setAnnImgUploading] = useState(false)
+  const [annImgPercent, setAnnImgPercent] = useState(0)
   const [coursesMsg, setCoursesMsg] = useState('')
 
   // ── Auto-login from Telegram WebApp ────────────────────────────────────
@@ -473,15 +532,17 @@ const AdminPage: React.FC = () => {
     setTeacherReqLoading(true)
     setTeacherReqError('')
     try {
-      const res = await apiService.getTeacherRequests()
-      setTeacherRequests(res.data ?? [])
+      const params = teacherFilter ? `?status=${teacherFilter}` : ''
+      const res = await apiService.client.get(`/api/v1/admin/teachers${params}`)
+      const raw = res.data
+      setTeacherRequests(Array.isArray(raw) ? raw : (raw?.items ?? []))
     } catch (err: any) {
       console.error('[Admin] loadTeacherRequests error:', err?.response?.data?.detail || err?.message)
       setTeacherReqError('Xatolik yuz berdi')
     } finally {
       setTeacherReqLoading(false)
     }
-  }, [adminId])
+  }, [adminId, teacherFilter])
 
   const loadPlatformAnalytics = useCallback(async () => {
     if (!adminId) return
@@ -551,6 +612,127 @@ const AdminPage: React.FC = () => {
     }
   }
 
+  // ── Announcement handlers ─────────────────────────────────────────────────
+  const loadAnnouncements = useCallback(async () => {
+    setAnnLoading(true)
+    try {
+      const res = await apiService.getAnnouncements()
+      setAnnList(res.data ?? [])
+    } catch (err: any) {
+      console.error('[Admin] loadAnnouncements:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setAnnLoading(false)
+    }
+  }, [])
+
+  const openAnnCreate = () => {
+    setAnnEditTarget(null)
+    setAnnForm({ title: '', body: '', image_url: '', cta_text: '', cta_link: '', starts_at: '', expires_at: '', is_active: true })
+    setAnnFormOpen(true)
+  }
+
+  const openAnnEdit = (ann: AdminAnnouncement) => {
+    setAnnEditTarget(ann)
+    setAnnForm({
+      title:      ann.title,
+      body:       ann.body,
+      image_url:  ann.image_url  ?? '',
+      cta_text:   ann.cta_text   ?? '',
+      cta_link:   ann.cta_link   ?? '',
+      starts_at:  ann.starts_at  ? ann.starts_at.slice(0, 16)  : '',
+      expires_at: ann.expires_at ? ann.expires_at.slice(0, 16) : '',
+      is_active:  ann.is_active,
+    })
+    setAnnFormOpen(true)
+  }
+
+  const saveAnnouncement = async () => {
+    if (!annForm.title.trim() || !annForm.body.trim()) return
+    setAnnSaving(true)
+    const payload = {
+      title:      annForm.title.trim(),
+      body:       annForm.body.trim(),
+      image_url:  annForm.image_url.trim()  || null,
+      cta_text:   annForm.cta_text.trim()   || null,
+      cta_link:   annForm.cta_link.trim()   || null,
+      starts_at:  annForm.starts_at  ? new Date(annForm.starts_at).toISOString()  : null,
+      expires_at: annForm.expires_at ? new Date(annForm.expires_at).toISOString() : null,
+      is_active:  annForm.is_active,
+    }
+    try {
+      if (annEditTarget) {
+        await apiService.updateAnnouncement(annEditTarget.id, payload)
+      } else {
+        await apiService.createAnnouncement(payload)
+      }
+      setAnnFormOpen(false)
+      loadAnnouncements()
+    } catch (err: any) {
+      console.error('[Admin] saveAnnouncement:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setAnnSaving(false)
+    }
+  }
+
+  const deleteAnnouncement = async (id: number) => {
+    if (!window.confirm('Xabarni o\'chirasizmi?')) return
+    setAnnDeleteId(id)
+    try {
+      await apiService.deleteAnnouncement(id)
+      setAnnList(prev => prev.filter(a => a.id !== id))
+    } catch (err: any) {
+      console.error('[Admin] deleteAnnouncement:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setAnnDeleteId(null)
+    }
+  }
+
+  const toggleAnnActive = async (ann: AdminAnnouncement) => {
+    try {
+      await apiService.updateAnnouncement(ann.id, { is_active: !ann.is_active })
+      setAnnList(prev => prev.map(a => a.id === ann.id ? { ...a, is_active: !a.is_active } : a))
+    } catch (err: any) {
+      console.error('[Admin] toggleAnnActive:', err?.response?.data?.detail || err?.message)
+    }
+  }
+
+  const uploadAnnImage = async (file: File) => {
+    const jwt = token || localStorage.getItem('auth_token')
+    if (!jwt) return
+    setAnnImgUploading(true)
+    setAnnImgPercent(0)
+    const apiBase = API_BASE.replace(/\/api\/?$/, '')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('folder', 'announcements')
+      const url = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `${apiBase}/api/upload/file`)
+        xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setAnnImgPercent(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText).url) }
+            catch { reject(new Error("Server javobi noto'g'ri")) }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Xato: ${xhr.status}`)) }
+            catch { reject(new Error(`Xato: ${xhr.status}`)) }
+          }
+        }
+        xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
+        xhr.send(form)
+      })
+      setAnnForm(f => ({ ...f, image_url: url }))
+    } catch (err: any) {
+      console.error('[Admin] uploadAnnImage:', err?.message)
+    } finally {
+      setAnnImgUploading(false)
+    }
+  }
+
   const searchUsers = useCallback(async (q?: string) => {
     if (!adminId) return
     setUserSearchLoading(true)
@@ -573,7 +755,6 @@ const AdminPage: React.FC = () => {
     try {
       await apiService.setUserRole(telegramId, role, status)
       setUserMsg(`✅ ${telegramId} → ${role} (${status})`)
-      // Update local list optimistically
       setUserSearchResults(prev =>
         prev.map(u => u.telegram_id === telegramId ? { ...u, role: role as any, status: status as any } : u)
       )
@@ -585,12 +766,31 @@ const AdminPage: React.FC = () => {
     }
   }
 
+  const handleAdminDeleteUser = async (telegramId: number) => {
+    setUserDeleteLoading(true)
+    setUserMsg('')
+    try {
+      await apiService.adminDeleteUser(telegramId)
+      setUserMsg(`✅ Foydalanuvchi o'chirildi: ${telegramId}`)
+      setUserSearchResults(prev => prev.filter(u => u.telegram_id !== telegramId))
+    } catch (err: any) {
+      console.error('[Admin] deleteUser error:', err?.response?.data?.detail || err?.message)
+      setUserMsg('❌ O\'chirishda xatolik')
+    } finally {
+      setUserDeleteLoading(false)
+      setUserDeleteConfirmId(null)
+    }
+  }
+
   const handleApproveTeacher = async (telegramId: number) => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.approveTeacher(telegramId)
+      await apiService.client.post(`/api/v1/admin/teachers/${telegramId}/approve`, {
+        commission_rate: teacherCommission ? Number(teacherCommission) : null,
+      })
       setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
+      setTeacherApproveId(null)
       loadTeacherRequests()
     } catch (err: any) {
       console.error('[Admin] handleApproveTeacher error:', err?.response?.data?.detail || err?.message)
@@ -601,18 +801,80 @@ const AdminPage: React.FC = () => {
   }
 
   const handleRejectTeacher = async (telegramId: number) => {
-    if (!window.confirm(`Arizani rad etasizmi? ID: ${telegramId}`)) return
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.rejectTeacher(telegramId)
+      await apiService.client.post(`/api/v1/admin/teachers/${telegramId}/reject`, {
+        feedback: teacherRejectFeedback || null,
+      })
       setTeacherMsg(`🚫 ${telegramId} rad etildi`)
+      setTeacherRejectId(null)
+      setTeacherRejectFeedback('')
       loadTeacherRequests()
     } catch (err: any) {
       console.error('[Admin] handleRejectTeacher error:', err?.response?.data?.detail || err?.message)
       setTeacherMsg('❌ Xatolik yuz berdi')
     } finally {
       setTeacherActionId(null)
+    }
+  }
+
+  const openUserDrawer = async (u: AdminUserProfile) => {
+    setOpenUserDetail(u)
+    setUserDetailTab('profil')
+    setUserDetailData(null)
+    setUserDetailPayments([])
+    setUserDetailLoading(true)
+    try {
+      const [detailRes, paymentsRes] = await Promise.allSettled([
+        apiService.client.get(`/api/v1/admin/users/${u.telegram_id}`),
+        apiService.client.get(`/api/v1/admin/users/${u.telegram_id}/payments`),
+      ])
+      if (detailRes.status === 'fulfilled') setUserDetailData(detailRes.value.data)
+      if (paymentsRes.status === 'fulfilled') setUserDetailPayments(paymentsRes.value.data ?? [])
+    } catch { /* ignore */ }
+    finally { setUserDetailLoading(false) }
+  }
+
+  const handleGrant = async () => {
+    if (!openUserDetail || !grantCourseId) { setGrantMsg('Kurs ID kiriting'); return }
+    setGrantLoading(true); setGrantMsg('')
+    try {
+      await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/grant-course`, {
+        course_id: Number(grantCourseId),
+        payment_method: grantMethod,
+        amount: grantAmount ? Number(grantAmount) : null,
+        notes: grantNotes || null,
+        payment_proof_url: grantProofUrl || null,
+      })
+      setGrantMsg('✅ Kurs ochildi')
+      setGrantOpen(false)
+      setGrantCourseId(''); setGrantAmount(''); setGrantProofUrl(''); setGrantNotes('')
+    } catch (err: any) {
+      setGrantMsg('❌ ' + (err?.response?.data?.detail || err?.message))
+    } finally { setGrantLoading(false) }
+  }
+
+  const handleDrawerSuspend = async () => {
+    if (!openUserDetail) return
+    setDrawerSuspending(true)
+    try {
+      await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/suspend`, {
+        reason: drawerSuspendText || null,
+      })
+      setDrawerSuspendOpen(false); setDrawerSuspendText('')
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.message)
+    } finally { setDrawerSuspending(false) }
+  }
+
+  const handleMessageTeacher = async (telegramId: number) => {
+    try {
+      const r = await apiService.client.post(`/api/v1/messenger/conversations/${telegramId}`)
+      navigate(`/messenger/${r.data.id}`)
+    } catch (err: any) {
+      console.error('[Admin] handleMessageTeacher error:', err?.response?.data?.detail || err?.message)
+      setTeacherMsg('❌ Xabar yuborishda xatolik')
     }
   }
 
@@ -628,7 +890,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'analytics') loadPlatformAnalytics()
     if (activeTab === 'users') searchUsers()
     if (activeTab === 'courses') loadAdminCourses()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses])
+    if (activeTab === 'announcements') loadAnnouncements()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -736,6 +999,12 @@ const AdminPage: React.FC = () => {
     setQuizQuestions(prev => prev.filter((_, i) => i !== idx))
   }
 
+  // ── Book cache invalidation ───────────────────────────────────────────────
+  const bustBooksCache = () => {
+    invalidateCache('books')
+    sessionStorage.removeItem('books_cache')
+  }
+
   // ── Book handlers ─────────────────────────────────────────────────────────
   const handleUpdateBook = async () => {
     if (!adminId || !editingBook) return
@@ -743,6 +1012,7 @@ const AdminPage: React.FC = () => {
     setBookMsg('')
     try {
       await apiService.updateBook(editingBook.id, adminId, editingBook)
+      bustBooksCache()
       setBookMsg('✅ Kitob yangilandi!')
       setEditingBook(null)
       loadBooks()
@@ -759,6 +1029,7 @@ const AdminPage: React.FC = () => {
     if (!window.confirm('Kitobni o\'chirmoqchimisiz?')) return
     try {
       await apiService.deleteBook(bookId, adminId)
+      bustBooksCache()
       loadBooks()
     } catch { /* ignore */ }
   }
@@ -769,9 +1040,10 @@ const AdminPage: React.FC = () => {
     setBookMsg('')
     try {
       await apiService.createBook(adminId, newBook)
+      bustBooksCache()
       setBookMsg('✅ Yangi kitob qo\'shildi!')
       setShowNewBook(false)
-      setNewBook({ title: '', author: '', description: '', price: 0, is_paid: false, file_url: '', thumbnail_url: '', category: 'programming' })
+      setNewBook({ title: '', author: '', description: '', price: 0, is_paid: false, is_downloadable: true, file_url: '', thumbnail_url: '', category: 'programming' })
       setBookCoverFile(null)
       setBookCoverPercent(0)
       setBookCoverMsg('')
@@ -784,9 +1056,9 @@ const AdminPage: React.FC = () => {
     }
   }
 
-  // ── Book PDF upload → Bunny CDN ────────────────────────────────────────────
+  // ── Book file (PDF/EPUB) upload → Bunny CDN ───────────────────────────────
   const handleUploadBookPdf = async (target: 'new' | 'edit') => {
-    if (!bookPdfFile) { setBookPdfMsg('❌ PDF faylni tanlang'); return }
+    if (!bookPdfFile) { setBookPdfMsg('❌ PDF yoki EPUB faylni tanlang'); return }
     const jwt = token || localStorage.getItem('auth_token')
     if (!jwt) { setBookPdfMsg('❌ Tizimga kirilmagan — sahifani yangilang'); return }
     setBookPdfUploading(true)
@@ -1017,6 +1289,7 @@ const AdminPage: React.FC = () => {
             { id: 'analytics', label: '📈 Analitika' },
             { id: 'users', label: '👤 Foydalanuvchilar' },
             { id: 'courses', label: '🎬 Kurslar' },
+            { id: 'announcements', label: '📢 Xabarlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -1445,6 +1718,34 @@ const AdminPage: React.FC = () => {
                 />
               </div>
 
+              {/* Link to a specific book in the library */}
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  📚 Kutubxona kitobiga bog'lash <span className="text-gray-400">(ixtiyoriy)</span>
+                </label>
+                <select
+                  value={quizForm.book_id ?? ''}
+                  onChange={(e) => setQuizForm({
+                    ...quizForm,
+                    book_id: e.target.value ? Number(e.target.value) : null,
+                    // Auto-fill book_title if not already set
+                    book_title: quizForm.book_title ||
+                      books.find(b => b.id === Number(e.target.value))?.title || quizForm.book_title,
+                  })}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
+                >
+                  <option value="">— Bog'lamaslik —</option>
+                  {books.map(b => (
+                    <option key={b.id} value={b.id}>{b.title}</option>
+                  ))}
+                </select>
+                {quizForm.book_id && (
+                  <p className="text-[11px] text-green-500 mt-1">
+                    ✓ Kitob sahifasida "Bilimingizni sinab ko'ring" bo'limida ko'rinadi
+                  </p>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tavsif</label>
                 <input
@@ -1666,16 +1967,16 @@ const AdminPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* PDF file upload → Bunny CDN */}
+                {/* Book file upload (PDF/EPUB) → Bunny CDN */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    PDF fayl <span className="text-blue-500">(Bunny CDN-ga yuklanadi)</span>
+                    Kitob fayli <span className="text-blue-500">(PDF yoki EPUB — Bunny CDN-ga yuklanadi)</span>
                   </label>
                   <div className="flex gap-2">
                     <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                       <span>📄</span>
-                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF tanlang…'}</span>
-                      <input type="file" accept=".pdf,application/pdf" className="hidden"
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF / EPUB tanlang…'}</span>
+                      <input type="file" accept=".pdf,application/pdf,.epub,application/epub+zip" className="hidden"
                         onChange={e => { setBookPdfFile(e.target.files?.[0] || null); setBookPdfMsg('') }} />
                     </label>
                     <button
@@ -1692,7 +1993,7 @@ const AdminPage: React.FC = () => {
                     <div className="mt-1">
                       <input
                         type="text"
-                        placeholder="Yoki PDF URL ni qo'lda kiriting"
+                        placeholder="Yoki PDF / EPUB URL ni qo'lda kiriting"
                         value={newBook.file_url}
                         onChange={e => setNewBook({ ...newBook, file_url: e.target.value })}
                         className="w-full px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-sahifa-500"
@@ -1708,15 +2009,29 @@ const AdminPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="new_is_paid"
-                    type="checkbox"
-                    checked={newBook.is_paid}
-                    onChange={(e) => setNewBook({ ...newBook, is_paid: e.target.checked })}
-                    className="accent-sahifa-600"
-                  />
-                  <label htmlFor="new_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik kitob</label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="new_is_paid"
+                      type="checkbox"
+                      checked={newBook.is_paid}
+                      onChange={(e) => setNewBook({ ...newBook, is_paid: e.target.checked })}
+                      className="accent-sahifa-600"
+                    />
+                    <label htmlFor="new_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik kitob</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="new_is_downloadable"
+                      type="checkbox"
+                      checked={newBook.is_downloadable}
+                      onChange={(e) => setNewBook({ ...newBook, is_downloadable: e.target.checked })}
+                      className="accent-blue-600"
+                    />
+                    <label htmlFor="new_is_downloadable" className="text-sm text-gray-700 dark:text-gray-300">
+                      Yuklab olish mumkin
+                    </label>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -1799,16 +2114,16 @@ const AdminPage: React.FC = () => {
                   )}
                 </div>
 
-                {/* PDF upload for edit */}
+                {/* Book file upload (PDF/EPUB) for edit */}
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                    PDF fayl <span className="text-blue-500">(yangi fayl yuklash)</span>
+                    Kitob fayli <span className="text-blue-500">(PDF yoki EPUB — yangi fayl yuklash)</span>
                   </label>
                   <div className="flex gap-2">
                     <label className="flex-1 flex items-center gap-2 px-3 py-2 text-xs border-2 border-dashed border-gray-300 dark:border-gray-500 rounded-lg bg-gray-50 dark:bg-gray-700 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-600 transition-colors">
                       <span>📄</span>
-                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF tanlang…'}</span>
-                      <input type="file" accept=".pdf,application/pdf" className="hidden"
+                      <span className="text-gray-600 dark:text-gray-300 truncate">{bookPdfFile ? bookPdfFile.name : 'PDF / EPUB tanlang…'}</span>
+                      <input type="file" accept=".pdf,application/pdf,.epub,application/epub+zip" className="hidden"
                         onChange={e => { setBookPdfFile(e.target.files?.[0] || null); setBookPdfMsg('') }} />
                     </label>
                     <button
@@ -1835,15 +2150,27 @@ const AdminPage: React.FC = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    id="edit_is_paid"
-                    type="checkbox"
-                    checked={editingBook.is_paid}
-                    onChange={(e) => setEditingBook({ ...editingBook, is_paid: e.target.checked })}
-                    className="accent-sahifa-600"
-                  />
-                  <label htmlFor="edit_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik</label>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit_is_paid"
+                      type="checkbox"
+                      checked={editingBook.is_paid}
+                      onChange={(e) => setEditingBook({ ...editingBook, is_paid: e.target.checked })}
+                      className="accent-sahifa-600"
+                    />
+                    <label htmlFor="edit_is_paid" className="text-sm text-gray-700 dark:text-gray-300">Pullik</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="edit_is_downloadable"
+                      type="checkbox"
+                      checked={editingBook.is_downloadable ?? true}
+                      onChange={(e) => setEditingBook({ ...editingBook, is_downloadable: e.target.checked })}
+                      className="accent-blue-600"
+                    />
+                    <label htmlFor="edit_is_downloadable" className="text-sm text-gray-700 dark:text-gray-300">Yuklab olish mumkin</label>
+                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button onClick={handleUpdateBook} disabled={bookSaving} className="flex-1 bg-sahifa-600 text-white py-2 rounded-lg text-sm font-medium disabled:opacity-50">
@@ -2025,7 +2352,7 @@ const AdminPage: React.FC = () => {
         {activeTab === 'teachers' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">O'qituvchi arizalari</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">O'qituvchilar</h2>
               <button
                 onClick={loadTeacherRequests}
                 disabled={teacherReqLoading}
@@ -2033,6 +2360,28 @@ const AdminPage: React.FC = () => {
               >
                 {teacherReqLoading ? 'Yuklanmoqda…' : '↻ Yangilash'}
               </button>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { key: null,       label: 'Barchasi'     },
+                { key: 'pending',  label: 'Kutilmoqda'   },
+                { key: 'approved', label: 'Tasdiqlangan' },
+                { key: 'rejected', label: 'Rad etilgan'  },
+              ] as { key: typeof teacherFilter; label: string }[]).map(f => (
+                <button
+                  key={String(f.key)}
+                  onClick={() => setTeacherFilter(f.key)}
+                  className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
+                    teacherFilter === f.key
+                      ? 'bg-sahifa-600 text-white'
+                      : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
             </div>
 
             {teacherMsg && (
@@ -2056,91 +2405,183 @@ const AdminPage: React.FC = () => {
             ) : teacherRequests.length === 0 ? (
               <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-6 text-center">
                 <div className="text-4xl mb-2">🎓</div>
-                <p className="text-sm text-gray-500 dark:text-gray-400">Hozircha pending ariza yo'q</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {teacherFilter === 'pending' ? "Kutilayotgan ariza yo'q" : "Ma'lumot topilmadi"}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                {teacherRequests.map((req) => (
-                  <div
-                    key={req.telegram_id}
-                    className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm"
-                  >
-                    {/* Header: avatar + name + badge */}
-                    <div className="flex items-center gap-3 mb-3">
-                      {req.photo_url ? (
-                        <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold shrink-0">
-                          {(req.first_name || '?').charAt(0).toUpperCase()}
+                {teacherRequests.map((req) => {
+                  const statusColor =
+                    req.status === 'approved' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                    req.status === 'rejected'  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
+                    'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                  const statusLabel =
+                    req.status === 'approved' ? '✅ Tasdiqlangan' :
+                    req.status === 'rejected'  ? '🚫 Rad etilgan'  : '⏳ Pending'
+                  const isBusy = teacherActionId === req.telegram_id
+
+                  return (
+                    <div key={req.telegram_id} className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm">
+                      {/* Header */}
+                      <div className="flex items-center gap-3 mb-3">
+                        <a href={`/profile/${req.telegram_id}`} target="_blank" rel="noreferrer" className="shrink-0">
+                          {req.photo_url ? (
+                            <img src={req.photo_url} alt={req.first_name || ''} className="w-10 h-10 rounded-xl object-cover hover:opacity-80 transition-opacity" />
+                          ) : (
+                            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold hover:opacity-80 transition-opacity">
+                              {(req.first_name || '?').charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                        </a>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                            {req.first_name || "Noma'lum"}
+                            {req.username && <span className="text-gray-400 ml-1 font-normal">@{req.username}</span>}
+                          </p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">
+                            ID: {req.telegram_id} · Lv {req.level} · {req.total_xp} XP
+                          </p>
+                        </div>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${statusColor}`}>
+                          {statusLabel}
+                        </span>
+                      </div>
+
+                      {/* Application details */}
+                      {(req.specialization || req.course_idea || req.motivation || req.bio || req.contact) && (
+                        <div className="mb-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
+                          {req.contact && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Aloqa</p>
+                              <p className="text-xs text-sahifa-600 dark:text-sahifa-400 mt-0.5 font-medium">{req.contact}</p>
+                            </div>
+                          )}
+                          {req.specialization && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mutaxassislik</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
+                                {req.specialization}
+                                {req.experience_years != null && (
+                                  <span className="ml-1 text-gray-400">· {req.experience_years} yil tajriba</span>
+                                )}
+                              </p>
+                            </div>
+                          )}
+                          {req.bio && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">O'zi haqida</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.bio}</p>
+                            </div>
+                          )}
+                          {req.course_idea && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Kurs g'oyasi</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.course_idea}</p>
+                            </div>
+                          )}
+                          {req.motivation && (
+                            <div>
+                              <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Motivatsiya</p>
+                              <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.motivation}</p>
+                            </div>
+                          )}
                         </div>
                       )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                          {req.first_name || 'Noma\'lum'}
-                          {req.username && <span className="text-gray-400 ml-1 font-normal">@{req.username}</span>}
-                        </p>
-                        <p className="text-xs text-gray-400 dark:text-gray-500">
-                          ID: {req.telegram_id} · Lv {req.level} · {req.total_xp} XP
-                        </p>
-                      </div>
-                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 shrink-0">
-                        ⏳ Pending
-                      </span>
-                    </div>
 
-                    {/* Application details */}
-                    {(req.specialization || req.course_idea || req.motivation || req.bio) && (
-                      <div className="mb-3 space-y-2 border-t border-gray-100 dark:border-gray-700 pt-3">
-                        {req.specialization && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Mutaxassislik</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5">
-                              {req.specialization}
-                              {req.experience_years != null && (
-                                <span className="ml-1 text-gray-400">· {req.experience_years} yil tajriba</span>
-                              )}
-                            </p>
-                          </div>
-                        )}
-                        {req.bio && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">O'zi haqida</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.bio}</p>
-                          </div>
-                        )}
-                        {req.course_idea && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Kurs g'oyasi</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.course_idea}</p>
-                          </div>
-                        )}
-                        {req.motivation && (
-                          <div>
-                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Motivatsiya</p>
-                            <p className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 line-clamp-3 leading-relaxed">{req.motivation}</p>
-                          </div>
+                      {/* Intro video */}
+                      {req.intro_video_url && (
+                        <a href={req.intro_video_url} target="_blank" rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-blue-500 hover:underline mb-3 block">
+                          ▶ Intro video
+                        </a>
+                      )}
+
+                      {/* Actions */}
+                      <div className="flex gap-2 flex-col">
+                        <button
+                          onClick={() => handleMessageTeacher(req.telegram_id)}
+                          className="w-full py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-colors border border-blue-200 dark:border-blue-800"
+                        >
+                          💬 Xabar yuborish
+                        </button>
+
+                        {req.status === 'pending' && (
+                          teacherRejectId === req.telegram_id ? (
+                            <div className="flex flex-col gap-2">
+                              <textarea
+                                value={teacherRejectFeedback}
+                                onChange={e => setTeacherRejectFeedback(e.target.value)}
+                                placeholder="Rad etish sababi (ixtiyoriy)..."
+                                rows={2}
+                                className="w-full px-3 py-2 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-red-400 resize-none"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => { setTeacherRejectId(null); setTeacherRejectFeedback('') }}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  Bekor
+                                </button>
+                                <button
+                                  onClick={() => handleRejectTeacher(req.telegram_id)}
+                                  disabled={isBusy}
+                                  className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                                >
+                                  {isBusy ? '…' : '🚫 Rad etish'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : teacherApproveId === req.telegram_id ? (
+                            <div className="flex flex-col gap-2">
+                              <div className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-xl px-3 py-2">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">Komissiya:</span>
+                                <input
+                                  type="number"
+                                  value={teacherCommission}
+                                  onChange={e => setTeacherCommission(e.target.value)}
+                                  min={0} max={100}
+                                  className="w-14 bg-transparent text-sm text-center text-gray-900 dark:text-white focus:outline-none"
+                                />
+                                <span className="text-xs text-gray-500 dark:text-gray-400">%</span>
+                              </div>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => setTeacherApproveId(null)}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  Bekor
+                                </button>
+                                <button
+                                  onClick={() => handleApproveTeacher(req.telegram_id)}
+                                  disabled={isBusy}
+                                  className="flex-1 py-2 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                                >
+                                  {isBusy ? '…' : '✅ Tasdiqlash'}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setTeacherApproveId(req.telegram_id)}
+                                className="flex-1 py-2 rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 text-green-700 dark:text-green-400 text-xs font-semibold transition-colors border border-green-200 dark:border-green-800"
+                              >
+                                ✅ Tasdiqlash
+                              </button>
+                              <button
+                                onClick={() => setTeacherRejectId(req.telegram_id)}
+                                className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold transition-colors border border-red-200 dark:border-red-800"
+                              >
+                                🚫 Rad etish
+                              </button>
+                            </div>
+                          )
                         )}
                       </div>
-                    )}
-
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => handleApproveTeacher(req.telegram_id)}
-                        disabled={teacherActionId === req.telegram_id}
-                        className="flex-1 py-2 rounded-xl bg-green-500 hover:bg-green-600 text-white text-xs font-semibold disabled:opacity-50 transition-colors"
-                      >
-                        {teacherActionId === req.telegram_id ? '…' : '✅ Tasdiqlash'}
-                      </button>
-                      <button
-                        onClick={() => handleRejectTeacher(req.telegram_id)}
-                        disabled={teacherActionId === req.telegram_id}
-                        className="flex-1 py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold disabled:opacity-50 transition-colors border border-red-200 dark:border-red-800"
-                      >
-                        {teacherActionId === req.telegram_id ? '…' : '🚫 Rad etish'}
-                      </button>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
@@ -2367,7 +2808,7 @@ const AdminPage: React.FC = () => {
         {/* ── Users Tab ─────────────────────────────────────────────────── */}
         {activeTab === 'users' && (
           <div className="space-y-4">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">👤 Foydalanuvchilarni boshqarish</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">👤 Foydalanuvchilar</h2>
 
             {/* Search input */}
             <div className="flex gap-2">
@@ -2397,97 +2838,41 @@ const AdminPage: React.FC = () => {
               <p className="text-sm text-red-500 dark:text-red-400">❌ {userSearchError}</p>
             )}
 
-            {/* Results */}
             {userSearchResults.length === 0 && !userSearchLoading && (
               <p className="text-center text-sm text-gray-400 dark:text-gray-500 py-6">
                 Qidirish uchun matn yozing va Enter bosing
               </p>
             )}
 
-            <div className="space-y-3">
+            {/* Clickable rows → open drawer */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden divide-y divide-gray-100 dark:divide-gray-700">
               {userSearchResults.map((u) => {
                 const roleBadge =
                   u.role === 'admin'   ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
                   u.role === 'teacher' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
                   'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                const statusBadge =
-                  u.status === 'active'    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                  u.status === 'pending'   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
-                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
-                const isBusy = userRoleActionId === u.telegram_id
                 return (
                   <div
                     key={u.telegram_id}
-                    className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm space-y-3"
+                    className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                    onClick={() => openUserDrawer(u)}
                   >
-                    {/* User info row */}
-                    <div className="flex items-center gap-3">
-                      {u.photo_url ? (
-                        <img src={u.photo_url} alt={u.first_name || ''} className="w-10 h-10 rounded-xl object-cover shrink-0" />
-                      ) : (
-                        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                          {(u.first_name || '?').charAt(0).toUpperCase()}
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
-                          {u.first_name || 'Noma\'lum'}
-                          {u.username && <span className="text-gray-400 ml-1 font-normal">@{u.username}</span>}
-                        </p>
-                        <p className="text-xs text-gray-400">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP</p>
+                    {u.photo_url ? (
+                      <img src={u.photo_url} alt={u.first_name || ''} className="w-9 h-9 rounded-xl object-cover shrink-0" />
+                    ) : (
+                      <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
+                        {(u.first_name || '?').charAt(0).toUpperCase()}
                       </div>
-                      <div className="flex flex-col gap-1 items-end shrink-0">
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${roleBadge}`}>{u.role}</span>
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${statusBadge}`}>{u.status}</span>
-                      </div>
-                    </div>
-
-                    {/* Role action buttons */}
-                    <div className="grid grid-cols-3 gap-1.5">
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, 'student', 'active')}
-                        disabled={isBusy || (u.role === 'student' && u.status === 'active')}
-                        className="py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-40 transition-colors"
-                      >
-                        👤 Student
-                      </button>
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, 'teacher', 'active')}
-                        disabled={isBusy || (u.role === 'teacher' && u.status === 'active')}
-                        className="py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 disabled:opacity-40 transition-colors"
-                      >
-                        🎓 Teacher
-                      </button>
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, 'admin', 'active')}
-                        disabled={isBusy || u.role === 'admin'}
-                        className="py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-40 transition-colors"
-                      >
-                        🛠 Admin
-                      </button>
-                    </div>
-
-                    {/* Suspend/Activate quick actions */}
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, u.role, 'active')}
-                        disabled={isBusy || u.status === 'active'}
-                        className="py-1.5 rounded-xl text-xs font-semibold bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 disabled:opacity-40 transition-colors"
-                      >
-                        ✅ Faollashtirish
-                      </button>
-                      <button
-                        onClick={() => handleSetUserRole(u.telegram_id, u.role, 'suspended')}
-                        disabled={isBusy || u.status === 'suspended'}
-                        className="py-1.5 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 disabled:opacity-40 transition-colors"
-                      >
-                        🚫 Bloklash
-                      </button>
-                    </div>
-
-                    {isBusy && (
-                      <p className="text-xs text-center text-gray-400 animate-pulse">Saqlanmoqda…</p>
                     )}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                        {u.first_name || "Noma'lum"}
+                        {u.username && <span className="text-gray-400 ml-1 font-normal">@{u.username}</span>}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP</p>
+                    </div>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${roleBadge}`}>{u.role}</span>
+                    <span className="text-gray-400 dark:text-gray-500 text-sm">›</span>
                   </div>
                 )
               })}
@@ -2671,7 +3056,473 @@ const AdminPage: React.FC = () => {
           </div>
         )}
 
+        {/* ── Announcements Tab ──────────────────────────────────────────── */}
+        {activeTab === 'announcements' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">📢 Xabarlar</h2>
+              <button
+                onClick={openAnnCreate}
+                className="px-4 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 text-white rounded-xl transition-colors"
+              >
+                + Yangi xabar
+              </button>
+            </div>
+
+            {/* Create / Edit form */}
+            {annFormOpen && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                  {annEditTarget ? 'Xabarni tahrirlash' : 'Yangi xabar yaratish'}
+                </h3>
+
+                <input
+                  type="text"
+                  placeholder="Sarlavha *"
+                  value={annForm.title}
+                  onChange={e => setAnnForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                />
+                <textarea
+                  placeholder="Matn *"
+                  rows={4}
+                  value={annForm.body}
+                  onChange={e => setAnnForm(f => ({ ...f, body: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 resize-none"
+                />
+                {/* Image upload */}
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Rasm (ixtiyoriy)</label>
+                  {annForm.image_url && (
+                    <div className="relative rounded-xl overflow-hidden h-28">
+                      <img src={annForm.image_url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setAnnForm(f => ({ ...f, image_url: '' }))}
+                        className="absolute top-1 right-1 bg-black/60 text-white text-xs px-2 py-0.5 rounded-lg"
+                      >
+                        ✕ O'chirish
+                      </button>
+                    </div>
+                  )}
+                  {!annForm.image_url && (
+                    <label className={`flex items-center justify-center gap-2 w-full h-20 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+                      annImgUploading
+                        ? 'border-sahifa-400 bg-sahifa-50 dark:bg-sahifa-900/10'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-sahifa-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={annImgUploading}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadAnnImage(f) }}
+                      />
+                      {annImgUploading
+                        ? <span className="text-sm text-sahifa-600 dark:text-sahifa-400">⬆️ {annImgPercent}% yuklanmoqda…</span>
+                        : <span className="text-sm text-gray-400 dark:text-gray-500">🖼 Rasm yuklash (Bunny CDN)</span>
+                      }
+                    </label>
+                  )}
+                </div>
+
+                {/* CTA — tugma faqat ikkalasi to'ldirilganda ko'rinadi */}
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">
+                    Tugma (ixtiyoriy) — <span className="text-amber-500">ikkalasi to'ldirilsa ko'rinadi</span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder='Tugma matni, mas. "Batafsil"'
+                      value={annForm.cta_text}
+                      onChange={e => setAnnForm(f => ({ ...f, cta_text: e.target.value }))}
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                    <input
+                      type="url"
+                      placeholder="https:// yoki sahifalab://..."
+                      value={annForm.cta_link}
+                      onChange={e => setAnnForm(f => ({ ...f, cta_link: e.target.value }))}
+                      className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                    Havola: tashqi URL (https://...) yoki ichki link (sahifalab://course/123)
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Boshlanish vaqti</label>
+                    <input
+                      type="datetime-local"
+                      value={annForm.starts_at}
+                      onChange={e => setAnnForm(f => ({ ...f, starts_at: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Tugash vaqti</label>
+                    <input
+                      type="datetime-local"
+                      value={annForm.expires_at}
+                      onChange={e => setAnnForm(f => ({ ...f, expires_at: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={annForm.is_active}
+                    onChange={e => setAnnForm(f => ({ ...f, is_active: e.target.checked }))}
+                    className="w-4 h-4 accent-sahifa-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Faol (hoziroq ko'rsatish)</span>
+                </label>
+
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={saveAnnouncement}
+                    disabled={annSaving || !annForm.title.trim() || !annForm.body.trim()}
+                    className="flex-1 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white rounded-xl transition-colors"
+                  >
+                    {annSaving ? 'Saqlanmoqda…' : annEditTarget ? 'Saqlash' : 'Yaratish'}
+                  </button>
+                  <button
+                    onClick={() => setAnnFormOpen(false)}
+                    className="px-4 py-2 text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors"
+                  >
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Loading */}
+            {annLoading && (
+              <div className="text-center py-10 text-gray-400 text-sm">Yuklanmoqda…</div>
+            )}
+
+            {/* Empty state */}
+            {!annLoading && annList.length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
+                <span className="text-4xl">📢</span>
+                <p className="text-sm">Hali xabar yo'q</p>
+              </div>
+            )}
+
+            {/* Announcement cards */}
+            {!annLoading && annList.map(ann => (
+              <div
+                key={ann.id}
+                className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 overflow-hidden"
+              >
+                {/* Image preview */}
+                {ann.image_url && (
+                  <img src={ann.image_url} alt="" className="w-full h-32 object-cover" />
+                )}
+
+                <div className="p-3 space-y-2">
+                  {/* Title + status badge */}
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 text-sm font-semibold text-gray-900 dark:text-white leading-snug">
+                      {ann.title}
+                    </p>
+                    <span className={`shrink-0 text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                      ann.is_active
+                        ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    }`}>
+                      {ann.is_active ? 'Faol' : 'Nofaol'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">
+                    {ann.body}
+                  </p>
+
+                  {/* Date range */}
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400 dark:text-gray-500">
+                    <span>📅 {ann.starts_at ? new Date(ann.starts_at).toLocaleDateString('uz-UZ') : 'Hozirdan'}</span>
+                    <span>⏱ {ann.expires_at ? new Date(ann.expires_at).toLocaleDateString('uz-UZ') : 'Muddatsiz'}</span>
+                    <span className="text-sahifa-600 dark:text-sahifa-400 font-medium">👁 {ann.view_count} ko'rish</span>
+                  </div>
+
+                  {/* Action row */}
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => toggleAnnActive(ann)}
+                      className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        ann.is_active
+                          ? 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
+                          : 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100'
+                      }`}
+                    >
+                      {ann.is_active ? '⏸ Nofaol' : '▶ Faol'}
+                    </button>
+                    <button
+                      onClick={() => openAnnEdit(ann)}
+                      className="flex-1 py-1.5 text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
+                    >
+                      ✏️ Tahrirlash
+                    </button>
+                    <button
+                      onClick={() => deleteAnnouncement(ann.id)}
+                      disabled={annDeleteId === ann.id}
+                      className="px-3 py-1.5 text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 rounded-lg transition-colors"
+                    >
+                      {annDeleteId === ann.id ? '⏳' : '🗑️'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
       </div>
+
+      {/* ── User Detail Drawer ─────────────────────────────────────── */}
+      {openUserDetail && (() => {
+        const u = openUserDetail
+        const TABS = [
+          { key: 'profil',   label: 'Profil'    },
+          { key: 'kurslar',  label: 'Kurslar'   },
+          { key: 'tolovlar', label: "To'lovlar" },
+          { key: 'faollik',  label: 'Faollik'   },
+          { key: 'admin',    label: 'Admin'      },
+        ] as { key: typeof userDetailTab; label: string }[]
+
+        const PM_LABELS: Record<string, string> = {
+          click_card: 'Click', payme_card: 'Payme', uzcard: 'Uzcard',
+          humo: 'Humo', cash: 'Naqd', other: 'Boshqa',
+        }
+
+        return (
+          <div className="fixed inset-0 z-50 flex">
+            <div className="flex-1 bg-black/50" onClick={() => setOpenUserDetail(null)} />
+            <div className="w-full max-w-lg bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 flex flex-col overflow-hidden shadow-2xl">
+
+              {/* Drawer header */}
+              <div className="flex items-center gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+                {u.photo_url
+                  ? <img src={u.photo_url} alt="" className="w-10 h-10 rounded-xl object-cover flex-shrink-0" />
+                  : <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold flex-shrink-0">
+                      {(u.first_name || '?').charAt(0).toUpperCase()}
+                    </div>
+                }
+                <div className="flex-1 min-w-0">
+                  <p className="text-gray-900 dark:text-white font-semibold truncate">{u.first_name || "Noma'lum"}</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm">{u.username ? `@${u.username}` : `#${u.telegram_id}`}</p>
+                </div>
+                <button onClick={() => setOpenUserDetail(null)} className="text-gray-400 hover:text-gray-700 dark:hover:text-white text-xl leading-none ml-3">✕</button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-gray-200 dark:border-gray-700 overflow-x-auto flex-shrink-0">
+                {TABS.map(t => (
+                  <button key={t.key} onClick={() => setUserDetailTab(t.key)}
+                    className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex-shrink-0 ${
+                      userDetailTab === t.key
+                        ? 'border-sahifa-600 text-sahifa-600 dark:text-sahifa-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white'
+                    }`}>{t.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto p-5">
+                {userDetailLoading
+                  ? <div className="text-center py-12 text-gray-400 text-sm">Yuklanmoqda…</div>
+                  : (
+                    <>
+                      {/* ── PROFIL ── */}
+                      {userDetailTab === 'profil' && (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-3">
+                            {[
+                              ['Telegram ID', u.telegram_id],
+                              ['Ism',         u.first_name ?? '—'],
+                              ['Username',    u.username ? `@${u.username}` : '—'],
+                              ['Rol',         u.role],
+                              ['Holat',       u.status],
+                              ['Daraja',      `Lv ${u.level}`],
+                              ['XP',          u.total_xp.toLocaleString()],
+                              ["Ro'yxat",     u.app_created_at ? new Date(u.app_created_at).toLocaleDateString('uz-UZ') : '—'],
+                            ].map(([k, v]) => (
+                              <div key={String(k)} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                                <p className="text-gray-400 dark:text-gray-500 text-xs mb-0.5">{k}</p>
+                                <p className="text-gray-900 dark:text-white text-sm font-medium truncate">{String(v)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* ── KURSLAR ── */}
+                      {userDetailTab === 'kurslar' && (
+                        <div className="space-y-3">
+                          <button
+                            onClick={() => { setGrantOpen(true); setGrantMsg('') }}
+                            className="w-full py-2.5 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/20 hover:bg-sahifa-100 dark:hover:bg-sahifa-900/40 border border-sahifa-200 dark:border-sahifa-800/60 text-sahifa-700 dark:text-sahifa-400 text-sm font-medium transition-colors"
+                          >
+                            + Yangi kurs ochish
+                          </button>
+
+                          {grantOpen && (
+                            <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 space-y-3 border border-gray-200 dark:border-gray-700">
+                              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Kurs ochish</h4>
+                              <input type="number" value={grantCourseId} onChange={e => setGrantCourseId(e.target.value)}
+                                placeholder="Kurs ID *"
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                              <input type="number" value={grantAmount} onChange={e => setGrantAmount(e.target.value)}
+                                placeholder="Summa (ixtiyoriy)"
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                              <div className="grid grid-cols-3 gap-1.5">
+                                {(['click_card','payme_card','uzcard','humo','cash','other'] as const).map(m => (
+                                  <button key={m} onClick={() => setGrantMethod(m)}
+                                    className={`py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                                      grantMethod === m
+                                        ? 'bg-sahifa-600 text-white'
+                                        : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                                    }`}>{PM_LABELS[m]}
+                                  </button>
+                                ))}
+                              </div>
+                              <input value={grantNotes} onChange={e => setGrantNotes(e.target.value)}
+                                placeholder="Izoh (ixtiyoriy)"
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                              <div>
+                                <input value={grantProofUrl} onChange={e => setGrantProofUrl(e.target.value)}
+                                  placeholder="Screenshot URL (Telegram / Imgur havola)"
+                                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Screenshotni Telegram yoki Imgurga yuklang, havolani nusxalang</p>
+                              </div>
+                              {grantMsg && <p className={`text-xs ${grantMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'}`}>{grantMsg}</p>}
+                              <div className="flex gap-2">
+                                <button onClick={() => setGrantOpen(false)}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">
+                                  Bekor
+                                </button>
+                                <button onClick={handleGrant} disabled={grantLoading}
+                                  className="flex-[2] py-2 rounded-xl bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white text-sm font-semibold">
+                                  {grantLoading ? 'Saqlanmoqda…' : '✓ Kursni ochish'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {(!userDetailData?.enrollments || userDetailData.enrollments.length === 0)
+                            ? <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">Hech qanday kursga yozilmagan</p>
+                            : userDetailData.enrollments.map((e: any) => (
+                              <div key={e.course_id} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                                <span className="text-lg flex-shrink-0">📚</span>
+                                <p className="text-gray-900 dark:text-white text-sm flex-1 truncate">{e.course?.title ?? `Kurs #${e.course_id}`}</p>
+                                <span className="text-gray-400 dark:text-gray-500 text-xs">{e.enrolled_at ? new Date(e.enrolled_at).toLocaleDateString('uz-UZ') : ''}</span>
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )}
+
+                      {/* ── TO'LOVLAR ── */}
+                      {userDetailTab === 'tolovlar' && (
+                        <div className="space-y-3">
+                          {userDetailPayments.length === 0
+                            ? <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-8">To'lov tarixi yo'q</p>
+                            : userDetailPayments.map((p: any) => (
+                              <div key={p.id} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-4 py-3">
+                                <div className="flex items-center justify-between mb-1">
+                                  <span className="font-mono text-sahifa-600 dark:text-sahifa-400 text-sm font-semibold">{p.reference_code ?? `#${p.id}`}</span>
+                                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                    p.status === 'granted'          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
+                                    p.status === 'paid'             ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                    p.status === 'awaiting_payment' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                                    'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                                  }`}>{p.status}</span>
+                                </div>
+                                <p className="text-gray-900 dark:text-white text-sm truncate">{p.course?.title ?? `Kurs #${p.course_id}`}</p>
+                                <div className="flex items-center justify-between mt-1">
+                                  <span className="text-gray-400 dark:text-gray-500 text-xs">
+                                    {((p.actual_amount || p.expected_amount || 0) / 100).toLocaleString()} so'm
+                                    {p.payment_method && ` · ${PM_LABELS[p.payment_method] ?? p.payment_method}`}
+                                  </span>
+                                  <span className="text-gray-400 dark:text-gray-500 text-xs">{p.created_at ? new Date(p.created_at).toLocaleDateString('uz-UZ') : ''}</span>
+                                </div>
+                                {p.admin_notes && <p className="text-gray-400 dark:text-gray-500 text-xs mt-1 italic">"{p.admin_notes}"</p>}
+                              </div>
+                            ))
+                          }
+                        </div>
+                      )}
+
+                      {/* ── FAOLLIK ── */}
+                      {userDetailTab === 'faollik' && (
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-3 gap-3">
+                            {[
+                              ['XP', u.total_xp.toLocaleString()],
+                              ['Daraja', `Lv ${u.level}`],
+                              ['Kurslar', userDetailData?.enrollments?.length ?? '—'],
+                            ].map(([k, v]) => (
+                              <div key={String(k)} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-3 text-center">
+                                <p className="text-gray-900 dark:text-white font-bold text-xl">{String(v)}</p>
+                                <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">{k}</p>
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-center text-gray-400 dark:text-gray-500 text-sm py-6">Batafsil faollik jurnali tez orada</p>
+                        </div>
+                      )}
+
+                      {/* ── ADMIN ── */}
+                      {userDetailTab === 'admin' && (
+                        <div className="space-y-3">
+                          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
+                            <h4 className="text-red-600 dark:text-red-400 font-semibold text-sm mb-3">Xavfli amallar</h4>
+                            {!drawerSuspendOpen
+                              ? (
+                                <button onClick={() => setDrawerSuspendOpen(true)}
+                                  className="w-full py-2.5 rounded-xl bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 border border-red-300 dark:border-red-800/50 text-red-600 dark:text-red-400 text-sm font-medium transition-colors">
+                                  🚫 Hisobni bloklash
+                                </button>
+                              ) : (
+                                <div className="space-y-2">
+                                  <input value={drawerSuspendText} onChange={e => setDrawerSuspendText(e.target.value)}
+                                    placeholder="Sabab (ixtiyoriy)…"
+                                    className="w-full px-3 py-2 text-sm rounded-xl border border-red-200 dark:border-red-800/60 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-red-500" />
+                                  <div className="flex gap-2">
+                                    <button onClick={() => setDrawerSuspendOpen(false)}
+                                      className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">Bekor</button>
+                                    <button onClick={handleDrawerSuspend} disabled={drawerSuspending}
+                                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold">
+                                      {drawerSuspending ? '…' : 'Tasdiqlash'}
+                                    </button>
+                                  </div>
+                                </div>
+                              )
+                            }
+                          </div>
+                          <a
+                            href={u.username ? `https://t.me/${u.username}` : `tg://user?id=${u.telegram_id}`}
+                            target="_blank" rel="noreferrer"
+                            className="block text-center py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/40 text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
+                          >
+                            ✈ Telegramda yozing
+                          </a>
+                        </div>
+                      )}
+                    </>
+                  )
+                }
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
     </div>
   )
 }

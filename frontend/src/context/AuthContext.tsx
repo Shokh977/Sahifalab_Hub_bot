@@ -30,6 +30,8 @@ export interface AuthUser {
   photo_url?: string
   /** User email — null if not yet linked (Telegram-only users) */
   email?: string | null
+  /** True when the email has been verified (only relevant for email-registered users) */
+  email_verified?: boolean | null
   /** 'student' | 'teacher' | 'admin' */
   role: 'student' | 'teacher' | 'admin'
   /** 'active' | 'suspended' | 'pending' */
@@ -65,6 +67,8 @@ interface AuthContextValue {
   loginWithCode: (data: Record<string, any>) => void
   /** Update the user email in-memory after a successful link-email call */
   updateUserEmail: (email: string) => void
+  /** Merge arbitrary fields into the in-memory user object */
+  updateUser: (patch: Partial<Record<string, any>>) => void
   /** Web-only: clears JWT and user */
   logout: () => void
 }
@@ -85,13 +89,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true)
 
   // ── TMA: exchange initData for a JWT on mount ─────────────────────────────
+  // Uses a separate localStorage key ('tma_auth_token') so TMA sessions never
+  // overwrite web/email sessions stored under 'auth_token'.
   useEffect(() => {
     if (!isTelegram) return
 
     const initData = window.Telegram?.WebApp?.initData ?? ''
 
-    // Re-use a cached token if it exists and is not expired
-    const stored = localStorage.getItem('auth_token')
+    // Re-use a cached TMA token if it exists
+    const stored = localStorage.getItem('tma_auth_token')
     if (stored && tgUser) {
       // Optimistically restore from cache; re-validate via tma-init in background
       setToken(stored)
@@ -116,7 +122,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .post(`${API_BASE}/api/auth/tma-init`, { init_data: initData })
       .then(res => {
         const d = res.data
-        localStorage.setItem('auth_token', d.access_token)
+        localStorage.setItem('tma_auth_token', d.access_token)
         setToken(d.access_token)
         setWebUser({
           id: d.telegram_id,
@@ -156,6 +162,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: res.data.username,
           photo_url: res.data.photo_url,
           email: res.data.email ?? null,
+          email_verified: res.data.email_verified ?? null,
           role: res.data.role ?? 'student',
           status: res.data.status ?? 'active',
           level: res.data.level ?? 1,
@@ -182,7 +189,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ── Web: login via bot-code verify response ───────────────────────────────
   const loginWithCode = useCallback((data: Record<string, any>) => {
-    const { access_token, telegram_id, first_name, username, photo_url, email, role, status_account, status } = data
+    const { access_token, telegram_id, first_name, username, photo_url, email, email_verified, role, status_account, status } = data
     localStorage.setItem('auth_token', access_token)
     setToken(access_token)
     setWebUser({
@@ -191,6 +198,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       username,
       photo_url,
       email: email ?? null,
+      email_verified: email_verified ?? null,
       role: role ?? 'student',
       status: status_account ?? status ?? 'active',
       level: data.level ?? 1,
@@ -201,6 +209,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Logout ─────────────────────────────────────────────────────────────────
   const logout = useCallback(() => {
     localStorage.removeItem('auth_token')
+    localStorage.removeItem('tma_auth_token')
     setToken(null)
     setWebUser(null)
   }, [])
@@ -208,6 +217,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // ── Update email after link-email ──────────────────────────────────────────
   const updateUserEmail = useCallback((email: string) => {
     setWebUser(prev => prev ? { ...prev, email } : prev)
+  }, [])
+
+  const updateUser = useCallback((patch: Partial<Record<string, any>>) => {
+    setWebUser(prev => prev ? { ...prev, ...patch } : prev)
+  }, [])
+
+  // ── Listen for apiService token-expiry signal ──────────────────────────────
+  // When the interceptor detects a 401 on /api/auth/me, it dispatches 'auth:expired'.
+  // We clear the in-memory state here so the next AuthGuard check redirects to login.
+  useEffect(() => {
+    const handler = () => { setToken(null); setWebUser(null) }
+    window.addEventListener('auth:expired', handler)
+    return () => window.removeEventListener('auth:expired', handler)
   }, [])
 
   // ── Derived values ─────────────────────────────────────────────────────────
@@ -233,7 +255,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   return (
     <AuthContext.Provider
-      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, updateUserEmail, logout }}
+      value={{ user, token, isLoading, isAuthenticated, loginWithTelegram, loginWithCode, updateUserEmail, updateUser, logout }}
     >
       {children}
     </AuthContext.Provider>

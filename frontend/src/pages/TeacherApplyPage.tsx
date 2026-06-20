@@ -3,12 +3,12 @@
  *
  * Flow:
  *  1. Student visits /become-teacher
- *  2. Fills in: specialization, experience_years, bio, course_idea, motivation
- *  3. Submits → POST /api/auth/apply-teacher with form data
- *  4. Backend sets role='teacher', status='pending', stores in teacher_profiles
- *  5. Page shows success / pending confirmation
+ *  2. Reads requirements & terms, checks "I agree"
+ *  3. Fills in: specialization, experience_years, bio, course_idea, motivation
+ *  4. Submits → POST /api/auth/apply-teacher
+ *  5. Admin reviews → on acceptance user gets teacher badge (role='teacher')
  */
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -16,13 +16,16 @@ import {
   ArrowLeftIcon,
   ArrowPathIcon,
   ArrowRightIcon,
-  BanknotesIcon,
+  CheckCircleIcon,
   ExclamationCircleIcon,
   HomeIcon,
   PresentationChartLineIcon,
+  ShieldCheckIcon,
   TrophyIcon,
+  DocumentTextIcon,
+  StarIcon,
 } from '@heroicons/react/24/outline'
-import PageWrapper from '../components/PageWrapper'
+import { BadgeCheck } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
 
@@ -34,17 +37,38 @@ interface FormData {
   bio:              string
   course_idea:      string
   motivation:       string
+  contact:          string
 }
 
 type State = 'form' | 'loading' | 'success' | 'already_pending' | 'already_teacher' | 'error'
 
+// ── Requirements ──────────────────────────────────────────────────────────────
+
+const REQUIREMENTS = [
+  "O'z sohasida bilim va tajribaga ega bo'lish",
+  "Sifatli video va o'quv materiallar yarata olish",
+  "O'quvchilarga hurmat bilan munosabatda bo'lish",
+  "Asl, plagiatdan xoli kontent taqdim etish",
+  "O'quvchilarning savollariga o'z vaqtida javob berish",
+  "Platformaning ichki qoidalariga rioya qilish",
+]
+
+const TERMS = [
+  "Yaratgan kurslarim to'liq mening asl ishim bo'ladi",
+  "Zararli, yolg'on yoki chalg'ituvchi kontent joylashtirilmaydi",
+  "O'quvchilarga sifatli ta'lim va qo'llab-quvvatlash beriladi",
+  "Qoidabuzarlik holida akkauntim to'xtatilishi mumkinligini tushunaman",
+  "Platforma komissiya shartlari qabul qilinganidan so'ng alohida bildiriladi",
+  "Sahifalab platformasining foydalanish shartlari to'liq qabul qilinadi",
+]
+
 // ── Benefits ──────────────────────────────────────────────────────────────────
 
 const BENEFITS = [
-  { icon: AcademicCapIcon, title: "O'z kurslaringizni yarating", desc: 'Video darslar, testlar va materiallar bilan to\'liq kurs tuzing' },
-  { icon: BanknotesIcon, title: 'Daromad oling', desc: 'Har bir to\'lov uchun komisyon foizini hisobingizga oling' },
+  { icon: AcademicCapIcon, title: "O'z kurslaringizni yarating", desc: "Video darslar, testlar va materiallar bilan to'liq kurs tuzing" },
+  { icon: BadgeCheck as any, title: "O'qituvchi badji", desc: 'Profilingizda va barcha joylarda ko\'rinadigan "Teacher" badge olasiz', blue: true },
   { icon: PresentationChartLineIcon, title: 'Analitika paneli', desc: "O'quvchilar progressi va daromad statistikasini kuzating" },
-  { icon: TrophyIcon, title: "O'qituvchi badji", desc: 'Profilingizda maxsus "Teacher" badge ko\'rinadi' },
+  { icon: TrophyIcon, title: 'Daromad oling', desc: "Qabul qilinganingizdan so'ng komissiya shartlari bilan tanishasiz" },
 ]
 
 // ── Field ─────────────────────────────────────────────────────────────────────
@@ -75,21 +99,22 @@ const TeacherApplyPage: React.FC = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
 
-  // Pre-detect state from AuthContext
   const initialState: State =
-    user?.role === 'admin'                                      ? 'already_teacher' :
-    user?.role === 'teacher' && user.status === 'active'       ? 'already_teacher' :
-    user?.role === 'teacher' && user.status === 'pending'      ? 'already_pending' :
+    user?.role === 'admin'                                   ? 'already_teacher' :
+    user?.role === 'teacher' && user.status === 'active'     ? 'already_teacher' :
+    user?.status === 'pending'                               ? 'already_pending' :
     'form'
 
   const [state, setState]     = useState<State>(initialState)
   const [errorMsg, setErrorMsg] = useState('')
+  const [agreed, setAgreed]   = useState(false)
   const [form, setForm]       = useState<FormData>({
     specialization:   '',
     experience_years: '',
     bio:              '',
     course_idea:      '',
     motivation:       '',
+    contact:          '',
   })
 
   const updateField = (k: keyof FormData) => (
@@ -97,11 +122,16 @@ const TeacherApplyPage: React.FC = () => {
   ) => setForm(prev => ({ ...prev, [k]: e.target.value }))
 
   const isFormValid = () =>
+    agreed &&
     form.specialization.trim() &&
     form.experience_years.trim() &&
     form.bio.trim().length >= 20 &&
     form.course_idea.trim().length >= 20 &&
-    form.motivation.trim().length >= 20
+    form.motivation.trim().length >= 20 &&
+    form.contact.trim().length > 0
+
+  const formRef = useRef<HTMLFormElement>(null)
+  const scrollToForm = () => formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -115,6 +145,7 @@ const TeacherApplyPage: React.FC = () => {
         bio:              form.bio.trim(),
         course_idea:      form.course_idea.trim(),
         motivation:       form.motivation.trim(),
+        contact:          form.contact.trim(),
       })
       const data = res.data
       if (data.already_applied) {
@@ -132,7 +163,7 @@ const TeacherApplyPage: React.FC = () => {
   // ── Success / already-pending ──────────────────────────────────────────────
   if (state === 'success' || state === 'already_pending') {
     return (
-      <PageWrapper>
+      <div className="pb-10">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -151,7 +182,8 @@ const TeacherApplyPage: React.FC = () => {
             <p className="font-semibold">Navbatdagi qadamlar:</p>
             <p>1. Admin arizangizni ko'rib chiqadi</p>
             <p>2. Sizning rolingiz "Teacher" ga o'zgaradi</p>
-            <p>3. Yangi kirish paytida o'qituvchi paneli ochiladi</p>
+            <p>3. Profilingizda o'qituvchi badji paydo bo'ladi</p>
+            <p>4. Yangi kirish paytida o'qituvchi paneli ochiladi</p>
           </div>
           <div className="flex gap-3">
             <button
@@ -168,14 +200,14 @@ const TeacherApplyPage: React.FC = () => {
             </button>
           </div>
         </motion.div>
-      </PageWrapper>
+      </div>
     )
   }
 
   // ── Already active teacher ─────────────────────────────────────────────────
   if (state === 'already_teacher') {
     return (
-      <PageWrapper>
+      <div className="pb-10">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -193,39 +225,90 @@ const TeacherApplyPage: React.FC = () => {
             O'qituvchi paneli <ArrowRightIcon className="h-4 w-4" />
           </Link>
         </motion.div>
-      </PageWrapper>
+      </div>
     )
   }
 
   // ── Main application form ──────────────────────────────────────────────────
   return (
-    <PageWrapper>
-      {/* Hero */}
+    <div className="pb-10 space-y-6">
+
+      {/* ── SECTION 1: Hero ──────────────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-6"
+        className="relative overflow-hidden rounded-2xl p-8 text-center"
+        style={{
+          background: 'linear-gradient(135deg, rgba(232,121,47,0.18) 0%, rgba(196,74,26,0.10) 50%, rgba(139,42,16,0.06) 100%)',
+          border: '1px solid rgba(232,121,47,0.20)',
+        }}
       >
-        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 shadow-lg mb-4">
-          <AcademicCapIcon className="h-8 w-8 text-white" />
+        <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full opacity-10"
+             style={{ background: '#e8792f', filter: 'blur(32px)' }} />
+        <div className="absolute -bottom-8 -left-8 w-24 h-24 rounded-full opacity-8"
+             style={{ background: '#e8792f', filter: 'blur(24px)' }} />
+
+        <div className="relative z-10">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4"
+               style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}>
+            <AcademicCapIcon className="h-7 w-7 text-white" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white leading-tight">
+            Sahifalab'da o'qituvchi bo'ling
+          </h1>
+          <p className="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto leading-relaxed">
+            Bilimingizni ulashing, daromad oling,<br />
+            ming lab o'quvchilarga ta'sir qiling.
+            {user?.first_name && (
+              <span className="block mt-1 font-medium text-gray-700 dark:text-gray-300">
+                Assalomu alaykum, {user.first_name}!
+              </span>
+            )}
+          </p>
+          <button
+            onClick={scrollToForm}
+            className="mt-5 inline-flex items-center gap-2 px-6 py-3 rounded-xl font-bold text-sm text-white transition-all active:scale-[0.97]"
+            style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}
+          >
+            Boshlash <ArrowRightIcon className="h-4 w-4" />
+          </button>
         </div>
-        <h1 className="text-2xl font-extrabold text-gray-900 dark:text-white">O'qituvchi bo'lish</h1>
-        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 max-w-sm mx-auto leading-relaxed">
-          Arizangizni to'ldiring — admin ko'rib chiqib, tasdiqlaydi.
-          {user?.first_name && ` Assalomu alaykum, ${user.first_name}!`}
-        </p>
       </motion.div>
 
-      {/* Benefits */}
+      {/* ── SECTION 2: How it works ───────────────────────────────────── */}
       <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.04 }}
-        className="grid grid-cols-2 gap-2 mb-6"
+        transition={{ delay: 0.05 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white mb-4">Qanday ishlaydi?</h2>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { num: '1️⃣', title: 'Ariza topshir', desc: "Formani to'ldiring va admin tasdiqlashini kuting" },
+            { num: '2️⃣', title: 'Badj oling', desc: "Admin tasdiqlashi bilan o'qituvchi badji beriladi" },
+            { num: '3️⃣', title: 'Kurs yarating', desc: 'Video va materiallar yuklang, daromad olishni boshlang' },
+          ].map(step => (
+            <div key={step.num} className="flex flex-col items-center text-center gap-2 p-3 rounded-xl"
+                 style={{ backgroundColor: 'rgba(232,121,47,0.05)', border: '1px solid rgba(232,121,47,0.10)' }}>
+              <span className="text-xl">{step.num}</span>
+              <p className="text-xs font-bold text-gray-900 dark:text-white leading-tight">{step.title}</p>
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 leading-relaxed">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* ── SECTION 3: Benefits ───────────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.08 }}
+        className="grid grid-cols-2 gap-2"
       >
         {BENEFITS.map(b => (
           <div key={b.title} className="flex items-start gap-2.5 p-3 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700">
-            <b.icon className="h-5 w-5 shrink-0 text-sahifa-500" />
+            <b.icon className={`h-5 w-5 shrink-0 ${b.blue ? 'text-blue-400' : 'text-sahifa-500'}`} />
             <div>
               <p className="text-xs font-semibold text-gray-900 dark:text-white leading-tight">{b.title}</p>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">{b.desc}</p>
@@ -234,17 +317,81 @@ const TeacherApplyPage: React.FC = () => {
         ))}
       </motion.div>
 
-      {/* Application form */}
-      <motion.form
+      {/* ── SECTION 4: Requirements ───────────────────────────────────── */}
+      <motion.div
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.08 }}
-        onSubmit={handleSubmit}
-        className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5 mb-5"
+        transition={{ delay: 0.10 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
       >
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Ariza shakli</h2>
+        <div className="flex items-center gap-2 mb-4">
+          <StarIcon className="h-5 w-5 text-sahifa-500" />
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">O'qituvchilarga qo'yiladigan talablar</h2>
+        </div>
+        <div className="space-y-2">
+          {REQUIREMENTS.map(req => (
+            <div key={req} className="flex items-start gap-2">
+              <CheckCircleIcon className="h-4 w-4 flex-shrink-0 mt-0.5 text-green-500" />
+              <p className="text-xs text-gray-700 dark:text-gray-300">{req}</p>
+            </div>
+          ))}
+        </div>
+      </motion.div>
 
-        {/* Specialization */}
+      {/* ── SECTION 5: Terms of use ───────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.12 }}
+        className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <div className="flex items-center gap-2 mb-4">
+          <DocumentTextIcon className="h-5 w-5 text-sahifa-500" />
+          <h2 className="text-sm font-bold text-gray-900 dark:text-white">Foydalanish shartlari</h2>
+        </div>
+        <div className="space-y-2 mb-5">
+          {TERMS.map(term => (
+            <div key={term} className="flex items-start gap-2">
+              <ShieldCheckIcon className="h-4 w-4 flex-shrink-0 mt-0.5 text-blue-400" />
+              <p className="text-xs text-gray-700 dark:text-gray-300">{term}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* I agree checkbox */}
+        <button
+          type="button"
+          onClick={() => setAgreed(v => !v)}
+          className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+            agreed
+              ? 'border-sahifa-400 bg-sahifa-50 dark:bg-sahifa-900/20'
+              : 'border-slate-200 dark:border-slate-600 hover:border-sahifa-300'
+          }`}
+        >
+          <div className={`w-5 h-5 rounded-md border-2 flex-shrink-0 flex items-center justify-center transition-all ${
+            agreed
+              ? 'border-sahifa-500 bg-sahifa-500'
+              : 'border-slate-300 dark:border-slate-500'
+          }`}>
+            {agreed && <CheckCircleIcon className="h-3.5 w-3.5 text-white" />}
+          </div>
+          <span className="text-sm font-medium text-left text-gray-800 dark:text-gray-200">
+            Yuqoridagi talablar va foydalanish shartlarini o'qidim, qabul qilaman
+          </span>
+        </button>
+      </motion.div>
+
+      {/* ── SECTION 6: Application form ──────────────────────────────── */}
+      <motion.form
+        ref={formRef}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.14 }}
+        onSubmit={handleSubmit}
+        className="space-y-5 bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-5"
+      >
+        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Ariza topshirish</h2>
+
         <Field label="Mutaxassislik" required hint="Masalan: Frontend dasturlash, Matematika, Ingliz tili...">
           <input
             type="text"
@@ -257,7 +404,6 @@ const TeacherApplyPage: React.FC = () => {
           />
         </Field>
 
-        {/* Experience */}
         <Field label="Tajriba (yillar)" required hint="0 — endi boshlayman, 1–3 yil, 5+ yil...">
           <select
             value={form.experience_years}
@@ -276,12 +422,7 @@ const TeacherApplyPage: React.FC = () => {
           </select>
         </Field>
 
-        {/* Bio */}
-        <Field
-          label="O'zingiz haqingizda"
-          required
-          hint="Kamida 20 ta belgi. Kim ekansiz, nima bilan shug'ullanasiz?"
-        >
+        <Field label="O'zingiz haqingizda" required hint="Kamida 20 ta belgi. Kim ekansiz, nima bilan shug'ullanasiz?">
           <textarea
             value={form.bio}
             onChange={updateField('bio')}
@@ -295,12 +436,7 @@ const TeacherApplyPage: React.FC = () => {
           <p className="text-[10px] text-gray-400 text-right">{form.bio.length}/500</p>
         </Field>
 
-        {/* Course idea */}
-        <Field
-          label="Qanday kurs yaratmoqchisiz?"
-          required
-          hint="Kursning mavzusi, kimlar uchun mo'ljallangan, qanday natija beradi?"
-        >
+        <Field label="Qanday kurs yaratmoqchisiz?" required hint="Kursning mavzusi, kimlar uchun mo'ljallangan, qanday natija beradi?">
           <textarea
             value={form.course_idea}
             onChange={updateField('course_idea')}
@@ -314,12 +450,7 @@ const TeacherApplyPage: React.FC = () => {
           <p className="text-[10px] text-gray-400 text-right">{form.course_idea.length}/1000</p>
         </Field>
 
-        {/* Motivation */}
-        <Field
-          label="Nima uchun o'qituvchi bo'lmoqchisiz?"
-          required
-          hint="Motivatsiyangiz va maqsadingizni yozing (kamida 20 ta belgi)."
-        >
+        <Field label="Nima uchun o'qituvchi bo'lmoqchisiz?" required hint="Motivatsiyangiz va maqsadingizni yozing (kamida 20 ta belgi).">
           <textarea
             value={form.motivation}
             onChange={updateField('motivation')}
@@ -333,7 +464,18 @@ const TeacherApplyPage: React.FC = () => {
           <p className="text-[10px] text-gray-400 text-right">{form.motivation.length}/1000</p>
         </Field>
 
-        {/* Error */}
+        <Field label="Aloqa" required hint="Admin siz bilan bog'lanishi uchun email yoki telefon raqamingizni kiriting.">
+          <input
+            type="text"
+            value={form.contact}
+            onChange={updateField('contact')}
+            placeholder="email@example.com yoki +998 90 123 45 67"
+            maxLength={120}
+            required
+            className={inputCls}
+          />
+        </Field>
+
         <AnimatePresence>
           {errorMsg && (
             <motion.div
@@ -342,29 +484,43 @@ const TeacherApplyPage: React.FC = () => {
               exit={{ opacity: 0 }}
               className="p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-sm text-red-700 dark:text-red-300"
             >
-              <span className="inline-flex items-center gap-1"><ExclamationCircleIcon className="h-4 w-4" /> {errorMsg}</span>
+              <span className="inline-flex items-center gap-1">
+                <ExclamationCircleIcon className="h-4 w-4" /> {errorMsg}
+              </span>
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Submit */}
+        {!agreed && (
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 text-center">
+            Yuborish uchun yuqoridagi shartlarni qabul qiling
+          </p>
+        )}
+
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center">
+          Arizalar 1–3 kun ichida ko'rib chiqiladi.
+        </p>
+
         <button
           type="submit"
           disabled={state === 'loading' || !isFormValid()}
-          className="w-full py-4 rounded-2xl bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 text-white font-bold text-base shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] inline-flex items-center justify-center gap-1"
+          className="w-full py-4 rounded-2xl font-bold text-base text-white shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-[0.98] inline-flex items-center justify-center gap-2"
+          style={{ background: 'linear-gradient(135deg, #e8792f, #c44a1a)' }}
         >
-          {state === 'loading' ? <><ArrowPathIcon className="h-5 w-5 animate-spin" /> Yuborilmoqda...</> : <><AcademicCapIcon className="h-5 w-5" /> Ariza yuborish</>}
+          {state === 'loading'
+            ? <><ArrowPathIcon className="h-5 w-5 animate-spin" /> Yuborilmoqda...</>
+            : <><AcademicCapIcon className="h-5 w-5" /> Ariza yuborish</>
+          }
         </button>
       </motion.form>
 
-      {/* Back */}
       <button
         onClick={() => navigate(-1)}
         className="w-full py-3 rounded-2xl border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 font-medium text-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors inline-flex items-center justify-center gap-1"
       >
         <ArrowLeftIcon className="h-4 w-4" /> Ortga
       </button>
-    </PageWrapper>
+    </div>
   )
 }
 

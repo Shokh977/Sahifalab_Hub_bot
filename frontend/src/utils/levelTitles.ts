@@ -140,6 +140,16 @@ export const LEVEL_TITLES: LevelInfo[] = [
     level: 27,
     title: 'Sohibqiron',
     description: 'Mutloq cho\'qqi. Dunyo ilm-fanini zabt etgan jahongir.'
+  },
+  {
+    level: 28,
+    title: 'Shahanshoh',
+    description: 'Shohlar shohi. Butun bilim saltanatining muqaddas hukmdori.'
+  },
+  {
+    level: 29,
+    title: 'Zulqarnayn',
+    description: 'Ikki dunyo — ilm va amal dunyosini zabt etgan ulug\' insoniyat faxri.'
   }
 ];
 
@@ -163,6 +173,8 @@ export function getLevelDescription(level: number): string {
 
 // Get emoji for level (keeping visual distinction)
 export function getLevelEmoji(level: number): string {
+  if (level >= 29) return '⚡' // Zulqarnayn
+  if (level >= 28) return '💎' // Shahanshoh
   if (level >= 27) return '👑' // Sohibqiron
   if (level >= 25) return '🔱' // Xon/Xoqon
   if (level >= 20) return '♔'  // Beklarbegi/Noib/Qo'shbegi/Amir

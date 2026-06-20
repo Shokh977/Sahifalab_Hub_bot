@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Header
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Header, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from datetime import datetime, UTC
 from typing import Optional
+import httpx
 from app.db.session import get_db
-from app.models.models import Book, BookRating, BookReadProgress, BookPurchase
+from app.models.models import Book, BookRating, BookReadProgress, BookPurchase, Profile
 from app.schemas.schemas import BookResponse, BookListResponse, BookCreate, BookRateRequest, BookProgressRequest
 from app.services.auth_service import decode_token, decode_token_payload
 
@@ -85,6 +87,13 @@ async def download_book(
             detail="Book not found"
         )
     
+    # Check download permission
+    if not book.is_downloadable:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This book is read-only and cannot be downloaded",
+        )
+
     # For paid books, verify user has purchased
     if book.is_paid:
         purchase = db.query(BookPurchase).filter(
@@ -97,13 +106,50 @@ async def download_book(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Purchase required to download this book",
             )
-    
+
     # Update download count
     book.downloads += 1
     db.commit()
     
     # Redirect to file URL
     return {"download_url": book.file_url}
+
+@router.get("/{book_id}/reviews")
+async def get_book_reviews(
+    book_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    response.headers["Cache-Control"] = "no-store"
+    """Return all reviews for a book, joined with profile info."""
+    ratings = (
+        db.query(BookRating)
+        .filter(BookRating.book_id == book_id)
+        .order_by(BookRating.created_at.desc())
+        .all()
+    )
+    result = []
+    for r in ratings:
+        profile = db.query(Profile).filter(Profile.telegram_id == r.telegram_id).first()
+        try:
+            review_text = r.review
+        except Exception:
+            review_text = None
+        result.append({
+            "id": r.id,
+            "user_id": r.telegram_id,
+            "rating": r.rating,
+            "review": review_text,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "profiles": {
+                "first_name": profile.first_name if profile else "Foydalanuvchi",
+                "username": profile.username if profile else None,
+                "photo_url": profile.photo_url if profile else None,
+            },
+        })
+    return result
+
 
 @router.get("/{book_id}/my-rating")
 async def get_my_rating(
@@ -116,7 +162,11 @@ async def get_my_rating(
         BookRating.book_id == book_id,
         BookRating.telegram_id == caller_id,
     ).first()
-    return {"rating": rating.rating if rating else 0}
+    try:
+        review_text = rating.review if rating else None
+    except Exception:
+        review_text = None
+    return {"rating": rating.rating if rating else 0, "review": review_text}
 
 @router.post("/{book_id}/rate")
 async def rate_book(
@@ -142,12 +192,17 @@ async def rate_book(
     if existing:
         existing.rating = body.rating
         existing.updated_at = datetime.utcnow()
+        try:
+            existing.review = body.review
+        except Exception:
+            pass
     else:
-        db.add(BookRating(
-            book_id=book_id,
-            telegram_id=telegram_id,
-            rating=body.rating,
-        ))
+        kwargs: dict = dict(book_id=book_id, telegram_id=telegram_id, rating=body.rating)
+        try:
+            kwargs["review"] = body.review
+        except Exception:
+            pass
+        db.add(BookRating(**kwargs))
 
     db.flush()
 
@@ -218,6 +273,57 @@ async def save_book_progress(
         ))
     db.commit()
     return {"success": True}
+
+@router.get("/{book_id}/file")
+async def proxy_book_file(
+    book_id: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Stream the book file (PDF or EPUB) through the backend so epub.js can load
+    it without hitting CDN CORS restrictions.  Paid books require a valid JWT
+    with a completed purchase; free books are served without auth.
+    """
+    book = db.query(Book).filter(Book.id == book_id).first()
+    if not book or not book.file_url:
+        raise HTTPException(status_code=404, detail="Book not found")
+
+    if book.is_paid:
+        caller_id: Optional[int] = None
+        if authorization:
+            parts = authorization.split()
+            if len(parts) == 2 and parts[0] == "Bearer":
+                caller_id = decode_token(parts[1])
+        if not caller_id:
+            raise HTTPException(status_code=401, detail="Avtorizatsiya talab qilinadi")
+        purchase = db.query(BookPurchase).filter(
+            BookPurchase.book_id == book_id,
+            BookPurchase.telegram_id == caller_id,
+            BookPurchase.status == "completed",
+        ).first()
+        if not purchase:
+            raise HTTPException(status_code=403, detail="Purchase required")
+
+    url = book.file_url
+    ext = url.lower().split("?")[0].rsplit(".", 1)[-1]
+    mime = "application/epub+zip" if ext == "epub" else "application/pdf"
+
+    async def _stream():
+        async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+            async with client.stream("GET", url) as r:
+                async for chunk in r.aiter_bytes(chunk_size=65536):
+                    yield chunk
+
+    return StreamingResponse(
+        _stream(),
+        media_type=mime,
+        headers={
+            "Content-Disposition": f'inline; filename="book.{ext}"',
+            "Cache-Control": "private, max-age=3600",
+        },
+    )
+
 
 @router.put("/{book_id}", response_model=BookResponse)
 async def update_book(

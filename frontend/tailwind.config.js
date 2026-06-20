@@ -49,7 +49,8 @@ export default {
       },
       fontFamily: {
         sans: ['Oxygen', 'Inter', 'system-ui', '-apple-system', 'sans-serif'],
-        display: ['Oxygen', 'Inter', 'system-ui', 'sans-serif'],
+        display: ['Space Grotesk', 'Oxygen', 'Inter', 'system-ui', 'sans-serif'],
+        serif: ['Noto Serif Display', 'serif'],
       },
       borderRadius: {
         '4xl': '2rem',

@@ -23,6 +23,7 @@ from app.services.xp_service import (
     DEFAULT_COURSE_XP,
     QUIZ_DAILY_CAP,
 )
+from app.services.integration_service import hook_course_completed, hook_level_up
 
 router = APIRouter()
 
@@ -101,6 +102,19 @@ async def award_xp(
                 detail="COURSE requires reference_id (course_id)",
             )
 
+    # ── Snapshot old level before XP mutation ────────────────────────────────
+    old_level: int = 1
+    try:
+        from sqlalchemy import text as _text
+        row = db.execute(
+            _text("SELECT COALESCE(level, 1) AS lvl FROM profiles WHERE telegram_id = :uid"),
+            {"uid": telegram_id},
+        ).fetchone()
+        if row:
+            old_level = int(row.lvl)
+    except Exception:
+        pass
+
     # ── Call the Postgres RPC ─────────────────────────────────────────────────
     try:
         result = add_xp(
@@ -113,12 +127,56 @@ async def award_xp(
     except Exception:
         raise HTTPException(status_code=500, detail="XP qo'shishda xatolik yuz berdi")
 
+    # ── Integration hooks (fire-and-forget, never block) ──────────────────────
+    new_level = result["new_level"]
+    xp_added  = result["xp_added"]
+
+    # HOOK 1: course completed (first time only)
+    if source == "COURSE" and xp_added > 0 and body.reference_id:
+        # Fetch course title for the auto-post (best-effort)
+        course_title = f"Kurs #{body.reference_id}"
+        skill_tags: list[str] = []
+        try:
+            import os, httpx as _httpx
+            _sb_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+            _sb_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+            if _sb_url and _sb_key:
+                import asyncio as _asyncio
+                async def _fetch_course():
+                    async with _httpx.AsyncClient(timeout=5) as c:
+                        r = await c.get(
+                            f"{_sb_url}/rest/v1/courses",
+                            params={"id": f"eq.{body.reference_id}", "select": "title,skill_tags"},
+                            headers={"apikey": _sb_key, "Authorization": f"Bearer {_sb_key}"},
+                        )
+                    return r.json() if r.status_code == 200 else []
+                loop = _asyncio.get_event_loop()
+                if loop.is_running():
+                    import concurrent.futures
+                    future = _asyncio.run_coroutine_threadsafe(_fetch_course(), loop)
+                    try:
+                        rows = future.result(timeout=5)
+                        if rows:
+                            course_title = rows[0].get("title", course_title)
+                            skill_tags = rows[0].get("skill_tags") or []
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+
+        hook_course_completed(db, telegram_id, body.reference_id, course_title, skill_tags)
+
+    # HOOK 3: level up
+    if new_level > old_level:
+        hook_level_up(db, telegram_id, new_level)
+
     return {
         "ok":        True,
         "new_xp":    result["new_xp"],
-        "new_level": result["new_level"],
-        "xp_added":  result["xp_added"],
-        "capped":    result["xp_added"] < amount,   # True when daily/one-time limit hit
+        "new_level": new_level,
+        "xp_added":  xp_added,
+        "capped":    xp_added < amount,   # True when daily/one-time limit hit
+        "leveled_up": new_level > old_level,
     }
 
 

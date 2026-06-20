@@ -25,7 +25,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, Sun, Moon, SunDim, List, Play, Pause,
   ChevronLeft, ChevronRight, Timer, Flame, X,
-  Minimize2, Maximize2, BookOpen, Lock,
+  Minimize2, Maximize2, BookOpen, Lock, Settings2,
+  ZoomIn, ZoomOut, Type,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useTelegramWebApp } from '../hooks/useTelegramWebApp'
@@ -58,6 +59,16 @@ interface TocEntry {
 }
 
 type Theme = 'light' | 'sepia' | 'dark'
+type FontFamily = 'serif' | 'sans' | 'mono'
+
+const FONT_FAMILIES: Record<FontFamily, { label: string; css: string }> = {
+  serif: { label: 'Serif',  css: 'Georgia, "Times New Roman", serif' },
+  sans:  { label: 'Sans',   css: 'system-ui, -apple-system, sans-serif' },
+  mono:  { label: 'Mono',   css: '"Courier New", Courier, monospace' },
+}
+
+const FONT_SIZE_MIN = 14
+const FONT_SIZE_MAX = 28
 
 // ── Theme tokens ──────────────────────────────────────────────────────────────
 
@@ -115,7 +126,7 @@ function detectType(url: string): 'pdf' | 'epub' {
 
 const FloatingFocusWidget: React.FC<{ theme: Theme }> = ({ theme }) => {
   const timer = useBackgroundTimer()
-  const { addFocusSeconds } = useProgressStore()
+  const { addFocusSeconds, flushFocusSeconds } = useProgressStore()
   const [readingXP, setReadingXP] = useState(0)
   const [minimized, setMinimized] = useState(false)
 
@@ -128,6 +139,12 @@ const FloatingFocusWidget: React.FC<{ theme: Theme }> = ({ theme }) => {
     const id = setInterval(() => addFocusSeconds(1), 1_000)
     return () => clearInterval(id)
   }, [activeAndFocus, addFocusSeconds])
+
+  // Flush accumulated XP when user leaves reading page
+  useEffect(() => {
+    return () => { flushFocusSeconds() }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Local display counter: +1 per minute
   useEffect(() => {
@@ -305,6 +322,10 @@ const BookReaderPage: React.FC = () => {
   const [theme, setTheme] = useState<Theme>('light')
   const [tocOpen, setTocOpen] = useState(false)
   const [toc, setToc] = useState<TocEntry[]>([])
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [fontSize, setFontSize] = useState(18)
+  const [fontFamily, setFontFamily] = useState<FontFamily>('serif')
+  const [lineHeight, setLineHeight] = useState(1.8)
 
   // PDF-specific
   const [numPages, setNumPages] = useState(0)
@@ -315,6 +336,8 @@ const BookReaderPage: React.FC = () => {
 
   // EPUB-specific
   const [epubLocation, setEpubLocation] = useState<string | number | null>(null)
+  const [epubReady, setEpubReady] = useState(false)
+  const [epubFailed, setEpubFailed] = useState(false)
   const renditionRef = useRef<any>(null)
 
   // Progress
@@ -340,21 +363,33 @@ const BookReaderPage: React.FC = () => {
   useEffect(() => {
     if (!bookId) return
     const run = async () => {
+      // Step 1: fetch book metadata — a real failure (404/500) shows the error screen
+      let bk: BookInfo
       try {
         const res = await apiService.getBook(Number(bookId))
-        const bk = res.data as BookInfo
+        bk = res.data as BookInfo
         setBook(bk)
-        if (!bk.is_paid) {
-          setHasAccess(true)
-        } else if (telegramId) {
-          const pr = await apiService.checkPurchase(bk.id, telegramId)
-          setHasAccess(pr.data?.purchased === true)
-        }
       } catch {
         setError('Kitob topilmadi')
-      } finally {
         setLoading(false)
+        return
       }
+
+      // Step 2: access check — failures here mean "no access", not "book missing"
+      if (!bk.is_paid) {
+        setHasAccess(true)
+      } else if (telegramId) {
+        try {
+          const pr = await apiService.checkPurchase(bk.id, telegramId)
+          setHasAccess(pr.data?.purchased === true)
+        } catch {
+          // checkPurchase failed (auth/network) — treat as not purchased, show lock screen
+          setHasAccess(false)
+        }
+      }
+      // else: paid book, no telegramId — hasAccess stays false → lock screen
+
+      setLoading(false)
     }
     run()
   }, [bookId, telegramId])
@@ -436,26 +471,35 @@ const BookReaderPage: React.FC = () => {
     } catch { /* ignore */ }
   }, [])
 
+  // ── Apply EPUB rendition styles (theme + font settings) ──────────────────
+  const applyEpubStyles = useCallback((th: Theme, fs: number, ff: FontFamily, lh: number) => {
+    const r = renditionRef.current
+    if (!r) return
+    try {
+      // themes.override() pushes the property into all current iframe views
+      // and persists it for future views — unlike register+select which only
+      // affects future renders
+      r.themes.override('background', THEMES[th].epubBg)
+      r.themes.override('color', THEMES[th].epubFg)
+      r.themes.override('line-height', String(lh))
+      r.themes.override('padding', '0 8px')
+      // epubjs convenience helpers that also call update() on current views
+      r.themes.fontSize(`${fs}px`)
+      r.themes.font(FONT_FAMILIES[ff].css)
+    } catch { /* rendition not fully initialised yet */ }
+  }, [])
+
   // ── EPUB rendition ready ──────────────────────────────────────────────────
   const getRendition = useCallback((rendition: any) => {
     renditionRef.current = rendition
-    const applyTheme = (th: Theme) => {
-      rendition.themes.register('reader', {
-        body: {
-          background: THEMES[th].epubBg,
-          color: THEMES[th].epubFg,
-          fontSize: '18px',
-          lineHeight: '1.8',
-          fontFamily: 'Georgia, "Times New Roman", serif',
-          padding: '0 4px',
-        },
-        'p, div, span': {
-          color: THEMES[th].epubFg + ' !important',
-        },
-      })
-      rendition.themes.select('reader')
-    }
-    applyTheme(theme)
+    applyEpubStyles(theme, fontSize, fontFamily, lineHeight)
+
+    // Mark ready on first section render
+    rendition.on('rendered', () => setEpubReady(true))
+
+    // Catch epub.js-level errors
+    rendition.book.ready.catch(() => setEpubFailed(true))
+
     // Get navigation (ToC)
     rendition.book.loaded.navigation.then((nav: any) => {
       const conv = (items: any[]): TocEntry[] =>
@@ -469,21 +513,19 @@ const BookReaderPage: React.FC = () => {
     }).catch(() => {})
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Update EPUB theme when user cycles themes
+  // 20-second timeout: if EPUB never renders, mark as failed
   useEffect(() => {
-    if (!renditionRef.current) return
-    renditionRef.current.themes.register('reader', {
-      body: {
-        background: THEMES[theme].epubBg,
-        color: THEMES[theme].epubFg,
-        fontSize: '18px',
-        lineHeight: '1.8',
-        fontFamily: 'Georgia, "Times New Roman", serif',
-      },
-      'p, div, span': { color: THEMES[theme].epubFg + ' !important' },
-    })
-    renditionRef.current.themes.select('reader')
-  }, [theme])
+    if (fileType !== 'epub' || !hasAccess) return
+    const t = setTimeout(() => {
+      if (!epubReady) setEpubFailed(true)
+    }, 20_000)
+    return () => clearTimeout(t)
+  }, [fileType, hasAccess, epubReady])
+
+  // Re-apply EPUB styles whenever theme or font settings change
+  useEffect(() => {
+    applyEpubStyles(theme, fontSize, fontFamily, lineHeight)
+  }, [theme, fontSize, fontFamily, lineHeight, applyEpubStyles])
 
   // ── ToC navigation dispatcher ─────────────────────────────────────────────
   const handleTocNav = useCallback((entry: TocEntry) => {
@@ -612,7 +654,102 @@ const BookReaderPage: React.FC = () => {
         >
           <ThemeIcon className="w-5 h-5" />
         </button>
+
+        {/* Settings toggle */}
+        <button
+          onClick={() => setSettingsOpen(o => !o)}
+          title="O'qish sozlamalari"
+          className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${t.hover} ${
+            settingsOpen ? 'bg-[#F15929]/15 text-[#F15929]' : ''
+          }`}
+        >
+          <Settings2 className="w-5 h-5" />
+        </button>
       </header>
+
+      {/* ── Settings panel ─────────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {settingsOpen && (
+          <motion.div
+            key="settings-panel"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className={`flex-shrink-0 overflow-hidden border-b ${t.toolbar}`}
+          >
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-3 px-4 py-3">
+
+              {/* Font family (EPUB only — PDF is pre-rendered) */}
+              {fileType === 'epub' && (
+                <div className="flex items-center gap-2">
+                  <Type className={`w-4 h-4 flex-shrink-0 ${t.muted}`} />
+                  <div className="flex rounded-lg overflow-hidden border border-current/10">
+                    {(Object.keys(FONT_FAMILIES) as FontFamily[]).map(ff => (
+                      <button
+                        key={ff}
+                        onClick={() => setFontFamily(ff)}
+                        className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                          fontFamily === ff
+                            ? 'bg-[#F15929] text-white'
+                            : `${t.navBtn}`
+                        }`}
+                        style={{ fontFamily: FONT_FAMILIES[ff].css }}
+                      >
+                        {FONT_FAMILIES[ff].label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Font size / zoom */}
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    if (fileType === 'epub') setFontSize(s => Math.max(FONT_SIZE_MIN, s - 2))
+                    else setPageWidth(w => Math.max(320, w - 60))
+                  }}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 ${t.navBtn}`}
+                  title="Kichikroq"
+                >
+                  <ZoomOut className="w-4 h-4" />
+                </button>
+                <span className={`text-xs tabular-nums font-mono w-10 text-center ${t.text}`}>
+                  {fileType === 'epub' ? `${fontSize}px` : `${Math.round((pageWidth / 640) * 100)}%`}
+                </span>
+                <button
+                  onClick={() => {
+                    if (fileType === 'epub') setFontSize(s => Math.min(FONT_SIZE_MAX, s + 2))
+                    else setPageWidth(w => Math.min(1200, w + 60))
+                  }}
+                  className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all active:scale-90 ${t.navBtn}`}
+                  title="Kattaroq"
+                >
+                  <ZoomIn className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Line height (EPUB only) */}
+              {fileType === 'epub' && (
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs ${t.muted}`}>Satr balandligi</span>
+                  <input
+                    type="range"
+                    min={1.2}
+                    max={2.4}
+                    step={0.1}
+                    value={lineHeight}
+                    onChange={e => setLineHeight(Number(e.target.value))}
+                    className="w-24 accent-[#F15929]"
+                  />
+                  <span className={`text-xs tabular-nums font-mono ${t.muted}`}>{lineHeight.toFixed(1)}</span>
+                </div>
+              )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ── PDF progress bar ─────────────────────────────────────────────────── */}
       {fileType === 'pdf' && numPages > 0 && (
@@ -727,10 +864,10 @@ const BookReaderPage: React.FC = () => {
         )}
 
         {/* ── EPUB viewer ─────────────────────────────────────────────────── */}
-        {fileType === 'epub' && (
+        {fileType === 'epub' && !epubFailed && (
           <div className="absolute inset-0">
             <ReactReader
-              url={book.file_url}
+              url={apiService.bookFileUrl(book.id)}
               location={epubLocation}
               locationChanged={setEpubLocation as (loc: string) => void}
               getRendition={getRendition}
@@ -756,6 +893,25 @@ const BookReaderPage: React.FC = () => {
                 },
               }}
             />
+          </div>
+        )}
+
+        {/* ── EPUB load failure fallback ───────────────────────────────────── */}
+        {fileType === 'epub' && epubFailed && (
+          <div className={`absolute inset-0 flex flex-col items-center justify-center gap-4 px-6 text-center ${t.outer}`}>
+            <BookOpen className={`w-12 h-12 opacity-30 ${t.muted}`} />
+            <p className={`text-sm font-semibold ${t.text}`}>EPUB yuklanmadi</p>
+            <p className={`text-xs max-w-xs ${t.muted}`}>
+              Fayl brauzerda to'g'ridan-to'g'ri ochilishi mumkin.
+            </p>
+            <a
+              href={book.file_url ?? ''}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-5 py-2.5 rounded-xl bg-[#F15929] text-white text-sm font-semibold hover:bg-orange-600 transition-colors"
+            >
+              Yangi tabda ochish →
+            </a>
           </div>
         )}
       </div>

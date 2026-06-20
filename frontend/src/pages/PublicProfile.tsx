@@ -64,7 +64,7 @@ const TAB_COURSES = { key: 'courses' as TabKey, label: 'Kurslar', icon: PlayCirc
 // ── Main component ────────────────────────────────────────────────────────────
 const PublicProfile: React.FC = () => {
   const { userId } = useParams<{ userId: string }>()
-  const { user, isAuthenticated } = useAuth()
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
 
@@ -80,8 +80,19 @@ const PublicProfile: React.FC = () => {
   const [courses, setCourses] = useState<CourseData[]>([])
   const [coursesLoading, setCoursesLoading] = useState(false)
 
-  const myId = (user as any)?.telegram_id || (user as any)?.id
-  const targetId = Number(userId)
+  const myId: number | undefined = (user as any)?.telegram_id || (user as any)?.id
+
+  // For /profile/me, resolve to the authenticated user's numeric ID without redirecting.
+  // targetId stays undefined while auth is loading → fetch skips → no flash.
+  // If auth resolved and no user, redirect to login.
+  if (userId === 'me' && !authLoading && !isAuthenticated) {
+    navigate('/login', { replace: true })
+  }
+
+  const targetId: number | undefined =
+    userId === 'me'
+      ? (authLoading ? undefined : myId)
+      : Number(userId) || undefined
   const isOwnProfile = myId === targetId
   const isTeacher = profile?.role === 'teacher'
 
@@ -107,6 +118,7 @@ const PublicProfile: React.FC = () => {
 
   // ── Fetch profile + posts ───────────────────────────────────────────────
   useEffect(() => {
+    if (!targetId) return
     const fetchProfile = async () => {
       setLoading(true)
       try {

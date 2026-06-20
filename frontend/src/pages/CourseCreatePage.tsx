@@ -762,7 +762,7 @@ const CourseCreatePage: React.FC = () => {
                         maxSizeMB={10}
                       />
                       <p className="text-xs text-slate-400 dark:text-slate-500">yoki URL kiriting:</p>
-                      <input type="url" value={form.thumbnail_url} onChange={e => updateForm('thumbnail_url', e.target.value)} placeholder="https://cdn.bunny.net/..." className={inputCls} />
+                      <input type="url" value={form.thumbnail_url} onChange={e => updateForm('thumbnail_url', e.target.value)} placeholder="https://example.com/image.jpg" className={inputCls} />
                     </div>
                     {/* Live preview */}
                     <div className="rounded-2xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
@@ -925,7 +925,7 @@ const CourseCreatePage: React.FC = () => {
                 <div className="flex items-center justify-between bg-gradient-to-r from-amber-500/5 to-transparent px-5 py-4 dark:from-amber-500/10">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-600 dark:text-amber-400">Monetizatsiya</p>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Free kurslar YouTube bilan, Paid kurslar Bunny.net bilan ishlaydi.</p>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Free kurslar YouTube bilan, Paid kurslar video fayl yuklash orqali ishlaydi.</p>
                   </div>
                   <button type="button" onClick={() => updateForm('is_paid', !form.is_paid)} className={`relative h-7 w-12 rounded-full transition ${form.is_paid ? 'bg-[#F26722]' : 'bg-slate-300 dark:bg-slate-700'}`}>
                     <span className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-md transition-all ${form.is_paid ? 'left-6' : 'left-1'}`} />
@@ -1125,7 +1125,7 @@ const CourseCreatePage: React.FC = () => {
                 {/* ── VIDEO EDITOR ── */}
                 {lessonLookup.lesson.type === 'video' && (
                   <>
-                    <Field label="Video" icon={CloudArrowUpIcon} hint={form.is_paid ? 'Pullik kurs — Bunny.net tavsiya etiladi' : 'Bepul kurs — YouTube qulay'}>
+                    <Field label="Video" icon={CloudArrowUpIcon} hint={form.is_paid ? 'Pullik kurs — video yuklash tavsiya etiladi' : 'Bepul kurs — YouTube qulay'}>
                       <VideoSourcePicker
                         courseId={courseId}
                         source={lessonLookup.lesson.video_source}

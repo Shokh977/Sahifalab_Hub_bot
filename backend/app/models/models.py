@@ -1,5 +1,6 @@
 from datetime import datetime, UTC
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, ForeignKey, Table, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, Date, ForeignKey, Table, Boolean, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -17,7 +18,8 @@ class Profile(Base):
 
     telegram_id       = Column(BigInteger, primary_key=True)
     first_name        = Column(String(255), nullable=True)
-    username          = Column(String(255), nullable=True)
+    username          = Column(String(255), nullable=True)   # Telegram username — internal only, never exposed publicly
+    site_username     = Column(String(50),  nullable=True, index=True)  # Public handle used in profile URLs
     photo_url         = Column(String(1000), nullable=True)
     role              = Column(String(50), default='student')   # student | teacher | admin
     status            = Column(String(50), default='active')    # active | pending | suspended
@@ -33,12 +35,30 @@ class Profile(Base):
     # Social ecosystem columns
     followers_count         = Column(Integer, default=0)
     following_count         = Column(Integer, default=0)
+    connections_count       = Column(Integer, default=0)
     bio                     = Column(Text, nullable=True)
     about_me                = Column(Text, nullable=True)
     # New gamification columns (038_xp_gamification)
     total_focus_minutes     = Column(Integer, default=0)
     daily_quiz_xp           = Column(Integer, default=0)
     daily_quiz_xp_reset_at  = Column(DateTime(timezone=True), nullable=True)
+    # Profile extension columns (043_profile_extension)
+    headline           = Column(String(120), nullable=True)
+    location_city      = Column(String(255), nullable=True)
+    cover_image_url    = Column(String(1000), nullable=True)
+    website_url        = Column(String(500), nullable=True)
+    profile_views      = Column(Integer, default=0)
+    profile_views_week = Column(Integer, default=0)
+    is_verified        = Column(Boolean, default=False)
+    account_type       = Column(String(50), default='student')   # student | teacher | company | admin
+    user_settings      = Column(JSONB, nullable=True)
+    # Email verification & password management (049_auth_tokens_email_verification)
+    email_verified      = Column(Boolean, nullable=True, default=None)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    # Focus / streak tracking (055_focus_sessions)
+    daily_goal_minutes  = Column(Integer, default=20, nullable=True)
+    streak_days         = Column(Integer, default=0,  nullable=True)
+    streak_last_date    = Column(Date, nullable=True)
 
 
 class AuthCode(Base):
@@ -54,6 +74,19 @@ class AuthCode(Base):
     used        = Column(Boolean, default=False, nullable=False)
     expires_at  = Column(DateTime(timezone=True), nullable=False)
     created_at  = Column(DateTime(timezone=True), nullable=True)
+
+
+class AuthToken(Base):
+    """Tokens for email verification and password reset (one-time use, expiring)."""
+    __tablename__ = "auth_tokens"
+
+    id         = Column(String(64), primary_key=True)  # random hex
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    token      = Column(String(64), unique=True, nullable=False)
+    type       = Column(String(30), nullable=False)   # 'email_verification' | 'password_reset'
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at    = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class XpLog(Base):
@@ -94,6 +127,8 @@ class PlannerTask(Base):
     linked_course_id = Column(Integer, nullable=True)
     linked_lesson_id = Column(Integer, nullable=True)
     xp_claimed       = Column(Boolean, default=False)   # prevents done→todo→done XP farming
+    scheduled_at     = Column(DateTime(timezone=True), nullable=True)
+    duration_minutes = Column(Integer, default=30)
     created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
@@ -111,17 +146,73 @@ class PlannerNote(Base):
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
+class FlashcardDeck(Base):
+    """User-created flashcard deck — groups cards by topic."""
+    __tablename__ = "flashcard_decks"
+
+    id             = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id        = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    title          = Column(String(200), nullable=False)
+    description    = Column(Text, nullable=True)
+    color          = Column(String(7), default='#F5A623')
+    icon           = Column(String(50), nullable=True)
+    card_count     = Column(Integer, default=0)
+    mastered_count = Column(Integer, default=0)
+    is_public      = Column(Boolean, default=False)
+    course_id      = Column(Integer, nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    cards = relationship("Flashcard", back_populates="deck", cascade="all, delete-orphan")
+
+
+class Flashcard(Base):
+    """Individual flashcard — belongs to a deck, stores SM-2 spaced repetition state."""
+    __tablename__ = "flashcards"
+
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    deck_id       = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    front_text    = Column(Text, nullable=False)
+    back_text     = Column(Text, nullable=False)
+    front_image   = Column(String(500), nullable=True)
+    back_image    = Column(String(500), nullable=True)
+    position      = Column(Integer, default=0)
+    ease_factor   = Column(Float, default=2.5)
+    interval_days = Column(Integer, default=0)
+    repetitions   = Column(Integer, default=0)
+    next_review   = Column(DateTime(timezone=True), nullable=True)
+    last_reviewed = Column(DateTime(timezone=True), nullable=True)
+    status        = Column(String(20), default='new')  # new|learning|reviewing|mastered
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    deck = relationship("FlashcardDeck", back_populates="cards")
+
+
+class FlashcardReview(Base):
+    """Audit log of every card review — used for session stats and XP verification."""
+    __tablename__ = "flashcard_reviews"
+
+    id           = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id      = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    card_id      = Column(BigInteger, ForeignKey("flashcards.id", ondelete="CASCADE"), nullable=False)
+    deck_id      = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating       = Column(Integer, nullable=False)   # 1=forgot 2=hard 3=good 4=easy
+    reviewed_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    time_spent_ms = Column(Integer, nullable=True)
+
+
 class TeacherProfile(Base):
     """Teacher application data — mirrors the Supabase 'teacher_profiles' table."""
     __tablename__ = "teacher_profiles"
 
-    id               = Column(Integer, primary_key=True, autoincrement=True)
+    id               = Column(PGUUID(as_uuid=True), primary_key=True, server_default="gen_random_uuid()")
     telegram_id      = Column(BigInteger, unique=True, index=True)
     specialization   = Column(String(255), nullable=True)
     experience_years = Column(Integer, nullable=True)
     bio              = Column(Text, nullable=True)
     course_idea      = Column(Text, nullable=True)
     motivation       = Column(Text, nullable=True)
+    contact          = Column(String(255), nullable=True)
     applied_at       = Column(DateTime(timezone=True), nullable=True)
 
 # Association table for cart items
@@ -259,7 +350,7 @@ class Quote(Base):
 
 class Quiz(Base):
     __tablename__ = "quiz"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String(255))
     book_title = Column(String(255))
@@ -267,10 +358,13 @@ class Quiz(Base):
     difficulty = Column(String(20), default='medium')  # easy, medium, hard
     category = Column(String(100))
     total_questions = Column(Integer)
+    # Optional FK linking quiz to a specific book
+    book_id = Column(Integer, ForeignKey("book.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # Relationships
     questions = relationship("QuizQuestion", back_populates="quiz", cascade="all, delete-orphan")
+    linked_book = relationship("Book", foreign_keys=[book_id])
 
 class QuizQuestion(Base):
     __tablename__ = "quiz_question"
@@ -301,6 +395,7 @@ class Book(Base):
     downloads = Column(Integer, default=0)
     rating = Column(Float, default=0)
     is_available = Column(Boolean, default=True)
+    is_downloadable = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -322,13 +417,14 @@ class BookPurchase(Base):
 
 
 class BookRating(Base):
-    """Stores individual user ratings for books (1-5 stars)."""
+    """Stores individual user ratings and text reviews for books."""
     __tablename__ = "book_rating"
 
     id = Column(Integer, primary_key=True, index=True)
     book_id = Column(Integer, ForeignKey("book.id"), index=True)
     telegram_id = Column(Integer, index=True)
     rating = Column(Integer)  # 1-5
+    review = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

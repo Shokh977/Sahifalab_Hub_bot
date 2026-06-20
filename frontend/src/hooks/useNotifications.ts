@@ -55,8 +55,8 @@ export function useNotifications(userId: number | null) {
   }, [userId])
 
   // ── Fetch full notification list (on demand — called when dropdown opens) ─
-  const fetchNotifications = useCallback(async () => {
-    if (!userId || listFetchedRef.current) return
+  const fetchNotifications = useCallback(async (force = false) => {
+    if (!userId || (listFetchedRef.current && !force)) return
     listFetchedRef.current = true
     setLoading(true)
     console.time('⏱️ NotifList_Fetch')
@@ -73,18 +73,35 @@ export function useNotifications(userId: number | null) {
     console.timeEnd('⏱️ NotifList_Fetch')
   }, [userId])
 
-  // ── Fetch single notification by id (post-fetch for Realtime INSERT) ──────
+  // ── Reset fetch gate when userId changes (logout → login) ────────────────
+  useEffect(() => {
+    listFetchedRef.current = false
+    _cache.clear()
+    setNotifications([])
+  }, [userId])
+
+  // ── Fetch single notification by id (uses dedicated backend endpoint) ─────
   const fetchById = useCallback(async (id: number): Promise<NotificationItem | null> => {
     if (_cache.has(id)) return _cache.get(id)!
     try {
-      // Fetch page with cursor set so we get this specific item
-      // Since we can't query by id directly, fetch latest and find it
-      const res = await apiService.client.get('/api/notifications', { params: { limit: 5 } })
-      const items: NotificationItem[] = res.data?.notifications ?? []
-      items.forEach(n => _cache.set(n.id, n))
-      return items.find(n => n.id === id) ?? null
-    } catch {
+      // Use the dedicated single-item endpoint (GET /api/notifications/:id)
+      const res = await apiService.client.get(`/api/notifications/${id}`)
+      const item: NotificationItem = res.data
+      if (item?.id) {
+        _cache.set(item.id, item)
+        return item
+      }
       return null
+    } catch {
+      // Fallback: scan the latest page in case the endpoint doesn't exist yet
+      try {
+        const res = await apiService.client.get('/api/notifications', { params: { limit: 20 } })
+        const items: NotificationItem[] = res.data?.notifications ?? []
+        items.forEach(n => _cache.set(n.id, n))
+        return items.find(n => n.id === id) ?? null
+      } catch {
+        return null
+      }
     }
   }, [])
 

@@ -75,7 +75,7 @@ const dict: Record<string, NotifDef> = {
     color: 'text-rose-500 dark:text-rose-400',
     bgColor: 'bg-rose-100 dark:bg-rose-900/30',
     message: (m) => `${actor(m)} sizning postingizga like bosdi.`,
-    route: (m) => m.post_id ? `/social?post=${m.post_id}` : '/social',
+    route: (m) => m.post_id ? `/feed?post=${m.post_id}` : '/feed',
   },
 
   comment: {
@@ -84,7 +84,7 @@ const dict: Record<string, NotifDef> = {
     color: 'text-emerald-600 dark:text-emerald-400',
     bgColor: 'bg-emerald-100 dark:bg-emerald-900/30',
     message: (m) => `${actor(m)} sizning postingizga izoh qoldirdi.`,
-    route: (m) => m.post_id ? `/social?post=${m.post_id}` : '/social',
+    route: (m) => m.post_id ? `/feed?post=${m.post_id}` : '/feed',
   },
 
   repost: {
@@ -93,7 +93,7 @@ const dict: Record<string, NotifDef> = {
     color: 'text-violet-600 dark:text-violet-400',
     bgColor: 'bg-violet-100 dark:bg-violet-900/30',
     message: () => "Kimdir sizning postingizni o'z lentasida ulashdi.",
-    route: (m) => m.post_id ? `/social?post=${m.post_id}` : '/social',
+    route: (m) => m.post_id ? `/feed?post=${m.post_id}` : '/feed',
   },
 
   mention: {
@@ -102,7 +102,7 @@ const dict: Record<string, NotifDef> = {
     color: 'text-amber-600 dark:text-amber-400',
     bgColor: 'bg-amber-100 dark:bg-amber-900/30',
     message: (m) => `${actor(m)} sizni eslatib o'tdi.`,
-    route: (m) => m.post_id ? `/social?post=${m.post_id}` : '/social',
+    route: (m) => m.post_id ? `/feed?post=${m.post_id}` : '/feed',
   },
 
   // ─────────────────────────── EDUCATIONAL ──────────────────────────────────
@@ -172,7 +172,7 @@ const dict: Record<string, NotifDef> = {
       m.course_title
         ? `"${m.course_title}" sertifikati tayyor.`
         : "Sertifikat olishga tayyorsiz.",
-    route: (m) => m.course_id ? `/courses/${m.course_id}` : '/cabinet',
+    route: (m) => m.course_id ? `/courses/${m.course_id}` : '/profile/me',
   },
 
   quiz_pass: {
@@ -196,7 +196,7 @@ const dict: Record<string, NotifDef> = {
     bgColor: 'bg-sahifa-100 dark:bg-sahifa-900/30',
     message: (m) =>
       `Ilm yo'liga qadam qo'yganingiz muborak! Sahifalab platformasida nafaqat kitob xulosalarini o'qiysiz, balki 'Deep Work' orqali o'z diqqatingizni charxlaysiz. Biz sizga birinchi qadamingiz uchun ${m.xp_reward ?? 100} XP taqdim etdik. Fokusni yo'qotmang!`,
-    route: () => '/cabinet',
+    route: () => '/profile/me',
   },
 
   level_up: {
@@ -206,7 +206,7 @@ const dict: Record<string, NotifDef> = {
     bgColor: 'bg-sahifa-100 dark:bg-sahifa-900/30',
     message: (m) =>
       `Ajoyib! Siz ${m.rank_name || m.new_level || 'yangi'}-darajasiga ko'tarildingiz!`,
-    route: () => '/cabinet',
+    route: () => '/profile/me',
   },
 
   daily_streak: {
@@ -235,7 +235,7 @@ const dict: Record<string, NotifDef> = {
     color: 'text-purple-600 dark:text-purple-400',
     bgColor: 'bg-purple-100 dark:bg-purple-900/30',
     message: (m) => `"${m.achievement_name || 'Yangi yutuq'}" ochildi!`,
-    route: () => '/cabinet',
+    route: () => '/profile/me',
   },
 
   streak: {

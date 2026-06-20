@@ -14,6 +14,7 @@
  *   Dark:  #1C1C22 bg + deep slate glass containers
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import { API_BASE } from '../lib/apiUrl'
 import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Helmet } from 'react-helmet-async'
@@ -174,6 +175,7 @@ const CourseDetailPage: React.FC = () => {
   const [teacherProfile, setTeacherProfile] = useState<{
     first_name?: string | null; username?: string | null; photo_url?: string | null
     specialization?: string | null; bio?: string | null
+    experience_years?: number | null; level?: number | null
   } | null>(null)
   const [collapsedModules, setCollapsedModules] = useState<Set<string>>(new Set())
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -210,7 +212,7 @@ const CourseDetailPage: React.FC = () => {
     username: teacherProfile.username ?? undefined,
     photo_url: teacherProfile.photo_url ?? undefined,
     role: 'teacher',
-    level: 10,
+    level: teacherProfile.level ?? 1,
   } : null
 
   // ── Scroll listener ─────────────────────────────────────────────────────
@@ -402,7 +404,7 @@ const CourseDetailPage: React.FC = () => {
 
   const handleShareCourse = useCallback(async () => {
     if (!course) return
-    const url  = `${window.location.origin}/courses/${course.id}`
+    const url  = `${API_BASE}/api/og/course/${course.id}`
     const text = `${course.title} — SAHIFALAB da o'rganing!`
     try {
       if (typeof navigator.share === 'function') {
@@ -987,8 +989,15 @@ const CourseDetailPage: React.FC = () => {
                                 <UserIdentity user={teacherUser} size="md" showRank showBadge />
                                 <ChevronRight className="w-4 h-4 text-gray-300 dark:text-white/20 group-hover:text-[#F15929] group-hover:translate-x-0.5 transition-all" />
                               </div>
-                              {teacherProfile?.specialization && (
-                                <p className="text-xs text-gray-400 dark:text-white/30 mt-3 pl-[52px]">{teacherProfile.specialization}</p>
+                              {(teacherProfile?.specialization || teacherProfile?.experience_years) && (
+                                <p className="text-xs text-gray-400 dark:text-white/30 mt-3 pl-[52px]">
+                                  {teacherProfile.specialization}
+                                  {teacherProfile.specialization && teacherProfile.experience_years ? ' · ' : ''}
+                                  {teacherProfile.experience_years ? `${teacherProfile.experience_years} yil tajriba` : ''}
+                                </p>
+                              )}
+                              {teacherProfile?.bio && (
+                                <p className="text-xs text-gray-400 dark:text-white/30 mt-1.5 pl-[52px] line-clamp-2">{teacherProfile.bio}</p>
                               )}
                             </div>
                           )}

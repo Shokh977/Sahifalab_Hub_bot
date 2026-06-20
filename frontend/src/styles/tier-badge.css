@@ -1,0 +1,119 @@
+/* tier-badge.css — holographic effect styles for the web TierBadge.
+ *
+ * Why this isn't pure Tailwind: animating a conic-gradient angle requires
+ * @property (a registered CSS custom property), which can't be expressed in
+ * utility classes. Same for the sheen sweep position. Tailwind handles the
+ * rest of the component layout in TierBadge.tsx.
+ *
+ * Import once at the app root (e.g. in your global stylesheet or _app.tsx).
+ */
+
+@property --badge-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: true;
+}
+@property --sheen-x {
+  syntax: "<percentage>";
+  initial-value: -50%;
+  inherits: true;
+}
+
+.tb-root {
+  animation: tbAngle var(--ring-dur, 12s) linear infinite;
+}
+@keyframes tbAngle {
+  to { --badge-angle: 360deg; }
+}
+
+/* Hex clip-path applied to ring + face */
+.tb-ring,
+.tb-face {
+  clip-path: polygon(50% 1%, 96% 26%, 96% 74%, 50% 99%, 4% 74%, 4% 26%);
+}
+
+.tb-ring {
+  filter: drop-shadow(0 0 calc(var(--size) * 0.08)
+    color-mix(in oklch, var(--badge-glow) 50%, transparent));
+}
+
+/* Dark vignette over the face for legibility */
+.tb-inner {
+  background: radial-gradient(closest-side, transparent 20%,
+    color-mix(in oklch, var(--badge-ink) 70%, transparent) 95%);
+  mix-blend-mode: multiply;
+}
+
+/* Animated diagonal sheen sweep */
+.tb-sheen {
+  background-image: linear-gradient(115deg,
+    transparent 30%,
+    rgba(255,255,255,.55) 45%,
+    rgba(255,255,255,.85) 50%,
+    rgba(255,255,255,.55) 55%,
+    transparent 70%);
+  background-size: 220% 220%;
+  background-position: var(--sheen-x, -60%) 0;
+  mix-blend-mode: overlay;
+  opacity: 0.9;
+  animation: tbSheen var(--sheen-dur, 4s) ease-in-out infinite;
+}
+@keyframes tbSheen {
+  0%, 100% { --sheen-x: -50%; }
+  50%      { --sheen-x: 150%; }
+}
+
+.tb-motif {
+  mix-blend-mode: multiply;
+}
+
+/* Featured: extra glow + idle bob */
+.tb-featured {
+  animation:
+    tbAngle var(--ring-dur, 12s) linear infinite,
+    tbBob 6s ease-in-out infinite;
+}
+.tb-featured .tb-ring {
+  filter:
+    drop-shadow(0 0 calc(var(--size) * 0.16)
+      color-mix(in oklch, var(--badge-glow) 70%, transparent))
+    drop-shadow(0 0 calc(var(--size) * 0.04)
+      color-mix(in oklch, var(--badge-glow) 90%, transparent));
+}
+@keyframes tbBob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+/* Locked */
+.tb-locked .tb-ring,
+.tb-locked .tb-face { filter: grayscale(0.9) brightness(0.55); }
+.tb-locked .tb-roman { opacity: 0.5; }
+
+/* Legendary: triple-color glow + pulse */
+.tb-legend .tb-ring {
+  filter:
+    drop-shadow(0 0 calc(var(--size) * 0.20) #ff5fa0)
+    drop-shadow(0 0 calc(var(--size) * 0.12) #5fb6ff)
+    drop-shadow(0 0 calc(var(--size) * 0.06) #ffd24a);
+  animation: tbLegendPulse 3s ease-in-out infinite;
+}
+@keyframes tbLegendPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.85; }
+}
+
+@keyframes tbTwinkle {
+  0%, 100% { opacity: 0.1; transform: scale(0.6); }
+  50%      { opacity: 1;   transform: scale(1.2); }
+}
+
+/* Freeze all animations when animated={false} (e.g. in 29-badge grids) */
+.tb-static .tb-sheen,
+.tb-static.tb-featured,
+.tb-static .tb-legend .tb-ring { animation: none; }
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .tb-root, .tb-featured, .tb-legend .tb-ring, .tb-sheen { animation: none; }
+}

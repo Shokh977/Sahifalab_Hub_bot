@@ -174,6 +174,7 @@ class QuizCreate(BaseModel):
     description: Optional[str] = None
     difficulty: str = "medium"
     category: str
+    book_id: Optional[int] = None   # FK to book table
     questions: List[QuizQuestionCreate]
 
 class QuizResponse(BaseModel):
@@ -183,7 +184,8 @@ class QuizResponse(BaseModel):
     difficulty: str
     category: str
     total_questions: int
-    
+    book_id: Optional[int] = None
+
     class Config:
         from_attributes = True
 
@@ -210,6 +212,7 @@ class QuizDetailPublic(BaseModel):
     difficulty: str
     category: str
     total_questions: int
+    book_id: Optional[int] = None
     questions: List[QuizQuestionPublic]
 
     class Config:
@@ -258,8 +261,9 @@ class BookCreate(BaseModel):
     thumbnail_url: Optional[str] = None
 
 class BookRateRequest(BaseModel):
-    telegram_id: int
+    telegram_id: Optional[int] = None  # ignored — identity comes from JWT
     rating: int  # 1-5
+    review: Optional[str] = None
 
 
 class BookProgressRequest(BaseModel):
@@ -280,6 +284,7 @@ class BookResponse(BaseModel):
     downloads: int
     rating: float
     thumbnail_url: Optional[str] = None
+    is_downloadable: bool = True
 
     class Config:
         from_attributes = True
@@ -298,6 +303,7 @@ class BookListResponse(BaseModel):
     downloads: int
     rating: float
     thumbnail_url: Optional[str] = None
+    is_downloadable: bool = True
 
     class Config:
         from_attributes = True

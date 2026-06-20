@@ -11,10 +11,20 @@ import GlobalProgressBar from './components/GlobalProgressBar'
 import ProgressProvider from './components/ProgressProvider'
 import TelegramLayout from './components/TelegramLayout'
 import WebLayout from './components/WebLayout'
+import AppLayout from './components/AppLayout'
+import FeedRightSidebar from './components/sidebars/FeedRightSidebar'
+import ProfileRightSidebar from './components/sidebars/ProfileRightSidebar'
+import NetworkRightSidebar from './components/sidebars/NetworkRightSidebar'
+import CoursesRightSidebar from './components/sidebars/CoursesRightSidebar'
+import JobsRightSidebar from './components/sidebars/JobsRightSidebar'
+import WorkspaceRightSidebar from './components/sidebars/WorkspaceRightSidebar'
 import AuthGuard from './components/AuthGuard'
 import NotificationToast from './components/NotificationToast'
 import EmailLinkPrompt from './components/EmailLinkPrompt'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { MessagingProvider } from './context/MessagingContext'
+import GlobalMessagingWatcher from './components/GlobalMessagingWatcher'
+import MessageToast from './components/MessageToast'
 import RoleGuard from './components/RoleGuard'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
@@ -36,16 +46,20 @@ const PageSkeleton = () => (
   </div>
 )
 
-const LoginPage = lazy(() => import('./pages/LoginPage'))
+const LoginPage               = lazy(() => import('./pages/LoginPage'))
+const VerifyEmailPendingPage  = lazy(() => import('./pages/VerifyEmailPendingPage'))
+const VerifyEmailPage         = lazy(() => import('./pages/VerifyEmailPage'))
+const ForgotPasswordPage      = lazy(() => import('./pages/ForgotPasswordPage'))
+const ResetPasswordPage       = lazy(() => import('./pages/ResetPasswordPage'))
 const QuizPage = lazy(() => import('./pages/QuizPage'))
 const KitoblarPage = lazy(() => import('./pages/KitoblarPage'))
 const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
 const BookReaderPage = lazy(() => import('./pages/BookReaderPage'))
 const ResourcesPage = lazy(() => import('./pages/ResourcesPage'))
 const AboutPage = lazy(() => import('./pages/AboutPage'))
-const TermsPage = lazy(() => import('./pages/TermsPage'))
+const TermsPage    = lazy(() => import('./pages/TermsPage'))
+const PrivacyPage  = lazy(() => import('./pages/PrivacyPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
-const CabinetPage = lazy(() => import('./pages/CabinetPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
 const BookSummarizerPage = lazy(() => import('./pages/BookSummarizerPage'))
 const AICompanionPage = lazy(() => import('./pages/AICompanionPage'))
@@ -61,10 +75,16 @@ const TeacherWalletPage = lazy(() => import('./pages/TeacherWalletPage'))
 const AdminPayoutsPage = lazy(() => import('./pages/AdminPayoutsPage'))
 const SocialFeed = lazy(() => import('./pages/SocialFeed'))
 const SlouthMessenger = lazy(() => import('./pages/SlouthMessenger'))
-const PublicProfile = lazy(() => import('./pages/PublicProfile'))
+const PublicProfile = lazy(() => import('./pages/ProfilePage'))
 const DiscoverUsers = lazy(() => import('./pages/DiscoverUsers'))
+const SearchPage = lazy(() => import('./pages/SearchPage'))
 const NotificationsPage = lazy(() => import('./pages/NotificationsPage'))
 const WorkspacePage = lazy(() => import('./pages/WorkspacePage'))
+const NetworkPage = lazy(() => import('./pages/NetworkPage'))
+const JobsPage = lazy(() => import('./pages/JobsPage'))
+const CertificatePage = lazy(() => import('./pages/CertificatePage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const SavedPostsPage = lazy(() => import('./pages/SavedPostsPage'))
 
 /** Redirect legacy /teacher/:id to /profile/:id?tab=courses */
 const TeacherRedirect: React.FC = () => {
@@ -230,6 +250,13 @@ const NotFoundPage: React.FC = () => {
   )
 }
 
+// Root route: Telegram mini app → simple MenuGrid home; web → social feed
+const RootRoute: React.FC = () => {
+  const { isTelegram } = usePlatform()
+  if (isTelegram) return <HomePage />
+  return <AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>
+}
+
 // All app routes — shared between both layout modes.
 // No AnimatePresence/motion.div wrapper — that was causing full-tree unmount/remount
 // on every navigation (the root cause of blinking). The layout shell (WebLayout/
@@ -238,36 +265,52 @@ const AppRoutes: React.FC = () => {
   return (
     <Suspense fallback={<PageSkeleton />}>
       <Routes>
-        {/* ── Auth page ───────────────────────────────────────────── */}
-        <Route path="/login" element={<LoginPage />} />
+        {/* ── Auth pages (public, no layout shell) ───────────────── */}
+        <Route path="/login"                  element={<LoginPage />} />
+        <Route path="/auth/verify-pending"    element={<VerifyEmailPendingPage />} />
+        <Route path="/auth/verify-email"      element={<VerifyEmailPage />} />
+        <Route path="/auth/forgot-password"   element={<ForgotPasswordPage />} />
+        <Route path="/auth/reset-password"    element={<ResetPasswordPage />} />
 
         {/* ── Fully public — guests welcome, actions guarded in-component ── */}
-        <Route path="/"                element={<HomePage />} />
-        <Route path="/social"          element={<SocialFeed />} />
+        <Route path="/"                element={<RootRoute />} />
+        {/* Nav aliases — new canonical paths */}
+        <Route path="/feed"            element={<AppLayout rightSidebar={<FeedRightSidebar />} maxWidth="max-w-[680px]"><SocialFeed /></AppLayout>} />
+        <Route path="/certificate/:share_token" element={<CertificatePage />} />
+        {/* Legacy paths kept for backward compat */}
+        <Route path="/social"          element={<Navigate to="/feed" replace />} />
         <Route path="/discover"        element={<DiscoverUsers />} />
-        <Route path="/courses"         element={<CoursesPage />} />
+        <Route path="/search"          element={<SearchPage />} />
+        <Route path="/courses"         element={<AppLayout rightSidebar={<CoursesRightSidebar />} maxWidth="max-w-[900px]"><CoursesPage /></AppLayout>} />
         <Route path="/courses/:id"     element={<CourseDetailPage />} />
-        <Route path="/profile/:userId" element={<PublicProfile />} />
+        <Route path="/profile/:userId" element={<AppLayout rightSidebar={<ProfileRightSidebar />} maxWidth="max-w-[760px]"><PublicProfile /></AppLayout>} />
         <Route path="/teachers"        element={<TeachersGalleryPage />} />
         <Route path="/about"           element={<AboutPage />} />
         <Route path="/terms"           element={<TermsPage />} />
-        <Route path="/leaderboard"     element={<LeaderboardPage />} />
+        <Route path="/privacy"         element={<PrivacyPage />} />
+        <Route path="/leaderboard"     element={<AppLayout maxWidth="max-w-[900px]"><LeaderboardPage /></AppLayout>} />
 
         {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
         <Route element={<AuthGuard />}>
+          <Route path="/network"         element={<AppLayout rightSidebar={<NetworkRightSidebar />} maxWidth="max-w-[760px]"><NetworkPage /></AppLayout>} />
+          <Route path="/messages"        element={<SlouthMessenger />} />
+          <Route path="/messages/:conversationId" element={<SlouthMessenger />} />
+          <Route path="/jobs"            element={<AppLayout rightSidebar={<JobsRightSidebar />} maxWidth="max-w-[760px]"><JobsPage /></AppLayout>} />
           <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
-          <Route path="/workspace"      element={<WorkspacePage />} />
+          <Route path="/workspace"      element={<AppLayout rightSidebar={<WorkspaceRightSidebar />} maxWidth="max-w-[760px]"><WorkspacePage /></AppLayout>} />
           <Route path="/read/:bookId"   element={<BookReaderPage />} />
-          <Route path="/quiz"           element={<QuizPage />} />
-          <Route path="/kitoblar"       element={<KitoblarPage />} />
+          <Route path="/quiz"           element={<AppLayout maxWidth="max-w-[760px]"><QuizPage /></AppLayout>} />
+          <Route path="/kitoblar"       element={<AppLayout maxWidth="max-w-[900px]"><KitoblarPage /></AppLayout>} />
           <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
           <Route path="/resources"      element={<ResourcesPage />} />
           <Route path="/admin"          element={<AdminRoute />} />
-          <Route path="/cabinet"        element={<CabinetPage />} />
+          <Route path="/cabinet"        element={<Navigate to="/profile/me" replace />} />
+          <Route path="/settings"       element={<AppLayout><SettingsPage /></AppLayout>} />
           {/* AI features temporarily disabled */}
           <Route path="/book-summarizer" element={<Navigate to="/" replace />} />
           <Route path="/ai-companion"   element={<Navigate to="/" replace />} />
           <Route path="/notifications"  element={<NotificationsPage />} />
+          <Route path="/saved"           element={<AppLayout maxWidth="max-w-[680px]"><SavedPostsPage /></AppLayout>} />
           <Route path="/messenger"      element={<SlouthMessenger />} />
           <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
@@ -289,7 +332,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/admin/payouts" element={<AdminPayoutsPage />} />
 
           {/* Teacher application — any authenticated user */}
-          <Route path="/become-teacher" element={<TeacherApplyPage />} />
+          <Route path="/become-teacher" element={<AppLayout maxWidth="max-w-[680px]"><TeacherApplyPage /></AppLayout>} />
         </Route>
 
         {/* 404 — catch-all */}
@@ -381,11 +424,15 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
-          <ProgressProvider>
-            <AppShell />
-            <NotificationToast />
-            <EmailLinkPrompt />
-          </ProgressProvider>
+          <MessagingProvider>
+            <ProgressProvider>
+              <AppShell />
+              <GlobalMessagingWatcher />
+              <MessageToast />
+              <NotificationToast />
+              <EmailLinkPrompt />
+            </ProgressProvider>
+          </MessagingProvider>
         </AuthProvider>
         <ToastContainer />
       </Router>

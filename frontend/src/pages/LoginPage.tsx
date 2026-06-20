@@ -6,11 +6,12 @@
  * Tab 3: Email     — register / login with email + password
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import axios from 'axios'
-import { PaperAirplaneIcon, EnvelopeIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ArrowPathIcon, ExclamationTriangleIcon, ArrowRightOnRectangleIcon, UserPlusIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline'
+import { PaperAirplaneIcon, EnvelopeIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ArrowPathIcon, ExclamationTriangleIcon, ArrowRightOnRectangleIcon, UserPlusIcon, MagnifyingGlassIcon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline'
 import { useAuth } from '../context/AuthContext'
 import apiService from '../services/apiService'
+import PasswordStrengthIndicator, { validatePassword } from '../components/PasswordStrengthIndicator'
 
 import { API_BASE } from '../lib/apiUrl'
 const POLL_MS = 2000
@@ -47,11 +48,13 @@ const LoginPage: React.FC = () => {
   const [emailFirstName, setEmailFirstName] = useState('')
   const [email, setEmail]             = useState('')
   const [password, setPassword]       = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
   const [emailLoading, setEmailLoading] = useState(false)
   const [emailError, setEmailError]   = useState('')
 
   useEffect(() => {
-    if (isAuthenticated) navigate('/', { replace: true })
+    if (isAuthenticated) navigate('/feed', { replace: true })
   }, [isAuthenticated, navigate])
 
   // ── Telegram helpers ─────────────────────────────────────────────────────
@@ -81,7 +84,7 @@ const LoginPage: React.FC = () => {
         const res = await axios.get(`${API_BASE}/api/auth/verify-code/${code}`)
         if (res.status === 200 && res.data.status === 'ok') {
           stopPolling(); setTgState('success')
-          loginWithCode(res.data); navigate('/', { replace: true })
+          loginWithCode(res.data); navigate('/feed', { replace: true })
         }
       } catch (err: any) {
         const s = err?.response?.status
@@ -103,7 +106,7 @@ const LoginPage: React.FC = () => {
         if (!resp?.credential) return
         try {
           const res = await axios.post(`${API_BASE}/api/auth/google`, { id_token: resp.credential })
-          loginWithCode(res.data); navigate('/', { replace: true })
+          loginWithCode(res.data); navigate('/feed', { replace: true })
         } catch (err: any) {
           console.error('[Login] Google error:', err?.response?.data?.detail || err?.message)
           setTgError('Google kirishda xatolik yuz berdi')
@@ -145,19 +148,30 @@ const LoginPage: React.FC = () => {
   // ── Email handlers ───────────────────────────────────────────────────────
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setEmailLoading(true); setEmailError('')
+    setEmailError('')
+
+    if (emailMode === 'register') {
+      const { isValid, errors } = validatePassword(password)
+      if (!isValid) { setEmailError(errors[0]); return }
+      if (password !== confirmPassword) { setEmailError('Parollar mos kelmayapti'); return }
+    }
+
+    setEmailLoading(true)
     try {
-      let res
       if (emailMode === 'register') {
-        res = await apiService.emailRegister(emailFirstName.trim(), email.trim(), password)
+        const res = await apiService.emailRegister(emailFirstName.trim(), email.trim(), password)
+        if (res.data?.status === 'pending_verification') {
+          navigate(`/auth/verify-pending?email=${encodeURIComponent(email.trim())}`, { replace: true })
+          return
+        }
       } else {
-        res = await apiService.emailLogin(email.trim(), password)
+        const res = await apiService.emailLogin(email.trim(), password)
+        loginWithCode(res.data)
+        navigate('/feed', { replace: true })
       }
-      loginWithCode(res.data)
-      navigate('/', { replace: true })
     } catch (err: any) {
-      console.error('[Login] Email error:', err?.response?.data?.detail || err?.message)
-      setEmailError('Xatolik yuz berdi. Iltimos, ma\'lumotlarni tekshirib qayta urinib ko\'ring.')
+      const detail = err?.response?.data?.detail
+      setEmailError(detail || "Xatolik yuz berdi. Ma'lumotlarni tekshirib, qayta urinib ko'ring.")
     } finally {
       setEmailLoading(false)
     }
@@ -351,23 +365,64 @@ const LoginPage: React.FC = () => {
                   required
                   className={inputCls}
                 />
-                <input
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  placeholder={emailMode === 'register' ? 'Parol (kamida 6 belgi)' : 'Parolingiz'}
-                  required
-                  minLength={emailMode === 'register' ? 6 : 1}
-                  className={inputCls}
-                />
+
+                {/* Password with show/hide toggle */}
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    placeholder={emailMode === 'register' ? 'Parol' : 'Parolingiz'}
+                    required
+                    className={inputCls + ' pr-10'}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    {showPassword ? <EyeSlashIcon className="w-4 h-4" /> : <EyeIcon className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {/* Strength indicator (register only) */}
+                {emailMode === 'register' && password && (
+                  <PasswordStrengthIndicator password={password} />
+                )}
+
+                {/* Confirm password (register only) */}
+                {emailMode === 'register' && (
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)}
+                      placeholder="Parolni tasdiqlang"
+                      required
+                      className={inputCls + (confirmPassword && confirmPassword !== password ? ' border-red-400 dark:border-red-500' : '')}
+                    />
+                    {confirmPassword && confirmPassword !== password && (
+                      <p className="text-[11px] text-red-500 mt-1">Parollar mos kelmayapti</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Forgot password link (login mode) */}
+                {emailMode === 'login' && (
+                  <div className="text-right">
+                    <Link to="/auth/forgot-password" className="text-xs text-sahifa-600 dark:text-sahifa-400 hover:underline font-medium">
+                      Parolni unutdingizmi?
+                    </Link>
+                  </div>
+                )}
 
                 {emailError && (
-                  <p className="text-xs text-red-600 dark:text-red-400 text-center inline-flex items-center gap-1 justify-center"><XCircleIcon className="w-4 h-4" />{emailError}</p>
+                  <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1"><XCircleIcon className="w-4 h-4 shrink-0" />{emailError}</p>
                 )}
 
                 <button
                   type="submit"
-                  disabled={emailLoading}
+                  disabled={emailLoading || (emailMode === 'register' && (!validatePassword(password).isValid || password !== confirmPassword))}
                   className="w-full py-3.5 rounded-2xl bg-sahifa-600 hover:bg-sahifa-700 text-white font-semibold text-sm shadow-md disabled:opacity-60 transition-all"
                 >
                   {emailLoading
