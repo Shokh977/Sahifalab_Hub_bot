@@ -1,4 +1,4 @@
-import asyncio
+﻿import asyncio
 import json
 import os
 import httpx
@@ -21,7 +21,7 @@ from app.services.auth_service import decode_token_payload
 
 router = APIRouter()
 
-# â”€â”€ Supabase helpers (for course/enrollment/payment data) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€ Supabase helpers (for course/enrollment/payment data) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 SUPABASE_URL  = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 PAYMENT_BOT_SECRET = os.getenv("PAYMENT_BOT_SECRET", "")
@@ -487,7 +487,7 @@ async def get_admin_stats(
     total_resources = total_books  # same source for now
     active_payments = db.query(PaymentConfig).filter(PaymentConfig.is_enabled == True).count()
 
-    # â”€â”€ Pull real user counts from Supabase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Pull real user counts from Supabase â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     total_users = db.query(User).count()  # Railway fallback
     active_1h   = 0
     active_24h  = 0
@@ -587,9 +587,9 @@ async def get_quiz_audit_logs(
     return query.order_by(QuizAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 
-@router.get(“/audit-logs/enrollments”, response_model=list[EnrollmentAuditLogResponse])
+@router.get("/audit-logs/enrollments", response_model=list[EnrollmentAuditLogResponse])
 async def get_enrollment_audit_logs(
-    action:           Optional[str] = Query(None, description=”Filter by action type”),
+    action:           Optional[str] = Query(None, description="Filter by action type"),
     user_telegram_id: Optional[int] = Query(None),
     course_id:        Optional[int] = Query(None),
     skip:  int = Query(0, ge=0),
@@ -597,7 +597,7 @@ async def get_enrollment_audit_logs(
     db:    Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
-    “””Enrollment audit trail — all grant/cancel/direct-enrollment actions.”””
+    """Enrollment audit trail — all grant/cancel/direct-enrollment actions."""
     query = db.query(EnrollmentAuditLog)
     if action:
         query = query.filter(EnrollmentAuditLog.action == action)
@@ -608,9 +608,9 @@ async def get_enrollment_audit_logs(
     return query.order_by(EnrollmentAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Platform Analytics (Step 15) -- admin-only, Supabase data
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @router.get("/platform-analytics")
 async def get_platform_analytics(
@@ -655,7 +655,7 @@ async def get_platform_analytics(
     teachers: list[dict] = teachers_res.json() if teachers_res.status_code == 200 else []
     completed_orders: list[dict] = orders_res.json() if orders_res.status_code == 200 else []
 
-    # â”€â”€ Summary aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Summary aggregation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     total_courses = len(courses)
     published_courses = sum(1 for c in courses if c.get("is_published"))
     paid_courses_count = sum(1 for c in courses if c.get("is_paid"))
@@ -663,7 +663,7 @@ async def get_platform_analytics(
     total_teachers = len(teachers)
     total_revenue_uzs = sum(float(o.get("amount") or 0) for o in completed_orders)
 
-    # â”€â”€ Per-teacher aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Per-teacher aggregation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     course_to_teacher: dict[int, int] = {
         int(c["id"]): int(c.get("teacher_id") or 0)
         for c in courses if c.get("id") and c.get("teacher_id")
@@ -713,7 +713,7 @@ async def get_platform_analytics(
         reverse=True,
     )
 
-    # â”€â”€ Top 10 courses by enrollment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Top 10 courses by enrollment â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     top_courses = sorted(
         [
             {
@@ -746,9 +746,9 @@ async def get_platform_analytics(
     }
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Admin Courses Management (Step 20)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @router.get("/courses")
 async def admin_list_courses(
@@ -804,7 +804,7 @@ async def admin_list_courses(
             "teacher_name": prof.get("first_name") or f"Teacher {tid}",
             "teacher_username": prof.get("username"),
             "category_name": cat.get("name") or "",
-            "category_icon": cat.get("icon") or "ðŸ“š",
+            "category_icon": cat.get("icon") or "ðŸ"š",
             "is_published": bool(c.get("is_published")),
             "is_paid": bool(c.get("is_paid")),
             "price": float(c.get("price") or 0),
@@ -878,9 +878,9 @@ async def admin_delete_course(
     return {"ok": True, "deleted_id": course_id}
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Payout Management -- Teacher Wallet Admin Endpoints
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 from app.services import wallet_service as ws
 from pydantic import BaseModel as _PayoutBase
@@ -928,7 +928,7 @@ async def approve_payout(
 ):
     """
     Admin: mark a pending payout as PAID.
-    Moves money from pending_withdrawal â†’ withdrawn_total.
+    Moves money from pending_withdrawal â†' withdrawn_total.
     """
     try:
         result = await ws.approve_payout(payout_id, admin_note=body.admin_note)
@@ -949,7 +949,7 @@ async def reject_payout(
 ):
     """
     Admin: reject a pending payout.
-    Returns money from pending_withdrawal â†’ available_balance.
+    Returns money from pending_withdrawal â†' available_balance.
     """
     try:
         result = await ws.reject_payout(payout_id, admin_note=body.admin_note)
