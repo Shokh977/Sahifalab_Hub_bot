@@ -166,7 +166,21 @@ class AuditLogResponse(BaseModel):
     new_values: Optional[Dict[str, Any]] = None
     admin_id: Optional[int] = None
     created_at: datetime
-    
+
+    class Config:
+        from_attributes = True
+
+
+class EnrollmentAuditLogResponse(BaseModel):
+    id: int
+    action: str
+    target_id: Optional[int] = None
+    admin_telegram_id: Optional[int] = None
+    user_telegram_id: Optional[int] = None
+    course_id: Optional[int] = None
+    details: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
     class Config:
         from_attributes = True
 

@@ -9,13 +9,13 @@ from typing import Optional
 from app.db.session import get_db
 from app.core.config import settings
 from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating, User
-from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog
+from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog, EnrollmentAuditLog
 from app.schemas.admin_schemas import (
     HeroContentCreate, HeroContentUpdate, HeroContentResponse,
     QuizUpload, QuizUploadResponse, QuizManagementResponse,
     BookManagementCreate, BookManagementUpdate, BookManagementResponse,
     PaymentConfigCreate, PaymentConfigUpdate, PaymentConfigResponse,
-    AdminStats, AuditLogResponse
+    AdminStats, AuditLogResponse, EnrollmentAuditLogResponse
 )
 from app.services.auth_service import decode_token_payload
 
@@ -25,6 +25,8 @@ router = APIRouter()
 SUPABASE_URL  = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 PAYMENT_BOT_SECRET = os.getenv("PAYMENT_BOT_SECRET", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://sahifalab-hub-bot.vercel.app")
 
 
 def _supabase_headers() -> dict:
@@ -585,6 +587,27 @@ async def get_quiz_audit_logs(
     return query.order_by(QuizAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 
+@router.get(“/audit-logs/enrollments”, response_model=list[EnrollmentAuditLogResponse])
+async def get_enrollment_audit_logs(
+    action:           Optional[str] = Query(None, description=”Filter by action type”),
+    user_telegram_id: Optional[int] = Query(None),
+    course_id:        Optional[int] = Query(None),
+    skip:  int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db:    Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    “””Enrollment audit trail — all grant/cancel/direct-enrollment actions.”””
+    query = db.query(EnrollmentAuditLog)
+    if action:
+        query = query.filter(EnrollmentAuditLog.action == action)
+    if user_telegram_id:
+        query = query.filter(EnrollmentAuditLog.user_telegram_id == user_telegram_id)
+    if course_id:
+        query = query.filter(EnrollmentAuditLog.course_id == course_id)
+    return query.order_by(EnrollmentAuditLog.created_at.desc()).offset(skip).limit(limit).all()
+
+
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 # Platform Analytics (Step 15) -- admin-only, Supabase data
 # â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -1121,6 +1144,17 @@ async def grant_pending_enrollment(
     user_id   = pending["user_id"]
     course_id = pending["course_id"]
 
+    # Fetch course title + slug for notification content
+    async with httpx.AsyncClient(timeout=10) as client:
+        course_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}", "select": "title,slug", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    course_rows = course_res.json() if course_res.status_code == 200 else []
+    course_title = course_rows[0]["title"] if course_rows else "Kurs"
+    course_slug  = course_rows[0].get("slug", "") if course_rows else ""
+
     # Check if not already enrolled
     async with httpx.AsyncClient(timeout=10) as client:
         already_res = await client.get(
@@ -1167,10 +1201,54 @@ async def grant_pending_enrollment(
             from app.api.v1.endpoints.notifications import send_notification
             await send_notification(
                 user_id, "course_granted", "COURSE",
-                {"course_id": course_id},
+                {"course_id": course_id, "course_title": course_title, "slug": course_slug},
             )
         except Exception:
             pass  # notification failure must not block the grant
+
+        # Telegram DM to the user (user_id IS their telegram_id)
+        if TELEGRAM_BOT_TOKEN:
+            try:
+                course_url = f"{MINI_APP_URL}/courses/{course_slug}" if course_slug else f"{MINI_APP_URL}/courses"
+                web_url = f"https://sahifalab.uz/courses/{course_slug}" if course_slug else "https://sahifalab.uz"
+                tg_text = (
+                    "🎉 <b>Tabriklaymiz!</b>\n\n"
+                    f"«{course_title}» kursi sizga ochildi.\n\n"
+                    "Sahifalab ilovasini oching va birinchi darsdan boshlang!\n\n"
+                    f"Yoki saytda davom eting:\n{web_url}\n\n"
+                    "Omad! 📚"
+                )
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": user_id,
+                            "text": tg_text,
+                            "parse_mode": "HTML",
+                            "reply_markup": {
+                                "inline_keyboard": [[
+                                    {"text": "📚 Ilovani ochish", "web_app": {"url": course_url}}
+                                ]]
+                            },
+                        },
+                    )
+            except Exception:
+                pass  # Telegram DM failure must not block the grant
+
+    db.add(EnrollmentAuditLog(
+        action="enrollment_granted",
+        target_id=pending_id,
+        admin_telegram_id=admin.telegram_id,
+        user_telegram_id=user_id,
+        course_id=course_id,
+        details={
+            "course_title":   course_title,
+            "actual_amount":  body.actual_amount,
+            "payment_method": body.payment_method,
+            "notes":          body.notes,
+        },
+    ))
+    db.commit()
 
     return {"ok": True}
 
@@ -1186,6 +1264,17 @@ async def cancel_pending_enrollment(
     admin = await verify_admin(authorization=authorization, db=db)
     _ensure_supabase()
 
+    # Fetch pending row for audit context
+    async with httpx.AsyncClient(timeout=10) as client:
+        cancel_fetch = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "user_id,course_id", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    cancel_rows = cancel_fetch.json() if cancel_fetch.status_code == 200 else []
+    cancel_user_id   = cancel_rows[0]["user_id"]   if cancel_rows else None
+    cancel_course_id = cancel_rows[0]["course_id"] if cancel_rows else None
+
     async with httpx.AsyncClient(timeout=10) as client:
         await client.patch(
             f"{SUPABASE_URL}/rest/v1/pending_enrollments",
@@ -1198,6 +1287,16 @@ async def cancel_pending_enrollment(
             },
             headers=_pending_supabase_headers(),
         )
+
+    db.add(EnrollmentAuditLog(
+        action="enrollment_cancelled",
+        target_id=pending_id,
+        admin_telegram_id=admin.telegram_id,
+        user_telegram_id=cancel_user_id,
+        course_id=cancel_course_id,
+        details={"reason": body.reason},
+    ))
+    db.commit()
 
     return {"ok": True}
 
@@ -1238,14 +1337,68 @@ async def direct_grant_course(
     if enroll_res.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail="Failed to create enrollment")
 
+    # Fetch course info for rich notifications
+    async with httpx.AsyncClient(timeout=10) as client:
+        dc_course_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{body.course_id}", "select": "title,slug", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    dc_course_rows = dc_course_res.json() if dc_course_res.status_code == 200 else []
+    dc_course_title = dc_course_rows[0]["title"] if dc_course_rows else "Kurs"
+    dc_course_slug  = dc_course_rows[0].get("slug", "") if dc_course_rows else ""
+
     try:
         from app.api.v1.endpoints.notifications import send_notification
         await send_notification(
             telegram_id, "course_granted", "COURSE",
-            {"course_id": body.course_id},
+            {"course_id": body.course_id, "course_title": dc_course_title, "slug": dc_course_slug},
         )
     except Exception:
         pass
+
+    if TELEGRAM_BOT_TOKEN:
+        try:
+            dc_course_url = f"{MINI_APP_URL}/courses/{dc_course_slug}" if dc_course_slug else f"{MINI_APP_URL}/courses"
+            dc_web_url = f"https://sahifalab.uz/courses/{dc_course_slug}" if dc_course_slug else "https://sahifalab.uz"
+            dc_tg_text = (
+                "🎉 <b>Tabriklaymiz!</b>\n\n"
+                f"«{dc_course_title}» kursi sizga ochildi.\n\n"
+                "Sahifalab ilovasini oching va birinchi darsdan boshlang!\n\n"
+                f"Yoki saytda davom eting:\n{dc_web_url}\n\n"
+                "Omad! 📚"
+            )
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": telegram_id,
+                        "text": dc_tg_text,
+                        "parse_mode": "HTML",
+                        "reply_markup": {
+                            "inline_keyboard": [[
+                                {"text": "📚 Ilovani ochish", "web_app": {"url": dc_course_url}}
+                            ]]
+                        },
+                    },
+                )
+        except Exception:
+            pass
+
+    db.add(EnrollmentAuditLog(
+        action="direct_enrollment",
+        target_id=None,
+        admin_telegram_id=admin.telegram_id,
+        user_telegram_id=telegram_id,
+        course_id=body.course_id,
+        details={
+            "course_title":   dc_course_title,
+            "payment_method": getattr(body, "payment_method", None),
+            "amount":         getattr(body, "amount", None),
+            "notes":          getattr(body, "notes", None),
+        },
+    ))
+    db.commit()
 
     return {"ok": True, "already_enrolled": False}
 

@@ -2,6 +2,21 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, Boolean, JSON, UniqueConstraint
 from app.db.session import Base
 
+
+class EnrollmentAuditLog(Base):
+    """Audit trail for all admin enrollment actions."""
+    __tablename__ = "enrollment_audit_log"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    action            = Column(String(50), nullable=False)
+    # enrollment_granted | enrollment_cancelled | direct_enrollment
+    target_id         = Column(Integer, nullable=True, index=True)   # pending_enrollment id
+    admin_telegram_id = Column(BigInteger, nullable=True, index=True)
+    user_telegram_id  = Column(BigInteger, nullable=True, index=True)
+    course_id         = Column(Integer, nullable=True, index=True)
+    details           = Column(JSON, nullable=True)
+    created_at        = Column(DateTime, default=datetime.utcnow, index=True)
+
 class AdminUser(Base):
     __tablename__ = "admin_user"
     

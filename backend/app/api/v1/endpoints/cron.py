@@ -2,15 +2,17 @@
 cron.py — Scheduled / internal maintenance endpoints.
 
 Routes (secret-key protected, NOT JWT):
-  POST /api/cron/weekly-reset      — reset profile_views_week for all users
-  POST /api/cron/weekly-report     — send weekly study report push notifications
-  POST /api/cron/streak-reminder   — send daily streak reminder to users who haven't studied today
+  POST /api/cron/weekly-reset                — reset profile_views_week for all users
+  POST /api/cron/weekly-report               — send weekly study report push notifications
+  POST /api/cron/streak-reminder             — send daily streak reminder to users who haven't studied today
+  POST /api/cron/expire-pending-enrollments  — mark stale awaiting_payment/paid rows as expired
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
 Configure Railway cron jobs:
-    POST /api/cron/weekly-reset      — schedule: 0 0 * * 1   (Monday 00:00 UTC)
-    POST /api/cron/weekly-report     — schedule: 0 8 * * 1   (Monday 08:00 UTC)
-    POST /api/cron/streak-reminder   — schedule: 0 15 * * *  (Daily 15:00 UTC = ~20:00 Tashkent)
+    POST /api/cron/weekly-reset                — schedule: 0 0 * * 1   (Monday 00:00 UTC)
+    POST /api/cron/weekly-report               — schedule: 0 8 * * 1   (Monday 08:00 UTC)
+    POST /api/cron/streak-reminder             — schedule: 0 15 * * *  (Daily 15:00 UTC = ~20:00 Tashkent)
+    POST /api/cron/expire-pending-enrollments  — schedule: 0 * * * *   (Every hour)
 """
 
 import os
@@ -25,6 +27,9 @@ from sqlalchemy import text
 from datetime import datetime, UTC, timedelta
 
 from app.db.session import get_db
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 logger = logging.getLogger(__name__)
 
@@ -361,3 +366,48 @@ async def send_streak_reminders(
 
     logger.info("streak_reminder: sent=%d failed=%d eligible=%d", sent, failed, len(rows))
     return {"ok": True, "sent": sent, "failed": failed, "eligible": len(rows)}
+
+
+@router.post("/expire-pending-enrollments")
+async def expire_pending_enrollments(
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Mark pending_enrollments rows as 'expired' when their expires_at has passed
+    and they are still in awaiting_payment or paid status.
+
+    The expires_at filter in request-code / pending-status already hides these rows
+    from users, but this job cleans them up in the database so the table stays tidy
+    and the per-user 3-request cap counts only genuinely active rows.
+
+    Schedule: 0 * * * *  (every hour, Railway cron)
+    """
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        raise HTTPException(status_code=503, detail="Supabase not configured")
+
+    now_iso = datetime.now(UTC).isoformat()
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "status":     "in.(awaiting_payment,paid)",
+                "expires_at": f"lt.{now_iso}",
+            },
+            json={"status": "expired"},
+            headers={**headers, "Prefer": "count=exact"},
+        )
+
+    if resp.status_code not in (200, 201, 204):
+        logger.error("expire_pending_enrollments: Supabase PATCH failed: %s", resp.text)
+        raise HTTPException(status_code=502, detail="Failed to expire rows")
+
+    expired_count = int(resp.headers.get("content-range", "0/0").split("/")[-1] or 0)
+    logger.info("expire_pending_enrollments: expired=%d", expired_count)
+    return {"ok": True, "expired": expired_count}

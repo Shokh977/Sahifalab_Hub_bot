@@ -247,6 +247,26 @@ async def request_enrollment_code(body: RequestCodeBody, authorization: Optional
             "status":          row["status"],
         }
 
+    # Enforce 3 active pending requests per user across all courses
+    async with httpx.AsyncClient(timeout=10) as client:
+        count_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "user_id":    f"eq.{caller_id}",
+                "status":     "in.(awaiting_payment,paid)",
+                "expires_at": f"gt.{now_iso}",
+                "select":     "id",
+            },
+            headers={**_supabase_headers(), "Prefer": "count=exact"},
+        )
+    active_count = int(count_res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+    if active_count >= 3:
+        raise HTTPException(
+            status_code=429,
+            detail="Bir vaqtda 3 tadan ortiq to'lov so'roviga ega bo'la olmaysiz. "
+                   "Avvalgi so'rovni bekor qiling yoki 24 soat kuting.",
+        )
+
     ref_code  = _generate_ref_code()
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
 
