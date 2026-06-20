@@ -587,9 +587,9 @@ async def get_quiz_audit_logs(
     return query.order_by(QuizAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 
-@router.get(“/audit-logs/enrollments”, response_model=list[EnrollmentAuditLogResponse])
+@router.get("/audit-logs/enrollments", response_model=list[EnrollmentAuditLogResponse])
 async def get_enrollment_audit_logs(
-    action:           Optional[str] = Query(None, description=”Filter by action type”),
+    action:           Optional[str] = Query(None, description="Filter by action type"),
     user_telegram_id: Optional[int] = Query(None),
     course_id:        Optional[int] = Query(None),
     skip:  int = Query(0, ge=0),
@@ -597,7 +597,7 @@ async def get_enrollment_audit_logs(
     db:    Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
-    “””Enrollment audit trail — all grant/cancel/direct-enrollment actions.”””
+    """Enrollment audit trail — all grant/cancel/direct-enrollment actions."""
     query = db.query(EnrollmentAuditLog)
     if action:
         query = query.filter(EnrollmentAuditLog.action == action)
