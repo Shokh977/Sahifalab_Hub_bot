@@ -804,7 +804,7 @@ async def admin_list_courses(
             "teacher_name": prof.get("first_name") or f"Teacher {tid}",
             "teacher_username": prof.get("username"),
             "category_name": cat.get("name") or "",
-            "category_icon": cat.get("icon") or "ðŸ"š",
+            "category_icon": cat.get("icon") or "📚",
             "is_published": bool(c.get("is_published")),
             "is_paid": bool(c.get("is_paid")),
             "price": float(c.get("price") or 0),
