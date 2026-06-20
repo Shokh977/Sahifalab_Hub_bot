@@ -26,9 +26,10 @@ import {
   User, Trophy, X, Menu, Plus,
   Search, ChevronRight, Settings, HelpCircle, LogOut,
   Wallet, Shield, GraduationCap, Loader2, Sun, Moon, Timer,
-  BookMarked, ClipboardList,
+  BookMarked, ClipboardList, Bookmark,
 } from 'lucide-react'
 import GlobalProgressBar from './GlobalProgressBar'
+import EmailVerificationBanner from './EmailVerificationBanner'
 import NotificationBell from './NotificationBell'
 import { useAuth } from '../context/AuthContext'
 import { useProgressStore } from '../context/progressStore'
@@ -58,9 +59,10 @@ const NAV_MAIN: NavItem[] = [
 ]
 
 const NAV_PROFILE: NavItem[] = [
-  { icon: BookMarked,    label: 'Kitoblar', path: '/kitoblar' },
-  { icon: ClipboardList, label: 'Test',     path: '/quiz' },
-  { icon: Trophy,        label: 'Reyting',  path: '/leaderboard' },
+  { icon: Bookmark,      label: 'Saqlangan', path: '/saved' },
+  { icon: BookMarked,    label: 'Kitoblar',  path: '/kitoblar' },
+  { icon: ClipboardList, label: 'Test',      path: '/quiz' },
+  { icon: Trophy,        label: 'Reyting',   path: '/leaderboard' },
 ]
 
 const BOTTOM_TABS = [
@@ -83,16 +85,19 @@ interface SearchResult {
 }
 
 function useSearch() {
-  const [query, setQuery]     = useState('')
-  const [results, setResults] = useState<SearchResult | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [query, setQuery]         = useState('')
+  const [results, setResults]     = useState<SearchResult | null>(null)
+  const [loading, setLoading]     = useState(false)
+  const [searchError, setError]   = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const { isAuthenticated } = useAuth()
 
   useEffect(() => {
     const q = query.trim()
-    if (!q || !isAuthenticated) { setResults(null); return }
+    if (!q) { setResults(null); setError(false); return }
+    if (!isAuthenticated) { setResults(null); setError(false); return }
     if (timer.current) clearTimeout(timer.current)
+    setError(false)
     timer.current = setTimeout(async () => {
       setLoading(true)
       try {
@@ -106,15 +111,16 @@ function useSearch() {
         })
       } catch {
         setResults(null)
+        setError(true)
       }
       setLoading(false)
     }, 300)
     return () => { if (timer.current) clearTimeout(timer.current) }
   }, [query, isAuthenticated])
 
-  const clear = useCallback(() => { setQuery(''); setResults(null) }, [])
+  const clear = useCallback(() => { setQuery(''); setResults(null); setError(false) }, [])
 
-  return { query, setQuery, results, loading, clear }
+  return { query, setQuery, results, loading, searchError, clear }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -319,7 +325,7 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
         {/* User card */}
         {user ? (
           <Link
-            to={myUsername ? `/profile/${myUsername}` : '/profile/me'}
+            to="/profile/me"
             onClick={onNavClick}
             className="flex items-center gap-3 px-3 py-2.5 rounded-2xl border transition-colors group"
             style={{ backgroundColor: 'var(--bg-tertiary)', borderColor: 'var(--border-default)' }}
@@ -465,7 +471,7 @@ const SearchDropdown: React.FC<SearchDropdownProps> = ({ results, query, onClose
       {/* View all */}
       <div className="px-4 py-3">
         <button
-          onClick={() => go(`/discover?q=${encodeURIComponent(query)}`)}
+          onClick={() => go(`/search?q=${encodeURIComponent(query)}`)}
           className="w-full py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.07] text-white/50 hover:text-white text-sm transition-colors"
         >
           Barcha natijalarni ko'rish →
@@ -489,7 +495,7 @@ const AvatarDropdown: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const handleLogout = () => { logout(); navigate('/login'); onClose() }
 
   const items = [
-    { icon: User,     label: 'Profilni ko\'rish', action: () => go(myUsername ? `/profile/${myUsername}` : '/profile/me') },
+    { icon: User,     label: 'Profilni ko\'rish', action: () => go('/profile/me') },
     { icon: Settings, label: 'Sozlamalar',         action: () => go('/settings') },
     ...(isTeacher ? [{ icon: Wallet, label: 'Hamyon', action: () => go('/teacher/wallet') }] : []),
     { icon: HelpCircle, label: 'Yordam',           action: () => go('/about') },
@@ -551,7 +557,7 @@ interface TopBarProps {
 const TopBar: React.FC<TopBarProps> = ({ onHamburger }) => {
   const { user, isAuthenticated } = useAuth()
   const navigate = useNavigate()
-  const { query, setQuery, results, loading, clear } = useSearch()
+  const { query, setQuery, results, loading, searchError, clear } = useSearch()
   const [searchFocused, setSearchFocused] = useState(false)
   const [avatarOpen, setAvatarOpen] = useState(false)
   const searchRef = useRef<HTMLDivElement>(null)
@@ -619,11 +625,27 @@ const TopBar: React.FC<TopBarProps> = ({ onHamburger }) => {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -6 }}
               transition={{ duration: 0.15 }}
-              className="absolute left-0 right-0 top-full mt-2 rounded-2xl bg-[#1c1d27] border border-white/[0.08] shadow-2xl overflow-hidden max-h-[480px] overflow-y-auto"
+              className="absolute left-0 right-0 top-full mt-2 rounded-2xl bg-[#1c1d27] border border-white/[0.08] shadow-2xl overflow-hidden max-h-[480px] overflow-y-auto z-50"
             >
               {loading && !results ? (
                 <div className="py-8 flex justify-center">
                   <Loader2 className="w-5 h-5 text-white/30 animate-spin" />
+                </div>
+              ) : !isAuthenticated ? (
+                <div className="py-7 text-center px-4">
+                  <Search className="w-7 h-7 mx-auto mb-2 text-white/20" />
+                  <p className="text-sm text-white/50 mb-3">Qidirish uchun tizimga kiring</p>
+                  <Link
+                    to="/login"
+                    onClick={clear}
+                    className="inline-block px-5 py-2 rounded-xl bg-[#e8792f] text-white text-sm font-semibold"
+                  >
+                    Kirish
+                  </Link>
+                </div>
+              ) : searchError ? (
+                <div className="py-7 text-center px-4">
+                  <p className="text-sm text-white/40">Qidiruvda xatolik yuz berdi. Qayta urinib ko'ring.</p>
                 </div>
               ) : results ? (
                 <SearchDropdown results={results} query={query} onClose={clear} />
@@ -689,7 +711,7 @@ const MobileBottomTabs: React.FC<MobileBottomTabsProps> = ({ onNewPost }) => {
   }
 
   return (
-    <nav className="lg:hidden flex-shrink-0 flex items-stretch border-t border-white/[0.06] bg-[#13141a]/95 backdrop-blur-xl z-30">
+    <nav className="lg:hidden flex-shrink-0 flex items-stretch border-t border-white/[0.06] backdrop-blur-xl z-30" style={{ backgroundColor: 'var(--bg-sidebar)' }}>
       {BOTTOM_TABS.map((tab, i) => {
         // Center ➕ button
         if (tab.path === '__new_post__') {
@@ -882,6 +904,9 @@ const WebLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
         {/* Top bar — always visible */}
         <TopBar onHamburger={() => setDrawerOpen(true)} />
+
+        {/* Unverified email banner */}
+        <EmailVerificationBanner />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">

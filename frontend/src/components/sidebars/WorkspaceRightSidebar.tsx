@@ -57,9 +57,13 @@ const ProgressRing: React.FC<{ percent: number; size?: number; stroke?: number; 
 
 // ── Main sidebar component ────────────────────────────────────────────────────
 
+// ── Daily goal constants ───────────────────────────────────────────────────────
+const GOAL_FOCUS_MINUTES = 120   // 2 hours of focus per day
+const GOAL_QUIZZES       = 5     // 5 quizzes per day
+
 const WorkspaceRightSidebar: React.FC = () => {
   const { user } = useAuth()
-  const { totalXP, level, totalFocusMinutes } = useProgressStore()
+  const { totalXP, level, totalFocusMinutes, dailyFocusSeconds, dailyQuizCount } = useProgressStore()
 
   const isTeacher = user?.role === 'teacher' || user?.role === 'admin'
 
@@ -70,15 +74,15 @@ const WorkspaceRightSidebar: React.FC = () => {
     []
   )
 
-  // Daily goal progress (mock: target 3h focus / 5 tasks per day)
-  // In production this would come from an API call
-  const goalFocus  = 3   // hours target
-  const goalTasks  = 5   // tasks target
-  const focusDone  = Math.min((user as any)?.focus_hours ?? 0, goalFocus)
-  const tasksDone  = 0   // planner tasks completed today — placeholder
-  const overallPct = Math.round(
-    ((focusDone / goalFocus) * 50 + (tasksDone / goalTasks) * 50)
-  )
+  // Daily goal progress — real-time from progressStore
+  const dailyFocusMin = Math.floor(dailyFocusSeconds / 60)
+  const focusPct      = Math.min(100, (dailyFocusMin / GOAL_FOCUS_MINUTES) * 100)
+  const quizPct       = Math.min(100, (dailyQuizCount / GOAL_QUIZZES) * 100)
+  const overallPct    = Math.round((focusPct + quizPct) / 2)
+
+  const focusLabel = dailyFocusMin >= 60
+    ? `${Math.floor(dailyFocusMin / 60)}h ${dailyFocusMin % 60}m`
+    : `${dailyFocusMin}m`
 
   return (
     <>
@@ -142,18 +146,36 @@ const WorkspaceRightSidebar: React.FC = () => {
             </div>
           </div>
           {/* Labels */}
-          <div className="space-y-1 flex-1 min-w-0">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Fokus vaqt</p>
-              <p className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {focusDone.toFixed(1)} / {goalFocus}h
-              </p>
+          <div className="space-y-1.5 flex-1 min-w-0">
+            {/* Focus progress */}
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Fokus vaqt</p>
+                <p className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {focusLabel} / 2h
+                </p>
+              </div>
+              <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--border-default)' }}>
+                <div
+                  className="h-1 rounded-full transition-all duration-500"
+                  style={{ width: `${focusPct}%`, backgroundColor: '#e8792f' }}
+                />
+              </div>
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Vazifalar</p>
-              <p className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {tasksDone} / {goalTasks}
-              </p>
+            {/* Quiz progress */}
+            <div>
+              <div className="flex items-center justify-between mb-0.5">
+                <p className="text-[11px]" style={{ color: 'var(--text-secondary)' }}>Testlar</p>
+                <p className="text-[11px] font-semibold" style={{ color: 'var(--text-primary)' }}>
+                  {dailyQuizCount} / {GOAL_QUIZZES}
+                </p>
+              </div>
+              <div className="w-full h-1 rounded-full" style={{ backgroundColor: 'var(--border-default)' }}>
+                <div
+                  className="h-1 rounded-full transition-all duration-500"
+                  style={{ width: `${quizPct}%`, backgroundColor: '#a78bfa' }}
+                />
+              </div>
             </div>
           </div>
         </div>

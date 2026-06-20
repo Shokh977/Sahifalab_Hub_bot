@@ -1,3 +1,4 @@
+﻿import asyncio
 import json
 import os
 import httpx
@@ -8,21 +9,24 @@ from typing import Optional
 from app.db.session import get_db
 from app.core.config import settings
 from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating, User
-from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog
+from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog, EnrollmentAuditLog
 from app.schemas.admin_schemas import (
     HeroContentCreate, HeroContentUpdate, HeroContentResponse,
     QuizUpload, QuizUploadResponse, QuizManagementResponse,
     BookManagementCreate, BookManagementUpdate, BookManagementResponse,
     PaymentConfigCreate, PaymentConfigUpdate, PaymentConfigResponse,
-    AdminStats, AuditLogResponse
+    AdminStats, AuditLogResponse, EnrollmentAuditLogResponse
 )
 from app.services.auth_service import decode_token_payload
 
 router = APIRouter()
 
-# â”€â”€ Supabase helpers (for course/enrollment/payment data) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+# â"€â"€ Supabase helpers (for course/enrollment/payment data) â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+SUPABASE_URL  = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY  = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+PAYMENT_BOT_SECRET = os.getenv("PAYMENT_BOT_SECRET", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+MINI_APP_URL = os.getenv("MINI_APP_URL", "https://sahifalab-hub-bot.vercel.app")
 
 
 def _supabase_headers() -> dict:
@@ -53,14 +57,28 @@ async def verify_admin(
     """
     if not authorization:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authorization header required",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
         )
     parts = authorization.split()
-    if len(parts) != 2 or parts[0] != "Bearer":
+    if len(parts) != 2:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authorization header format",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
+        )
+
+    # Payment bot service key auth (Authorization: Bot <secret>)
+    if parts[0] == "Bot" and PAYMENT_BOT_SECRET and parts[1] == PAYMENT_BOT_SECRET:
+        bot_admin = db.query(AdminUser).filter(AdminUser.role == "bot").first()
+        if not bot_admin:
+            bot_admin = AdminUser(telegram_id=0, role="bot", is_active=True)
+            db.add(bot_admin); db.commit(); db.refresh(bot_admin)
+        return bot_admin
+
+    if parts[0] != "Bearer":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found",
         )
 
     payload = decode_token_payload(parts[1])
@@ -95,8 +113,8 @@ async def verify_admin(
 
     if not admin:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Not found"
         )
     return admin
 
@@ -469,7 +487,7 @@ async def get_admin_stats(
     total_resources = total_books  # same source for now
     active_payments = db.query(PaymentConfig).filter(PaymentConfig.is_enabled == True).count()
 
-    # â”€â”€ Pull real user counts from Supabase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Pull real user counts from Supabase â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     total_users = db.query(User).count()  # Railway fallback
     active_1h   = 0
     active_24h  = 0
@@ -569,9 +587,30 @@ async def get_quiz_audit_logs(
     return query.order_by(QuizAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+@router.get("/audit-logs/enrollments", response_model=list[EnrollmentAuditLogResponse])
+async def get_enrollment_audit_logs(
+    action:           Optional[str] = Query(None, description="Filter by action type"),
+    user_telegram_id: Optional[int] = Query(None),
+    course_id:        Optional[int] = Query(None),
+    skip:  int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db:    Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Enrollment audit trail — all grant/cancel/direct-enrollment actions."""
+    query = db.query(EnrollmentAuditLog)
+    if action:
+        query = query.filter(EnrollmentAuditLog.action == action)
+    if user_telegram_id:
+        query = query.filter(EnrollmentAuditLog.user_telegram_id == user_telegram_id)
+    if course_id:
+        query = query.filter(EnrollmentAuditLog.course_id == course_id)
+    return query.order_by(EnrollmentAuditLog.created_at.desc()).offset(skip).limit(limit).all()
+
+
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Platform Analytics (Step 15) -- admin-only, Supabase data
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @router.get("/platform-analytics")
 async def get_platform_analytics(
@@ -616,7 +655,7 @@ async def get_platform_analytics(
     teachers: list[dict] = teachers_res.json() if teachers_res.status_code == 200 else []
     completed_orders: list[dict] = orders_res.json() if orders_res.status_code == 200 else []
 
-    # â”€â”€ Summary aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Summary aggregation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     total_courses = len(courses)
     published_courses = sum(1 for c in courses if c.get("is_published"))
     paid_courses_count = sum(1 for c in courses if c.get("is_paid"))
@@ -624,7 +663,7 @@ async def get_platform_analytics(
     total_teachers = len(teachers)
     total_revenue_uzs = sum(float(o.get("amount") or 0) for o in completed_orders)
 
-    # â”€â”€ Per-teacher aggregation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Per-teacher aggregation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     course_to_teacher: dict[int, int] = {
         int(c["id"]): int(c.get("teacher_id") or 0)
         for c in courses if c.get("id") and c.get("teacher_id")
@@ -674,7 +713,7 @@ async def get_platform_analytics(
         reverse=True,
     )
 
-    # â”€â”€ Top 10 courses by enrollment â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # â"€â"€ Top 10 courses by enrollment â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
     top_courses = sorted(
         [
             {
@@ -707,9 +746,9 @@ async def get_platform_analytics(
     }
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Admin Courses Management (Step 20)
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 @router.get("/courses")
 async def admin_list_courses(
@@ -765,7 +804,7 @@ async def admin_list_courses(
             "teacher_name": prof.get("first_name") or f"Teacher {tid}",
             "teacher_username": prof.get("username"),
             "category_name": cat.get("name") or "",
-            "category_icon": cat.get("icon") or "ðŸ“š",
+            "category_icon": cat.get("icon") or "ðŸ"š",
             "is_published": bool(c.get("is_published")),
             "is_paid": bool(c.get("is_paid")),
             "price": float(c.get("price") or 0),
@@ -839,9 +878,9 @@ async def admin_delete_course(
     return {"ok": True, "deleted_id": course_id}
 
 
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 # Payout Management -- Teacher Wallet Admin Endpoints
-# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 from app.services import wallet_service as ws
 from pydantic import BaseModel as _PayoutBase
@@ -889,7 +928,7 @@ async def approve_payout(
 ):
     """
     Admin: mark a pending payout as PAID.
-    Moves money from pending_withdrawal â†’ withdrawn_total.
+    Moves money from pending_withdrawal â†' withdrawn_total.
     """
     try:
         result = await ws.approve_payout(payout_id, admin_note=body.admin_note)
@@ -910,7 +949,7 @@ async def reject_payout(
 ):
     """
     Admin: reject a pending payout.
-    Returns money from pending_withdrawal â†’ available_balance.
+    Returns money from pending_withdrawal â†' available_balance.
     """
     try:
         result = await ws.reject_payout(payout_id, admin_note=body.admin_note)
@@ -919,3 +958,1063 @@ async def reject_payout(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail="To'lovni rad etishda xatolik")
+
+
+# ── Pending enrollments (step-12 manual enrollment) ───────────────────────────
+
+def _pending_supabase_headers() -> dict:
+    return {
+        "apikey":        SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Content-Type":  "application/json",
+        "Prefer":        "return=representation",
+    }
+
+
+class _GrantBody(BaseModel):
+    actual_amount:     Optional[int] = None
+    payment_method:    Optional[str] = None
+    notes:             Optional[str] = None
+    send_notification: bool = True
+
+
+class _CancelBody(BaseModel):
+    reason: Optional[str] = None
+
+
+class _DirectGrantBody(BaseModel):
+    course_id:      int
+    payment_method: Optional[str] = None
+    amount:         Optional[int] = None
+    notes:          Optional[str] = None
+
+
+@router.get("/pending-enrollments")
+async def list_pending_enrollments(
+    status:    str = Query("awaiting_payment"),
+    search:    Optional[str] = Query(None),
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """List pending enrollment requests with user + course info (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "status": f"eq.{status}",
+        "select": "id,user_id,course_id,reference_code,expected_amount,status,created_at,expires_at,admin_notes,actual_amount,payment_method",
+        "order":  "created_at.desc",
+        "limit":  str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    if not rows:
+        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
+    # Enrich: fetch profiles and course titles
+    user_ids   = list({r["user_id"]   for r in rows})
+    course_ids = list({r["course_id"] for r in rows})
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        profiles_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params={
+                "telegram_id": f"in.({','.join(str(u) for u in user_ids)})",
+                "select":      "telegram_id,first_name,username,photo_url",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    profiles_by_id = {
+        p["telegram_id"]: p
+        for p in (profiles_res.json() if profiles_res.status_code == 200 else [])
+    }
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        courses_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={
+                "id":     f"in.({','.join(str(c) for c in course_ids)})",
+                "select": "id,title,thumbnail_url,price",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    courses_by_id = {
+        c["id"]: c
+        for c in (courses_res.json() if courses_res.status_code == 200 else [])
+    }
+
+    enriched = [
+        {
+            **r,
+            "user":   profiles_by_id.get(r["user_id"]),
+            "course": courses_by_id.get(r["course_id"]),
+        }
+        for r in rows
+    ]
+
+    if search:
+        q = search.lower()
+        enriched = [
+            r for r in enriched
+            if q in r["reference_code"].lower()
+            or (r["user"] and q in (r["user"].get("first_name", "") + r["user"].get("username", "")).lower())
+            or (r["course"] and q in r["course"].get("title", "").lower())
+        ]
+
+    return {"items": enriched, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/pending-enrollments/{pending_id}")
+async def admin_get_pending_enrollment(
+    pending_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Full detail for a single pending enrollment — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "*", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pending enrollment not found")
+
+    row = rows[0]
+    async with httpx.AsyncClient(timeout=10) as client:
+        p_res, c_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username,photo_url", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+        )
+    profiles = p_res.json() if p_res.status_code == 200 else []
+    courses  = c_res.json() if c_res.status_code == 200 else []
+    return {
+        **row,
+        "user":   profiles[0] if profiles else None,
+        "course": courses[0]  if courses  else None,
+    }
+
+
+@router.post("/pending-enrollments/{pending_id}/grant")
+async def grant_pending_enrollment(
+    pending_id: int,
+    body:  _GrantBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Mark pending enrollment as granted and create real course_enrollment (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    # Fetch the pending row
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "*", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Pending enrollment not found")
+    pending = rows[0]
+
+    if pending["status"] not in ("awaiting_payment", "paid"):
+        raise HTTPException(status_code=400, detail=f"Cannot grant: status is {pending['status']}")
+
+    user_id   = pending["user_id"]
+    course_id = pending["course_id"]
+
+    # Fetch course title + slug for notification content
+    async with httpx.AsyncClient(timeout=10) as client:
+        course_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}", "select": "title,slug", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    course_rows = course_res.json() if course_res.status_code == 200 else []
+    course_title = course_rows[0]["title"] if course_rows else "Kurs"
+    course_slug  = course_rows[0].get("slug", "") if course_rows else ""
+
+    # Check if not already enrolled
+    async with httpx.AsyncClient(timeout=10) as client:
+        already_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id":  f"eq.{course_id}",
+                "student_id": f"eq.{user_id}",
+                "is_active":  "eq.true",
+                "select":     "id",
+                "limit":      "1",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    already = len(already_res.json() if already_res.status_code == 200 else []) > 0
+
+    if not already:
+        async with httpx.AsyncClient(timeout=10) as client:
+            enroll_res = await client.post(
+                f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                json={"course_id": course_id, "student_id": user_id, "is_active": True},
+                headers=_pending_supabase_headers(),
+            )
+        if enroll_res.status_code not in (200, 201):
+            raise HTTPException(status_code=502, detail="Failed to create enrollment")
+
+    # Update pending enrollment to 'granted'
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}"},
+            json={
+                "status":         "granted",
+                "actual_amount":  body.actual_amount,
+                "payment_method": body.payment_method,
+                "admin_notes":    body.notes,
+                "processed_by":   admin.telegram_id,
+                "processed_at":   now_iso,
+            },
+            headers=_pending_supabase_headers(),
+        )
+
+    if body.send_notification:
+        try:
+            from app.api.v1.endpoints.notifications import send_notification
+            await send_notification(
+                user_id, "course_granted", "COURSE",
+                {"course_id": course_id, "course_title": course_title, "slug": course_slug},
+            )
+        except Exception:
+            pass  # notification failure must not block the grant
+
+        # Telegram DM to the user (user_id IS their telegram_id)
+        if TELEGRAM_BOT_TOKEN:
+            try:
+                course_url = f"{MINI_APP_URL}/courses/{course_slug}" if course_slug else f"{MINI_APP_URL}/courses"
+                web_url = f"https://sahifalab.uz/courses/{course_slug}" if course_slug else "https://sahifalab.uz"
+                tg_text = (
+                    "🎉 <b>Tabriklaymiz!</b>\n\n"
+                    f"«{course_title}» kursi sizga ochildi.\n\n"
+                    "Sahifalab ilovasini oching va birinchi darsdan boshlang!\n\n"
+                    f"Yoki saytda davom eting:\n{web_url}\n\n"
+                    "Omad! 📚"
+                )
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={
+                            "chat_id": user_id,
+                            "text": tg_text,
+                            "parse_mode": "HTML",
+                            "reply_markup": {
+                                "inline_keyboard": [[
+                                    {"text": "📚 Ilovani ochish", "web_app": {"url": course_url}}
+                                ]]
+                            },
+                        },
+                    )
+            except Exception:
+                pass  # Telegram DM failure must not block the grant
+
+    db.add(EnrollmentAuditLog(
+        action="enrollment_granted",
+        target_id=pending_id,
+        admin_telegram_id=admin.telegram_id,
+        user_telegram_id=user_id,
+        course_id=course_id,
+        details={
+            "course_title":   course_title,
+            "actual_amount":  body.actual_amount,
+            "payment_method": body.payment_method,
+            "notes":          body.notes,
+        },
+    ))
+    db.commit()
+
+    return {"ok": True}
+
+
+@router.post("/pending-enrollments/{pending_id}/cancel")
+async def cancel_pending_enrollment(
+    pending_id: int,
+    body:  _CancelBody = _CancelBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Cancel a pending enrollment request (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    # Fetch pending row for audit context
+    async with httpx.AsyncClient(timeout=10) as client:
+        cancel_fetch = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "user_id,course_id", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    cancel_rows = cancel_fetch.json() if cancel_fetch.status_code == 200 else []
+    cancel_user_id   = cancel_rows[0]["user_id"]   if cancel_rows else None
+    cancel_course_id = cancel_rows[0]["course_id"] if cancel_rows else None
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}"},
+            json={
+                "status":      "cancelled",
+                "admin_notes": body.reason,
+                "processed_by": admin.telegram_id,
+                "processed_at": datetime.now(timezone.utc).isoformat(),
+            },
+            headers=_pending_supabase_headers(),
+        )
+
+    db.add(EnrollmentAuditLog(
+        action="enrollment_cancelled",
+        target_id=pending_id,
+        admin_telegram_id=admin.telegram_id,
+        user_telegram_id=cancel_user_id,
+        course_id=cancel_course_id,
+        details={"reason": body.reason},
+    ))
+    db.commit()
+
+    return {"ok": True}
+
+
+@router.post("/users/{telegram_id}/grant-course")
+async def direct_grant_course(
+    telegram_id: int,
+    body: _DirectGrantBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Directly enroll a user in a course, bypassing the reference-code flow (Admin only)."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    # Check already enrolled
+    async with httpx.AsyncClient(timeout=10) as client:
+        already_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            params={
+                "course_id":  f"eq.{body.course_id}",
+                "student_id": f"eq.{telegram_id}",
+                "is_active":  "eq.true",
+                "select":     "id",
+                "limit":      "1",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    if len(already_res.json() if already_res.status_code == 200 else []) > 0:
+        return {"ok": True, "already_enrolled": True}
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        enroll_res = await client.post(
+            f"{SUPABASE_URL}/rest/v1/course_enrollments",
+            json={"course_id": body.course_id, "student_id": telegram_id, "is_active": True},
+            headers=_pending_supabase_headers(),
+        )
+    if enroll_res.status_code not in (200, 201):
+        raise HTTPException(status_code=502, detail="Failed to create enrollment")
+
+    # Fetch course info for rich notifications
+    async with httpx.AsyncClient(timeout=10) as client:
+        dc_course_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{body.course_id}", "select": "title,slug", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    dc_course_rows = dc_course_res.json() if dc_course_res.status_code == 200 else []
+    dc_course_title = dc_course_rows[0]["title"] if dc_course_rows else "Kurs"
+    dc_course_slug  = dc_course_rows[0].get("slug", "") if dc_course_rows else ""
+
+    try:
+        from app.api.v1.endpoints.notifications import send_notification
+        await send_notification(
+            telegram_id, "course_granted", "COURSE",
+            {"course_id": body.course_id, "course_title": dc_course_title, "slug": dc_course_slug},
+        )
+    except Exception:
+        pass
+
+    if TELEGRAM_BOT_TOKEN:
+        try:
+            dc_course_url = f"{MINI_APP_URL}/courses/{dc_course_slug}" if dc_course_slug else f"{MINI_APP_URL}/courses"
+            dc_web_url = f"https://sahifalab.uz/courses/{dc_course_slug}" if dc_course_slug else "https://sahifalab.uz"
+            dc_tg_text = (
+                "🎉 <b>Tabriklaymiz!</b>\n\n"
+                f"«{dc_course_title}» kursi sizga ochildi.\n\n"
+                "Sahifalab ilovasini oching va birinchi darsdan boshlang!\n\n"
+                f"Yoki saytda davom eting:\n{dc_web_url}\n\n"
+                "Omad! 📚"
+            )
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                    json={
+                        "chat_id": telegram_id,
+                        "text": dc_tg_text,
+                        "parse_mode": "HTML",
+                        "reply_markup": {
+                            "inline_keyboard": [[
+                                {"text": "📚 Ilovani ochish", "web_app": {"url": dc_course_url}}
+                            ]]
+                        },
+                    },
+                )
+        except Exception:
+            pass
+
+    db.add(EnrollmentAuditLog(
+        action="direct_enrollment",
+        target_id=None,
+        admin_telegram_id=admin.telegram_id,
+        user_telegram_id=telegram_id,
+        course_id=body.course_id,
+        details={
+            "course_title":   dc_course_title,
+            "payment_method": getattr(body, "payment_method", None),
+            "amount":         getattr(body, "amount", None),
+            "notes":          getattr(body, "notes", None),
+        },
+    ))
+    db.commit()
+
+    return {"ok": True, "already_enrolled": False}
+
+
+# ── Stats & overview ───────────────────────────────────────────────────────────
+
+@router.get("/stats/overview")
+async def admin_stats_overview(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Platform-wide stats for the admin dashboard overview."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    today_start = datetime.now(timezone.utc).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    ).isoformat()
+
+    hdrs_count = {**_pending_supabase_headers(), "Prefer": "count=exact"}
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        pending_res, users_today_res, enroll_today_res, total_users_res, total_courses_res = (
+            await asyncio.gather(
+                client.get(f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+                           params={"status": "in.(awaiting_payment,paid)", "select": "id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                           params={"created_at": f"gte.{today_start}", "select": "telegram_id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                           params={"created_at": f"gte.{today_start}", "is_active": "eq.true", "select": "id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                           params={"select": "telegram_id"},
+                           headers=hdrs_count),
+                client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                           params={"select": "id"},
+                           headers=hdrs_count),
+            )
+        )
+
+    def _count(res): return int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    # Monthly revenue from granted enrollments
+    async with httpx.AsyncClient(timeout=10) as client:
+        rev_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"status": "eq.granted", "processed_at": f"gte.{month_start}",
+                    "select": "actual_amount,expected_amount"},
+            headers=_pending_supabase_headers(),
+        )
+    revenue_rows = rev_res.json() if rev_res.status_code == 200 else []
+    monthly_revenue = sum(
+        (r.get("actual_amount") or r.get("expected_amount") or 0) for r in revenue_rows
+    )
+
+    return {
+        "pending_payments":   _count(pending_res),
+        "users_today":        _count(users_today_res),
+        "enrollments_today":  _count(enroll_today_res),
+        "monthly_revenue":    monthly_revenue,
+        "total_users":        _count(total_users_res),
+        "total_courses":      _count(total_courses_res),
+    }
+
+
+@router.get("/stats/activity")
+async def admin_stats_activity(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Recent activity feed: latest 40 pending-enrollment events enriched with user+course names."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "select": "id,user_id,course_id,reference_code,status,created_at,processed_at,expected_amount",
+                "order":  "created_at.desc",
+                "limit":  "40",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        return []
+
+    user_ids   = list({r["user_id"]   for r in rows})
+    course_ids = list({r["course_id"] for r in rows})
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        p_res, c_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"in.({','.join(str(u) for u in user_ids)})",
+                               "select": "telegram_id,first_name,username"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                       params={"id": f"in.({','.join(str(c) for c in course_ids)})",
+                               "select": "id,title"},
+                       headers=_pending_supabase_headers()),
+        )
+
+    by_user   = {p["telegram_id"]: p for p in (p_res.json() if p_res.status_code == 200 else [])}
+    by_course = {c["id"]: c          for c in (c_res.json() if c_res.status_code == 200 else [])}
+
+    return [
+        {
+            **r,
+            "user_name":   by_user.get(r["user_id"],   {}).get("first_name", f"#{r['user_id']}"),
+            "username":    by_user.get(r["user_id"],   {}).get("username"),
+            "course_name": by_course.get(r["course_id"], {}).get("title",  f"#{r['course_id']}"),
+        }
+        for r in rows
+    ]
+
+
+@router.get("/stats/revenue")
+async def admin_stats_revenue(
+    from_date: Optional[str] = Query(None, alias="from"),
+    to_date:   Optional[str] = Query(None, alias="to"),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Revenue breakdown for a date range (defaults to current month) — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    now = datetime.now(timezone.utc)
+    range_from = from_date or now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
+    range_to   = to_date   or now.isoformat()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "status":       "eq.granted",
+                "processed_at": f"gte.{range_from}",
+                "select":       "id,course_id,expected_amount,actual_amount,payment_method,processed_at",
+                "order":        "processed_at.asc",
+                "limit":        "500",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+
+    # Also filter by to_date client-side (Supabase PostgREST supports lte on timestamp)
+    if range_to:
+        rows = [r for r in rows if r.get("processed_at", "") <= range_to]
+
+    total_revenue = sum((r.get("actual_amount") or r.get("expected_amount") or 0) for r in rows)
+
+    # Group by payment method
+    by_method: dict[str, dict] = {}
+    for r in rows:
+        m = r.get("payment_method") or "unknown"
+        if m not in by_method:
+            by_method[m] = {"payment_method": m, "count": 0, "total": 0}
+        by_method[m]["count"]  += 1
+        by_method[m]["total"]  += r.get("actual_amount") or r.get("expected_amount") or 0
+
+    # Group by day
+    by_day: dict[str, int] = {}
+    for r in rows:
+        day = (r.get("processed_at") or "")[:10]
+        if day:
+            by_day[day] = by_day.get(day, 0) + (r.get("actual_amount") or r.get("expected_amount") or 0)
+
+    return {
+        "from":          range_from,
+        "to":            range_to,
+        "total_revenue": total_revenue,
+        "count":         len(rows),
+        "by_method":     list(by_method.values()),
+        "by_day":        [{"date": k, "total": v} for k, v in sorted(by_day.items())],
+    }
+
+
+# ── User management ────────────────────────────────────────────────────────────
+
+@router.get("/users")
+async def admin_list_users(
+    search:    Optional[str] = Query(None),
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Paginated user list with optional name/username search (Admin only)."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "select": "telegram_id,first_name,username,photo_url,created_at,streak_days",
+        "order":  "created_at.desc",
+        "limit":  str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+    if search:
+        params["or"] = f"(first_name.ilike.*{search}*,username.ilike.*{search}*)"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/users/{telegram_id}")
+async def admin_get_user(
+    telegram_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Full user detail with enrolled courses (Admin only)."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        profile_res, enroll_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"eq.{telegram_id}", "select": "*", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/course_enrollments",
+                       params={"student_id": f"eq.{telegram_id}", "is_active": "eq.true",
+                               "select": "course_id,created_at", "order": "created_at.desc"},
+                       headers=_pending_supabase_headers()),
+        )
+
+    profiles = profile_res.json() if profile_res.status_code == 200 else []
+    if not profiles:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    enrollments = enroll_res.json() if enroll_res.status_code == 200 else []
+    course_ids  = [e["course_id"] for e in enrollments]
+
+    courses_by_id: dict = {}
+    if course_ids:
+        async with httpx.AsyncClient(timeout=10) as client:
+            c_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/courses",
+                params={"id": f"in.({','.join(str(c) for c in course_ids)})",
+                        "select": "id,title,thumbnail_url,price"},
+                headers=_pending_supabase_headers(),
+            )
+        courses_by_id = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
+
+    return {
+        **profiles[0],
+        "enrollments": [
+            {"course_id": e["course_id"], "enrolled_at": e["created_at"],
+             "course": courses_by_id.get(e["course_id"])}
+            for e in enrollments
+        ],
+    }
+
+
+# ── Course management ──────────────────────────────────────────────────────────
+
+@router.get("/courses")
+async def admin_list_courses(
+    page:      int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    published: Optional[bool] = Query(None),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """List all courses (including unpublished) — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "select": "id,title,thumbnail_url,price,is_paid,is_published,enrolled_count,rating,created_at,teacher_id",
+        "order":  "created_at.desc",
+        "limit":  str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+    if published is not None:
+        params["is_published"] = f"eq.{str(published).lower()}"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+class _CourseActionBody(BaseModel):
+    feedback: Optional[str] = None
+
+
+@router.post("/courses/{course_id}/approve")
+async def admin_approve_course(
+    course_id: int,
+    body: _CourseActionBody = _CourseActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Publish a draft/review course — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}"},
+            json={"is_published": True, "status": "published"},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+@router.post("/courses/{course_id}/reject")
+async def admin_reject_course(
+    course_id: int,
+    body: _CourseActionBody = _CourseActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Reject / send back a course to draft — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}"},
+            json={"is_published": False, "status": "draft"},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+# ── User payment history ────────────────────────────────────────────────────────
+
+@router.get("/users/{telegram_id}/payments")
+async def admin_user_payments(
+    telegram_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """All pending_enrollment rows for a user — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "user_id": f"eq.{telegram_id}",
+                "select": "id,course_id,reference_code,expected_amount,actual_amount,status,payment_method,admin_notes,created_at,processed_at,expires_at",
+                "order": "created_at.desc",
+                "limit": "50",
+            },
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        return rows
+
+    course_ids = list({r["course_id"] for r in rows})
+    async with httpx.AsyncClient(timeout=10) as client:
+        c_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"in.({','.join(str(c) for c in course_ids)})", "select": "id,title"},
+            headers=_pending_supabase_headers(),
+        )
+    by_course = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
+
+    return [{**r, "course": by_course.get(r["course_id"])} for r in rows]
+
+
+# ── Teacher management ─────────────────────────────────────────────────────────
+
+class _TeacherActionBody(BaseModel):
+    feedback: Optional[str] = None
+    commission_rate: Optional[float] = None
+
+
+@router.get("/teachers")
+async def admin_list_teachers(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    page:          int = Query(1, ge=1),
+    page_size:     int = Query(20, ge=1, le=100),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """List all teacher records — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    params: dict = {
+        "select": "id,telegram_id,bio,experience,intro_video_url,status,commission_rate,created_at",
+        "order": "created_at.desc",
+        "limit": str(page_size),
+        "offset": str((page - 1) * page_size),
+    }
+    if status_filter:
+        params["status"] = f"eq.{status_filter}"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/teachers",
+            params=params,
+            headers={**_pending_supabase_headers(), "Prefer": "count=exact"},
+        )
+
+    if res.status_code == 404:
+        return {"items": [], "total": 0, "page": page, "page_size": page_size}
+
+    rows  = res.json() if res.status_code == 200 else []
+    total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
+
+    if rows:
+        tids = [r["telegram_id"] for r in rows if r.get("telegram_id")]
+        if tids:
+            async with httpx.AsyncClient(timeout=10) as client:
+                p_res = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/profiles",
+                    params={"telegram_id": f"in.({','.join(str(t) for t in tids)})",
+                            "select": "telegram_id,first_name,username,photo_url"},
+                    headers=_pending_supabase_headers(),
+                )
+            by_user = {p["telegram_id"]: p for p in (p_res.json() if p_res.status_code == 200 else [])}
+            rows = [{**r, "profile": by_user.get(r.get("telegram_id"))} for r in rows]
+
+    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+
+
+@router.post("/teachers/{teacher_id}/approve")
+async def admin_approve_teacher(
+    teacher_id: int,
+    body: _TeacherActionBody = _TeacherActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Approve a teacher application — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    patch: dict = {"status": "approved"}
+    if body.commission_rate is not None:
+        patch["commission_rate"] = body.commission_rate
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/teachers",
+            params={"id": f"eq.{teacher_id}"},
+            json=patch,
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+@router.post("/teachers/{teacher_id}/reject")
+async def admin_reject_teacher(
+    teacher_id: int,
+    body: _TeacherActionBody = _TeacherActionBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Reject a teacher application — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/teachers",
+            params={"id": f"eq.{teacher_id}"},
+            json={"status": "rejected", "rejection_reason": body.feedback},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+# ── User suspension ────────────────────────────────────────────────────────────
+
+class _SuspendBody(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.post("/users/{telegram_id}/suspend")
+async def admin_suspend_user(
+    telegram_id: int,
+    body: _SuspendBody = _SuspendBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Suspend a user account — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/profiles",
+            params={"telegram_id": f"eq.{telegram_id}"},
+            json={"is_active": False, "suspension_reason": body.reason},
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}
+
+
+# ── Bot-specific endpoints ─────────────────────────────────────────────────────
+
+@router.get("/pending-enrollments/by-code/{reference_code}")
+async def admin_pending_by_code(
+    reference_code: str,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Look up a pending enrollment by reference code — used by the payment bot."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"reference_code": f"eq.{reference_code.upper()}", "select": "*", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    if not rows:
+        raise HTTPException(status_code=404, detail="Reference code not found")
+
+    row = rows[0]
+    if row["status"] in ("cancelled", "granted"):
+        raise HTTPException(status_code=410, detail=f"Code is no longer active (status: {row['status']})")
+
+    expires_at = row.get("expires_at")
+    if expires_at:
+        exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        if exp_dt < datetime.now(timezone.utc):
+            async with httpx.AsyncClient(timeout=5) as cl:
+                await cl.patch(
+                    f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+                    params={"id": f"eq.{row['id']}"},
+                    json={"status": "expired"},
+                    headers=_pending_supabase_headers(),
+                )
+            raise HTTPException(status_code=410, detail="Code expired")
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        p_res, c_res = await asyncio.gather(
+            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+            client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                       headers=_pending_supabase_headers()),
+        )
+    profile = (p_res.json() or [{}])[0] if p_res.status_code == 200 else {}
+    course  = (c_res.json() or [{}])[0] if c_res.status_code == 200 else {}
+
+    return {
+        **row,
+        "user_name":        profile.get("first_name", f"#{row['user_id']}"),
+        "user_username":    profile.get("username"),
+        "course_title":     course.get("title",         f"#{row['course_id']}"),
+        "course_thumbnail": course.get("thumbnail_url"),
+    }
+
+
+class _MarkPaidBody(BaseModel):
+    payment_proof_url: Optional[str] = None
+    telegram_file_id:  Optional[str] = None
+
+
+@router.post("/pending-enrollments/{pending_id}/mark-paid")
+async def admin_mark_enrollment_paid(
+    pending_id: int,
+    body: _MarkPaidBody = _MarkPaidBody(),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Mark pending enrollment as 'paid' (screenshot received) — used by payment bot."""
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+
+    patch: dict = {"status": "paid"}
+    if body.payment_proof_url:
+        patch["payment_proof_url"] = body.payment_proof_url
+    elif body.telegram_file_id:
+        patch["payment_proof_url"] = f"tg://file/{body.telegram_file_id}"
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "status": "neq.granted"},
+            json=patch,
+            headers=_pending_supabase_headers(),
+        )
+    if res.status_code not in (200, 204):
+        raise HTTPException(status_code=502, detail="Supabase error")
+    return {"ok": True}

@@ -19,6 +19,7 @@ Token authentication (signed embed):
   URL:   https://iframe.mediadelivery.net/embed/{library_id}/{video_id}?token={token}&expires={exp}
 """
 
+import base64
 import hashlib
 import time
 import logging
@@ -214,32 +215,77 @@ def signed_embed_url(
     return f"{base}?{qs}" if qs else base
 
 
+# ── CDN pull-zone token helper ────────────────────────────────────────────────
+
+def _cdn_token(path: str, exp: int) -> str:
+    """
+    Standard Bunny CDN pull-zone token authentication.
+    Formula: base64url( SHA256( cdn_token_key + url_path + expires ) )
+    Used when BUNNY_STREAM_CDN_TOKEN_KEY is set (CDN Token Auth enabled on the
+    pull zone — distinct from Embed View Token Auth on the Stream library).
+    """
+    raw = f"{settings.BUNNY_STREAM_CDN_TOKEN_KEY}{path}{exp}"
+    digest = hashlib.sha256(raw.encode("utf-8")).digest()
+    token = base64.b64encode(digest).decode("utf-8")
+    return token.replace("+", "-").replace("/", "_").rstrip("=")
+
+
+def _sign_cdn_url(base_url: str, path: str, expires_seconds: int) -> str:
+    """
+    Append token + expires to a CDN URL.
+    Chooses the right formula based on which key is configured:
+      - BUNNY_STREAM_CDN_TOKEN_KEY set → CDN pull-zone formula (path-based, base64url)
+      - BUNNY_STREAM_TOKEN_KEY set     → Stream embed formula  (video_id-based, hex)
+      - Neither set                    → unsigned URL
+    """
+    exp = int(time.time()) + expires_seconds
+
+    if settings.BUNNY_STREAM_CDN_TOKEN_KEY:
+        token = _cdn_token(path, exp)
+        return f"{base_url}?token={token}&expires={exp}"
+
+    if settings.BUNNY_STREAM_TOKEN_KEY:
+        # Legacy: embed-style token keyed on video_id extracted from path segment
+        video_id = path.lstrip("/").split("/")[0]
+        raw = f"{settings.BUNNY_STREAM_TOKEN_KEY}{video_id}{exp}"
+        token = hashlib.sha256(raw.encode("utf-8")).hexdigest()
+        return f"{base_url}?token={token}&expires={exp}"
+
+    return base_url
+
+
 # ── 6. Signed HLS URL (for custom players) ───────────────────────────────────
 
 def signed_hls_url(video_id: str, expires_seconds: int = 14400) -> str:
-    """
-    Generate a signed direct HLS .m3u8 URL for use with custom players (hls.js).
-
-    URL pattern:
-      https://{cdn_host}/{video_id}/playlist.m3u8?token=...&expires=...
-    """
+    """Generate a signed direct HLS .m3u8 URL for use with expo-video."""
     cdn_host = settings.BUNNY_STREAM_CDN_HOST
     if not cdn_host:
-        # Fallback to the embed approach if CDN host not set
         return signed_embed_url(video_id, expires_seconds)
 
-    base = f"https://{cdn_host}/{video_id}/playlist.m3u8"
-
-    if settings.BUNNY_STREAM_TOKEN_KEY:
-        exp = int(time.time()) + expires_seconds
-        raw = f"{settings.BUNNY_STREAM_TOKEN_KEY}{video_id}{exp}"
-        token = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-        return f"{base}?token={token}&expires={exp}"
-
-    return base
+    path = f"/{video_id}/playlist.m3u8"
+    base = f"https://{cdn_host}{path}"
+    return _sign_cdn_url(base, path, expires_seconds)
 
 
-# ── 7. Thumbnail URL ─────────────────────────────────────────────────────────
+# ── 7. Signed MP4 download URL ───────────────────────────────────────────────
+
+def signed_mp4_url(video_id: str, resolution: str = "720p", expires_seconds: int = 3600, cdn_host_override: str = "") -> str:
+    """
+    Generate a signed direct MP4 download URL for offline use.
+    expires_seconds is short (1 h) — client should download immediately.
+    cdn_host_override lets callers supply the hostname extracted from hls_url
+    when BUNNY_STREAM_CDN_HOST is not configured in the environment.
+    """
+    cdn_host = cdn_host_override or settings.BUNNY_STREAM_CDN_HOST
+    if not cdn_host:
+        raise ValueError("BUNNY_STREAM_CDN_HOST is not configured")
+
+    path = f"/{video_id}/play_{resolution}.mp4"
+    base = f"https://{cdn_host}{path}"
+    return _sign_cdn_url(base, path, expires_seconds)
+
+
+# ── 8. Thumbnail URL ──────────────────────────────────────────────────────────
 
 def thumbnail_url(video_id: str) -> str:
     """

@@ -227,7 +227,9 @@ const VideoPlayer: React.FC<Props> = ({
           src={ytUrl}
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
           allowFullScreen
+          frameBorder="0"
           className="absolute inset-0 w-full h-full"
+          style={{ border: 'none' }}
           title={title ?? 'Video'}
         />
       </Shell>

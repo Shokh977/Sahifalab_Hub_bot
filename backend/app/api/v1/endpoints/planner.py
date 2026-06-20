@@ -57,6 +57,8 @@ class TaskCreate(BaseModel):
     sort_order:       int = 0
     linked_course_id: Optional[int] = None
     linked_lesson_id: Optional[int] = None
+    scheduled_at:     Optional[datetime] = None
+    duration_minutes: int = 30
 
 
 class TaskUpdate(BaseModel):
@@ -67,6 +69,8 @@ class TaskUpdate(BaseModel):
     sort_order:       Optional[int] = None
     linked_course_id: Optional[int] = None
     linked_lesson_id: Optional[int] = None
+    scheduled_at:     Optional[datetime] = None
+    duration_minutes: Optional[int] = None
 
 
 class ReorderItem(BaseModel):
@@ -105,6 +109,8 @@ def _task_dict(t: PlannerTask) -> dict:
         "linked_course_id": t.linked_course_id,
         "linked_lesson_id": t.linked_lesson_id,
         "xp_claimed":       t.xp_claimed,
+        "scheduled_at":     t.scheduled_at.isoformat() if t.scheduled_at else None,
+        "duration_minutes": t.duration_minutes if t.duration_minutes is not None else 30,
         "created_at":       t.created_at.isoformat() if t.created_at else None,
         "updated_at":       t.updated_at.isoformat() if t.updated_at else None,
     }
@@ -137,6 +143,8 @@ async def create_task(body: TaskCreate, db: Session = Depends(get_db), caller_id
         sort_order=body.sort_order,
         linked_course_id=body.linked_course_id,
         linked_lesson_id=body.linked_lesson_id,
+        scheduled_at=body.scheduled_at,
+        duration_minutes=body.duration_minutes,
     )
     db.add(task)
     db.commit()

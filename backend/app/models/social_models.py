@@ -91,14 +91,33 @@ class PostLike(Base):
 class PostComment(Base):
     __tablename__ = "post_comments"
 
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    post_id     = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
+    author_id   = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    content     = Column(Text, nullable=False)
+    parent_id   = Column(Integer, ForeignKey("post_comments.id", ondelete="SET NULL"), nullable=True)  # migration 055
+    likes_count = Column(Integer, nullable=False, default=0)                                            # migration 055
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        Index("ix_post_comments_post",   "post_id"),
+        Index("ix_post_comments_parent", "parent_id"),
+    )
+
+
+class CommentLike(Base):
+    """migration 055 — like/heart on a comment."""
+    __tablename__ = "comment_likes"
+
     id         = Column(Integer, primary_key=True, autoincrement=True)
-    post_id    = Column(Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False)
-    author_id  = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
-    content    = Column(Text, nullable=False)
+    comment_id = Column(Integer, ForeignKey("post_comments.id", ondelete="CASCADE"), nullable=False)
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
-        Index("ix_post_comments_post", "post_id"),
+        UniqueConstraint("comment_id", "user_id", name="uq_comment_like"),
+        Index("ix_comment_likes_comment", "comment_id"),
+        Index("ix_comment_likes_user",    "user_id"),
     )
 
 
@@ -158,13 +177,29 @@ class DirectMessage(Base):
     conversation_id = Column(Integer, ForeignKey("conversations.id", ondelete="CASCADE"), nullable=False)
     sender_id       = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
     content         = Column(Text, nullable=False)
-    is_delivered    = Column(Boolean, nullable=False, default=False)   # recipient opened conversation
-    is_read         = Column(Boolean, nullable=False, default=False)   # recipient read all messages
+    is_delivered    = Column(Boolean, nullable=False, default=False)
+    is_read         = Column(Boolean, nullable=False, default=False)
+    reply_to_id     = Column(Integer, ForeignKey("direct_messages.id", ondelete="SET NULL"), nullable=True)
     created_at      = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
         Index("ix_dm_conv", "conversation_id", "created_at"),
         Index("ix_dm_sender", "sender_id"),
+    )
+
+
+class MessageReaction(Base):
+    __tablename__ = "message_reactions"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(Integer, ForeignKey("direct_messages.id", ondelete="CASCADE"), nullable=False)
+    user_id    = Column(BigInteger, nullable=False)
+    emoji      = Column(String(10), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("message_id", "user_id", "emoji", name="uq_msg_reaction"),
+        Index("ix_msg_reactions_message", "message_id"),
     )
 
 
@@ -249,7 +284,9 @@ class ActivityLog(Base):
     activity_type  = Column(Text, nullable=False)   # see CHECK constraint in migration
     reference_id   = Column(Text, nullable=True)    # ID of related entity cast to text
     reference_type = Column(Text, nullable=True)    # 'course' | 'post' | 'certificate' | …
-    activity_metadata = Column(JSONB, nullable=True)   # extra display data (title, preview, …)
+
+    activity_metadata = Column("metadata", JSONB, nullable=True)   # DB column is "metadata"
+main
     created_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (

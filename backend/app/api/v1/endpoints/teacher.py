@@ -202,7 +202,7 @@ async def get_teacher_profile_by_id(telegram_id: int):
             ),
             client.get(
                 f"{SUPABASE_URL}/rest/v1/profiles",
-                params={"telegram_id": f"eq.{telegram_id}", "select": "first_name,username,photo_url"},
+                params={"telegram_id": f"eq.{telegram_id}", "select": "first_name,username,photo_url,level"},
                 headers=_supabase_headers(),
             ),
         )
@@ -223,6 +223,7 @@ async def get_teacher_profile_by_id(telegram_id: int):
         "first_name":  user_row.get("first_name"),
         "username":    user_row.get("username"),
         "photo_url":   user_row.get("photo_url"),
+        "level":       user_row.get("level"),
     }
 
 

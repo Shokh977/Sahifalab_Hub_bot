@@ -1,11 +1,11 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
-from app.api.v1 import social_routes, messenger_routes
+from app.api.v1 import social_routes, messenger_routes, group_routes
 
 api_router = APIRouter()
 
@@ -44,12 +44,36 @@ api_router.include_router(search_router,      prefix="/search",      tags=["sear
 # from the live router to eliminate unauthenticated CRUD attack surface.
 
 # Social ecosystem — mounted under /v1 to match frontend expectations
-api_router.include_router(social_routes.router, prefix="/v1")
+api_router.include_router(social_routes.router,   prefix="/v1")
 api_router.include_router(messenger_routes.router, prefix="/v1")
+api_router.include_router(group_routes.router,     prefix="/v1")
 
 # Jobs & Certificates
 api_router.include_router(jobs.router,         prefix="/jobs")
 api_router.include_router(certificates.router, prefix="/certificates")
+
+# User settings
+api_router.include_router(settings.router)
+
+# OG redirect — dynamic link previews for Telegram/Twitter/Facebook
+api_router.include_router(og.router, prefix="/og", tags=["og"])
+
+# Study focus sessions & leaderboard
+api_router.include_router(focus.router,       prefix="/focus",       tags=["focus"])
+api_router.include_router(leaderboard.router, prefix="/leaderboard", tags=["leaderboard"])
+
+# Profile gamification
+api_router.include_router(achievements.router, prefix="/achievements", tags=["achievements"])
+api_router.include_router(activity.router,     prefix="/activity",     tags=["activity"])
+
+# Streak system — freeze purchase, freeze use, streak detail
+api_router.include_router(streaks.router, prefix="/streaks", tags=["streaks"])
+
+# Flashcard system — spaced repetition study
+api_router.include_router(flashcards.router, prefix="/flashcards", tags=["flashcards"])
+
+# Broadcast announcements (modal on app launch)
+api_router.include_router(announcements.router, prefix="/announcements", tags=["announcements"])
 
 # Internal maintenance (secret-key protected)
 api_router.include_router(cron.router)

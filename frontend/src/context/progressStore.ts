@@ -28,10 +28,40 @@ import { API_BASE } from '../lib/apiUrl'
 function _authHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const h: Record<string, string> = { ...extra }
   try {
-    const t = localStorage.getItem('auth_token')
+    const t = localStorage.getItem('tma_auth_token') || localStorage.getItem('auth_token')
     if (t) h['Authorization'] = `Bearer ${t}`
   } catch { /* SSR / Telegram WebView fallback */ }
   return h
+}
+
+// ── Daily tracking (localStorage, resets at UTC midnight) ────────────────────
+const DAILY_KEY = 'sahifalab_daily_v2'
+
+interface DailyData {
+  date: string           // YYYY-MM-DD UTC
+  focusSeconds: number   // focus time earned today
+  quizCount: number      // quizzes completed today
+}
+
+function todayUTC(): string {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function loadDaily(): DailyData {
+  try {
+    const raw = localStorage.getItem(DAILY_KEY)
+    if (!raw) return { date: todayUTC(), focusSeconds: 0, quizCount: 0 }
+    const d = JSON.parse(raw) as DailyData
+    // New day → reset
+    if (d.date !== todayUTC()) return { date: todayUTC(), focusSeconds: 0, quizCount: 0 }
+    return d
+  } catch {
+    return { date: todayUTC(), focusSeconds: 0, quizCount: 0 }
+  }
+}
+
+function saveDaily(d: DailyData) {
+  try { localStorage.setItem(DAILY_KEY, JSON.stringify(d)) } catch {}
 }
 
 // ── XP rate constants ────────────────────────────────────────────────────────
@@ -105,6 +135,10 @@ interface ProgressState {
   isSyncing:           boolean
   isInitialized:       boolean
 
+  // Daily tracking (localStorage, resets at UTC midnight)
+  dailyFocusSeconds:   number     // focus seconds earned today
+  dailyQuizCount:      number     // quizzes completed today
+
   // Actions
   init:            (telegramId: number, firstName: string, username?: string) => Promise<void>
   addFocusSeconds: (seconds: number) => void
@@ -112,11 +146,16 @@ interface ProgressState {
   addCourseXP:     (courseId: number) => Promise<{ xp_added: number }>
   syncToSupabase:  () => Promise<void>
   pingPresence:    () => Promise<void>
+  flushFocusSeconds: () => Promise<void>  // immediate sync (call on timer complete/unmount)
 }
 
 // ── Store ────────────────────────────────────────────────────────────────────
 
-export const useProgressStore = create<ProgressState>((set, get) => ({
+export const useProgressStore = create<ProgressState>((set, get) => {
+  // Load daily data once at store creation
+  const _daily = loadDaily()
+
+  return {
   telegramId:          null,
   firstName:           '',
   username:            '',
@@ -130,6 +169,8 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
   isLoading:           false,
   isSyncing:           false,
   isInitialized:       false,
+  dailyFocusSeconds:   _daily.focusSeconds,
+  dailyQuizCount:      _daily.quizCount,
 
   // ── init ────────────────────────────────────────────────────────────────
   init: async (telegramId, firstName, username = '') => {
@@ -172,61 +213,49 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
   // ── addFocusSeconds ─────────────────────────────────────────────────────
   // Updates local state for real-time UX; the XP delta is sent to the server
-  // via /api/xp/add (DEEP_WORK) on the next syncToSupabase() call.
+  // via /api/xp/add (DEEP_WORK) on the next syncToSupabase() / flushFocusSeconds() call.
   addFocusSeconds: (seconds: number) => {
     if (seconds <= 0) return
     set((state) => {
-      const newFocusSeconds = state.focusSeconds + seconds
+      const newFocusSeconds    = state.focusSeconds + seconds
+      const newDailyFocus      = state.dailyFocusSeconds + seconds
       const xpDelta =
         focusSecondsToXP(newFocusSeconds) - focusSecondsToXP(state.focusSeconds)
       const newXP = state.totalXP + xpDelta
+      // Persist daily focus so it survives page reloads within the same day
+      saveDaily({ date: todayUTC(), focusSeconds: newDailyFocus, quizCount: state.dailyQuizCount })
       return {
         focusSeconds:        newFocusSeconds,
         totalFocusMinutes:   Math.floor(newFocusSeconds / 60),
         pendingFocusSeconds: state.pendingFocusSeconds + seconds,
         totalXP:             newXP,
         level:               calcLevel(newXP),
+        dailyFocusSeconds:   newDailyFocus,
       }
     })
   },
 
   // ── addQuizXP ───────────────────────────────────────────────────────────
   // Flat 25 XP per quiz (score/total params kept for backward compat).
-  // Optimistic local update; server enforces the 100 XP/day daily cap.
+  // XP is already awarded server-side by /api/quizzes/{id}/verify — this
+  // only updates the local store optimistically so the UI reflects it instantly.
   addQuizXP: (_score: number, _total: number) => {
     const state = get()
     if (!state.telegramId) return
 
     const QUIZ_XP = 25
 
-    // Optimistic update — corrected by server response below
-    set(s => ({
-      totalXP:          s.totalXP + QUIZ_XP,
-      level:            calcLevel(s.totalXP + QUIZ_XP),
-      quizzesCompleted: s.quizzesCompleted + 1,
-      dailyQuizXP:      Math.min(100, s.dailyQuizXP + QUIZ_XP),
-    }))
-
-    // Server enforces daily cap and writes the audit log
-    fetch(`${API_BASE}/api/xp/add`, {
-      method:  'POST',
-      headers: _authHeaders({ 'Content-Type': 'application/json' }),
-      body:    JSON.stringify({
-        telegram_id: state.telegramId,
-        source:      'QUIZ',
-        amount:      QUIZ_XP,
-      }),
+    set(s => {
+      const newDailyQuiz = s.dailyQuizCount + 1
+      saveDaily({ date: todayUTC(), focusSeconds: s.dailyFocusSeconds, quizCount: newDailyQuiz })
+      return {
+        totalXP:          s.totalXP + QUIZ_XP,
+        level:            calcLevel(s.totalXP + QUIZ_XP),
+        quizzesCompleted: s.quizzesCompleted + 1,
+        dailyQuizXP:      Math.min(100, s.dailyQuizXP + QUIZ_XP),
+        dailyQuizCount:   newDailyQuiz,
+      }
     })
-      .then(r => r.json())
-      .then(data => {
-        if (data.new_xp !== undefined) {
-          set({
-            totalXP: data.new_xp,
-            level:   data.new_level ?? calcLevel(data.new_xp),
-          })
-        }
-      })
-      .catch(() => { /* silent — optimistic state stays until next init */ })
   },
 
   // ── addCourseXP ─────────────────────────────────────────────────────────
@@ -266,33 +295,32 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
 
     set({ isSyncing: true })
     const pendingSeconds = state.pendingFocusSeconds
-    const focusXPDelta   = focusSecondsToXP(pendingSeconds)
+    const pendingMinutes = Math.floor(pendingSeconds / 60)
     const totalFocusMin  = Math.floor(state.focusSeconds / 60)
 
     try {
-      // 1. Report DEEP_WORK XP delta via anti-cheat RPC
-      if (focusXPDelta > 0) {
-        const xpRes = await fetch(`${API_BASE}/api/xp/add`, {
+      // 1. Report focus minutes via /api/focus/complete — awards XP AND creates
+      //    a focus_sessions row so streak + daily goal logic runs correctly.
+      if (pendingMinutes > 0) {
+        const d = new Date()
+        const localDate = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+        const focusRes = await fetch(`${API_BASE}/api/focus/complete`, {
           method:  'POST',
           headers: _authHeaders({ 'Content-Type': 'application/json' }),
-          body:    JSON.stringify({
-            telegram_id: state.telegramId,
-            source:      'DEEP_WORK',
-            amount:      focusXPDelta,
-          }),
+          body:    JSON.stringify({ minutes: pendingMinutes, local_date: localDate }),
         })
-        if (xpRes.ok) {
-          const data = await xpRes.json()
-          if (data.new_xp !== undefined) {
+        if (focusRes.ok) {
+          const data = await focusRes.json()
+          if (data.total_xp !== undefined) {
             set({
-              totalXP: data.new_xp,
-              level:   data.new_level ?? calcLevel(data.new_xp),
+              totalXP: data.total_xp,
+              level:   calcLevel(data.total_xp),
             })
           }
         }
       }
 
-      // 2. Sync presence + focus seconds (server owns total_xp via add_xp)
+      // 2. Sync presence + focus seconds
       await fetch(`${API_BASE}/api/profiles/sync`, {
         method:  'POST',
         headers: _authHeaders({ 'Content-Type': 'application/json' }),
@@ -308,7 +336,7 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       })
 
       set({
-        pendingFocusSeconds: 0,
+        pendingFocusSeconds: pendingSeconds % 60,  // keep sub-minute remainder for next sync
         totalFocusMinutes:   totalFocusMin,
       })
     } catch {
@@ -338,4 +366,14 @@ export const useProgressStore = create<ProgressState>((set, get) => ({
       // Silent fail
     }
   },
-}))
+
+  // ── flushFocusSeconds ───────────────────────────────────────────────────
+  // Immediately syncs pending focus XP to the server.
+  // Call this on timer complete or component unmount to avoid losing XP.
+  flushFocusSeconds: async () => {
+    const state = get()
+    if (!state.telegramId || !state.isInitialized || state.pendingFocusSeconds <= 0) return
+    await get().syncToSupabase()
+  },
+}
+})

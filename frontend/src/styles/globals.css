@@ -214,6 +214,16 @@ html:not(.dark) [class~="text-white/25"],
 html:not(.dark) [class~="text-white/20"],
 html:not(.dark) [class~="text-white/15"] { color: var(--text-muted)     !important; }
 
+/* ── Placeholder text in light mode ─────────────────────────────────────────── */
+html:not(.dark) [class~="placeholder:text-white/25"]::placeholder,
+html:not(.dark) [class~="placeholder:text-white/30"]::placeholder,
+html:not(.dark) [class~="placeholder:text-white/35"]::placeholder,
+html:not(.dark) [class~="placeholder:text-white/40"]::placeholder,
+html:not(.dark) [class~="placeholder-white/25"]::placeholder,
+html:not(.dark) [class~="placeholder-white/30"]::placeholder,
+html:not(.dark) [class~="placeholder-white/35"]::placeholder,
+html:not(.dark) [class~="placeholder-white/40"]::placeholder { color: var(--text-tertiary) !important; }
+
 /* ─ Bare text-white (full opacity) → text-primary in light mode ─────────────
    Exceptions: elements that also carry a solid colored background (buttons)  */
 html:not(.dark) [class~="text-white"]:not([class~="bg-[#e8792f]"]):not([class~="bg-[#c44a1a]"]):not([class~="bg-[#d4692a]"]):not([class~="bg-[#F15929]"]):not([class~="bg-[#e84e22]"]):not([class~="bg-[#d4451f]"]):not([class~="bg-[#2AABEE]"]):not([class~="bg-[#1d97d4]"]):not([class~="bg-[#1A1A1A]"]):not([class~="bg-red-500"]):not([class~="bg-red-600"]):not([class~="bg-emerald-500"]) {

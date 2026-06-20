@@ -10,7 +10,7 @@
  */
 
 import React from 'react'
-import { BadgeCheck, Shield } from 'lucide-react'
+import { BadgeCheck } from 'lucide-react'
 
 // ── Rank data ────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,7 @@ export interface UserIdentityUser {
   username?: string | null
   photo_url?: string | null
   role?: string
+  account_type?: string
   level?: number
   xp?: number
 }
@@ -121,8 +122,8 @@ const UserIdentity: React.FC<Props> = ({
   const { avatar: avatarPx, border: borderPx, badge: badgePx, font } = SIZES[size]
   const rank = getRankInfo(level)
   const displayName = user.full_name || user.first_name || user.username || 'Foydalanuvchi'
-  const isTeacher = user.role === 'teacher'
-  const isAdmin = user.role === 'admin'
+  const isAdmin   = user.role === 'admin'   || user.account_type === 'admin'
+  const isTeacher = user.role === 'teacher' || user.account_type === 'teacher'
 
   return (
     <div
@@ -162,21 +163,23 @@ const UserIdentity: React.FC<Props> = ({
 
       {/* Name + Badge + Rank */}
       {showName && (
-        <div className="min-w-0 flex flex-col">
-          <div className="flex items-center gap-1">
+        <div className="min-w-0 flex flex-col max-w-[200px]">
+          <div className="flex items-center gap-1 min-w-0">
             <span className={`font-semibold text-gray-900 dark:text-white truncate ${font} ${nameClass}`}>
               {displayName}
             </span>
-            {showBadge && isTeacher && (
+            {showBadge && isAdmin && (
+              <BadgeCheck
+                className="flex-shrink-0 text-[#e8792f] fill-[#e8792f]/20"
+                style={{ width: badgePx, height: badgePx }}
+                title="Admin"
+              />
+            )}
+            {showBadge && !isAdmin && isTeacher && (
               <BadgeCheck
                 className="flex-shrink-0 text-blue-400 fill-blue-400/20"
                 style={{ width: badgePx, height: badgePx }}
-              />
-            )}
-            {showBadge && isAdmin && (
-              <Shield
-                className="flex-shrink-0 text-sahifa-500 fill-sahifa-500/20"
-                style={{ width: badgePx, height: badgePx }}
+                title="O'qituvchi"
               />
             )}
           </div>

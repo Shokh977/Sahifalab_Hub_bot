@@ -2,6 +2,8 @@ import asyncio
 import logging
 import sys
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Ensure the parent directory is on sys.path so "from bot.bot import ..." works
 # whether this file is run from inside the bot/ folder or from the project root.
@@ -21,7 +23,30 @@ except ModuleNotFoundError:
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/health":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def log_message(self, format, *args):
+        pass  # suppress access logs
+
+
+def _start_health_server():
+    port = int(os.getenv("PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    logger.info(f"Health server listening on port {port}")
+    server.serve_forever()
+
+
 if __name__ == "__main__":
+    threading.Thread(target=_start_health_server, daemon=True).start()
     logger.info("Starting SAHIFALAB Telegram Bot...")
     # run_polling() manages its own event loop — do NOT wrap in asyncio.run()
     app = bot_handler.setup()

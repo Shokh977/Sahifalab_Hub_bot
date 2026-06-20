@@ -1,6 +1,21 @@
 from datetime import datetime
-from sqlalchemy import Column, Integer, String, Text, Float, DateTime, Boolean, JSON
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, Boolean, JSON, UniqueConstraint
 from app.db.session import Base
+
+
+class EnrollmentAuditLog(Base):
+    """Audit trail for all admin enrollment actions."""
+    __tablename__ = "enrollment_audit_log"
+
+    id                = Column(Integer, primary_key=True, index=True)
+    action            = Column(String(50), nullable=False)
+    # enrollment_granted | enrollment_cancelled | direct_enrollment
+    target_id         = Column(Integer, nullable=True, index=True)   # pending_enrollment id
+    admin_telegram_id = Column(BigInteger, nullable=True, index=True)
+    user_telegram_id  = Column(BigInteger, nullable=True, index=True)
+    course_id         = Column(Integer, nullable=True, index=True)
+    details           = Column(JSON, nullable=True)
+    created_at        = Column(DateTime, default=datetime.utcnow, index=True)
 
 class AdminUser(Base):
     __tablename__ = "admin_user"
@@ -61,6 +76,33 @@ class QuizAuditLog(Base):
     changes = Column(JSON, nullable=True)
     admin_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Announcement(Base):
+    __tablename__ = "announcements"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    title      = Column(String(300), nullable=False)
+    body       = Column(Text, nullable=False)
+    image_url  = Column(String(1000), nullable=True)
+    cta_text   = Column(String(100), nullable=True)
+    cta_link   = Column(String(1000), nullable=True)
+    starts_at  = Column(DateTime, nullable=True)   # null = show immediately
+    expires_at = Column(DateTime, nullable=True)   # null = never expires
+    is_active  = Column(Boolean, default=True)
+    created_by = Column(BigInteger, nullable=True) # admin telegram_id
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class AnnouncementView(Base):
+    __tablename__ = "announcement_views"
+    __table_args__ = (UniqueConstraint("announcement_id", "user_id", name="uq_ann_view"),)
+
+    id              = Column(Integer, primary_key=True, index=True)
+    announcement_id = Column(Integer, nullable=False, index=True)
+    user_id         = Column(BigInteger, nullable=False, index=True)
+    seen_at         = Column(DateTime, default=datetime.utcnow)
 
 
 class AmbientSound(Base):

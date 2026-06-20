@@ -18,7 +18,7 @@ class ApiService {
 
     // Add interceptor to include auth token
     this.axiosInstance.interceptors.request.use((config) => {
-      const token = localStorage.getItem('auth_token')
+      const token = localStorage.getItem('tma_auth_token') || localStorage.getItem('auth_token')
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
@@ -44,6 +44,7 @@ class ApiService {
         // because that would silently log the user out mid-session.
         if (status === 401 && url.includes('/api/auth/me')) {
           localStorage.removeItem('auth_token')
+          localStorage.removeItem('tma_auth_token')
           window.dispatchEvent(new CustomEvent('auth:expired'))
         }
 
@@ -163,6 +164,10 @@ class ApiService {
 
   async downloadBook(bookId: number) {
     return this.axiosInstance.get(`/api/books/${bookId}/download`)
+  }
+
+  bookFileUrl(bookId: number): string {
+    return `${API_BASE_URL}/api/books/${bookId}/file`
   }
 
   async rateBook(bookId: number, telegramId: number, rating: number) {
@@ -358,6 +363,7 @@ class ApiService {
     bio: string
     course_idea: string
     motivation: string
+    contact: string
   }) {
     return this.axiosInstance.post('/api/auth/apply-teacher', data)
   }
@@ -387,6 +393,21 @@ class ApiService {
     return this.axiosInstance.patch(`/api/auth/admin/users/${telegramId}/role`, { role, status })
   }
 
+  /** Admin: permanently delete a user account */
+  async adminDeleteUser(telegramId: number) {
+    return this.axiosInstance.delete(`/api/auth/admin/users/${telegramId}`)
+  }
+
+  /** Current user: delete own account permanently */
+  async deleteAccount() {
+    return this.axiosInstance.delete('/api/settings/account')
+  }
+
+  /** Messenger: delete a conversation for both sides */
+  async deleteConversation(conversationId: number) {
+    return this.axiosInstance.delete(`/api/v1/messenger/conversations/${conversationId}`)
+  }
+
   /** Current user: update profile photo URL */
   async updateMyPhoto(photoUrl: string) {
     return this.axiosInstance.patch('/api/auth/me/photo', { photo_url: photoUrl })
@@ -402,7 +423,7 @@ class ApiService {
     const form = new FormData()
     form.append('file', file)
     return this.axiosInstance.post('/api/auth/me/photo/upload', form, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     })
   }
 
@@ -795,6 +816,32 @@ class ApiService {
       { admin_note: adminNote },
       { params: { telegram_id: telegramId } },
     )
+  }
+
+  // ── Announcements ────────────────────────────────────────────────────────────
+
+  async getAnnouncements() {
+    return this.axiosInstance.get('/api/announcements/admin')
+  }
+
+  async createAnnouncement(data: {
+    title: string; body: string; image_url?: string | null
+    cta_text?: string | null; cta_link?: string | null
+    starts_at?: string | null; expires_at?: string | null; is_active: boolean
+  }) {
+    return this.axiosInstance.post('/api/announcements/admin', data)
+  }
+
+  async updateAnnouncement(id: number, data: Partial<{
+    title: string; body: string; image_url: string | null
+    cta_text: string | null; cta_link: string | null
+    starts_at: string | null; expires_at: string | null; is_active: boolean
+  }>) {
+    return this.axiosInstance.put(`/api/announcements/admin/${id}`, data)
+  }
+
+  async deleteAnnouncement(id: number) {
+    return this.axiosInstance.delete(`/api/announcements/admin/${id}`)
   }
 }
 

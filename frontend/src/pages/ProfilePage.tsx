@@ -16,19 +16,24 @@
  *   POST/DELETE/PUT /api/connections/*  — connect / disconnect
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useParams, useNavigate, Navigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   MapPin, Link2, Users, Calendar, CheckCircle2, Shield,
   Star, Zap, Eye, BookOpen, Award, Clock, Share2,
-  UserPlus, UserCheck, UserMinus, MessageCircle, Edit3,
+  UserPlus, UserCheck, UserMinus, MessageSquare, Edit3,
   ChevronRight, ChevronDown, X, Plus, GripVertical, Copy,
   Loader2, AlertCircle, ExternalLink, ArrowLeft,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
+import { useProgressStore } from '../context/progressStore'
 import api from '../services/apiService'
-import { getLevelTitle, getLevelEmoji } from '../utils/levelTitles'
+import { getLevelTitle, getLevelEmoji, LEVEL_TITLES } from '../utils/levelTitles'
+// import { TierBadge } from '../components/TierBadge'
+// import { LEVELS } from '../lib/tier-data'
+import PostCard from '../components/social/PostCard'
+import type { PostData } from '../components/social/PostCard'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -64,6 +69,26 @@ interface ActivityItem {
   activity_type: string
   created_at: string
   metadata: Record<string, any>
+}
+
+interface Experience {
+  id: number
+  company: string
+  title: string
+  start_date: string | null
+  end_date: string | null
+  is_current: boolean
+  description: string | null
+}
+
+interface Education {
+  id: number
+  school: string
+  degree: string | null
+  field_of_study: string | null
+  start_year: number | null
+  end_year: number | null
+  description: string | null
 }
 
 type ConnectionStatus = 'own' | 'accepted' | 'pending_sent' | 'pending_received' | 'none'
@@ -104,10 +129,12 @@ interface ProfileData {
   active_courses: ActiveCourse[]
   recent_activity: ActivityItem[]
   certificates: Certificate[]
+  experiences: Experience[]
+  education: Education[]
   profile_completeness?: number
 }
 
-type TabKey = 'umumiy' | 'faollik' | 'kurslar' | 'yutuqlar'
+type TabKey = 'umumiy' | 'faollik' | 'kurslar' | 'yutuqlar' | 'postlar'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Helpers
@@ -131,7 +158,7 @@ function activityLabel(type: string, meta: Record<string, any>): string {
     case 'course_enrolled':     return `Kursga yozildi: ${meta.course_title || ''}`
     case 'course_completed':    return `Kursni tugatdi: ${meta.course_title || ''}`
     case 'post_created':        return 'Yangi post yozdi'
-    case 'level_up':            return `Yangi daraja: ${meta.level_name || ''}`
+    case 'level_up':            return `Yangi daraja: ${meta.level ? getLevelTitle(meta.level) : (meta.level_name || '')}`
     case 'achievement_unlocked':return `Yutuq qo'lga kiritdi: ${meta.achievement_name || ''}`
     case 'skill_added':         return `Ko'nikma qo'shdi: ${meta.skill_name || ''}`
     case 'connection_made':     return "Yangi aloqa o'rnatdi"
@@ -234,6 +261,8 @@ function normalizeProfile(raw: any): ProfileData {
       share_token:  c.share_token ?? null,
       skill_tags:   Array.isArray(c.skill_tags) ? c.skill_tags : [],
     })) : [],
+    experiences: Array.isArray(raw.experiences) ? raw.experiences : [],
+    education:   Array.isArray(raw.education)   ? raw.education   : [],
     profile_completeness: raw.profile_completeness ?? u.profile_completeness ?? undefined,
   }
 }
@@ -244,7 +273,8 @@ function normalizeProfile(raw: any): ProfileData {
 
 const ProfilePage: React.FC = () => {
   const { userId: rawParam } = useParams<{ userId: string }>()
-  const { user: authUser, isAuthenticated } = useAuth()
+  const { user: authUser, isAuthenticated, isLoading: authLoading } = useAuth()
+  const viewerLevel = useProgressStore(s => s.level)
   const navigate = useNavigate()
 
   const [profile, setProfile] = useState<ProfileData | null>(null)
@@ -260,30 +290,53 @@ const ProfilePage: React.FC = () => {
   const [endorsingId, setEndorsingId] = useState<number | null>(null)
   const [newSkill, setNewSkill] = useState('')
   const [addingSkill, setAddingSkill] = useState(false)
+  const [posts, setPosts] = useState<PostData[]>([])
+  const [postsLoading, setPostsLoading] = useState(false)
 
-  // Resolve "me" alias
   const myId = (authUser as any)?.telegram_id || (authUser as any)?.id
-  const myUsername = authUser?.username
 
-  // If param is "me", redirect to own profile username
-  if (rawParam === 'me') {
-    if (!isAuthenticated) return <Navigate to="/login" replace />
-    if (myUsername) return <Navigate to={`/profile/${myUsername}`} replace />
-    if (myId) return <Navigate to={`/profile/${myId}`} replace />
+  // /profile/me requires auth — guard before fetching
+  if (rawParam === 'me' && !authLoading && !isAuthenticated) {
+    return <Navigate to="/login" replace />
   }
 
+  // "me" → call /api/profile/me (backend resolves via JWT); else use the param directly
   const usernameParam = rawParam || ''
+  const profileApiPath = usernameParam === 'me' ? '/api/profile/me' : `/api/profile/${usernameParam}`
 
   // ── Fetch profile ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!usernameParam) return
+    // Wait for auth to resolve before fetching /profile/me so the JWT is ready
+    if (usernameParam === 'me' && authLoading) return
     setLoading(true)
     setError(null)
-    api.client.get(`/api/profile/${usernameParam}`)
+    api.client.get(profileApiPath)
       .then(r => setProfile(normalizeProfile(r.data)))
       .catch(() => setError('Profil topilmadi'))
       .finally(() => setLoading(false))
-  }, [usernameParam])
+  }, [profileApiPath, authLoading])
+
+  // ── Fetch posts when postlar tab active ───────────────────────────────────
+  useEffect(() => {
+    if (activeTab !== 'postlar' || !profile) return
+    if (posts.length > 0) return // already loaded
+    setPostsLoading(true)
+    api.client.get(`/api/v1/social/users/${profile.telegram_id}/posts`, { params: { page: 1, page_size: 50 } })
+      .then(r => setPosts(r.data.posts || []))
+      .catch(() => {})
+      .finally(() => setPostsLoading(false))
+  }, [activeTab, profile?.telegram_id])
+
+  const handleDeletePost = useCallback(async (postId: number) => {
+    await api.client.delete(`/api/v1/social/posts/${postId}`)
+    setPosts(prev => prev.filter(p => p.id !== postId))
+  }, [])
+
+  const handleEditPost = useCallback(async (postId: number, content: string) => {
+    await api.client.patch(`/api/v1/social/posts/${postId}`, { content })
+    setPosts(prev => prev.map(p => p.id === postId ? { ...p, content } : p))
+  }, [])
 
   // ── Connection actions ─────────────────────────────────────────────────────
   const handleConnect = useCallback(async () => {
@@ -450,7 +503,10 @@ const ProfilePage: React.FC = () => {
     )
   }
 
-  const isOwn = profile.connection_status === 'own'
+  // isOwn: backend returns "own" when it can verify the viewer via JWT.
+  // Also check telegram_id directly as a fallback in case the auth header
+  // is stripped by a proxy/CDN layer and the backend falls back to "none".
+  const isOwn = profile.connection_status === 'own' || (!!myId && profile.telegram_id === myId)
 
   return (
     <>
@@ -488,6 +544,11 @@ const ProfilePage: React.FC = () => {
           {/* 4. XP progress */}
           <XPBar profile={profile} />
 
+          {/* 4a. Tier Badge — featured */}
+          {/* <div className="flex justify-center py-4">
+            <TierBadge level={profile.level ?? 1} size={200} featured />
+          </div> */}
+
           {/* 4b. Profile completeness prompt (own profile only, < 60%) */}
           {isOwn && (profile.profile_completeness ?? 100) < 60 && (
             <CompletenessPrompt completeness={profile.profile_completeness ?? 0} onEdit={() => setEditOpen(true)} />
@@ -518,17 +579,17 @@ const ProfilePage: React.FC = () => {
 
           {/* 5. Tab bar */}
           <div className="flex gap-1 p-1 rounded-xl bg-white/[0.04] border border-white/[0.06]">
-            {(['umumiy', 'faollik', 'kurslar', 'yutuqlar'] as TabKey[]).map(tab => (
+            {(['umumiy', 'postlar', 'faollik', 'kurslar', 'yutuqlar'] as TabKey[]).map(tab => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-2 rounded-lg text-sm font-medium capitalize transition-all ${
+                className={`flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-all ${
                   activeTab === tab
                     ? 'bg-white/[0.08] text-white shadow-sm'
                     : 'text-white/40 hover:text-white/60'
                 }`}
               >
-                {{ umumiy: 'Umumiy', faollik: 'Faollik', kurslar: 'Kurslar', yutuqlar: 'Yutuqlar' }[tab]}
+                {{ umumiy: 'Umumiy', postlar: 'Postlar', faollik: 'Faollik', kurslar: 'Kurslar', yutuqlar: 'Yutuqlar' }[tab]}
               </button>
             ))}
           </div>
@@ -558,14 +619,28 @@ const ProfilePage: React.FC = () => {
                   onShareCert={setShareCert}
                 />
               )}
+              {activeTab === 'postlar' && (
+                <PostlarTab
+                  posts={posts}
+                  loading={postsLoading}
+                  isOwn={isOwn}
+                  currentUserId={myId}
+                  onDelete={handleDeletePost}
+                  onEdit={handleEditPost}
+                />
+              )}
               {activeTab === 'faollik' && (
-                <FaollikTab activities={profile.recent_activity} />
+                <FaollikTab
+                  activities={profile.recent_activity}
+                  telegramId={profile.telegram_id}
+                  focusHours={profile.focus_hours}
+                />
               )}
               {activeTab === 'kurslar' && (
                 <KurslarTab profile={profile} onShareCert={setShareCert} />
               )}
               {activeTab === 'yutuqlar' && (
-                <YutuqlarTab profile={profile} />
+                <YutuqlarTab profile={profile} viewerLevel={viewerLevel} />
               )}
             </motion.div>
           </AnimatePresence>
@@ -591,6 +666,7 @@ const ProfilePage: React.FC = () => {
           <RelListModal
             profile={profile}
             mode={relModal}
+            myId={myId}
             onClose={() => setRelModal(null)}
           />
         )}
@@ -632,10 +708,6 @@ const CoverHeader: React.FC<{ profile: ProfileData }> = ({ profile }) => {
                   <span className="text-white text-2xl font-bold">{(profile.first_name || '?').charAt(0).toUpperCase()}</span>
                 </div>
             }
-          </div>
-          {/* Level badge */}
-          <div className="absolute bottom-0.5 right-0.5 w-6 h-6 rounded-full bg-[#e8792f] border-2 border-[#1c1d27] flex items-center justify-center">
-            <span className="text-white text-[9px] font-bold">{profile.level ?? 1}</span>
           </div>
         </div>
       </div>
@@ -753,9 +825,9 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
       </div>
 
       {/* ── Action buttons ── */}
-      <div className="flex gap-2 pt-1 flex-wrap">
+      <div className="flex flex-col gap-2 pt-1">
         {isOwn ? (
-          <>
+          <div className="flex gap-2 flex-wrap">
             <button onClick={onEdit}
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.10] text-white text-sm font-medium border border-white/[0.08] transition-colors">
               <Edit3 className="w-3.5 h-3.5" /> Profilni tahrirlash
@@ -764,116 +836,113 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
               className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.10] text-white text-sm font-medium border border-white/[0.08] transition-colors">
               <Share2 className="w-3.5 h-3.5" /> Ulashish
             </button>
-          </>
+          </div>
         ) : (
           <>
-            {/* ── Connect button (with dropdown when connected or pending_sent) ── */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  if (status === 'accepted' || status === 'pending_sent') {
-                    setConnDropOpen(v => !v)
-                  } else {
-                    onConnect()
+            {/* ── Row 1: Bog'lanish (flex-1) + Kuzatish (flex-1) ── */}
+            <div className="flex gap-2">
+
+              {/* Connect button */}
+              <div className="relative flex-1">
+                <button
+                  onClick={() => {
+                    if (status === 'accepted' || status === 'pending_sent') {
+                      setConnDropOpen(v => !v)
+                    } else {
+                      onConnect()
+                    }
+                  }}
+                  disabled={connLoading}
+                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
+                    status === 'accepted'
+                      ? 'bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10'
+                      : status === 'pending_sent'
+                      ? 'bg-white/[0.04] text-white/40 border border-white/[0.06]'
+                      : status === 'pending_received'
+                      ? 'bg-[#e8792f] hover:bg-[#c44a1a] text-white'
+                      : 'bg-[#e8792f] hover:bg-[#c44a1a] text-white'
+                  }`}
+                >
+                  {connLoading
+                    ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    : status === 'accepted'
+                    ? <UserCheck className="w-3.5 h-3.5" />
+                    : <UserPlus className="w-3.5 h-3.5" />
                   }
-                }}
-                disabled={connLoading}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
-                  connBtn.variant === 'primary'
-                    ? 'bg-[#e8792f] hover:bg-[#c44a1a] text-white'
-                    : connBtn.variant === 'active'
-                    ? 'bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10'
-                    : 'bg-white/[0.04] text-white/40 border border-white/[0.06]'
-                }`}
-              >
-                {connLoading
-                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  : <connBtn.icon className="w-3.5 h-3.5" />
-                }
-                {connBtn.label}
-                {(status === 'accepted' || status === 'pending_sent') && (
-                  <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                  {status === 'accepted'     ? "Bog'langan"
+                   : status === 'pending_sent'     ? "So'rov yuborilgan"
+                   : status === 'pending_received' ? 'Qabul qilish'
+                   : "Bog'lanish"}
+                  {(status === 'accepted' || status === 'pending_sent') && (
+                    <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />
+                  )}
+                </button>
+                {connDropOpen && (
+                  <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[160px]">
+                    {status === 'accepted' && (
+                      <button
+                        onClick={() => { setConnDropOpen(false); onConnect() }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
+                      >
+                        <UserMinus className="w-3.5 h-3.5" /> Aloqani uzish
+                      </button>
+                    )}
+                    {status === 'pending_sent' && (
+                      <button
+                        onClick={() => { setConnDropOpen(false); onConnect() }}
+                        className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
+                      >
+                        <X className="w-3.5 h-3.5" /> Bekor qilish
+                      </button>
+                    )}
+                  </div>
                 )}
-              </button>
-              {connDropOpen && (
-                <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[160px]">
-                  {status === 'accepted' && (
+              </div>
+
+              {/* Follow button */}
+              <div className="relative flex-1">
+                <button
+                  onClick={() => {
+                    if (profile.is_following) setFollowDropOpen(v => !v)
+                    else onFollow()
+                  }}
+                  disabled={followLoading}
+                  className={`w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
+                    profile.is_following
+                      ? 'bg-transparent border border-white/[0.15] text-white/70 hover:bg-white/[0.06]'
+                      : 'bg-white/[0.06] hover:bg-white/[0.10] text-white border border-white/[0.08]'
+                  }`}
+                >
+                  {followLoading && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  {profile.is_following ? 'Kuzatilgan' : 'Kuzatish'}
+                  {profile.is_following && <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />}
+                </button>
+                {followDropOpen && (
+                  <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[180px]">
                     <button
-                      onClick={() => { setConnDropOpen(false); onConnect() }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
+                      onClick={() => { setFollowDropOpen(false); onFollow() }}
+                      className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors"
                     >
-                      <UserMinus className="w-3.5 h-3.5" /> Aloqani uzish
+                      Kuzatishni to'xtatish
                     </button>
-                  )}
-                  {status === 'pending_sent' && (
-                    <button
-                      onClick={() => { setConnDropOpen(false); onConnect() }}
-                      className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors flex items-center gap-2"
-                    >
-                      <X className="w-3.5 h-3.5" /> Bekor qilish
-                    </button>
-                  )}
-                </div>
-              )}
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* ── Accept / Decline (pending_received) ── */}
-            {status === 'pending_received' && (
-              <button
-                onClick={onConnect}
-                disabled={connLoading}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold bg-[#e8792f] hover:bg-[#c44a1a] text-white transition-all disabled:opacity-60"
-              >
-                {connLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserPlus className="w-3.5 h-3.5" />}
-                Qabul qilish
-              </button>
-            )}
-
-            {/* ── Follow button (with dropdown when following) ── */}
-            <div className="relative">
-              <button
-                onClick={() => {
-                  if (profile.is_following) setFollowDropOpen(v => !v)
-                  else onFollow()
-                }}
-                disabled={followLoading}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60 ${
-                  profile.is_following
-                    ? 'bg-transparent border border-white/[0.15] text-white/70 hover:bg-white/[0.06]'
-                    : 'bg-white/[0.06] hover:bg-white/[0.10] text-white border border-white/[0.08]'
-                }`}
-              >
-                {followLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
-                {profile.is_following ? 'Kuzatilmoqda' : 'Kuzatish'}
-                {profile.is_following && <ChevronDown className="w-3 h-3 ml-0.5 opacity-60" />}
-              </button>
-              {followDropOpen && (
-                <div className="absolute top-full mt-1 left-0 z-30 bg-[#24253a] border border-white/[0.08] rounded-xl shadow-xl overflow-hidden min-w-[180px]">
-                  <button
-                    onClick={() => { setFollowDropOpen(false); onFollow() }}
-                    className="w-full text-left px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.06] transition-colors"
-                  >
-                    Kuzatishni to'xtatish
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* ── Message button (only when can_message) ── */}
-            {profile.can_message ? (
-              <button onClick={onMessage}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10 text-sm font-semibold transition-colors">
-                <MessageCircle className="w-3.5 h-3.5" /> Xabar
-              </button>
-            ) : (
-              <button
-                title="Xabar yuborish uchun avval bog'laning"
-                disabled
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-white/[0.03] text-white/20 border border-white/[0.05] text-sm font-semibold cursor-not-allowed"
-              >
-                <MessageCircle className="w-3.5 h-3.5" /> Xabar
-              </button>
-            )}
+            {/* ── Row 2: Xabar — full width, disabled unless connected ── */}
+            <button
+              onClick={status === 'accepted' ? onMessage : undefined}
+              disabled={status !== 'accepted'}
+              title={status !== 'accepted' ? "Xabar yuborish uchun avval bog'laning" : undefined}
+              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                status === 'accepted'
+                  ? 'bg-transparent border border-[#e8792f]/50 text-[#e8792f] hover:bg-[#e8792f]/10 cursor-pointer'
+                  : 'bg-white/[0.03] text-white/20 border border-white/[0.05] cursor-not-allowed'
+              }`}
+            >
+              <MessageSquare className="w-3.5 h-3.5" /> Xabar
+            </button>
           </>
         )}
       </div>
@@ -886,22 +955,24 @@ const ProfileInfo: React.FC<ProfileInfoProps> = ({
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const StatsRow: React.FC<{ profile: ProfileData }> = ({ profile }) => {
+  const levelTitle = getLevelTitle(profile.level ?? 1)
   const stats = [
-    { label: 'XP', value: (profile.total_xp ?? 0).toLocaleString(), icon: Zap, color: '#e8792f' },
-    { label: 'Fokus', value: `${profile.focus_hours ?? 0}h`, icon: Clock, color: '#60a5fa' },
-    { label: 'Testlar', value: (profile.courses_completed ?? 0).toString(), icon: Award, color: '#34d399' },
-    { label: "Ko'rishlar", value: (profile.profile_views_week ?? 0).toString(), icon: Eye, color: '#a78bfa' },
+    { label: 'XP',          value: (profile.total_xp ?? 0).toLocaleString(),    icon: Zap,   color: '#e8792f' },
+    { label: 'Fokus',       value: `${profile.focus_hours ?? 0}h`,               icon: Clock, color: '#60a5fa' },
+    { label: 'Sertifikat',  value: (profile.certificates_count ?? 0).toString(), icon: Award, color: '#34d399' },
+    { label: "Ko'rishlar",  value: (profile.profile_views_week ?? 0).toString(), icon: Eye,   color: '#a78bfa' },
+    { label: levelTitle,    value: `Lv.${profile.level ?? 1}`,                   icon: Star,  color: '#f59e0b' },
   ]
 
   return (
-    <div className="grid grid-cols-4 gap-3">
+    <div className="grid grid-cols-5 gap-2">
       {stats.map(s => {
         const Icon = s.icon
         return (
-          <div key={s.label} className="rounded-xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
-            <Icon className="w-4 h-4 mx-auto mb-1.5" style={{ color: s.color }} />
-            <p className="text-base font-bold text-white leading-none">{s.value}</p>
-            <p className="text-[10px] text-white/40 mt-1">{s.label}</p>
+          <div key={s.label} className="rounded-xl bg-[#1c1d27] border border-white/[0.06] p-2.5 text-center">
+            <Icon className="w-3.5 h-3.5 mx-auto mb-1" style={{ color: s.color }} />
+            <p className="text-sm font-bold text-white leading-none">{s.value}</p>
+            <p className="text-[9px] text-white/40 mt-1 leading-tight truncate">{s.label}</p>
           </div>
         )
       })}
@@ -914,15 +985,16 @@ const StatsRow: React.FC<{ profile: ProfileData }> = ({ profile }) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const XPBar: React.FC<{ profile: ProfileData }> = ({ profile }) => {
-  const nextLevel = (profile.level ?? 1) + 1
-  const nextTitle = nextLevel <= 27 ? getLevelTitle(nextLevel) : null
-  const nextEmoji = nextLevel <= 27 ? getLevelEmoji(nextLevel) : null
+  const curLevel = profile.level ?? 1
+  const nextLevel = curLevel + 1
+  const nextTitle = nextLevel <= 29 ? getLevelTitle(nextLevel) : null
+  const nextEmoji = nextLevel <= 29 ? getLevelEmoji(nextLevel) : null
 
   return (
     <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4 space-y-2.5">
       <div className="flex items-center justify-between text-sm">
         <span className="font-semibold text-white">
-          {getLevelEmoji(profile.level ?? 1)} Daraja {profile.level ?? 1} — {profile.level_name}
+          {getLevelEmoji(curLevel)} Daraja {curLevel} — {getLevelTitle(curLevel)}
         </span>
         <span className="text-white/40 text-xs">
           {(profile.total_xp ?? 0).toLocaleString()} / {(profile.next_level_xp ?? 0).toLocaleString()} XP · {profile.xp_percent ?? 0}%
@@ -1012,6 +1084,14 @@ const UmumiyTab: React.FC<UmumiyTabProps> = ({
   onAddSkill, onDeleteSkill, onEndorse, onShareCert,
 }) => (
   <div className="space-y-4">
+    {/* Experience */}
+    {((profile.experiences ?? []).length > 0 || isOwn) && (
+      <ExperienceSection experiences={profile.experiences ?? []} isOwn={isOwn} />
+    )}
+    {/* Education */}
+    {((profile.education ?? []).length > 0 || isOwn) && (
+      <EducationSection education={profile.education ?? []} isOwn={isOwn} />
+    )}
     <SkillsSection
       skills={profile.skills}
       isOwn={isOwn}
@@ -1033,6 +1113,97 @@ const UmumiyTab: React.FC<UmumiyTabProps> = ({
     )}
     {(profile.recent_activity ?? []).length > 0 && (
       <RecentActivitySection activities={(profile.recent_activity ?? []).slice(0, 5)} />
+    )}
+  </div>
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Experience Section (display only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function fmtYearMonth(ym: string | null): string {
+  if (!ym) return ''
+  const [y, m] = ym.split('-')
+  const months = ['', 'Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
+  return m ? `${months[parseInt(m)] || ''} ${y}` : y
+}
+
+const ExperienceSection: React.FC<{ experiences: Experience[]; isOwn: boolean }> = ({ experiences, isOwn }) => (
+  <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-sm font-bold text-white">Tajriba</h2>
+      {isOwn && <span className="text-[10px] text-white/30">Tahrirlash uchun profilni oching</span>}
+    </div>
+    {experiences.length === 0 ? (
+      <p className="text-sm text-white/25 text-center py-4">
+        {isOwn ? "Ish tajribangizni qo'shing" : "Tajriba qo'shilmagan"}
+      </p>
+    ) : (
+      <div className="space-y-4">
+        {experiences.map((exp, i) => (
+          <div key={exp.id} className={`flex gap-3 ${i > 0 ? 'pt-4 border-t border-white/[0.05]' : ''}`}>
+            <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 text-sm font-bold text-white/40">
+              {exp.company.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white leading-tight">{exp.title}</p>
+              <p className="text-xs text-[#e8792f] mt-0.5">{exp.company}</p>
+              <p className="text-[11px] text-white/35 mt-0.5">
+                {fmtYearMonth(exp.start_date)}
+                {(exp.start_date || exp.is_current || exp.end_date) && ' — '}
+                {exp.is_current ? 'Hozir' : fmtYearMonth(exp.end_date)}
+              </p>
+              {exp.description && (
+                <p className="text-xs text-white/50 mt-1.5 leading-relaxed">{exp.description}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </div>
+)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Education Section (display only)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const EducationSection: React.FC<{ education: Education[]; isOwn: boolean }> = ({ education, isOwn }) => (
+  <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+    <div className="flex items-center justify-between mb-4">
+      <h2 className="text-sm font-bold text-white">Ta'lim</h2>
+      {isOwn && <span className="text-[10px] text-white/30">Tahrirlash uchun profilni oching</span>}
+    </div>
+    {education.length === 0 ? (
+      <p className="text-sm text-white/25 text-center py-4">
+        {isOwn ? "Ta'lim ma'lumotlarini qo'shing" : "Ta'lim qo'shilmagan"}
+      </p>
+    ) : (
+      <div className="space-y-4">
+        {education.map((edu, i) => (
+          <div key={edu.id} className={`flex gap-3 ${i > 0 ? 'pt-4 border-t border-white/[0.05]' : ''}`}>
+            <div className="w-9 h-9 rounded-xl bg-white/[0.06] border border-white/[0.08] flex items-center justify-center flex-shrink-0 text-base">
+              🎓
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-white leading-tight">{edu.school}</p>
+              {(edu.degree || edu.field_of_study) && (
+                <p className="text-xs text-[#e8792f] mt-0.5">
+                  {[edu.degree, edu.field_of_study].filter(Boolean).join(' · ')}
+                </p>
+              )}
+              {(edu.start_year || edu.end_year) && (
+                <p className="text-[11px] text-white/35 mt-0.5">
+                  {edu.start_year}{edu.start_year && edu.end_year && ' — '}{edu.end_year}
+                </p>
+              )}
+              {edu.description && (
+                <p className="text-xs text-white/50 mt-1.5 leading-relaxed">{edu.description}</p>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
     )}
   </div>
 )
@@ -1246,30 +1417,314 @@ const RecentActivitySection: React.FC<{ activities: ActivityItem[] }> = ({ activ
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tab: Faollik
+// Tab: Faollik (heatmap + focus hours + activity list)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const FaollikTab: React.FC<{ activities: ActivityItem[] }> = ({ activities }) => (
-  <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
-    <h2 className="text-sm font-bold text-white mb-5">Faollik tarixi</h2>
-    {activities.length === 0 ? (
-      <p className="text-sm text-white/30 text-center py-8">Hali hech qanday faollik yo'q</p>
-    ) : (
-      <div className="relative pl-5 space-y-5">
-        {/* Timeline line */}
-        <div className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]" />
-        {activities.map((a, i) => (
-          <div key={i} className="relative">
-            {/* Dot */}
-            <div className="absolute -left-5 top-1 w-2 h-2 rounded-full bg-[#e8792f] border-2 border-[#1c1d27] translate-x-[-3px]" />
-            <p className="text-sm text-white/80 leading-snug">{activityLabel(a.activity_type, a.metadata)}</p>
-            <p className="text-[11px] text-white/30 mt-0.5">{fmtDate(a.created_at)}</p>
-          </div>
-        ))}
+interface HeatmapDay { date: string; quiz: number; focus_xp: number; total: number }
+type TimeRange = 'week' | 'month' | 'year'
+
+const MONTHS = ['Yan', 'Fev', 'Mar', 'Apr', 'May', 'Iyn', 'Iyl', 'Avg', 'Sen', 'Okt', 'Noy', 'Dek']
+const WEEK_DAYS_UZ = ['Yak', 'Du', 'Se', 'Ch', 'Pa', 'Ju', 'Sh']
+
+const FaollikTab: React.FC<{ activities: ActivityItem[]; telegramId: number; focusHours: number }> = ({
+  activities, telegramId, focusHours,
+}) => {
+  const [heatmap, setHeatmap]     = useState<HeatmapDay[]>([])
+  const [range, setRange]         = useState<TimeRange>('year')
+  const [heatmapLoading, setHeatmapLoading] = useState(true)
+
+  useEffect(() => {
+    setHeatmapLoading(true)
+    api.client.get('/api/profiles/heatmap', { params: { telegram_id: telegramId, days: 365 } })
+      .then(r => {
+        const raw = r.data || []
+        // Normalize: legacy format (count) → new format
+        setHeatmap(raw.map((d: any) => ({
+          date:     d.date,
+          quiz:     d.quiz     ?? d.count ?? 0,
+          focus_xp: d.focus_xp ?? 0,
+          total:    d.total    ?? (d.quiz ?? d.count ?? 0),
+        })))
+      })
+      .catch(() => {})
+      .finally(() => setHeatmapLoading(false))
+  }, [telegramId])
+
+  const today = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d
+  }, [])
+
+  const dataMap = useMemo(
+    () => new Map(heatmap.map(d => [d.date, d])),
+    [heatmap],
+  )
+
+  // ── Cell color: quiz=orange, focus=purple, both=bright, none=dim ─────────
+  const cellStyle = (day: HeatmapDay | undefined): React.CSSProperties => {
+    if (!day || (day.quiz === 0 && day.focus_xp === 0)) return { background: 'rgba(255,255,255,0.04)' }
+    const hasQuiz  = day.quiz > 0
+    const hasFocus = day.focus_xp > 0
+    if (hasQuiz && hasFocus) return { background: '#e8792f' }               // both  → orange
+    if (hasQuiz)             return { background: 'rgba(232,121,47,0.55)' } // quiz  → mid-orange
+    // focus only — intensity by XP
+    const pct = Math.min(1, day.focus_xp / 50)
+    const alpha = 0.25 + pct * 0.55
+    return { background: `rgba(139,92,246,${alpha.toFixed(2)})` }           // focus → purple
+  }
+
+  const tooltip = (iso: string, day: HeatmapDay | undefined) => {
+    if (!day || (day.quiz === 0 && day.focus_xp === 0)) return iso
+    const parts = []
+    if (day.quiz > 0)     parts.push(`${day.quiz} test`)
+    if (day.focus_xp > 0) parts.push(`${day.focus_xp} XP fokus`)
+    return `${iso}: ${parts.join(', ')}`
+  }
+
+  // ── Build week grid (last 7 days) ────────────────────────────────────────
+  const weekDays = useMemo(() => {
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i)
+      const iso = d.toISOString().slice(0, 10)
+      days.push({ iso, weekDay: WEEK_DAYS_UZ[d.getDay()], data: dataMap.get(iso) })
+    }
+    return days
+  }, [today, dataMap])
+
+  // ── Build month grid (last 30 days) ──────────────────────────────────────
+  const monthDays = useMemo(() => {
+    const days = []
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(today); d.setDate(d.getDate() - i)
+      const iso = d.toISOString().slice(0, 10)
+      days.push({ iso, day: d.getDate(), data: dataMap.get(iso) })
+    }
+    return days
+  }, [today, dataMap])
+
+  // ── Build year grid (52-week) ────────────────────────────────────────────
+  const yearGrid = useMemo(() => {
+    const start = new Date(today)
+    start.setDate(start.getDate() - 363)
+    start.setDate(start.getDate() - start.getDay()) // back to Sunday
+    const weeks: { iso: string; data: HeatmapDay | undefined }[][] = []
+    let cur = new Date(start)
+    while (cur <= today) {
+      const week: { iso: string; data: HeatmapDay | undefined }[] = []
+      for (let d = 0; d < 7; d++) {
+        const iso = cur.toISOString().slice(0, 10)
+        week.push({ iso, data: cur <= today ? dataMap.get(iso) : undefined })
+        cur.setDate(cur.getDate() + 1)
+      }
+      weeks.push(week)
+    }
+    return weeks
+  }, [today, dataMap])
+
+  const activeDays   = heatmap.filter(d => d.total > 0).length
+  const totalQuizzes = heatmap.reduce((s, d) => s + d.quiz, 0)
+  const totalFocusXP = heatmap.reduce((s, d) => s + d.focus_xp, 0)
+
+  // Derive focus hours from heatmap DB data (25 XP ≈ 1 focus session ≈ ~1h)
+  // Fall back to profile.focus_hours while heatmap is still loading
+  const displayFocusHours = !heatmapLoading && heatmap.length > 0
+    ? Math.round(totalFocusXP / 25 * 10) / 10
+    : focusHours
+
+  return (
+    <div className="space-y-4">
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
+          <p className="text-xl font-bold text-[#e8792f]">{displayFocusHours}h</p>
+          <p className="text-[10px] text-white/40 mt-0.5">soat fokus</p>
+        </div>
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
+          <p className="text-xl font-bold text-white">{activeDays}</p>
+          <p className="text-[10px] text-white/40 mt-0.5">faol kun</p>
+        </div>
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-3 text-center">
+          <p className="text-xl font-bold text-violet-400">{totalQuizzes}</p>
+          <p className="text-[10px] text-white/40 mt-0.5">test yechildi</p>
+        </div>
       </div>
-    )}
-  </div>
-)
+
+      {/* Heatmap card */}
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+        {/* Header + range tabs */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-bold text-white">Faollik</h2>
+            {heatmapLoading && <Loader2 className="w-3.5 h-3.5 animate-spin text-white/30" />}
+          </div>
+          <div className="flex gap-1 bg-white/[0.05] rounded-lg p-0.5">
+            {(['week', 'month', 'year'] as TimeRange[]).map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={`px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all ${
+                  range === r
+                    ? 'bg-[#e8792f] text-white'
+                    : 'text-white/40 hover:text-white/60'
+                }`}
+              >
+                {r === 'week' ? 'Xafta' : r === 'month' ? 'Oy' : 'Yil'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Week view ─────────────────────────────────────────────── */}
+        {range === 'week' && (
+          <div className="space-y-3">
+            {weekDays.map(({ iso, weekDay, data }) => {
+              const hasQuiz  = (data?.quiz ?? 0) > 0
+              const hasFocus = (data?.focus_xp ?? 0) > 0
+              const active   = hasQuiz || hasFocus
+              return (
+                <div key={iso} className="flex items-center gap-3">
+                  <p className="text-[11px] text-white/30 w-6 flex-shrink-0">{weekDay}</p>
+                  <div className="flex-1 flex items-center gap-1.5">
+                    {/* Focus bar */}
+                    <div
+                      className="h-5 rounded-lg flex items-center px-1.5 transition-all"
+                      style={{
+                        width: hasFocus ? `${Math.min(100, (data!.focus_xp / 100) * 70 + 30)}%` : '4px',
+                        ...cellStyle(data),
+                        opacity: active ? 1 : 0.3,
+                      }}
+                    >
+                      {hasFocus && (
+                        <span className="text-[9px] text-white font-bold">{data!.focus_xp} XP</span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Badge row */}
+                  <div className="flex items-center gap-1 flex-shrink-0 w-20 justify-end">
+                    {hasQuiz  && <span className="text-[9px] bg-[#e8792f]/20 text-[#e8792f] rounded px-1.5 py-0.5">{data!.quiz} test</span>}
+                    {hasFocus && <span className="text-[9px] bg-violet-500/20 text-violet-400 rounded px-1.5 py-0.5">fokus</span>}
+                    {!active   && <span className="text-[9px] text-white/15">—</span>}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── Month view ────────────────────────────────────────────── */}
+        {range === 'month' && (
+          <div className="grid grid-cols-10 gap-1">
+            {monthDays.map(({ iso, day, data }) => (
+              <div
+                key={iso}
+                title={tooltip(iso, data)}
+                className="aspect-square rounded-md flex items-center justify-center cursor-default"
+                style={cellStyle(data)}
+              >
+                <span className="text-[8px] text-white/50">{day}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── Year view (52-week GitHub grid) ───────────────────────── */}
+        {range === 'year' && (
+          <div className="overflow-x-auto">
+            <div className="min-w-[580px]">
+              {/* Month labels */}
+              <div className="flex mb-1.5 pl-5">
+                {yearGrid.filter((_, wi) => wi % 4 === 0).map((week, i) => {
+                  const d = new Date(week[0].iso)
+                  return (
+                    <div key={i} className="flex-1 text-[9px] text-white/25">
+                      {MONTHS[d.getMonth()]}
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex gap-0.5">
+                {/* Day-of-week labels */}
+                <div className="flex flex-col gap-0.5 mr-1">
+                  {['', 'Du', '', 'Ch', '', 'Ju', ''].map((label, di) => (
+                    <div key={di} className="h-[10px] w-4 text-[7px] text-white/20 flex items-center">{label}</div>
+                  ))}
+                </div>
+                {/* Week columns */}
+                {yearGrid.map((week, wi) => (
+                  <div key={wi} className="flex flex-col gap-0.5">
+                    {week.map(({ iso, data }, di) => (
+                      <div
+                        key={di}
+                        title={tooltip(iso, data)}
+                        className="w-[10px] h-[10px] rounded-sm cursor-default"
+                        style={cellStyle(data)}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+              {/* Legend */}
+              <div className="flex items-center gap-3 mt-3 justify-end">
+                <div className="flex items-center gap-1">
+                  <div className="w-[10px] h-[10px] rounded-sm" style={{ background: 'rgba(139,92,246,0.55)' }} />
+                  <span className="text-[9px] text-white/25">Fokus</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-[10px] h-[10px] rounded-sm" style={{ background: 'rgba(232,121,47,0.55)' }} />
+                  <span className="text-[9px] text-white/25">Test</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-[10px] h-[10px] rounded-sm" style={{ background: '#e8792f' }} />
+                  <span className="text-[9px] text-white/25">Ikkalasi</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* XP breakdown */}
+      {(totalFocusXP > 0 || totalQuizzes > 0) && (
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-4">
+          <h3 className="text-xs font-bold text-white/60 uppercase tracking-wider mb-3">Yillik XP manbai</h3>
+          <div className="space-y-2">
+            {totalFocusXP > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-violet-400 flex-shrink-0" />
+                <p className="text-xs text-white/70 flex-1">Fokus sessiyalar</p>
+                <p className="text-xs font-bold text-violet-400">{totalFocusXP} XP</p>
+              </div>
+            )}
+            {totalQuizzes > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-[#e8792f] flex-shrink-0" />
+                <p className="text-xs text-white/70 flex-1">Test yechish</p>
+                <p className="text-xs font-bold text-[#e8792f]">{totalQuizzes * 25} XP</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Activity timeline */}
+      {activities.length > 0 && (
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+          <h2 className="text-sm font-bold text-white mb-5">So'nggi faollik</h2>
+          <div className="relative pl-5 space-y-5">
+            <div className="absolute left-0 top-0 bottom-0 w-px bg-white/[0.06]" />
+            {activities.map((a, i) => (
+              <div key={i} className="relative">
+                <div className="absolute -left-5 top-1 w-2 h-2 rounded-full bg-[#e8792f] border-2 border-[#1c1d27] translate-x-[-3px]" />
+                <p className="text-sm text-white/80 leading-snug">{activityLabel(a.activity_type, a.metadata)}</p>
+                <p className="text-[11px] text-white/30 mt-0.5">{fmtDate(a.created_at)}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Tab: Kurslar
@@ -1293,43 +1748,177 @@ const KurslarTab: React.FC<{ profile: ProfileData; onShareCert: (c: Certificate)
 )
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Tab: Yutuqlar (placeholder)
+// Tab: Postlar
 // ═══════════════════════════════════════════════════════════════════════════════
 
-const YutuqlarTab: React.FC<{ profile: ProfileData }> = ({ profile }) => {
-  const achievements = [
-    { id: 1, emoji: '🎓', name: 'Birinchi kurs', desc: 'Birinchi kursni tugatdingiz', unlocked: (profile.courses_completed ?? 0) >= 1 },
-    { id: 2, emoji: '🏅', name: '3 ta kurs', desc: '3 ta kursni tugatdingiz', unlocked: (profile.courses_completed ?? 0) >= 3 },
-    { id: 3, emoji: '📚', name: '5 ta ko\'nikma', desc: '5 ta ko\'nikma qo\'shdingiz', unlocked: (profile.skills ?? []).length >= 5 },
-    { id: 4, emoji: '🤝', name: '10 ta aloqa', desc: '10 ta aloqa o\'rnatdingiz', unlocked: (profile.connections_count ?? 0) >= 10 },
-    { id: 5, emoji: '⬆️', name: 'Daraja 5', desc: '5-darajaga yetdingiz', unlocked: (profile.level ?? 0) >= 5 },
-    { id: 6, emoji: '🏆', name: 'Daraja 10', desc: '10-darajaga yetdingiz', unlocked: (profile.level ?? 0) >= 10 },
-  ]
+interface PostlarTabProps {
+  posts: PostData[]
+  loading: boolean
+  isOwn: boolean
+  currentUserId: number | undefined
+  onDelete: (id: number) => Promise<void>
+  onEdit: (id: number, content: string) => Promise<void>
+}
+
+const PostlarTab: React.FC<PostlarTabProps> = ({ posts, loading, isOwn, currentUserId, onDelete, onEdit }) => {
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 className="w-6 h-6 animate-spin text-white/20" />
+      </div>
+    )
+  }
+  if (posts.length === 0) {
+    return (
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-12 text-center">
+        <Award className="w-8 h-8 text-white/10 mx-auto mb-3" />
+        <p className="text-sm text-white/30">Hali postlar yo'q</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-4">
+      {posts.map(post => (
+        <PostCard
+          key={post.id}
+          post={post}
+          currentUserId={currentUserId}
+          onLike={async (id) => { await api.client.post(`/api/v1/social/posts/${id}/like`) }}
+          onUnlike={async (id) => { await api.client.delete(`/api/v1/social/posts/${id}/like`) }}
+          onDelete={isOwn ? onDelete : undefined}
+          onEdit={isOwn ? onEdit : undefined}
+        />
+      ))}
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Tab: Yutuqlar — 29-level achievement grid
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const YutuqlarTab: React.FC<{ profile: ProfileData; viewerLevel: number }> = ({ profile, viewerLevel }) => {
+  const currentLevel = profile.level ?? 1
+  const xpPercent = profile.xp_percent ?? 0
+  const totalXp = profile.total_xp ?? 0
+  const nextLevelXp = profile.next_level_xp ?? 0
+
+  // XP required per level: ceil(100 × (level)^2.5)
+  const xpForLevel = (lvl: number) => Math.ceil(100 * Math.pow(lvl, 2.5))
 
   return (
-    <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
-      <h2 className="text-sm font-bold text-white mb-4">Yutuqlar</h2>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-        {achievements.map(a => (
-          <div
-            key={a.id}
-            className={`rounded-xl p-3 border text-center transition-all ${
-              a.unlocked
-                ? 'bg-[#e8792f]/10 border-[#e8792f]/20'
-                : 'bg-white/[0.02] border-white/[0.04] opacity-50'
-            }`}
-          >
-            <div className="text-2xl mb-1.5" style={{ filter: a.unlocked ? 'none' : 'grayscale(100%)' }}>
-              {a.emoji}
-            </div>
-            <p className="text-xs font-semibold text-white leading-tight">{a.name}</p>
-            <p className="text-[10px] text-white/40 mt-0.5 leading-tight">{a.desc}</p>
-            {a.unlocked && (
-              <div className="mt-2 text-[9px] font-bold text-[#e8792f]">QOZONILDI</div>
-            )}
+    <div className="space-y-4">
+      {/* Current level progress card */}
+      <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-14 h-14 rounded-2xl bg-[#e8792f]/10 border border-[#e8792f]/20 flex items-center justify-center text-2xl flex-shrink-0">
+            {getLevelEmoji(currentLevel)}
           </div>
-        ))}
+          <div className="flex-1 min-w-0">
+            <p className="text-xs text-white/40 mb-0.5">Joriy daraja</p>
+            <p className="text-lg font-bold text-white">{currentLevel}. {getLevelTitle(currentLevel)}</p>
+            <p className="text-xs text-white/40 mt-0.5">{totalXp.toLocaleString()} XP</p>
+          </div>
+        </div>
+        {/* XP progress bar */}
+        <div className="space-y-1.5">
+          <div className="flex justify-between text-[11px] text-white/40">
+            <span>Keyingi daraja: {getLevelTitle(Math.min(currentLevel + 1, 29))}</span>
+            <span>{xpPercent}%</span>
+          </div>
+          <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-[#e8792f] to-[#c44a1a] rounded-full transition-all"
+              style={{ width: `${Math.min(xpPercent, 100)}%` }}
+            />
+          </div>
+          {currentLevel < 29 && (
+            <p className="text-[10px] text-white/25">
+              {(nextLevelXp - totalXp).toLocaleString()} XP qoldi · Keyingisi uchun: {xpForLevel(currentLevel + 1).toLocaleString()} XP kerak
+            </p>
+          )}
+        </div>
       </div>
+
+      {/* ── Level comparison (only when viewing another user) ── */}
+      {viewerLevel !== currentLevel && viewerLevel > 0 && (
+        <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5 space-y-4">
+          <h3 className="text-sm font-bold text-white">Daraja taqqoslash</h3>
+
+          {/* Profile user */}
+          <div>
+            <div className="flex justify-between text-xs text-white/50 mb-1.5">
+              <span>{getLevelEmoji(currentLevel)} {getLevelTitle(currentLevel)}</span>
+              <span className="text-white/30">Lv. {currentLevel} / 29</span>
+            </div>
+            <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-[#e8792f] to-[#c44a1a] transition-all duration-700"
+                style={{ width: `${Math.round((currentLevel / 29) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          {/* Viewer (Siz) */}
+          <div>
+            <div className="flex justify-between text-xs text-violet-400/80 mb-1.5">
+              <span className="flex items-center gap-1">
+                <span className="text-[8px] font-bold border border-violet-500/40 rounded px-1 py-0.5 text-violet-400">SIZ</span>
+                {getLevelEmoji(viewerLevel)} {getLevelTitle(viewerLevel)}
+              </span>
+              <span className="text-violet-400/50">Lv. {viewerLevel} / 29</span>
+            </div>
+            <div className="h-2 bg-white/[0.06] rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-violet-500/70 transition-all duration-700"
+                style={{ width: `${Math.round((viewerLevel / 29) * 100)}%` }}
+              />
+            </div>
+          </div>
+
+          <p className="text-[11px] text-white/25 pt-1">
+            {currentLevel > viewerLevel
+              ? `${profile.first_name} sizdan ${currentLevel - viewerLevel} daraja oldinda`
+              : `Siz ${profile.first_name}dan ${viewerLevel - currentLevel} daraja oldindasiz`
+            }
+          </p>
+        </div>
+      )}
+
+      {/* 29-level badge grid */}
+      {/* <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] p-5">
+        <h2 className="text-sm font-bold text-white mb-4">Barcha darajalar</h2>
+        <div className="flex flex-wrap justify-center gap-3">
+          {LEVELS.map(l => (
+            <TierBadge
+              key={l.n}
+              level={l}
+              size={100}
+              locked={currentLevel < l.n}
+              showLabel={false}
+              animated={false}
+            />
+          ))}
+        </div>
+      </div> */}
+
+      {/* Next milestone hint */}
+      {currentLevel < 29 && (() => {
+        const next = LEVEL_TITLES.find(l => l.level === currentLevel + 1)
+        if (!next) return null
+        return (
+          <div className="rounded-2xl bg-[#e8792f]/05 border border-[#e8792f]/15 p-4 flex items-start gap-3">
+            <span className="text-lg flex-shrink-0">{getLevelEmoji(next.level)}</span>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-[#e8792f]">Keyingi: {next.level}. {next.title}</p>
+              <p className="text-[11px] text-white/40 mt-0.5 leading-snug">{next.description}</p>
+              <p className="text-[10px] text-white/30 mt-1">
+                Kerak: {(nextLevelXp - totalXp > 0 ? nextLevelXp - totalXp : xpForLevel(next.level) - totalXp).toLocaleString()} XP · Quiz ishlang, kurslarni tugatib, faol bo'ling
+              </p>
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }
@@ -1355,9 +1944,24 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
+  // Experience / Education state
+  const [experiences, setExperiences] = useState<Experience[]>(profile.experiences ?? [])
+  const [education, setEducation] = useState<Education[]>(profile.education ?? [])
+  const blankExp = { company: '', title: '', start_date: '', end_date: '', is_current: false, description: '' }
+  const blankEdu = { school: '', degree: '', field_of_study: '', start_year: '', end_year: '', description: '' }
+  const [expFormOpen, setExpFormOpen] = useState(false)
+  const [expEditing, setExpEditing] = useState<Experience | null>(null)
+  const [expForm, setExpForm] = useState(blankExp)
+  const [expSaving, setExpSaving] = useState(false)
+  const [eduFormOpen, setEduFormOpen] = useState(false)
+  const [eduEditing, setEduEditing] = useState<Education | null>(null)
+  const [eduForm, setEduForm] = useState(blankEdu)
+  const [eduSaving, setEduSaving] = useState(false)
+
   // Image upload state
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarRemoved, setAvatarRemoved] = useState(false)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [coverRemoved, setCoverRemoved] = useState(false)
@@ -1372,7 +1976,14 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) { setErr("Faqat JPG, PNG yoki WebP formatdagi rasmlar"); return }
     setAvatarFile(file)
     setAvatarPreview(URL.createObjectURL(file))
+    setAvatarRemoved(false)
     setErr(null)
+  }
+
+  function removeAvatar() {
+    setAvatarFile(null)
+    setAvatarPreview(null)
+    setAvatarRemoved(true)
   }
 
   function handleCoverChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1397,9 +2008,71 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     formData.append('file', file)
     formData.append('type', type)
     const r = await api.client.post('/api/profile/me/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': undefined },
     })
     return r.data.url
+  }
+
+  async function handleSaveExp() {
+    if (!expForm.company.trim() || !expForm.title.trim()) return
+    setExpSaving(true)
+    const body = {
+      company: expForm.company.trim(),
+      title: expForm.title.trim(),
+      start_date: expForm.start_date || null,
+      end_date: expForm.is_current ? null : (expForm.end_date || null),
+      is_current: expForm.is_current,
+      description: expForm.description.trim() || null,
+    }
+    try {
+      if (expEditing) {
+        const r = await api.client.put(`/api/profile/me/experiences/${expEditing.id}`, body)
+        setExperiences(prev => prev.map(e => e.id === expEditing.id ? r.data : e))
+      } else {
+        const r = await api.client.post('/api/profile/me/experiences', body)
+        setExperiences(prev => [...prev, r.data])
+      }
+      setExpFormOpen(false); setExpEditing(null); setExpForm(blankExp)
+    } catch {}
+    setExpSaving(false)
+  }
+
+  async function handleDeleteExp(id: number) {
+    try {
+      await api.client.delete(`/api/profile/me/experiences/${id}`)
+      setExperiences(prev => prev.filter(e => e.id !== id))
+    } catch {}
+  }
+
+  async function handleSaveEdu() {
+    if (!eduForm.school.trim()) return
+    setEduSaving(true)
+    const body = {
+      school: eduForm.school.trim(),
+      degree: eduForm.degree.trim() || null,
+      field_of_study: eduForm.field_of_study.trim() || null,
+      start_year: eduForm.start_year ? parseInt(eduForm.start_year) : null,
+      end_year: eduForm.end_year ? parseInt(eduForm.end_year) : null,
+      description: eduForm.description.trim() || null,
+    }
+    try {
+      if (eduEditing) {
+        const r = await api.client.put(`/api/profile/me/education/${eduEditing.id}`, body)
+        setEducation(prev => prev.map(e => e.id === eduEditing.id ? r.data : e))
+      } else {
+        const r = await api.client.post('/api/profile/me/education', body)
+        setEducation(prev => [...prev, r.data])
+      }
+      setEduFormOpen(false); setEduEditing(null); setEduForm(blankEdu)
+    } catch {}
+    setEduSaving(false)
+  }
+
+  async function handleDeleteEdu(id: number) {
+    try {
+      await api.client.delete(`/api/profile/me/education/${id}`)
+      setEducation(prev => prev.filter(e => e.id !== id))
+    } catch {}
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1409,25 +2082,26 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
     setSaving(true)
     setErr(null)
     try {
-      let newAvatarUrl = profile.photo_url
-      let newCoverUrl = coverRemoved ? null : profile.cover_image_url
+      let newAvatarUrl: string | null = avatarRemoved ? null : (profile.photo_url ?? null)
+      let newCoverUrl: string | null = coverRemoved ? null : (profile.cover_image_url ?? null)
 
       if (avatarFile) newAvatarUrl = await uploadImage(avatarFile, 'avatar')
       if (coverFile)  newCoverUrl  = await uploadImage(coverFile, 'cover')
 
-      const r = await api.client.put('/api/profile/me', {
-        ...form,
-        ...(avatarFile ? { photo_url: newAvatarUrl } : {}),
-        cover_image_url: newCoverUrl,
-      })
-      onSaved({ ...r.data, photo_url: newAvatarUrl ?? r.data.photo_url, cover_image_url: newCoverUrl ?? r.data.cover_image_url })
+      // Send '' (empty string) to explicitly clear an image — backend converts '' → NULL.
+      // Don't include the field at all when unchanged, to avoid accidental overwrites.
+      const photoBody = avatarFile ? { photo_url: newAvatarUrl } : avatarRemoved ? { photo_url: '' } : {}
+      const coverBody = coverFile  ? { cover_image_url: newCoverUrl } : coverRemoved ? { cover_image_url: '' } : {}
+
+      const r = await api.client.put('/api/profile/me', { ...form, ...photoBody, ...coverBody })
+      onSaved({ ...r.data, photo_url: newAvatarUrl, cover_image_url: newCoverUrl, experiences, education })
     } catch (e: any) {
       setErr(e?.response?.data?.detail || "Xatolik yuz berdi")
     }
     setSaving(false)
   }
 
-  const hasCover = coverPreview || (profile.cover_image_url?.startsWith('http') ? profile.cover_image_url : null)
+  const hasCover = coverRemoved ? null : (coverPreview || (profile.cover_image_url?.startsWith('http') ? profile.cover_image_url : null))
 
   return (
     <motion.div
@@ -1513,7 +2187,7 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
               onClick={() => avatarInputRef.current?.click()}
               style={{ width: 72, height: 72, borderRadius: '50%', overflow: 'hidden', position: 'relative', cursor: 'pointer', flexShrink: 0 }}
             >
-              {(avatarPreview || profile.photo_url) ? (
+              {!avatarRemoved && (avatarPreview || profile.photo_url) ? (
                 <img src={avatarPreview || profile.photo_url!} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Avatar" />
               ) : (
                 <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, #e8792f, #8b2a10)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 800, color: '#fff' }}>
@@ -1528,6 +2202,12 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
             <div>
               <div className="text-sm font-semibold text-white">Profil rasmi</div>
               <div className="text-xs text-white/40">JPG, PNG · Maksimum 5MB</div>
+              {!avatarRemoved && (avatarPreview || profile.photo_url) && (
+                <button type="button" onClick={removeAvatar}
+                  className="mt-1 text-xs font-medium text-red-400 hover:text-red-300 transition-colors">
+                  🗑 Rasmni olib tashlash
+                </button>
+              )}
             </div>
           </div>
 
@@ -1592,6 +2272,197 @@ const EditProfileModal: React.FC<EditProfileModalProps> = ({ profile, onClose, o
             />
           </div>
 
+          {/* ── Ish tajribasi ─────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-2 mt-2">
+              <label className="text-xs font-semibold text-white/50 uppercase tracking-wide">Ish tajribasi</label>
+              <button type="button"
+                onClick={() => { setExpEditing(null); setExpForm(blankExp); setExpFormOpen(true) }}
+                className="flex items-center gap-1 text-xs text-[#e8792f] hover:text-[#c44a1a] transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Qo'shish
+              </button>
+            </div>
+            <div className="space-y-2">
+              {experiences.map(exp => (
+                <div key={exp.id} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  <div className="w-8 h-8 rounded-lg bg-[#e8792f]/10 flex items-center justify-center flex-shrink-0 text-xs font-bold text-[#e8792f]">
+                    {exp.company.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{exp.title}</p>
+                    <p className="text-xs text-white/50">{exp.company}</p>
+                    <p className="text-xs text-white/30">
+                      {fmtYearMonth(exp.start_date)} — {exp.is_current ? 'Hozir' : fmtYearMonth(exp.end_date)}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button type="button" onClick={() => {
+                      setExpEditing(exp)
+                      setExpForm({ company: exp.company, title: exp.title, start_date: exp.start_date || '', end_date: exp.end_date || '', is_current: exp.is_current, description: exp.description || '' })
+                      setExpFormOpen(true)
+                    }} className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.08] transition-colors">
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                    <button type="button" onClick={() => handleDeleteExp(exp.id)}
+                      className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {expFormOpen && (
+              <div className="mt-2 p-4 rounded-xl bg-white/[0.04] border border-[#e8792f]/20 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Kompaniya *</label>
+                    <input value={expForm.company} onChange={e => setExpForm(f => ({ ...f, company: e.target.value }))}
+                      placeholder="Google" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Lavozim *</label>
+                    <input value={expForm.title} onChange={e => setExpForm(f => ({ ...f, title: e.target.value }))}
+                      placeholder="Software Engineer" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Boshlanish</label>
+                    <input type="month" value={expForm.start_date} onChange={e => setExpForm(f => ({ ...f, start_date: e.target.value }))}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Tugash</label>
+                    <input type="month" value={expForm.end_date} onChange={e => setExpForm(f => ({ ...f, end_date: e.target.value }))}
+                      disabled={expForm.is_current}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm focus:outline-none focus:border-[#e8792f]/40 disabled:opacity-40" />
+                  </div>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={expForm.is_current}
+                    onChange={e => setExpForm(f => ({ ...f, is_current: e.target.checked, end_date: e.target.checked ? '' : f.end_date }))}
+                    className="w-4 h-4 accent-[#e8792f]" />
+                  <span className="text-sm text-white/70">Hozir bu yerda ishlayapman</span>
+                </label>
+                <div>
+                  <label className="block text-xs font-medium text-white/50 mb-1">Tavsif</label>
+                  <textarea value={expForm.description} onChange={e => setExpForm(f => ({ ...f, description: e.target.value }))}
+                    rows={2} placeholder="Qisqacha tavsif..." maxLength={500}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40 resize-none" />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleSaveExp} disabled={expSaving || !expForm.company.trim() || !expForm.title.trim()}
+                    className="flex-1 py-2 rounded-xl bg-[#e8792f] hover:bg-[#c44a1a] text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                    {expSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {expEditing ? 'Yangilash' : "Qo'shish"}
+                  </button>
+                  <button type="button" onClick={() => { setExpFormOpen(false); setExpEditing(null); setExpForm(blankExp) }}
+                    className="px-4 py-2 rounded-xl bg-white/[0.06] text-white/50 text-sm hover:text-white transition-colors">
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Ta'lim ────────────────────────────────────────────────────── */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-semibold text-white/50 uppercase tracking-wide">Ta'lim</label>
+              <button type="button"
+                onClick={() => { setEduEditing(null); setEduForm(blankEdu); setEduFormOpen(true) }}
+                className="flex items-center gap-1 text-xs text-[#e8792f] hover:text-[#c44a1a] transition-colors">
+                <Plus className="w-3.5 h-3.5" /> Qo'shish
+              </button>
+            </div>
+            <div className="space-y-2">
+              {education.map(edu => (
+                <div key={edu.id} className="flex items-start gap-3 p-3 rounded-xl bg-white/[0.04] border border-white/[0.06]">
+                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0 text-base">🎓</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-white truncate">{edu.school}</p>
+                    {(edu.degree || edu.field_of_study) && (
+                      <p className="text-xs text-white/50">{[edu.degree, edu.field_of_study].filter(Boolean).join(' · ')}</p>
+                    )}
+                    {(edu.start_year || edu.end_year) && (
+                      <p className="text-xs text-white/30">{edu.start_year ?? '?'} — {edu.end_year ?? 'Hozir'}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <button type="button" onClick={() => {
+                      setEduEditing(edu)
+                      setEduForm({ school: edu.school, degree: edu.degree || '', field_of_study: edu.field_of_study || '', start_year: edu.start_year?.toString() || '', end_year: edu.end_year?.toString() || '', description: edu.description || '' })
+                      setEduFormOpen(true)
+                    }} className="p-1.5 rounded-lg text-white/30 hover:text-white hover:bg-white/[0.08] transition-colors">
+                      <Edit3 className="w-3 h-3" />
+                    </button>
+                    <button type="button" onClick={() => handleDeleteEdu(edu.id)}
+                      className="p-1.5 rounded-lg text-white/30 hover:text-red-400 hover:bg-red-400/10 transition-colors">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {eduFormOpen && (
+              <div className="mt-2 p-4 rounded-xl bg-white/[0.04] border border-blue-500/20 space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-white/50 mb-1">Maktab / Universitet *</label>
+                  <input value={eduForm.school} onChange={e => setEduForm(f => ({ ...f, school: e.target.value }))}
+                    placeholder="Toshkent Davlat Texnika Universiteti" maxLength={200}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Daraja</label>
+                    <input value={eduForm.degree} onChange={e => setEduForm(f => ({ ...f, degree: e.target.value }))}
+                      placeholder="Bakalavr" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Mutaxassislik</label>
+                    <input value={eduForm.field_of_study} onChange={e => setEduForm(f => ({ ...f, field_of_study: e.target.value }))}
+                      placeholder="Kompyuter fanlari" maxLength={200}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Kirish yili</label>
+                    <input type="number" value={eduForm.start_year} onChange={e => setEduForm(f => ({ ...f, start_year: e.target.value }))}
+                      placeholder="2019" min={1950} max={2030}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-white/50 mb-1">Bitirish yili</label>
+                    <input type="number" value={eduForm.end_year} onChange={e => setEduForm(f => ({ ...f, end_year: e.target.value }))}
+                      placeholder="2023" min={1950} max={2035}
+                      className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-white/50 mb-1">Tavsif</label>
+                  <textarea value={eduForm.description} onChange={e => setEduForm(f => ({ ...f, description: e.target.value }))}
+                    rows={2} placeholder="Qisqacha tavsif..." maxLength={500}
+                    className="w-full px-3 py-2 rounded-xl bg-white/[0.05] border border-white/[0.08] text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-[#e8792f]/40 resize-none" />
+                </div>
+                <div className="flex gap-2">
+                  <button type="button" onClick={handleSaveEdu} disabled={eduSaving || !eduForm.school.trim()}
+                    className="flex-1 py-2 rounded-xl bg-[#e8792f] hover:bg-[#c44a1a] text-white text-sm font-semibold disabled:opacity-40 transition-colors flex items-center justify-center gap-1.5">
+                    {eduSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                    {eduEditing ? 'Yangilash' : "Qo'shish"}
+                  </button>
+                  <button type="button" onClick={() => { setEduFormOpen(false); setEduEditing(null); setEduForm(blankEdu) }}
+                    className="px-4 py-2 rounded-xl bg-white/[0.06] text-white/50 text-sm hover:text-white transition-colors">
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             type="submit"
             disabled={saving}
@@ -1621,8 +2492,9 @@ interface RelUser {
 const RelListModal: React.FC<{
   profile: ProfileData
   mode: 'connections' | 'followers' | 'following'
+  myId: number | undefined
   onClose: () => void
-}> = ({ profile, mode, onClose }) => {
+}> = ({ profile, mode, myId, onClose }) => {
   const [users, setUsers] = useState<RelUser[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -1636,8 +2508,13 @@ const RelListModal: React.FC<{
   useEffect(() => {
     setLoading(true)
     const tid = profile.telegram_id
+    const isOwn = !!myId && myId === tid
+
+    // For connections: use current-user endpoint when viewing own profile,
+    // otherwise use the public per-user connections endpoint so that User B's
+    // connections are shown, not User A's.
     const url = mode === 'connections'
-      ? `/api/connections?search=`
+      ? (isOwn ? `/api/connections` : `/api/v1/social/users/${tid}/connections`)
       : mode === 'followers'
       ? `/api/v1/social/users/${tid}/followers`
       : `/api/v1/social/users/${tid}/following`
@@ -1650,7 +2527,7 @@ const RelListModal: React.FC<{
           return {
             id:         u.telegram_id ?? u.id,
             name:       u.first_name ?? u.full_name ?? u.name ?? '',
-            username:   u.username ?? null,
+            username:   u.username ?? u.site_username ?? null,
             avatar_url: u.photo_url ?? u.avatar_url ?? null,
             headline:   u.headline ?? null,
           }
@@ -1658,7 +2535,7 @@ const RelListModal: React.FC<{
       })
       .catch(() => setUsers([]))
       .finally(() => setLoading(false))
-  }, [mode, profile.telegram_id])
+  }, [mode, profile.telegram_id, myId])
 
   const filtered = users.filter(u =>
     !search ||

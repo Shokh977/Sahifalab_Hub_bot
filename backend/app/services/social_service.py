@@ -8,7 +8,7 @@ from sqlalchemy import desc, func, and_, or_, exists, text
 from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
-from app.models.social_models import Post, PostLike, PostComment, Follow, Repost, PostSave, PollVote
+from app.models.social_models import Post, PostLike, PostComment, CommentLike, Follow, Repost, PostSave, PollVote
 from app.models.models import Profile
 
 
@@ -18,7 +18,7 @@ def _profile_to_author(p: Profile) -> dict:
     return {
         "telegram_id": p.telegram_id,
         "full_name": p.first_name or "",
-        "username": p.username,
+        "username": p.site_username,
         "photo_url": p.photo_url,
         "role": p.role or "student",
         "level": p.level or 1,
@@ -135,8 +135,34 @@ def _enrich_post(
 
 # ── Posts CRUD ───────────────────────────────────────────────────────────────
 
-def create_post(db: Session, author_id: int, content: str, image_url: Optional[str] = None) -> dict:
-    post = Post(author_id=author_id, content=content, image_url=image_url)
+def create_post(
+    db: Session,
+    author_id: int,
+    content: str,
+    image_url: Optional[str] = None,
+    image_urls: Optional[List[str]] = None,
+    poll_options: Optional[List[str]] = None,
+) -> dict:
+    post_type = "text"
+    post_metadata = None
+
+    if poll_options and len(poll_options) >= 2:
+        post_type = "poll"
+        post_metadata = {
+            "options": [{"text": opt, "votes_count": 0} for opt in poll_options],
+            "total_votes": 0,
+        }
+    elif image_urls and len(image_urls) > 1:
+        post_metadata = {"images": image_urls}
+        image_url = image_urls[0]
+
+    post = Post(
+        author_id=author_id,
+        content=content,
+        image_url=image_url,
+        post_type=post_type,
+        post_metadata=post_metadata,
+    )
     db.add(post)
     db.commit()
     db.refresh(post)
@@ -254,7 +280,7 @@ def get_feed(
 
     paginated = candidates[(page - 1) * page_size : page * page_size]
     if not paginated:
-        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+        return {"posts": [], "total": total, "page": page, "page_size": page_size, "has_more": False}
 
     # 4. Batch-load interaction sets
     paged_posts = [item[2] for item in paginated]
@@ -298,7 +324,7 @@ def get_feed(
         )
         for _, _, post, reposter in paginated
     ]
-    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
+    return {"posts": enriched, "total": total, "page": page, "page_size": page_size, "has_more": (page * page_size) < total}
 
 
 def get_explore(
@@ -334,7 +360,7 @@ def get_explore(
 
     paginated_posts = [p for _, p in scored[(page - 1) * page_size : page * page_size]]
     if not paginated_posts:
-        return {"posts": [], "total": total, "page": page, "page_size": page_size}
+        return {"posts": [], "total": total, "page": page, "page_size": page_size, "has_more": False}
 
     paged_post_ids = [p.id for p in paginated_posts]
     liked_set: set = set()
@@ -361,7 +387,7 @@ def get_explore(
                      is_saved=post.id in saved_set)
         for post in paginated_posts
     ]
-    return {"posts": enriched, "total": total, "page": page, "page_size": page_size}
+    return {"posts": enriched, "total": total, "page": page, "page_size": page_size, "has_more": (page * page_size) < total}
 
 
 def save_post(db: Session, post_id: int, user_id: int) -> bool:
@@ -386,28 +412,103 @@ def unsave_post(db: Session, post_id: int, user_id: int) -> bool:
     return True
 
 
+def get_saved_posts(db: Session, user_id: int, page: int = 1, page_size: int = 20) -> dict:
+    """Return posts saved by the user, most recently saved first."""
+    offset = (page - 1) * page_size
+    rows = db.execute(text("""
+        SELECT
+            p.id, p.author_id, p.content, p.image_url, p.post_type, p.post_metadata,
+            p.likes_count, p.comments_count,
+            COALESCE(p.views_count, 0)    AS views_count,
+            COALESCE(p.reposts_count, 0)  AS reposts_count,
+            COALESCE(p.shares_count, 0)   AS shares_count,
+            COALESCE(p.saves_count, 0)    AS saves_count,
+            COALESCE(p.base_views_added, 0) AS base_views_added,
+            p.created_at, p.updated_at,
+            pr.first_name, pr.site_username, pr.photo_url, pr.level,
+            COALESCE(pr.is_verified, false) AS is_verified,
+            COALESCE(pr.account_type, 'student') AS account_type,
+            pr.role AS author_role,
+            EXISTS(
+                SELECT 1 FROM post_likes pl
+                WHERE pl.post_id = p.id AND pl.user_id = :uid
+            ) AS is_liked
+        FROM post_saves ps
+        JOIN posts p ON p.id = ps.post_id
+        LEFT JOIN profiles pr ON pr.telegram_id = p.author_id
+        WHERE ps.user_id = :uid
+        ORDER BY ps.created_at DESC
+        LIMIT :lim OFFSET :off
+    """), {"uid": user_id, "lim": page_size, "off": offset}).fetchall()
+
+    total = db.execute(
+        text("SELECT COUNT(*) FROM post_saves WHERE user_id = :uid"), {"uid": user_id}
+    ).scalar() or 0
+
+    posts = [
+        {
+            "id":               r.id,
+            "author": {
+                "telegram_id":  r.author_id,
+                "full_name":    r.first_name or "User",
+                "username":     r.site_username,
+                "photo_url":    r.photo_url,
+                "level":        r.level or 1,
+                "is_verified":  bool(r.is_verified),
+                "account_type": r.account_type,
+                "role":         r.author_role,
+            },
+            "content":          r.content,
+            "image_url":        r.image_url,
+            "post_type":        r.post_type or "text",
+            "post_metadata":    r.post_metadata,
+            "likes_count":      r.likes_count or 0,
+            "comments_count":   r.comments_count or 0,
+            "views_count":      r.views_count,
+            "reposts_count":    r.reposts_count,
+            "shares_count":     r.shares_count,
+            "saves_count":      r.saves_count,
+            "base_views_added": r.base_views_added,
+            "is_liked":         bool(r.is_liked),
+            "is_reposted":      False,
+            "is_saved":         True,
+            "created_at":       r.created_at,
+            "updated_at":       r.updated_at,
+        }
+        for r in rows
+    ]
+    return {"posts": posts, "total": total, "page": page, "page_size": page_size}
+
+
 def vote_poll(db: Session, post_id: int, user_id: int, option_idx: int) -> Optional[dict]:
-    """Vote on a poll. Removes old vote if changing option."""
+    """Vote on a poll (upsert — handles first vote and vote-change atomically)."""
     post = db.query(Post).filter(Post.id == post_id).first()
     if not post or getattr(post, "post_type", "text") != "poll":
         return None
-    # Remove existing vote if any
-    existing = db.query(PollVote).filter(PollVote.post_id == post_id, PollVote.user_id == user_id).first()
-    if existing:
-        if existing.option_idx == option_idx:
-            return {"voted": True, "option_idx": option_idx}  # no change
-        db.delete(existing)
-    vote = PollVote(post_id=post_id, user_id=user_id, option_idx=option_idx)
-    db.add(vote)
+
+    # Single atomic upsert avoids the unique-constraint race that happens when
+    # delete + insert are batched in one autoflush=False session commit.
+    db.execute(text("""
+        INSERT INTO poll_votes (post_id, user_id, option_idx)
+        VALUES (:post_id, :user_id, :option_idx)
+        ON CONFLICT (post_id, user_id)
+        DO UPDATE SET option_idx = :option_idx, created_at = NOW()
+    """), {"post_id": post_id, "user_id": user_id, "option_idx": option_idx})
     db.commit()
-    # Return updated vote counts per option
-    meta = dict(post.post_metadata or {})
-    options = meta.get("options", [])
-    vote_rows = db.query(PollVote.option_idx).filter(PollVote.post_id == post_id).all()
+
+    # Return live counts straight from the votes table
+    rows = db.execute(
+        text("SELECT option_idx FROM poll_votes WHERE post_id = :pid"),
+        {"pid": post_id},
+    ).fetchall()
     counts: dict = {}
-    for (idx,) in vote_rows:
+    for (idx,) in rows:
         counts[idx] = counts.get(idx, 0) + 1
-    total_votes = len(vote_rows)
+    total_votes = len(rows)
+
+    db.refresh(post)
+    meta = dict(post.post_metadata or {})
+    options = list(meta.get("options", []))
     for i, opt in enumerate(options):
         opt["votes_count"] = counts.get(i, 0)
     meta["options"] = options
@@ -575,7 +676,8 @@ def unlike_post(db: Session, post_id: int, user_id: int) -> bool:
 
 # ── Comments ─────────────────────────────────────────────────────────────────
 
-def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50) -> List[dict]:
+def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50,
+                 viewer_id: Optional[int] = None) -> List[dict]:
     comments = (
         db.query(PostComment)
         .filter(PostComment.post_id == post_id)
@@ -584,37 +686,81 @@ def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50) 
         .limit(page_size)
         .all()
     )
+    if not comments:
+        return []
+
     author_ids = list({c.author_id for c in comments})
     authors_map = {
         p.telegram_id: p
         for p in db.query(Profile).filter(Profile.telegram_id.in_(author_ids)).all()
-    } if author_ids else {}
+    }
+
+    # Fetch which comments the viewer has liked (single query)
+    liked_ids: set[int] = set()
+    if viewer_id:
+        comment_ids = [c.id for c in comments]
+        rows = db.query(CommentLike.comment_id).filter(
+            CommentLike.comment_id.in_(comment_ids),
+            CommentLike.user_id == viewer_id,
+        ).all()
+        liked_ids = {r.comment_id for r in rows}
 
     return [
         {
-            "id": c.id,
-            "post_id": c.post_id,
-            "author": _profile_to_author(authors_map.get(c.author_id)),
-            "content": c.content,
-            "created_at": c.created_at,
+            "id":          c.id,
+            "post_id":     c.post_id,
+            "parent_id":   c.parent_id,
+            "author":      _profile_to_author(authors_map.get(c.author_id)),
+            "content":     c.content,
+            "likes_count": c.likes_count,
+            "is_liked":    c.id in liked_ids,
+            "created_at":  c.created_at,
         }
         for c in comments
     ]
 
 
-def create_comment(db: Session, post_id: int, author_id: int, content: str) -> dict:
-    comment = PostComment(post_id=post_id, author_id=author_id, content=content)
+def create_comment(db: Session, post_id: int, author_id: int, content: str,
+                   parent_id: Optional[int] = None) -> dict:
+    comment = PostComment(
+        post_id=post_id, author_id=author_id, content=content, parent_id=parent_id,
+    )
     db.add(comment)
     db.commit()
     db.refresh(comment)
     author = db.query(Profile).filter(Profile.telegram_id == author_id).first()
     return {
-        "id": comment.id,
-        "post_id": comment.post_id,
-        "author": _profile_to_author(author),
-        "content": comment.content,
-        "created_at": comment.created_at,
+        "id":          comment.id,
+        "post_id":     comment.post_id,
+        "parent_id":   comment.parent_id,
+        "author":      _profile_to_author(author),
+        "content":     comment.content,
+        "likes_count": 0,
+        "is_liked":    False,
+        "created_at":  comment.created_at,
     }
+
+
+def like_comment(db: Session, comment_id: int, user_id: int) -> bool:
+    exists_ = db.query(CommentLike).filter(
+        CommentLike.comment_id == comment_id, CommentLike.user_id == user_id
+    ).first()
+    if exists_:
+        return False
+    db.add(CommentLike(comment_id=comment_id, user_id=user_id))
+    db.commit()
+    return True
+
+
+def unlike_comment(db: Session, comment_id: int, user_id: int) -> bool:
+    like = db.query(CommentLike).filter(
+        CommentLike.comment_id == comment_id, CommentLike.user_id == user_id
+    ).first()
+    if not like:
+        return False
+    db.delete(like)
+    db.commit()
+    return True
 
 
 def delete_comment(db: Session, comment_id: int, user_id: int) -> bool:
@@ -659,13 +805,7 @@ def follow_user(db: Session, follower_id: int, following_id: int) -> bool:
     if existing:
         return False
     db.add(Follow(follower_id=follower_id, following_id=following_id))
-    # Update denormalized counts
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: Profile.following_count + 1}, synchronize_session=False
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: Profile.followers_count + 1}, synchronize_session=False
-    )
+    # counts are maintained by the sync_follower_counts DB trigger (migration 030)
     db.commit()
     return True
 
@@ -677,13 +817,7 @@ def unfollow_user(db: Session, follower_id: int, following_id: int) -> bool:
     if not follow:
         return False
     db.delete(follow)
-    # Update denormalized counts
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: func.greatest(Profile.following_count - 1, 0)}, synchronize_session=False
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: func.greatest(Profile.followers_count - 1, 0)}, synchronize_session=False
-    )
+    # counts are maintained by the sync_follower_counts DB trigger (migration 030)
     db.commit()
     return True
 

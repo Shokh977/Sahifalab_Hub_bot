@@ -53,18 +53,28 @@ class Settings(BaseSettings):
     BUNNY_STORAGE_REGION: str = "de"
 
     # Bunny Stream — video streaming (adaptive HLS, signed embed URLs)
-    # BUNNY_STREAM_LIBRARY_ID → Video Library ID from Bunny.net Stream panel
-    # BUNNY_STREAM_API_KEY    → API key for the Stream library (Library → API → API Key)
-    # BUNNY_STREAM_TOKEN_KEY  → Token authentication key (Library → Security → Token Authentication Key)
-    # BUNNY_STREAM_CDN_HOST   → CDN hostname for the stream library (e.g. vz-abc12345-678.b-cdn.net)
-    BUNNY_STREAM_LIBRARY_ID: int = 0
-    BUNNY_STREAM_API_KEY:    str = ""
-    BUNNY_STREAM_TOKEN_KEY:  str = ""
-    BUNNY_STREAM_CDN_HOST:   str = ""
+    # BUNNY_STREAM_LIBRARY_ID    → Video Library ID from Bunny.net Stream panel
+    # BUNNY_STREAM_API_KEY       → API key for the Stream library (Library → API → API Key)
+    # BUNNY_STREAM_TOKEN_KEY     → Token authentication key (Library → Security → Token Authentication Key)
+    # BUNNY_STREAM_CDN_HOST      → CDN hostname for the stream library (e.g. vz-abc12345-678.b-cdn.net)
+    # BUNNY_STREAM_CDN_TOKEN_KEY → CDN pull zone Token Authentication key (CDN → pull zone → Security →
+    #                              Token Authentication key). Only needed if CDN Token Auth is ON on the
+    #                              pull zone. Uses path-based base64url formula, not the embed formula.
+    BUNNY_STREAM_LIBRARY_ID:    int = 0
+    BUNNY_STREAM_API_KEY:       str = ""
+    BUNNY_STREAM_TOKEN_KEY:     str = ""
+    BUNNY_STREAM_CDN_HOST:      str = ""
+    BUNNY_STREAM_CDN_TOKEN_KEY: str = ""
 
     # Google OAuth — Web Client ID (same value the frontend sends tokens against)
     GOOGLE_CLIENT_ID:     str = ""
     GOOGLE_CLIENT_SECRET: str = ""
+
+    # Email via Resend (resend.com) — free 100/day, no SDK needed
+    # Get key from resend.com → API Keys → Create API Key
+    SENDER_API_KEY: str = ""
+    # Base URL of the frontend app (used to build email links)
+    APP_URL: str = "https://sahifalab.uz"
 
     @field_validator('ADMIN_TELEGRAM_IDS', mode='before')
     @classmethod

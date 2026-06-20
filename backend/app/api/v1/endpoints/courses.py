@@ -205,24 +205,32 @@ async def get_course(course_id: int, authorization: Optional[str] = Header(None)
     return course
 
 
+_ALLOWED_ORDER_COLS = {"enrolled_count", "created_at", "rating", "price"}
+
 @router.get("")
 async def list_courses(
-    category:   Optional[str] = Query(None, description="Category slug"),
-    level:      Optional[str] = Query(None, description="beginner|intermediate|advanced"),
-    search:     Optional[str] = Query(None, description="Title search (case-insensitive)"),
-    teacher_id: Optional[int] = Query(None, description="Filter by teacher telegram_id"),
-    limit:      int           = Query(20, ge=1, le=100),
-    offset:     int           = Query(0, ge=0),
+    category:   Optional[str]  = Query(None, description="Category slug"),
+    level:      Optional[str]  = Query(None, description="beginner|intermediate|advanced"),
+    search:     Optional[str]  = Query(None, description="Title search (case-insensitive)"),
+    teacher_id: Optional[int]  = Query(None, description="Filter by teacher telegram_id"),
+    ordering:   Optional[str]  = Query(None, description="-enrolled_count | -created_at | -rating | -price"),
+    is_paid:    Optional[bool] = Query(None, description="true=paid only, false=free only"),
+    limit:      int            = Query(20, ge=1, le=100),
+    offset:     int            = Query(0, ge=0),
 ):
     """Public: list published courses with optional filters."""
     _ensure_supabase()
+
+    desc = ordering.startswith("-") if ordering else True
+    col  = ordering.lstrip("-") if ordering else "created_at"
+    order_clause = f"{col}.{'desc' if desc else 'asc'}" if col in _ALLOWED_ORDER_COLS else "created_at.desc"
 
     params: dict = {
         "is_published": "eq.true",
         "select": "id, teacher_id, category_id, title, slug, description, thumbnail_url, "
                   "price, is_paid, level, language, total_lessons, total_duration_minutes, "
                   "enrolled_count, rating, created_at, categories(name, slug, icon)",
-        "order": "created_at.desc",
+        "order": order_clause,
         "limit": str(limit),
         "offset": str(offset),
     }
@@ -232,6 +240,8 @@ async def list_courses(
         params["teacher_id"] = f"eq.{teacher_id}"
     if search:
         params["title"] = f"ilike.*{search}*"
+    if is_paid is not None:
+        params["is_paid"] = f"eq.{str(is_paid).lower()}"
 
     # Category slug filter requires a join via category_id; we resolve slug → id first
     if category:

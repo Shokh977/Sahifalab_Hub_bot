@@ -60,6 +60,8 @@ async def _force_https_redirects(request: Request, call_next):
         loc = response.headers.get("location", "")
         if loc.startswith("http://") and "localhost" not in loc and "127.0.0.1" not in loc:
             response.headers["location"] = "https://" + loc[7:]
+    # Allow Google Sign-In popup postMessage (COOP must not be same-origin)
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin-allow-popups"
     return response
 
 
@@ -99,16 +101,22 @@ _CACHE_RULES: list[tuple[str, str]] = [
 ]
 
 
+_NO_CACHE_SUFFIXES = (
+    "/reviews", "/my-rating", "/progress", "/file", "/download",
+    "/my-enrollment", "/my-progress", "/certificate",
+)
+
 @app.middleware("http")
 async def cache_control_middleware(request, call_next):
     response = await call_next(request)
     path = request.url.path
-    # Only apply to GET requests
+    # Only apply to GET requests; skip user-specific endpoints entirely
     if request.method == "GET" and "Cache-Control" not in response.headers:
-        for prefix, header in _CACHE_RULES:
-            if path.startswith(prefix):
-                response.headers["Cache-Control"] = header
-                break
+        if not any(path.endswith(s) for s in _NO_CACHE_SUFFIXES):
+            for prefix, header in _CACHE_RULES:
+                if path.startswith(prefix):
+                    response.headers["Cache-Control"] = header
+                    break
     return response
 
 # Include API routes
@@ -242,6 +250,254 @@ async def startup_event():
                     "INSERT INTO auth_codes (code, expires_at) VALUES (:c, :e)"
                 ), {"c": _tc, "e": datetime.now(UTC) + timedelta(seconds=10)})
                 conn.execute(_sa_text("DELETE FROM auth_codes WHERE code = :c"), {"c": _tc})
+                # 4. user_settings column (migration 052)
+                conn.execute(_sa_text(
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_settings JSONB"
+                ))
+                # 5. poll_votes table (migration 051)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS poll_votes (
+                        id         BIGSERIAL    PRIMARY KEY,
+                        post_id    INTEGER      NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+                        user_id    BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        option_idx INTEGER      NOT NULL,
+                        created_at TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_poll_vote UNIQUE (post_id, user_id)
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_poll_votes_post ON poll_votes(post_id)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_poll_votes_user ON poll_votes(user_id)"
+                ))
+                # 6. user_experiences table (migration 053)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS user_experiences (
+                        id          BIGSERIAL    PRIMARY KEY,
+                        user_id     BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        company     VARCHAR(200) NOT NULL,
+                        title       VARCHAR(200) NOT NULL,
+                        start_date  VARCHAR(20),
+                        end_date    VARCHAR(20),
+                        is_current  BOOLEAN      NOT NULL DEFAULT FALSE,
+                        description TEXT,
+                        created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_experiences_user ON user_experiences(user_id)"
+                ))
+                # 7. user_education table (migration 053)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS user_education (
+                        id             BIGSERIAL    PRIMARY KEY,
+                        user_id        BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        school         VARCHAR(200) NOT NULL,
+                        degree         VARCHAR(200),
+                        field_of_study VARCHAR(200),
+                        start_year     INTEGER,
+                        end_year       INTEGER,
+                        description    TEXT,
+                        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_user_education_user ON user_education(user_id)"
+                ))
+                # 8. Widen telegram_id columns that were declared as INTEGER (32-bit)
+                #    to BIGINT — Telegram IDs now exceed 2^31 and overflow INTEGER.
+                for _widen in [
+                    "ALTER TABLE user_quiz_completion ALTER COLUMN telegram_id TYPE BIGINT",
+                ]:
+                    try:
+                        conn.execute(_sa_text(_widen))
+                    except Exception:
+                        pass  # already BIGINT or column missing — safe to skip
+                # 9. Calendar fields for planner_tasks
+                for _col in [
+                    "ALTER TABLE planner_tasks ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ",
+                    "ALTER TABLE planner_tasks ADD COLUMN IF NOT EXISTS duration_minutes INTEGER NOT NULL DEFAULT 30",
+                ]:
+                    try:
+                        conn.execute(_sa_text(_col))
+                    except Exception:
+                        pass
+                # 10. Jobs tables
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS jobs (
+                        id              BIGSERIAL    PRIMARY KEY,
+                        posted_by       BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        company_name    TEXT         NOT NULL,
+                        title           TEXT         NOT NULL,
+                        description     TEXT         NOT NULL,
+                        location        TEXT,
+                        job_type        VARCHAR(20)  NOT NULL DEFAULT 'full_time',
+                        salary_min      INTEGER,
+                        salary_max      INTEGER,
+                        salary_currency VARCHAR(10)  NOT NULL DEFAULT 'UZS',
+                        required_skills JSONB        NOT NULL DEFAULT '[]',
+                        is_active       BOOLEAN      NOT NULL DEFAULT TRUE,
+                        created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        expires_at      TIMESTAMPTZ,
+                        CONSTRAINT chk_salary_range
+                            CHECK (salary_min IS NULL OR salary_max IS NULL OR salary_max >= salary_min)
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_jobs_posted_by ON jobs(posted_by)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_jobs_active_created ON jobs(is_active, created_at)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_jobs_skills ON jobs USING GIN(required_skills)"
+                ))
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS job_applications (
+                        id           BIGSERIAL   PRIMARY KEY,
+                        job_id       BIGINT      NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+                        applicant_id BIGINT      NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        message      TEXT,
+                        status       VARCHAR(20) NOT NULL DEFAULT 'applied',
+                        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        CONSTRAINT uq_job_application UNIQUE (job_id, applicant_id)
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_job_applications_job ON job_applications(job_id, status)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_job_applications_applicant ON job_applications(applicant_id)"
+                ))
+                # 11. Focus session tracking (055_focus_sessions)
+                for _col in [
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS daily_goal_minutes INTEGER NOT NULL DEFAULT 20",
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS streak_days INTEGER NOT NULL DEFAULT 0",
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS streak_last_date DATE",
+                ]:
+                    try:
+                        conn.execute(_sa_text(_col))
+                    except Exception:
+                        pass
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS focus_sessions (
+                        id           BIGSERIAL    PRIMARY KEY,
+                        user_id      BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        minutes      INTEGER      NOT NULL CHECK (minutes > 0),
+                        xp_awarded   INTEGER      NOT NULL DEFAULT 0,
+                        session_date DATE         NOT NULL DEFAULT CURRENT_DATE,
+                        created_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_focus_sessions_user_date ON focus_sessions(user_id, session_date)"
+                ))
+                # 12. Streak freeze columns (061_streak_freeze)
+                conn.execute(_sa_text(
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS freeze_count INT NOT NULL DEFAULT 0"
+                ))
+                conn.execute(_sa_text(
+                    "ALTER TABLE profiles ADD COLUMN IF NOT EXISTS freeze_used_dates DATE[] NOT NULL DEFAULT '{}'"
+                ))
+                try:
+                    conn.execute(_sa_text(
+                        "ALTER TABLE profiles DROP CONSTRAINT IF EXISTS profiles_freeze_count_check"
+                    ))
+                    conn.execute(_sa_text(
+                        "ALTER TABLE profiles ADD CONSTRAINT profiles_freeze_count_check CHECK (freeze_count >= 0)"
+                    ))
+                except Exception:
+                    pass  # constraint may already exist with same definition
+                # 13. Flashcard system (step-11-flashcards)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS flashcard_decks (
+                        id             BIGSERIAL    PRIMARY KEY,
+                        user_id        BIGINT       NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        title          VARCHAR(200) NOT NULL,
+                        description    TEXT,
+                        color          VARCHAR(7)   NOT NULL DEFAULT '#F5A623',
+                        icon           VARCHAR(50),
+                        card_count     INTEGER      NOT NULL DEFAULT 0,
+                        mastered_count INTEGER      NOT NULL DEFAULT 0,
+                        is_public      BOOLEAN      NOT NULL DEFAULT FALSE,
+                        course_id      INTEGER,
+                        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcard_decks_user ON flashcard_decks(user_id)"
+                ))
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS flashcards (
+                        id            BIGSERIAL   PRIMARY KEY,
+                        deck_id       BIGINT      NOT NULL REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+                        front_text    TEXT        NOT NULL,
+                        back_text     TEXT        NOT NULL,
+                        front_image   VARCHAR(500),
+                        back_image    VARCHAR(500),
+                        position      INTEGER     NOT NULL DEFAULT 0,
+                        ease_factor   REAL        NOT NULL DEFAULT 2.5,
+                        interval_days INTEGER     NOT NULL DEFAULT 0,
+                        repetitions   INTEGER     NOT NULL DEFAULT 0,
+                        next_review   TIMESTAMPTZ,
+                        last_reviewed TIMESTAMPTZ,
+                        status        VARCHAR(20) NOT NULL DEFAULT 'new',
+                        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcards_deck ON flashcards(deck_id)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcards_deck_status ON flashcards(deck_id, status)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcards_next_review ON flashcards(next_review)"
+                ))
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS flashcard_reviews (
+                        id            BIGSERIAL   PRIMARY KEY,
+                        user_id       BIGINT      NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+                        card_id       BIGINT      NOT NULL REFERENCES flashcards(id) ON DELETE CASCADE,
+                        deck_id       BIGINT      NOT NULL REFERENCES flashcard_decks(id) ON DELETE CASCADE,
+                        rating        SMALLINT    NOT NULL,
+                        reviewed_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        time_spent_ms INTEGER
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcard_reviews_user ON flashcard_reviews(user_id, reviewed_at)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_flashcard_reviews_deck ON flashcard_reviews(deck_id)"
+                ))
+                # 14. Pending enrollments (step-12-admin-manual-enrollment)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS pending_enrollments (
+                        id                BIGSERIAL    PRIMARY KEY,
+                        user_id           BIGINT       NOT NULL,
+                        course_id         INTEGER      NOT NULL,
+                        reference_code    VARCHAR(20)  UNIQUE NOT NULL,
+                        expected_amount   BIGINT       NOT NULL DEFAULT 0,
+                        status            VARCHAR(20)  NOT NULL DEFAULT 'awaiting_payment',
+                        admin_notes       TEXT,
+                        actual_amount     BIGINT,
+                        payment_method    VARCHAR(50),
+                        payment_proof_url VARCHAR(500),
+                        processed_by      BIGINT,
+                        processed_at      TIMESTAMPTZ,
+                        created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        expires_at        TIMESTAMPTZ  NOT NULL
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_pending_enroll_status ON pending_enrollments(status, created_at DESC)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_pending_enroll_user_course ON pending_enrollments(user_id, course_id)"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
@@ -253,7 +509,56 @@ async def startup_event():
 
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
+
+    # ── APScheduler: streak reminder + weekly report ──────────────────────────
+    _start_cron_scheduler()
+
     logger.info("Background tasks started")
+
+
+def _start_cron_scheduler():
+    """Start APScheduler for streak reminders and weekly reports."""
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from apscheduler.triggers.cron  import CronTrigger
+    from app.api.v1.endpoints.cron  import send_streak_reminders, send_weekly_reports
+    from app.db.session             import get_db
+
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if not cron_secret:
+        logger.warning("[SCHEDULER] CRON_SECRET not set — scheduled jobs will not run")
+        return
+
+    def _db():
+        """Return a single DB session for scheduled jobs."""
+        return next(get_db())
+
+    async def _run_streak_reminder():
+        db = _db()
+        try:
+            result = await send_streak_reminders(db=db, _=None)
+            logger.info("[SCHEDULER] streak-reminder: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] streak-reminder failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_weekly_report():
+        db = _db()
+        try:
+            result = await send_weekly_reports(db=db, _=None)
+            logger.info("[SCHEDULER] weekly-report: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] weekly-report failed: %s", exc)
+        finally:
+            db.close()
+
+    scheduler = AsyncIOScheduler(timezone="UTC")
+    # Daily 15:00 UTC ≈ 20:00 Tashkent
+    scheduler.add_job(_run_streak_reminder, CronTrigger(hour=15, minute=0))
+    # Every Monday 08:00 UTC
+    scheduler.add_job(_run_weekly_report,   CronTrigger(day_of_week="mon", hour=8, minute=0))
+    scheduler.start()
+    logger.info("[SCHEDULER] APScheduler started — streak @15:00 UTC daily, report @08:00 UTC Monday")
 
 
 if __name__ == "__main__":

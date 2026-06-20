@@ -25,7 +25,9 @@ Routes (mounted at /api/connections):
   GET    /suggestions          — top-10 smart suggestions
 """
 
+import asyncio
 import logging
+import threading
 from datetime import datetime, UTC
 from typing import Optional
 
@@ -39,6 +41,25 @@ from app.models.models import Profile
 from app.models.social_models import Connection, Follow, ActivityLog
 from app.services.auth_service import decode_token
 from app.services.integration_service import hook_connection_accepted
+from app.api.v1.endpoints.notifications import send_notification
+
+
+def _fire_conn_notification(user_id: int, notif_type: str, meta: dict):
+    """Fire-and-forget notification — works from both sync and async route contexts."""
+    if user_id <= 0:
+        return
+
+    def _run():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(send_notification(user_id, notif_type, "SOCIAL", meta))
+        except Exception:
+            pass
+        finally:
+            loop.close()
+
+    threading.Thread(target=_run, daemon=True).start()
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +83,7 @@ def _mini(p: Profile) -> dict:
     return {
         "id":           p.telegram_id,
         "name":         p.first_name or "",
-        "username":     p.username,
+        "username":     p.site_username,
         "avatar_url":   p.photo_url,
         "headline":     getattr(p, "headline", None),
         "level":        p.level or 1,
@@ -85,8 +106,8 @@ def _log_activity(db: Session, user_id: int, other_id: int) -> None:
         ON CONFLICT (user_id, activity_type, reference_id, reference_type)
         DO NOTHING
     """), {
-        "uid1": user_id,  "ref1": str(other_id),  "ref1_int": other_id,
-        "uid2": other_id, "ref2": str(user_id),   "ref2_int": user_id,
+        "uid1": user_id,        "ref1": str(other_id), "ref1_int": other_id,
+        "uid2": other_id,       "ref2": str(user_id),  "ref2_int": user_id,
     })
 
 
@@ -108,12 +129,7 @@ def _ensure_follow(db: Session, follower_id: int, following_id: int) -> bool:
     if existing:
         return False
     db.add(Follow(follower_id=follower_id, following_id=following_id))
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: Profile.following_count + 1}, synchronize_session=False
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: Profile.followers_count + 1}, synchronize_session=False
-    )
+    # counts maintained by sync_follower_counts DB trigger (migration 030)
     return True
 
 
@@ -126,14 +142,7 @@ def _remove_follow(db: Session, follower_id: int, following_id: int) -> bool:
     if not follow:
         return False
     db.delete(follow)
-    db.query(Profile).filter(Profile.telegram_id == follower_id).update(
-        {Profile.following_count: func.greatest(Profile.following_count - 1, 0)},
-        synchronize_session=False,
-    )
-    db.query(Profile).filter(Profile.telegram_id == following_id).update(
-        {Profile.followers_count: func.greatest(Profile.followers_count - 1, 0)},
-        synchronize_session=False,
-    )
+    # counts maintained by sync_follower_counts DB trigger (migration 030)
     return True
 
 
@@ -186,6 +195,11 @@ def send_request(
             _ensure_follow(db, viewer_id, body.receiver_id)
             db.commit()
             db.refresh(existing)
+            requester = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+            _fire_conn_notification(body.receiver_id, "connection_request", {
+                "actor_id": viewer_id,
+                "actor_name": requester.first_name or "" if requester else "",
+            })
             return {"ok": True, "id": existing.id, "status": "pending"}
 
     conn = Connection(requester_id=viewer_id, receiver_id=body.receiver_id, status="pending")
@@ -201,6 +215,11 @@ def send_request(
         db.rollback()
         raise HTTPException(500, "So'rovni saqlashda xatolik")
 
+    requester = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+    _fire_conn_notification(body.receiver_id, "connection_request", {
+        "actor_id": viewer_id,
+        "actor_name": requester.first_name or "" if requester else "",
+    })
     return {"ok": True, "id": conn.id, "status": "pending"}
 
 
@@ -256,22 +275,33 @@ def accept_request(
 
     requester_id = conn.requester_id
 
-    # Auto-follow: receiver → requester (requester→receiver already exists from send_request)
-    _ensure_follow(db, viewer_id, requester_id)
-
-    # Increment connections_count for both parties
-    db.query(Profile).filter(Profile.telegram_id.in_([viewer_id, requester_id])).update(
-        {Profile.connections_count: Profile.connections_count + 1}, synchronize_session=False
-    )
-
-    _log_activity(db, viewer_id, requester_id)
-
+    # ── Critical: status + mutual follow ─────────────────────────────────────
     try:
+        _ensure_follow(db, viewer_id, requester_id)
         db.commit()
         db.refresh(conn)
-    except Exception:
+    except Exception as exc:
         db.rollback()
+        logger.exception("accept_request(%s) failed: %s", conn_id, exc)
         raise HTTPException(500, "Qabul qilishda xatolik")
+
+    # ── Best-effort: connections_count (skipped if column not yet migrated) ──
+    try:
+        db.query(Profile).filter(Profile.telegram_id.in_([viewer_id, requester_id])).update(
+            {Profile.connections_count: Profile.connections_count + 1}, synchronize_session=False
+        )
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("accept_request(%s): connections_count update skipped: %s", conn_id, exc)
+
+    # ── Best-effort: activity log (skipped if constraint not yet migrated) ───
+    try:
+        _log_activity(db, viewer_id, requester_id)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.warning("accept_request(%s): activity log skipped: %s", conn_id, exc)
 
     # HOOK 6: notify the requester that their request was accepted
     hook_connection_accepted(db, acceptor_id=viewer_id, requester_id=requester_id)
@@ -337,22 +367,25 @@ def remove_connection(
     was_accepted = conn.status == "accepted"
 
     db.delete(conn)
-
-    # Remove both follow relationships
     _remove_follow(db, user_a, user_b)
     _remove_follow(db, user_b, user_a)
-
-    if was_accepted:
-        db.query(Profile).filter(Profile.telegram_id.in_([user_a, user_b])).update(
-            {Profile.connections_count: func.greatest(Profile.connections_count - 1, 0)},
-            synchronize_session=False,
-        )
 
     try:
         db.commit()
     except Exception:
         db.rollback()
         raise HTTPException(500, "Ulanishni o'chirishda xatolik")
+
+    if was_accepted:
+        try:
+            db.query(Profile).filter(Profile.telegram_id.in_([user_a, user_b])).update(
+                {Profile.connections_count: func.greatest(Profile.connections_count - 1, 0)},
+                synchronize_session=False,
+            )
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.warning("remove_connection: connections_count update skipped: %s", exc)
 
     return {"ok": True}
 
@@ -417,7 +450,7 @@ def get_mutual(
             WHERE (requester_id = :tid OR receiver_id = :tid)
               AND status = 'accepted'
         )
-        SELECT p.telegram_id, p.first_name, p.username, p.photo_url,
+        SELECT p.telegram_id, p.first_name, p.site_username, p.photo_url,
                p.level, p.total_xp,
                COALESCE(p.headline, '')     AS headline,
                COALESCE(p.account_type, 'student') AS account_type,
@@ -434,7 +467,7 @@ def get_mutual(
             {
                 "id":           r["telegram_id"],
                 "name":         r["first_name"] or "",
-                "username":     r["username"],
+                "username":     r["site_username"],
                 "avatar_url":   r["photo_url"],
                 "headline":     r["headline"],
                 "level":        r["level"] or 1,
@@ -476,6 +509,17 @@ def get_suggestions(
         viewer_skills AS (
             SELECT lower(skill_name) AS sname FROM skills WHERE user_id = :vid
         ),
+        viewer_companies AS (
+            SELECT lower(company) AS cname FROM user_experiences WHERE user_id = :vid
+        ),
+        viewer_schools AS (
+            SELECT lower(school) AS sname FROM user_education WHERE user_id = :vid
+        ),
+        viewer_fields AS (
+            SELECT lower(field_of_study) AS fname
+            FROM user_education
+            WHERE user_id = :vid AND field_of_study IS NOT NULL
+        ),
         viewer_profile AS (
             SELECT COALESCE(location_city, '') AS city,
                    COALESCE(level, 1)          AS lvl
@@ -491,7 +535,7 @@ def get_suggestions(
         SELECT
             p.telegram_id,
             p.first_name,
-            p.username,
+            p.site_username,
             p.photo_url,
             COALESCE(p.headline,      '')        AS headline,
             COALESCE(p.location_city, '')        AS location_city,
@@ -501,18 +545,15 @@ def get_suggestions(
             COALESCE(p.total_xp, 0)              AS total_xp,
 
             (SELECT COUNT(*)
-             FROM (
-                 SELECT CASE WHEN c.requester_id = p.telegram_id
-                             THEN c.receiver_id ELSE c.requester_id END AS uid
-                 FROM connections c
-                 WHERE (c.requester_id = p.telegram_id OR c.receiver_id = p.telegram_id)
-                   AND c.status = 'accepted'
-             ) tc
+             FROM (SELECT CASE WHEN c.requester_id = p.telegram_id
+                               THEN c.receiver_id ELSE c.requester_id END AS uid
+                   FROM connections c
+                   WHERE (c.requester_id = p.telegram_id OR c.receiver_id = p.telegram_id)
+                     AND c.status = 'accepted') tc
              WHERE tc.uid IN (SELECT uid FROM viewer_connections)
             ) AS mutual,
 
-            (SELECT COUNT(*)
-             FROM course_enrollments ce
+            (SELECT COUNT(*) FROM course_enrollments ce
              WHERE ce.student_id = p.telegram_id
                AND ce.course_id IN (SELECT course_id FROM viewer_courses)
             ) AS shared_courses,
@@ -522,15 +563,29 @@ def get_suggestions(
                   AND p.location_city != ''
                  THEN 1 ELSE 0 END AS same_city,
 
-            (SELECT COUNT(*)
-             FROM skills s
+            (SELECT COUNT(*) FROM skills s
              WHERE s.user_id = p.telegram_id
                AND lower(s.skill_name) IN (SELECT sname FROM viewer_skills)
             ) AS shared_skills,
 
-            CASE WHEN ABS(COALESCE(p.level, 1) -
-                          (SELECT lvl FROM viewer_profile)) <= 1
-                 THEN 1 ELSE 0 END AS similar_level
+            CASE WHEN ABS(COALESCE(p.level, 1) - (SELECT lvl FROM viewer_profile)) <= 1
+                 THEN 1 ELSE 0 END AS similar_level,
+
+            (SELECT COUNT(*) FROM user_experiences ue
+             WHERE ue.user_id = p.telegram_id
+               AND lower(ue.company) IN (SELECT cname FROM viewer_companies)
+            ) AS shared_company,
+
+            (SELECT COUNT(*) FROM user_education ed
+             WHERE ed.user_id = p.telegram_id
+               AND lower(ed.school) IN (SELECT sname FROM viewer_schools)
+            ) AS shared_school,
+
+            (SELECT COUNT(*) FROM user_education ed
+             WHERE ed.user_id = p.telegram_id
+               AND ed.field_of_study IS NOT NULL
+               AND lower(ed.field_of_study) IN (SELECT fname FROM viewer_fields)
+            ) AS shared_field
 
         FROM candidates ca
         JOIN profiles p ON p.telegram_id = ca.tid
@@ -540,20 +595,28 @@ def get_suggestions(
                  FROM (SELECT CASE WHEN c.requester_id = p.telegram_id THEN c.receiver_id ELSE c.requester_id END AS uid
                        FROM connections c
                        WHERE (c.requester_id = p.telegram_id OR c.receiver_id = p.telegram_id) AND c.status = 'accepted') tc
-                 WHERE tc.uid IN (SELECT uid FROM viewer_connections)
-                ) * 3
+                 WHERE tc.uid IN (SELECT uid FROM viewer_connections)) * 3
               + (SELECT COUNT(*) FROM course_enrollments ce
                  WHERE ce.student_id = p.telegram_id
                    AND ce.course_id IN (SELECT course_id FROM viewer_courses)) * 2
               + CASE WHEN p.location_city IS NOT NULL
                       AND p.location_city = (SELECT city FROM viewer_profile)
-                      AND p.location_city != ''
-                     THEN 2 ELSE 0 END
+                      AND p.location_city != '' THEN 2 ELSE 0 END
               + (SELECT COUNT(*) FROM skills s
                  WHERE s.user_id = p.telegram_id
-                   AND lower(s.skill_name) IN (SELECT sname FROM viewer_skills))
+                   AND lower(s.skill_name) IN (SELECT sname FROM viewer_skills)) * 2
               + CASE WHEN ABS(COALESCE(p.level,1) - (SELECT lvl FROM viewer_profile)) <= 1
                      THEN 1 ELSE 0 END
+              + (SELECT COUNT(*) FROM user_experiences ue
+                 WHERE ue.user_id = p.telegram_id
+                   AND lower(ue.company) IN (SELECT cname FROM viewer_companies)) * 3
+              + (SELECT COUNT(*) FROM user_education ed
+                 WHERE ed.user_id = p.telegram_id
+                   AND lower(ed.school) IN (SELECT sname FROM viewer_schools)) * 2
+              + (SELECT COUNT(*) FROM user_education ed
+                 WHERE ed.user_id = p.telegram_id
+                   AND ed.field_of_study IS NOT NULL
+                   AND lower(ed.field_of_study) IN (SELECT fname FROM viewer_fields))
             ) DESC,
             p.total_xp DESC
         LIMIT 10
@@ -563,7 +626,7 @@ def get_suggestions(
         {
             "id":             r["telegram_id"],
             "name":           r["first_name"] or "",
-            "username":       r["username"],
+            "username":       r["site_username"],
             "avatar_url":     r["photo_url"],
             "headline":       r["headline"],
             "location_city":  r["location_city"],
@@ -577,12 +640,16 @@ def get_suggestions(
                 "same_city":          int(r["same_city"]),
                 "shared_skills":      int(r["shared_skills"]),
                 "similar_level":      int(r["similar_level"]),
+                "shared_company":     int(r["shared_company"]),
+                "shared_school":      int(r["shared_school"]),
+                "shared_field":       int(r["shared_field"]),
             },
         }
         for r in rows
     ]
 
 
+@router.get("/")
 @router.get("")
 def list_connections(
     search: Optional[str] = Query(None),
@@ -596,7 +663,7 @@ def list_connections(
             c.accepted_at,
             p.telegram_id,
             p.first_name,
-            p.username,
+            p.site_username,
             p.photo_url,
             COALESCE(p.headline,      '')        AS headline,
             COALESCE(p.location_city, '')        AS location_city,
@@ -612,9 +679,9 @@ def list_connections(
         WHERE (c.requester_id = :vid OR c.receiver_id = :vid)
           AND c.status = 'accepted'
           AND (
-               :search IS NULL
-               OR p.first_name ILIKE '%' || :search || '%'
-               OR p.username   ILIKE '%' || :search || '%'
+               CAST(:search AS text) IS NULL
+               OR p.first_name    ILIKE '%' || CAST(:search AS text) || '%'
+               OR p.site_username ILIKE '%' || CAST(:search AS text) || '%'
           )
         ORDER BY c.accepted_at DESC
     """), {"vid": viewer_id, "search": search or None}).mappings().fetchall()
@@ -626,7 +693,7 @@ def list_connections(
             "user": {
                 "id":            r["telegram_id"],
                 "name":          r["first_name"] or "",
-                "username":      r["username"],
+                "username":      r["site_username"],
                 "avatar_url":    r["photo_url"],
                 "headline":      r["headline"],
                 "location_city": r["location_city"],
