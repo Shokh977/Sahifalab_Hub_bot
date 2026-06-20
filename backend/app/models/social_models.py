@@ -286,7 +286,6 @@ class ActivityLog(Base):
     reference_type = Column(Text, nullable=True)    # 'course' | 'post' | 'certificate' | …
 
     activity_metadata = Column("metadata", JSONB, nullable=True)   # DB column is "metadata"
-main
     created_at     = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     __table_args__ = (
