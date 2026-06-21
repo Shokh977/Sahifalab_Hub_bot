@@ -3359,7 +3359,11 @@ const AdminPage: React.FC = () => {
                       {userDetailTab === 'kurslar' && (
                         <div className="space-y-3">
                           <button
-                            onClick={() => { setGrantOpen(true); setGrantMsg('') }}
+                            onClick={() => {
+                              setGrantOpen(true)
+                              setGrantMsg('')
+                              if (adminCourses.length === 0) loadAdminCourses()
+                            }}
                             className="w-full py-2.5 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/20 hover:bg-sahifa-100 dark:hover:bg-sahifa-900/40 border border-sahifa-200 dark:border-sahifa-800/60 text-sahifa-700 dark:text-sahifa-400 text-sm font-medium transition-colors"
                           >
                             + Yangi kurs ochish
@@ -3370,9 +3374,10 @@ const AdminPage: React.FC = () => {
                               <select
                                 value={grantCourseId}
                                 onChange={e => setGrantCourseId(e.target.value)}
-                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                                disabled={adminCoursesLoading}
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 disabled:opacity-60"
                               >
-                                <option value="">Kurs tanlang…</option>
+                                <option value="">{adminCoursesLoading ? 'Yuklanmoqda…' : 'Kurs tanlang…'}</option>
                                 {adminCourses.map(c => (
                                   <option key={c.id} value={c.id}>{c.title}</option>
                                 ))}
