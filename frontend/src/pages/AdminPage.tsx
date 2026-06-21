@@ -530,7 +530,7 @@ const AdminPage: React.FC = () => {
     setTeacherReqError('')
     try {
       const params = teacherFilter ? `?status=${teacherFilter}` : ''
-      const res = await apiService.client.get(`/api/v1/admin/teachers${params}`)
+      const res = await apiService.client.get(`/api/admin/teachers${params}`)
       const raw = res.data
       setTeacherRequests(Array.isArray(raw) ? raw : (raw?.items ?? []))
     } catch (err: any) {
@@ -783,7 +783,7 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.client.post(`/api/v1/admin/teachers/${telegramId}/approve`, {
+      await apiService.client.post(`/api/admin/teachers/${telegramId}/approve`, {
         commission_rate: teacherCommission ? Number(teacherCommission) : null,
       })
       setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
@@ -801,7 +801,7 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.client.post(`/api/v1/admin/teachers/${telegramId}/reject`, {
+      await apiService.client.post(`/api/admin/teachers/${telegramId}/reject`, {
         feedback: teacherRejectFeedback || null,
       })
       setTeacherMsg(`🚫 ${telegramId} rad etildi`)
@@ -824,8 +824,8 @@ const AdminPage: React.FC = () => {
     setUserDetailLoading(true)
     try {
       const [detailRes, paymentsRes] = await Promise.allSettled([
-        apiService.client.get(`/api/v1/admin/users/${u.telegram_id}`),
-        apiService.client.get(`/api/v1/admin/users/${u.telegram_id}/payments`),
+        apiService.client.get(`/api/admin/users/${u.telegram_id}`),
+        apiService.client.get(`/api/admin/users/${u.telegram_id}/payments`),
       ])
       if (detailRes.status === 'fulfilled') setUserDetailData(detailRes.value.data)
       if (paymentsRes.status === 'fulfilled') setUserDetailPayments(paymentsRes.value.data ?? [])
@@ -837,7 +837,7 @@ const AdminPage: React.FC = () => {
     if (!openUserDetail || !grantCourseId) { setGrantMsg('Kurs tanlang'); return }
     setGrantLoading(true); setGrantMsg('')
     try {
-      await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/grant-course`, {
+      await apiService.client.post(`/api/admin/users/${openUserDetail.telegram_id}/grant-course`, {
         course_id: Number(grantCourseId),
         notes: grantNotes || null,
       })
@@ -853,7 +853,7 @@ const AdminPage: React.FC = () => {
     if (!openUserDetail) return
     setDrawerSuspending(true)
     try {
-      await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/suspend`, {
+      await apiService.client.post(`/api/admin/users/${openUserDetail.telegram_id}/suspend`, {
         reason: drawerSuspendText || null,
       })
       setDrawerSuspendOpen(false); setDrawerSuspendText('')
