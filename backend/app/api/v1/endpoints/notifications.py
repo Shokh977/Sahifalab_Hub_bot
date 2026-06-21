@@ -462,34 +462,41 @@ _EXPO_PREF_MAP: dict[str, str] = {
 }
 
 
+def _get_user_settings_sync(telegram_id: int) -> dict:
+    """Fetch user_settings from Railway PostgreSQL synchronously (runs in thread executor)."""
+    from app.db.session import SessionLocal
+    from sqlalchemy import text
+    db = SessionLocal()
+    try:
+        row = db.execute(
+            text("SELECT user_settings FROM profiles WHERE telegram_id = :tid LIMIT 1"),
+            {"tid": telegram_id},
+        ).fetchone()
+        return dict(row[0]) if row and row[0] else {}
+    except Exception:
+        return {}
+    finally:
+        db.close()
+
+
 async def _dispatch_expo_push(user_id: int, notif_type: str, meta: dict, title: str, body: str):
     """Send Expo push notification to the user's registered mobile device."""
     try:
+        loop = asyncio.get_running_loop()
+        user_settings: dict = await loop.run_in_executor(None, _get_user_settings_sync, user_id)
+        token = user_settings.get("expo_push_token", "")
+        if not token:
+            return
+
+        # Respect per-type notification preferences
+        pref_key = _EXPO_PREF_MAP.get(notif_type)
+        if pref_key:
+            notif_prefs = user_settings.get("notification_prefs") or {}
+            if str(notif_prefs.get(pref_key, "true")).lower() == "false":
+                return
+
+        data = _expo_screen_data(notif_type, meta)
         async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles",
-                headers=_headers_rep(),
-                params={
-                    "select": "user_settings",
-                    "telegram_id": f"eq.{user_id}",
-                    "limit": "1",
-                },
-            )
-            if resp.status_code >= 400 or not resp.json():
-                return
-            settings: dict = resp.json()[0].get("user_settings") or {}
-            token = settings.get("expo_push_token", "")
-            if not token:
-                return
-
-            # Respect per-type notification preferences
-            pref_key = _EXPO_PREF_MAP.get(notif_type)
-            if pref_key:
-                notif_prefs = settings.get("notification_prefs") or {}
-                if str(notif_prefs.get(pref_key, "true")).lower() == "false":
-                    return
-
-            data = _expo_screen_data(notif_type, meta)
             await client.post(
                 "https://exp.host/--/api/v2/push/send",
                 json={"to": token, "title": title, "body": body, "data": data, "sound": "default"},
