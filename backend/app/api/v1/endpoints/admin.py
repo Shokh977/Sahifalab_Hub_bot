@@ -1197,6 +1197,13 @@ async def grant_pending_enrollment(
             headers=_pending_supabase_headers(),
         )
 
+    # Sync enrolled_count on the course
+    try:
+        from app.api.v1.endpoints.enrollments import _sync_enrolled_count
+        await _sync_enrolled_count(course_id)
+    except Exception:
+        pass
+
     if body.send_notification:
         try:
             from app.api.v1.endpoints.notifications import send_notification
