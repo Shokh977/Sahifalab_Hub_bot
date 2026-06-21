@@ -498,6 +498,19 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS ix_pending_enroll_user_course ON pending_enrollments(user_id, course_id)"
                 ))
+                # 15. Enrollment audit log
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS enrollment_audit_log (
+                        id                SERIAL       PRIMARY KEY,
+                        action            VARCHAR(50)  NOT NULL,
+                        target_id         INTEGER,
+                        admin_telegram_id BIGINT,
+                        user_telegram_id  BIGINT,
+                        course_id         INTEGER,
+                        details           JSONB,
+                        created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
