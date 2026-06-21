@@ -315,9 +315,6 @@ const AdminPage: React.FC = () => {
   const [userDetailLoading, setUserDetailLoading] = useState(false)
   const [grantOpen, setGrantOpen] = useState(false)
   const [grantCourseId, setGrantCourseId] = useState('')
-  const [grantAmount, setGrantAmount] = useState('')
-  const [grantMethod, setGrantMethod] = useState('click_card')
-  const [grantProofUrl, setGrantProofUrl] = useState('')
   const [grantNotes, setGrantNotes] = useState('')
   const [grantLoading, setGrantLoading] = useState(false)
   const [grantMsg, setGrantMsg] = useState('')
@@ -837,15 +834,12 @@ const AdminPage: React.FC = () => {
   }
 
   const handleGrant = async () => {
-    if (!openUserDetail || !grantCourseId) { setGrantMsg('Kurs ID kiriting'); return }
+    if (!openUserDetail || !grantCourseId) { setGrantMsg('Kurs tanlang'); return }
     setGrantLoading(true); setGrantMsg('')
     try {
       await apiService.client.post(`/api/v1/admin/users/${openUserDetail.telegram_id}/grant-course`, {
         course_id: Number(grantCourseId),
-        payment_method: grantMethod,
-        amount: grantAmount ? Number(grantAmount) : null,
         notes: grantNotes || null,
-        payment_proof_url: grantProofUrl || null,
       })
       setGrantMsg('✅ Kurs ochildi')
       setGrantOpen(false)
@@ -3373,42 +3367,31 @@ const AdminPage: React.FC = () => {
 
                           {grantOpen && (
                             <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-4 space-y-3 border border-gray-200 dark:border-gray-700">
-                              <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Kurs ochish</h4>
-                              <input type="number" value={grantCourseId} onChange={e => setGrantCourseId(e.target.value)}
-                                placeholder="Kurs ID *"
-                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
-                              <input type="number" value={grantAmount} onChange={e => setGrantAmount(e.target.value)}
-                                placeholder="Summa (ixtiyoriy)"
-                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
-                              <div className="grid grid-cols-3 gap-1.5">
-                                {(['click_card','payme_card','uzcard','humo','cash','other'] as const).map(m => (
-                                  <button key={m} onClick={() => setGrantMethod(m)}
-                                    className={`py-1.5 rounded-xl text-xs font-medium transition-colors ${
-                                      grantMethod === m
-                                        ? 'bg-sahifa-600 text-white'
-                                        : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'
-                                    }`}>{PM_LABELS[m]}
-                                  </button>
+                              <select
+                                value={grantCourseId}
+                                onChange={e => setGrantCourseId(e.target.value)}
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                              >
+                                <option value="">Kurs tanlang…</option>
+                                {adminCourses.map(c => (
+                                  <option key={c.id} value={c.id}>{c.title}</option>
                                 ))}
-                              </div>
-                              <input value={grantNotes} onChange={e => setGrantNotes(e.target.value)}
+                              </select>
+                              <input
+                                value={grantNotes}
+                                onChange={e => setGrantNotes(e.target.value)}
                                 placeholder="Izoh (ixtiyoriy)"
-                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
-                              <div>
-                                <input value={grantProofUrl} onChange={e => setGrantProofUrl(e.target.value)}
-                                  placeholder="Screenshot URL (Telegram / Imgur havola)"
-                                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
-                                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Screenshotni Telegram yoki Imgurga yuklang, havolani nusxalang</p>
-                              </div>
+                                className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                              />
                               {grantMsg && <p className={`text-xs ${grantMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'}`}>{grantMsg}</p>}
                               <div className="flex gap-2">
-                                <button onClick={() => setGrantOpen(false)}
-                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">
+                                <button onClick={() => { setGrantOpen(false); setGrantCourseId(''); setGrantNotes('') }}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-sm">
                                   Bekor
                                 </button>
-                                <button onClick={handleGrant} disabled={grantLoading}
+                                <button onClick={handleGrant} disabled={grantLoading || !grantCourseId}
                                   className="flex-[2] py-2 rounded-xl bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white text-sm font-semibold">
-                                  {grantLoading ? 'Saqlanmoqda…' : '✓ Kursni ochish'}
+                                  {grantLoading ? 'Saqlanmoqda…' : '✓ Ochish'}
                                 </button>
                               </div>
                             </div>
