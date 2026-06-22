@@ -57,8 +57,9 @@ const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
 const BookReaderPage = lazy(() => import('./pages/BookReaderPage'))
 const ResourcesPage = lazy(() => import('./pages/ResourcesPage'))
 const AboutPage = lazy(() => import('./pages/AboutPage'))
-const TermsPage    = lazy(() => import('./pages/TermsPage'))
-const PrivacyPage  = lazy(() => import('./pages/PrivacyPage'))
+const TermsPage          = lazy(() => import('./pages/TermsPage'))
+const PrivacyPage        = lazy(() => import('./pages/PrivacyPage'))
+const DeleteAccountPage  = lazy(() => import('./pages/DeleteAccountPage'))
 const AdminPage = lazy(() => import('./pages/AdminPage'))
 const LeaderboardPage = lazy(() => import('./pages/LeaderboardPage'))
 const BookSummarizerPage = lazy(() => import('./pages/BookSummarizerPage'))
@@ -288,6 +289,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/about"           element={<AboutPage />} />
         <Route path="/terms"           element={<TermsPage />} />
         <Route path="/privacy"         element={<PrivacyPage />} />
+        <Route path="/delete-account"  element={<DeleteAccountPage />} />
         <Route path="/leaderboard"     element={<AppLayout maxWidth="max-w-[900px]"><LeaderboardPage /></AppLayout>} />
 
         {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
