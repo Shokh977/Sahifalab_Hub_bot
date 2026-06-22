@@ -140,8 +140,52 @@ async def root():
     }
 
 
-# ── Background task: expire stale payments ────────────────────────────────────
+# ── Background task: sync all enrolled counts once on startup ────────────────
 import asyncio
+
+
+async def _sync_all_enrolled_counts():
+    """On startup, recount active enrollments and patch courses.enrolled_count in Supabase."""
+    import httpx, os
+    supabase_url = os.getenv("SUPABASE_URL", "").rstrip("/")
+    supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+    if not supabase_url or not supabase_key:
+        return
+    headers = {
+        "apikey": supabase_key,
+        "Authorization": f"Bearer {supabase_key}",
+        "Content-Type": "application/json",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            # Fetch all active enrollments grouped by course_id
+            resp = await client.get(
+                f"{supabase_url}/rest/v1/course_enrollments",
+                params={"select": "course_id", "is_active": "eq.true"},
+                headers=headers,
+            )
+            if resp.status_code >= 400:
+                return
+            rows = resp.json()
+            # Count per course
+            counts: dict[int, int] = {}
+            for row in rows:
+                cid = row.get("course_id")
+                if cid:
+                    counts[cid] = counts.get(cid, 0) + 1
+            # Patch each course
+            for course_id, count in counts.items():
+                await client.patch(
+                    f"{supabase_url}/rest/v1/courses",
+                    params={"id": f"eq.{course_id}"},
+                    json={"enrolled_count": count},
+                    headers=headers,
+                )
+        import logging
+        logging.getLogger(__name__).info("[STARTUP] enrolled_count synced for %d courses", len(counts))
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("[STARTUP] enrolled_count sync failed: %s", exc)
 
 async def _expire_stale_payments_loop():
     """Periodically expire payments that have been pending for too long."""
@@ -522,6 +566,7 @@ async def startup_event():
 
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
+    asyncio.create_task(_sync_all_enrolled_counts())
 
     # ── APScheduler: streak reminder + weekly report ──────────────────────────
     _start_cron_scheduler()
