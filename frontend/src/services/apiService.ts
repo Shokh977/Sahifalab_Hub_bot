@@ -639,6 +639,11 @@ class ApiService {
     return this.axiosInstance.get('/api/enrollments/mine')
   }
 
+  /** Student: generate / return existing PAY code for a paid course */
+  async requestEnrollmentCode(courseId: number) {
+    return this.axiosInstance.post('/api/enrollments/request-code', { course_id: courseId })
+  }
+
   // ─── Unified Payments (Click/Payme for any item) ───────────────────────────
 
   /** Initialize payment for any item type via the unified /pay/init endpoint */

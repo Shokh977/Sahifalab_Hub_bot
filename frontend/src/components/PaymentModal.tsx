@@ -1,27 +1,14 @@
-/**
- * PaymentModal — Reusable payment modal for courses & books
- *
- * Supports two payment methods (direct browser checkout):
- *   🟢 Click.uz
- *   💙 Payme
- *
- * Usage:
- *   <PaymentModal
- *     open={showPayment}
- *     onClose={() => setShowPayment(false)}
- *     onSuccess={() => { setIsEnrolled(true); ... }}
- *     itemType="course"
- *     itemId={course.id}
- *     itemTitle={course.title}
- *     priceUzs={course.price}
- *   />
- */
-import React, { useState, useCallback, useRef, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { XMarkIcon, ArrowPathIcon, CursorArrowRaysIcon, DevicePhoneMobileIcon, ShieldCheckIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
+import {
+  XMarkIcon,
+  ClipboardDocumentIcon,
+  ClipboardDocumentCheckIcon,
+  ArrowPathIcon,
+  ExclamationCircleIcon,
+  ChatBubbleLeftRightIcon,
+} from '@heroicons/react/24/outline'
 import apiService from '../services/apiService'
-
-type PaymentProvider = 'click' | 'payme'
 
 interface PaymentModalProps {
   open: boolean
@@ -33,86 +20,95 @@ interface PaymentModalProps {
   priceUzs: number
 }
 
+interface PayCode {
+  reference_code: string
+  telegram_bot_url: string
+  status: string
+  expires_at: string
+}
+
 const PaymentModal: React.FC<PaymentModalProps> = ({
-  open, onClose, onSuccess,
+  open, onClose,
   itemType, itemId, itemTitle, priceUzs,
 }) => {
-  const [loading, setLoading] = useState<PaymentProvider | null>(null)
-  const [error, setError] = useState('')
-  const [polling, setPolling] = useState(false)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const orderIdRef = useRef<string | null>(null)
+  const [payCode, setPayCode] = useState<PayCode | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error,   setError]   = useState('')
+  const [copied,  setCopied]  = useState(false)
 
-  // Clean up polling on unmount or close
-  useEffect(() => {
-    if (!open) {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-      pollingRef.current = null
-      orderIdRef.current = null
-      setLoading(null)
-      setError('')
-      setPolling(false)
-    }
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-    }
-  }, [open])
-
-  const startPolling = useCallback((orderId: string) => {
-    orderIdRef.current = orderId
-    setPolling(true)
-    let attempts = 0
-    const maxAttempts = 60 // 5 minutes at 5-second intervals
-
-    pollingRef.current = setInterval(async () => {
-      attempts++
-      if (attempts > maxAttempts) {
-        if (pollingRef.current) clearInterval(pollingRef.current)
-        pollingRef.current = null
-        setPolling(false)
-        setError("To'lov vaqti tugadi. Qayta urinib ko'ring.")
-        return
-      }
-      try {
-        const res = await apiService.getPaymentStatus(orderId)
-        if (res.data?.status === 'completed') {
-          if (pollingRef.current) clearInterval(pollingRef.current)
-          pollingRef.current = null
-          setPolling(false)
-          onSuccess()
-          onClose()
-        }
-      } catch {
-        // Keep polling
-      }
-    }, 5000)
-  }, [onSuccess, onClose])
-
-  const handlePay = useCallback(async (provider: PaymentProvider) => {
+  const fetchCode = useCallback(async () => {
+    if (itemType !== 'course') return
+    setLoading(true)
     setError('')
-    setLoading(provider)
     try {
-      const res = await apiService.initPayment(itemType, itemId, provider, window.location.href)
-      const { order_id, checkout_url } = res.data || {}
-
-      if (!order_id || !checkout_url) {
-        setError("To'lov yaratilmadi. Qayta urinib ko'ring.")
-        setLoading(null)
-        return
-      }
-
-      // Open payment page in new tab / redirect
-      window.open(checkout_url, '_blank')
-      // Start polling for completion
-      startPolling(order_id)
+      const res = await apiService.requestEnrollmentCode(itemId)
+      setPayCode(res.data)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-      setError(msg || "Xatolik yuz berdi")
-      setLoading(null)
+      setError(msg || "Kod olinmadi. Qayta urinib ko'ring.")
+    } finally {
+      setLoading(false)
     }
-  }, [itemType, itemId, startPolling])
+  }, [itemId, itemType])
+
+  useEffect(() => {
+    if (open) {
+      setPayCode(null)
+      setCopied(false)
+      setError('')
+      fetchCode()
+    }
+  }, [open, fetchCode])
+
+  function handleCopy() {
+    if (!payCode) return
+    navigator.clipboard.writeText(payCode.reference_code).catch(() => {})
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2500)
+  }
 
   if (!open) return null
+
+  const steps = [
+    {
+      label: "Telegram bot bilan bog'laning:",
+      extra: payCode ? (
+        <a
+          href={payCode.telegram_bot_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 mt-1.5 px-3 py-1.5 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/30 text-sahifa-600 dark:text-sahifa-400 text-sm font-semibold hover:bg-sahifa-100 dark:hover:bg-sahifa-900/50 transition-colors"
+        >
+          <ChatBubbleLeftRightIcon className="h-4 w-4" />
+          @sahifalab_pay_bot
+        </a>
+      ) : null,
+    },
+    {
+      label: 'Botga quyidagi kodni yuboring:',
+      extra: payCode ? (
+        <button
+          onClick={handleCopy}
+          className="inline-flex items-center gap-2 mt-1.5 px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700/60 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors w-full justify-between"
+        >
+          <span className="font-mono text-base text-gray-900 dark:text-white tracking-wider">
+            {payCode.reference_code}
+          </span>
+          {copied
+            ? <ClipboardDocumentCheckIcon className="h-4 w-4 text-sahifa-500 shrink-0" />
+            : <ClipboardDocumentIcon className="h-4 w-4 text-gray-400 shrink-0" />
+          }
+        </button>
+      ) : null,
+    },
+    {
+      label: "Bot to'lov ko'rsatmalarini yuboradi:",
+      sub: 'Karta raqami, kurs narxi va nima yozish kerakligi',
+    },
+    {
+      label: "To'lov qilgach, bot avtomatik ravishda kursga kirishni faollashtiradi (5–30 daqiqa ichida).",
+    },
+  ]
 
   return (
     <AnimatePresence>
@@ -128,17 +124,17 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
 
           {/* Modal */}
           <motion.div
-            initial={{ y: 100, opacity: 0, scale: 0.95 }}
+            initial={{ y: 80, opacity: 0, scale: 0.97 }}
             animate={{ y: 0, opacity: 1, scale: 1 }}
-            exit={{ y: 100, opacity: 0, scale: 0.95 }}
+            exit={{ y: 80, opacity: 0, scale: 0.97 }}
             transition={{ type: 'spring', damping: 28, stiffness: 350 }}
             className="relative w-full max-w-md bg-white dark:bg-slate-800 rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden"
           >
             {/* Header */}
             <div className="flex items-start justify-between p-5 pb-3">
               <div className="flex-1 min-w-0 pr-3">
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white truncate">
-                  Sotib olish
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                  Kursga yozilish
                 </h3>
                 <p className="mt-0.5 text-sm text-gray-500 dark:text-gray-400 truncate">
                   {itemTitle}
@@ -146,86 +142,67 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
               </div>
               <button
                 onClick={onClose}
-                disabled={!!loading}
-                className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition disabled:opacity-50"
+                className="shrink-0 p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-slate-700 transition"
               >
                 <XMarkIcon className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Price display */}
+            {/* Price */}
             <div className="mx-5 mb-4 p-3 rounded-2xl bg-gradient-to-r from-sahifa-50 to-blue-50 dark:from-sahifa-900/20 dark:to-blue-900/20 border border-sahifa-200/50 dark:border-sahifa-800/30">
               <p className="text-center">
                 <span className="text-2xl font-extrabold text-sahifa-600 dark:text-sahifa-400">
                   {priceUzs.toLocaleString('uz-UZ')}
                 </span>
-                <span className="ml-1.5 text-sm font-medium text-gray-500 dark:text-gray-400">
-                  so'm
-                </span>
+                <span className="ml-1.5 text-sm font-medium text-gray-500 dark:text-gray-400">so'm</span>
               </p>
             </div>
 
-            {/* Polling indicator */}
-            {polling && (
-              <div className="mx-5 mb-3 flex items-center gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
-                <ArrowPathIcon className="h-4 w-4 text-amber-500 animate-spin shrink-0" />
-                <p className="text-xs text-amber-700 dark:text-amber-400">
-                  To'lov kutilmoqda… Sahifani yopmang.
-                </p>
-              </div>
-            )}
+            {/* Body */}
+            <div className="px-5 pb-6">
+              {loading ? (
+                <div className="flex flex-col items-center py-8 gap-3">
+                  <ArrowPathIcon className="h-7 w-7 text-sahifa-500 animate-spin" />
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Kod tayyorlanmoqda…</p>
+                </div>
+              ) : error ? (
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 mb-4">
+                  <ExclamationCircleIcon className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
+                    <button
+                      onClick={fetchCode}
+                      className="mt-1.5 text-xs text-sahifa-600 dark:text-sahifa-400 font-medium hover:underline"
+                    >
+                      Qayta urinish
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <ol className="space-y-4">
+                  {steps.map((step, i) => (
+                    <li key={i} className="flex gap-3">
+                      <span className="shrink-0 w-6 h-6 rounded-full bg-sahifa-100 dark:bg-sahifa-900/40 text-sahifa-600 dark:text-sahifa-400 text-xs font-bold flex items-center justify-center mt-0.5">
+                        {i + 1}
+                      </span>
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-800 dark:text-gray-200">{step.label}</p>
+                        {'sub' in step && step.sub && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{step.sub}</p>
+                        )}
+                        {step.extra}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
 
-            {/* Error */}
-            {error && (
-              <div className="mx-5 mb-3 flex items-start gap-2 p-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
-                <ExclamationCircleIcon className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                <p className="text-xs text-red-600 dark:text-red-400">{error}</p>
-              </div>
-            )}
-
-            {/* Payment buttons */}
-            <div className="px-5 pb-5 space-y-2.5">
-              {/* Click */}
               <button
-                onClick={() => handlePay('click')}
-                disabled={!!loading}
-                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-semibold text-sm
-                  bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-md shadow-blue-200/40
-                  dark:shadow-blue-900/30 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
-                  transition-all disabled:opacity-60 disabled:pointer-events-none"
+                onClick={onClose}
+                className="mt-5 w-full py-2 text-sm text-gray-500 dark:text-gray-400 font-medium hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
               >
-                {loading === 'click' ? (
-                  <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                ) : (
-                  <CursorArrowRaysIcon className="h-5 w-5" />
-                )}
-                <span className="flex-1 text-left">Click</span>
-                <span className="text-xs opacity-90">{priceUzs.toLocaleString('uz-UZ')} so'm</span>
+                Yopish
               </button>
-
-              {/* Payme */}
-              <button
-                onClick={() => handlePay('payme')}
-                disabled={!!loading}
-                className="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl font-semibold text-sm
-                  bg-gradient-to-r from-cyan-500 to-teal-600 text-white shadow-md shadow-teal-200/40
-                  dark:shadow-teal-900/30 hover:shadow-lg hover:scale-[1.02] active:scale-[0.98]
-                  transition-all disabled:opacity-60 disabled:pointer-events-none"
-              >
-                {loading === 'payme' ? (
-                  <ArrowPathIcon className="h-5 w-5 animate-spin" />
-                ) : (
-                  <DevicePhoneMobileIcon className="h-5 w-5" />
-                )}
-                <span className="flex-1 text-left">Payme</span>
-                <span className="text-xs opacity-90">{priceUzs.toLocaleString('uz-UZ')} so'm</span>
-              </button>
-
-              {/* Info */}
-              <p className="text-[10px] text-center text-gray-400 dark:text-gray-500 pt-1 flex items-center justify-center gap-1">
-                <ShieldCheckIcon className="h-3 w-3" />
-                To'lov xavfsiz. Pullik kontent darhol ochiladi.
-              </p>
             </div>
           </motion.div>
         </motion.div>
