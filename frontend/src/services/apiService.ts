@@ -739,6 +739,17 @@ class ApiService {
     return this.axiosInstance.patch('/api/lessons/reorder', { lessons })
   }
 
+  /** Save quiz questions for a lesson (upsert) */
+  async saveLessonQuiz(lessonId: number, data: {
+    title:          string
+    questions:      any[]
+    time_limit_min: number | null
+    passing_score:  number
+    is_final:       boolean
+  }) {
+    return this.axiosInstance.put(`/api/tests/${lessonId}/questions`, data)
+  }
+
   // ─── Bunny Stream ─────────────────────────────────────────────────────────
 
   /** Create a Bunny Stream video placeholder (returns { video_id, library_id }) */

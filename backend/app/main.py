@@ -555,6 +555,42 @@ async def startup_event():
                         created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW()
                     )
                 """))
+                # 16. Lesson quiz + attempts (course lesson test system)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS lesson_quiz (
+                        id             SERIAL       PRIMARY KEY,
+                        lesson_id      INTEGER      NOT NULL UNIQUE,
+                        title          VARCHAR(255) NOT NULL DEFAULT 'Test',
+                        questions      JSONB        NOT NULL DEFAULT '[]',
+                        time_limit_min INTEGER,
+                        passing_score  INTEGER      NOT NULL DEFAULT 70,
+                        is_final       BOOLEAN      NOT NULL DEFAULT FALSE,
+                        created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+                        updated_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_lesson_quiz_lesson ON lesson_quiz(lesson_id)"
+                ))
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS lesson_quiz_attempt (
+                        id           SERIAL      PRIMARY KEY,
+                        lesson_id    INTEGER     NOT NULL,
+                        telegram_id  BIGINT      NOT NULL,
+                        started_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                        submitted_at TIMESTAMPTZ,
+                        answers      JSONB,
+                        score_pct    FLOAT,
+                        passed       BOOLEAN,
+                        xp_awarded   INTEGER     NOT NULL DEFAULT 0
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_lesson_quiz_attempt_lesson ON lesson_quiz_attempt(lesson_id)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS ix_lesson_quiz_attempt_user ON lesson_quiz_attempt(telegram_id)"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)

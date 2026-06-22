@@ -539,6 +539,7 @@ const CourseCreatePage: React.FC = () => {
           material_name:    lesson.material_name || '',
         }
 
+        let lessonBackendId = lesson.backendId
         if (lesson.backendId) {
           await apiService.updateLesson(lesson.backendId, payload)
           backendIdMap.set(lesson.id, lesson.backendId)
@@ -547,8 +548,24 @@ const CourseCreatePage: React.FC = () => {
           const created = await apiService.createLesson(payload)
           const createdId = created.data?.id
           if (createdId) {
+            lessonBackendId = createdId
             backendIdMap.set(lesson.id, createdId)
             reordered.push({ id: createdId, order_index: orderIndex })
+          }
+        }
+
+        // Save quiz questions for quiz-type lessons
+        if (lesson.type === 'quiz' && lessonBackendId && lesson.quiz_questions.length > 0) {
+          try {
+            await apiService.saveLessonQuiz(lessonBackendId, {
+              title:          lesson.title || 'Test',
+              questions:      lesson.quiz_questions,
+              time_limit_min: null,
+              passing_score:  70,
+              is_final:       false,
+            })
+          } catch (e) {
+            console.warn('[CourseCreate] Failed to save quiz for lesson', lessonBackendId, e)
           }
         }
 

@@ -471,3 +471,33 @@ class UserQuizCompletion(Base):
     
     # Unique constraint: each user completes each quiz only once (for XP purposes)
     __table_args__ = (UniqueConstraint("telegram_id", "quiz_id", name="uq_user_quiz_completion"),)
+
+
+class LessonQuiz(Base):
+    """Quiz questions attached to a course lesson (lesson_type = 'quiz')."""
+    __tablename__ = "lesson_quiz"
+
+    id             = Column(Integer, primary_key=True, index=True)
+    lesson_id      = Column(Integer, unique=True, index=True)  # Supabase lesson id
+    title          = Column(String(255), default="Test")
+    questions      = Column(JSONB)   # [{id, text, explanation, options, type}]
+    time_limit_min = Column(Integer, nullable=True)
+    passing_score  = Column(Integer, default=70)
+    is_final       = Column(Boolean, default=False)
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LessonQuizAttempt(Base):
+    """One attempt by a user at a lesson quiz."""
+    __tablename__ = "lesson_quiz_attempt"
+
+    id           = Column(Integer, primary_key=True, index=True)
+    lesson_id    = Column(Integer, index=True)
+    telegram_id  = Column(BigInteger, index=True)
+    started_at   = Column(DateTime, default=datetime.utcnow)
+    submitted_at = Column(DateTime, nullable=True)
+    answers      = Column(JSONB, nullable=True)
+    score_pct    = Column(Float, nullable=True)
+    passed       = Column(Boolean, nullable=True)
+    xp_awarded   = Column(Integer, default=0)
