@@ -375,6 +375,20 @@ const CourseDetailPage: React.FC = () => {
     setCourse(prev => prev ? { ...prev, enrolled_count: (prev.enrolled_count ?? 0) + 1 } : prev)
   }, [])
 
+  // Poll enrollment status every 30s while payment modal is open (Telegram bot flow)
+  useEffect(() => {
+    if (!showPaymentModal || !user || !courseId) return
+    const interval = setInterval(async () => {
+      try {
+        const r = await apiService.checkEnrollment(courseId)
+        if (r.data?.enrolled) {
+          handlePaymentSuccess()
+        }
+      } catch { /* keep polling */ }
+    }, 30_000)
+    return () => clearInterval(interval)
+  }, [showPaymentModal, user, courseId, handlePaymentSuccess])
+
   const handleOpenCertificate = useCallback(() => {
     if (!course || completedIds.size !== lessons.length || lessons.length === 0) return
     setCertData({
