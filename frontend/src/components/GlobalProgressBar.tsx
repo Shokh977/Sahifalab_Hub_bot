@@ -190,7 +190,7 @@ const GlobalProgressBar: React.FC = () => {
               <span className="text-gray-400 dark:text-gray-500 font-medium truncate">{levelLabel(displayLevel)}</span>
             </span>
             <span className="text-[10px] text-gray-400 dark:text-slate-500 tabular-nums ml-2 flex-shrink-0">
-              {xpInLevel.toLocaleString()}&nbsp;/&nbsp;{xpForLevel.toLocaleString()}&nbsp;XP
+              {displayXP.toLocaleString()}&nbsp;/&nbsp;{end.toLocaleString()}&nbsp;XP
             </span>
           </div>
 
