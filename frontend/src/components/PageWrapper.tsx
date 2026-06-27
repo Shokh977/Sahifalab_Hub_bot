@@ -34,9 +34,9 @@ const PageWrapper: React.FC<PageWrapperProps> = ({
   return (
     <div
       className={[
-        'mx-auto px-4 sm:px-5 lg:px-8',
+        'mx-auto',
         topPadding,
-        isTelegram ? 'max-w-md pb-24' : 'max-w-[1200px] pb-10',
+        isTelegram ? 'w-full px-3 pb-24' : 'max-w-[1200px] px-4 sm:px-5 lg:px-8 pb-10',
         className,
       ]
         .filter(Boolean)
