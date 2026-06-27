@@ -225,7 +225,7 @@ const LevelCard: React.FC<{ profile: ProfileData }> = ({ profile }) => (
         { icon: '📊', label: 'Reyting', value: profile.rank ? `#${profile.rank}` : '—' },
         { icon: '⚡', label: 'XP', value: (profile.total_xp ?? 0).toLocaleString() },
         { icon: '⏱', label: 'Fokus', value: `${profile.focus_hours ?? 0}h` },
-        { icon: '🔥', label: 'Seriya', value: `${profile.streak_days ?? 0}k` },
+        { icon: '🔥', label: 'Seriya', value: `${profile.streak_days ?? 0} kun` },
       ].map(s => (
         <div key={s.label}>
           <p className="text-base leading-none">{s.icon}</p>
