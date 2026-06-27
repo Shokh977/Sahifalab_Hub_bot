@@ -412,45 +412,14 @@ const ProfilePage: React.FC = () => {
 
       {/* Quick links */}
       <div className="rounded-2xl bg-[#1c1d27] border border-white/[0.06] divide-y divide-white/[0.05] overflow-hidden">
-        {[
-          { icon: '📊', label: 'Statistika', sub: 'Faollik', path: '/stats' },
-          { icon: '🔥', label: 'Seriya', sub: `${profile.streak_days} kun`, path: '/streaks' },
-          { icon: '❤️', label: 'Sevimli', sub: 'Saqlangan', path: '/saved' },
-        ].map(item => (
-          <button key={item.label} onClick={() => navigate(item.path)}
-            className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.04] transition-colors text-left">
-            <span className="text-lg w-6 text-center leading-none">{item.icon}</span>
-            <span className="flex-1 text-sm font-medium text-white">{item.label}</span>
-            <span className="text-xs text-white/40 mr-1">{item.sub}</span>
-            <ChevronRight className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
-          </button>
-        ))}
-      </div>
-
-      {/* Teacher / Become-teacher banner */}
-      {profile.account_type === 'teacher' ? (
-        <button onClick={() => navigate('/teacher/dashboard')}
-          className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl text-left hover:opacity-90 transition-opacity"
-          style={{ background: 'linear-gradient(90deg, rgba(232,121,47,0.12), rgba(232,121,47,0.04))', border: '1px solid rgba(232,121,47,0.2)' }}>
-          <span className="text-xl">🎓</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-[#e8792f]">O'qituvchi paneli</p>
-            <p className="text-[11px] text-white/40 mt-0.5">Kurslar, talabalar, daromad</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-[#e8792f]/60 flex-shrink-0" />
+        <button onClick={() => navigate('/saved')}
+          className="w-full flex items-center gap-3 px-4 py-3.5 hover:bg-white/[0.04] transition-colors text-left">
+          <span className="text-lg w-6 text-center leading-none">❤️</span>
+          <span className="flex-1 text-sm font-medium text-white">Sevimli</span>
+          <span className="text-xs text-white/40 mr-1">Saqlangan</span>
+          <ChevronRight className="w-3.5 h-3.5 text-white/25 flex-shrink-0" />
         </button>
-      ) : (
-        <a href="/become-teacher"
-          className="flex items-center gap-3 px-4 py-3 rounded-2xl hover:opacity-90 transition-opacity"
-          style={{ background: 'linear-gradient(90deg, rgba(232,121,47,0.08), rgba(232,121,47,0.02))', border: '1px solid rgba(232,121,47,0.15)' }}>
-          <span className="text-xl">🎓</span>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-semibold text-[#e8792f]">Bilimingizni ulashmoqchimisiz?</p>
-            <p className="text-[11px] text-white/40 mt-0.5">O'qituvchi bo'ling · 70% komissiya</p>
-          </div>
-          <ChevronRight className="w-4 h-4 text-[#e8792f]/50 flex-shrink-0" />
-        </a>
-      )}
+      </div>
 
       {/* Level achievement grid */}
       <LevelGrid userLevel={profile.level} />
