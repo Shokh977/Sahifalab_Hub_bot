@@ -13,7 +13,6 @@ import {
   SparklesIcon,
   Squares2X2Icon,
   TrophyIcon,
-  UserGroupIcon,
 } from '@heroicons/react/24/outline'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
@@ -93,15 +92,6 @@ const MENU_ITEMS: MenuItem[] = [
     description: "Top 10 o'quvchilar",
     path: '/leaderboard',
   },
-  {
-    id: 'teachers',
-    icon: UserGroupIcon,
-    title: "O'qituvchilar",
-    titleUz: "O'qituvchilar",
-    description: "Tasdiqlangan mentorlar",
-    path: '/teachers',
-  },
-
 ]
 
 // Stagger children animation
