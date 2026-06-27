@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { TrophyIcon, UsersIcon, ClockIcon } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
@@ -103,16 +104,18 @@ const Podium: React.FC<{ top3: Entry[]; selfId: number | null }> = ({ top3, self
       : 'bg-amber-700/60 dark:bg-amber-900/40'
     return (
       <div className={`flex flex-col items-center gap-1 ${rank === 1 ? 'order-2' : rank === 2 ? 'order-1' : 'order-3'}`}>
-        {rank === 1 && <span className="text-xl mb-0.5">👑</span>}
-        <Avatar entry={entry} size={rank === 1 ? 'lg' : 'md'} isSelf={isSelf} />
-        <p className={`text-[11px] font-semibold max-w-[72px] text-center truncate ${isSelf ? 'text-sahifa-500' : 'text-gray-800 dark:text-white'}`}>
-          {entry.first_name}{isSelf ? ' (siz)' : ''}
-        </p>
-        <p className="text-[11px] font-bold text-sahifa-500 tabular-nums">{entry.score.toLocaleString()} XP</p>
-        {formatMinutes(entry.minutes) && (
-          <p className="text-[10px] text-gray-400">⏱ {formatMinutes(entry.minutes)}</p>
-        )}
-        <span className="text-xl">{MEDALS[rank - 1]}</span>
+        <Link to={`/profile/${entry.telegram_id}`} className="flex flex-col items-center gap-1">
+          {rank === 1 && <span className="text-xl mb-0.5">👑</span>}
+          <Avatar entry={entry} size={rank === 1 ? 'lg' : 'md'} isSelf={isSelf} />
+          <p className={`text-[11px] font-semibold max-w-[72px] text-center truncate ${isSelf ? 'text-sahifa-500' : 'text-gray-800 dark:text-white'}`}>
+            {entry.first_name}{isSelf ? ' (siz)' : ''}
+          </p>
+          <p className="text-[11px] font-bold text-sahifa-500 tabular-nums">{entry.score.toLocaleString()} XP</p>
+          {formatMinutes(entry.minutes) && (
+            <p className="text-[10px] text-gray-400">⏱ {formatMinutes(entry.minutes)}</p>
+          )}
+          <span className="text-xl">{MEDALS[rank - 1]}</span>
+        </Link>
         <div className={`w-16 ${barH} ${barColor} rounded-t-xl`} />
       </div>
     )
@@ -136,7 +139,8 @@ const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number }> = ({
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay }}
-      className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
+    >
+    <Link to={`/profile/${entry.telegram_id}`} className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
         isSelf
           ? 'bg-sahifa-50 dark:bg-sahifa-900/20 border-sahifa-200 dark:border-sahifa-700/50'
           : 'bg-white dark:bg-[#1A1A1A] border-slate-100 dark:border-[#2A2A2A]'
@@ -169,6 +173,7 @@ const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number }> = ({
           {entry.score.toLocaleString()} XP
         </p>
       </div>
+    </Link>
     </motion.div>
   )
 }
