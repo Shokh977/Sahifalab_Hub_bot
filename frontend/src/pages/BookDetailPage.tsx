@@ -16,7 +16,7 @@ import { useAuth } from '../context/AuthContext'
 import { ArrowDownTrayIcon, ArrowLeftIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline'
 import { BookOpen, Share2, Brain, ChevronRight } from 'lucide-react'
 import PaymentModal from '../components/PaymentModal'
-import { API_BASE } from '../lib/apiUrl'
+
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ const BookDetailPage: React.FC = () => {
   const [shareCopied, setShareCopied] = useState(false)
   const handleShare = useCallback(async () => {
     if (!book) return
-    const ogUrl = `${API_BASE}/api/og/book/${book.id}`
+    const ogUrl = `${window.location.origin}/kitoblar/${book.id}`
     const text  = `${book.title} — ${book.author} · SAHIFALAB da o'qing!`
     try {
       if (typeof navigator.share === 'function') {
@@ -222,7 +222,7 @@ const BookDetailPage: React.FC = () => {
   }
 
   const categoryLabel = CATEGORY_LABELS[book.category?.toLowerCase()] ?? book.category
-  const ogUrl   = `${API_BASE}/api/og/book/${book.id}`
+  const ogUrl   = `${window.location.origin}/kitoblar/${book.id}`
   const ogTitle = `${book.title} — ${book.author}`
   const ogDesc  = (book.description || '').slice(0, 200)
   const ogImage = book.thumbnail_url || 'https://sahifalab-hub-bot.vercel.app/sahifalab.jpg'

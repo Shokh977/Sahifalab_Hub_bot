@@ -25,7 +25,7 @@ import type { UserIdentityUser } from './UserIdentity'
 import DeleteConfirmModal from './DeleteConfirmModal'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
-import { API_BASE } from '../../lib/apiUrl'
+
 import { markViewed } from '../../utils/viewBuffer'
 import { useGuestGuard } from '../../hooks/useGuestGuard'
 
@@ -368,8 +368,7 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
   // ── Share ─────────────────────────────────────────────────────────────────────
   const [shareToast, setShareToast] = React.useState(false)
   const handleShare = async () => {
-    // Use backend OG redirect URL so Telegram shows a rich preview
-    const ogUrl = `${API_BASE}/api/og/post/${post.id}`
+    const ogUrl = `${window.location.origin}/feed`
     const text  = (post.content || '').slice(0, 80)
     try {
       if (typeof navigator.share === 'function') {

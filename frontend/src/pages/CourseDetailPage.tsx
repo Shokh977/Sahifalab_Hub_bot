@@ -418,7 +418,7 @@ const CourseDetailPage: React.FC = () => {
 
   const handleShareCourse = useCallback(async () => {
     if (!course) return
-    const url  = `${API_BASE}/api/og/course/${course.id}`
+    const url  = `${window.location.origin}/courses/${course.id}`
     const text = `${course.title} — SAHIFALAB da o'rganing!`
     try {
       if (typeof navigator.share === 'function') {
