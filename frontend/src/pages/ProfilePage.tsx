@@ -193,21 +193,20 @@ const LevelGrid: React.FC<{ userLevel: number }> = ({ userLevel }) => (
 // ─── Level Card (own profile) ─────────────────────────────────────────────────
 
 const LevelCard: React.FC<{ profile: ProfileData }> = ({ profile }) => (
-  <div className="rounded-2xl p-4 space-y-3"
-    style={{ background: 'linear-gradient(135deg, rgba(232,121,47,0.12) 0%, rgba(28,29,39,1) 60%)', border: '1px solid rgba(232,121,47,0.2)' }}>
+  <div className="rounded-2xl p-4 space-y-3 bg-gradient-to-br from-orange-50 to-white border border-orange-200/60 dark:from-[#e8792f]/[0.12] dark:to-[#1c1d27] dark:border-[#e8792f]/20">
     <div className="flex items-center justify-between">
       <div className="flex items-center gap-2">
         <span className="text-xl">{levelEmoji(profile.level)}</span>
         <div>
-          <p className="text-sm font-bold text-white">{getLevelTitle(profile.level)}</p>
-          <p className="text-[10px] text-white/40">Lv.{profile.level}</p>
+          <p className="text-sm font-bold text-gray-900 dark:text-white">{getLevelTitle(profile.level)}</p>
+          <p className="text-[10px] text-gray-400 dark:text-white/40">Lv.{profile.level}</p>
         </div>
       </div>
-      <span className="text-xs text-white/30">{profile.xp_percent ?? 0}%</span>
+      <span className="text-xs text-gray-400 dark:text-white/30">{profile.xp_percent ?? 0}%</span>
     </div>
 
     <div className="space-y-1">
-      <div className="h-2 rounded-full bg-white/[0.06] overflow-hidden">
+      <div className="h-2 rounded-full bg-gray-200 dark:bg-white/[0.06] overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${profile.xp_percent ?? 0}%` }}
@@ -215,12 +214,12 @@ const LevelCard: React.FC<{ profile: ProfileData }> = ({ profile }) => (
           className="h-full rounded-full bg-gradient-to-r from-[#e8792f] to-[#f59e0b]"
         />
       </div>
-      <p className="text-[10px] text-white/30">
+      <p className="text-[10px] text-gray-400 dark:text-white/30">
         {(profile.total_xp ?? 0).toLocaleString()} / {(profile.next_level_xp ?? 0).toLocaleString()} XP
       </p>
     </div>
 
-    <div className="h-px bg-white/[0.06]" />
+    <div className="h-px bg-gray-200 dark:bg-white/[0.06]" />
     <div className="grid grid-cols-4 gap-1 text-center">
       {[
         { icon: '📊', label: 'Reyting', value: profile.rank ? `#${profile.rank}` : '—' },
@@ -230,8 +229,8 @@ const LevelCard: React.FC<{ profile: ProfileData }> = ({ profile }) => (
       ].map(s => (
         <div key={s.label}>
           <p className="text-base leading-none">{s.icon}</p>
-          <p className="text-[11px] font-bold text-white mt-1">{s.value}</p>
-          <p className="text-[9px] text-white/30 mt-0.5">{s.label}</p>
+          <p className="text-[11px] font-bold text-gray-800 dark:text-white mt-1">{s.value}</p>
+          <p className="text-[9px] text-gray-400 dark:text-white/30 mt-0.5">{s.label}</p>
         </div>
       ))}
     </div>
@@ -406,7 +405,7 @@ const ProfilePage: React.FC = () => {
 
       {/* Level card */}
       <div>
-        <h2 className="text-[10px] font-bold text-white/30 uppercase tracking-widest mb-2">Daraja kartochkasi</h2>
+        <h2 className="text-[10px] font-bold text-gray-400 dark:text-white/30 uppercase tracking-widest mb-2">Daraja kartochkasi</h2>
         <LevelCard profile={profile} />
       </div>
 
