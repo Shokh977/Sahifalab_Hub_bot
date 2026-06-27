@@ -859,6 +859,10 @@ class ApiService {
   async deleteAnnouncement(id: number) {
     return this.axiosInstance.delete(`/api/announcements/admin/${id}`)
   }
+
+  async getLeaderboard(scope: 'global' | 'friends', period: 'week' | 'month' | 'all') {
+    return this.axiosInstance.get('/api/leaderboard/weekly', { params: { scope, period } })
+  }
 }
 
 export default new ApiService()
