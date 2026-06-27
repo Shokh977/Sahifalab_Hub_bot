@@ -41,9 +41,9 @@ const PAGE_SIZE = 12
 
 // ── Skeleton card ─────────────────────────────────────────────────────────────
 const SkeletonCard: React.FC = () => (
-  <div className="bg-white/90 dark:bg-[#1A1A1A] rounded-[24px] border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden animate-pulse">
-    <div className="h-44 bg-slate-100 dark:bg-slate-800" />
-    <div className="p-3 space-y-2">
+  <div className="flex gap-3 bg-white/90 dark:bg-[#1A1A1A] rounded-2xl border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden animate-pulse p-3">
+    <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-slate-100 dark:bg-slate-800" />
+    <div className="flex-1 space-y-2 py-1">
       <div className="h-4 bg-slate-100 dark:bg-slate-700 rounded w-3/4" />
       <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />
       <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/3" />
@@ -251,8 +251,8 @@ const CoursesPage: React.FC = () => {
 
       {/* Course grid */}
       {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-          {Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)}
+        <div className="flex flex-col gap-3">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
       ) : courses.length === 0 ? (
         <motion.div
@@ -276,8 +276,8 @@ const CoursesPage: React.FC = () => {
         </motion.div>
       ) : (
         <>
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-            {courses.map((c, i) => <CourseCard key={c.id} course={c} index={i} teacher={teacherProfiles[c.teacher_id]} analyticsRef="search" />)}
+          <div className="flex flex-col gap-3">
+            {courses.map((c, i) => <CourseCard key={c.id} course={c} index={i} teacher={teacherProfiles[c.teacher_id]} analyticsRef="search" horizontal />)}
           </div>
 
           {hasMore && (

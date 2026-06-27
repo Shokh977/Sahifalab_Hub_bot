@@ -66,9 +66,11 @@ interface CourseCardProps {
   hideTeacher?: boolean
   /** Analytics ref source appended as ?ref= to course link */
   analyticsRef?: string
+  /** Render as horizontal row card (thumbnail left, info right) */
+  horizontal?: boolean
 }
 
-const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hideTeacher = false, analyticsRef }) => {
+const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hideTeacher = false, analyticsRef, horizontal = false }) => {
   const navigate = useNavigate()
   const cardRef = useRef<HTMLDivElement>(null)
   const cat = course.categories
@@ -95,6 +97,69 @@ const CourseCard: React.FC<CourseCardProps> = ({ course, index = 0, teacher, hid
     io.observe(el)
     return () => { io.disconnect(); if (timer) clearTimeout(timer) }
   }, [course.id, course.teacher_id, analyticsRef])
+
+  if (horizontal) {
+    return (
+      <motion.div
+        ref={cardRef}
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: index * 0.04 }}
+      >
+        <Link to={courseLink} className="group block">
+          <div className="flex gap-3 bg-white/90 dark:bg-[#1A1A1A] rounded-2xl border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden hover:shadow-md transition-all duration-200 p-3">
+            {/* Thumbnail */}
+            <div className="relative w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden bg-gradient-to-br from-sahifa-100 to-orange-50 dark:from-slate-800 dark:to-slate-900">
+              {course.thumbnail_url ? (
+                <img src={thumb.course(course.thumbnail_url)} alt={course.title} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center">
+                  <BookOpenIcon className="w-8 h-8 text-sahifa-300 dark:text-sahifa-700" />
+                </div>
+              )}
+              {/* Price badge */}
+              <div className="absolute bottom-1 left-1">
+                {course.is_paid ? (
+                  <span className="px-1.5 py-0.5 rounded-md bg-black/60 text-white text-[9px] font-bold">
+                    {course.price.toLocaleString()} so'm
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/90 text-white text-[9px] font-bold">Bepul</span>
+                )}
+              </div>
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+              <div>
+                <p className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-2 leading-snug">
+                  {course.title}
+                </p>
+                {!hideTeacher && teacherName && (
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 truncate">{teacherName}</p>
+                )}
+                {cat && (
+                  <p className="text-[11px] text-sahifa-600 dark:text-sahifa-400 mt-0.5">{cat.icon} {cat.name}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-1 flex-wrap">
+                {course.total_lessons > 0 && (
+                  <span className="inline-flex items-center gap-0.5"><VideoCameraIcon className="w-3 h-3" />{course.total_lessons} dars</span>
+                )}
+                {course.total_duration_minutes > 0 && (
+                  <span>⏱ {formatDuration(course.total_duration_minutes)}</span>
+                )}
+                {course.rating > 0 && <span>⭐ {course.rating.toFixed(1)}</span>}
+                {course.enrolled_count > 0 && (
+                  <span className="inline-flex items-center gap-0.5"><UsersIcon className="w-3 h-3" />{course.enrolled_count}</span>
+                )}
+              </div>
+            </div>
+          </div>
+        </Link>
+      </motion.div>
+    )
+  }
 
   return (
     <motion.div
