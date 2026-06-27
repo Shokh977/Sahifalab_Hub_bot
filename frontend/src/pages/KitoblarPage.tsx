@@ -197,11 +197,11 @@ export const KitoblarPage: React.FC = () => {
 
       {/* Loading skeleton */}
       {loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <div className="flex flex-col gap-3">
           {[1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden animate-pulse">
-              <div className="h-36 bg-slate-100 dark:bg-slate-700" />
-              <div className="p-3 space-y-2">
+            <div key={i} className="flex gap-3 bg-white dark:bg-[#1A1A1A] rounded-2xl border border-slate-200/50 dark:border-[#2A2A2A] p-3 animate-pulse">
+              <div className="w-24 h-24 flex-shrink-0 rounded-xl bg-slate-100 dark:bg-slate-800" />
+              <div className="flex-1 space-y-2 py-1">
                 <div className="h-4 bg-slate-100 dark:bg-slate-700 rounded w-3/4" />
                 <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/2" />
                 <div className="h-3 bg-slate-100 dark:bg-slate-700 rounded w-1/3" />
@@ -219,14 +219,14 @@ export const KitoblarPage: React.FC = () => {
         </div>
       )}
 
-      {/* Books grid */}
+      {/* Books list */}
       {!loading && filtered.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="flex flex-col gap-3">
             {filtered.slice(0, displayLimit).map((book, index) => (
               <motion.div
                 key={book.id}
-                initial={{ opacity: 0, y: 14 }}
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.04 }}
               >
@@ -234,9 +234,9 @@ export const KitoblarPage: React.FC = () => {
                   onClick={() => navigate(`/kitoblar/${book.id}`)}
                   className="group block w-full text-left"
                 >
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 overflow-hidden hover:shadow-md hover:border-sahifa-300 dark:hover:border-sahifa-600 transition-all">
+                  <div className="flex gap-3 bg-white/90 dark:bg-[#1A1A1A] rounded-2xl border border-slate-200/50 dark:border-[#2A2A2A] overflow-hidden hover:shadow-md transition-all duration-200 p-3">
                     {/* Thumbnail */}
-                    <div className="relative h-36 overflow-hidden">
+                    <div className="relative w-24 h-24 flex-shrink-0 rounded-xl overflow-hidden">
                       {book.thumbnail_url ? (
                         <img
                           src={book.thumbnail_url}
@@ -246,51 +246,46 @@ export const KitoblarPage: React.FC = () => {
                           onError={e => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
                       ) : (
-                        <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center group-hover:scale-105 transition-transform duration-300`}>
-                          <BookOpenIcon className="w-12 h-12 text-white/70" />
+                        <div className={`w-full h-full bg-gradient-to-br ${coverGradient(book.category)} flex items-center justify-center`}>
+                          <BookOpenIcon className="w-8 h-8 text-white/70" />
                         </div>
                       )}
                       {/* Price badge */}
-                      <div className="absolute top-2 right-2">
+                      <div className="absolute bottom-1 left-1">
                         {book.is_paid ? (
-                          <span className="px-2 py-0.5 rounded-full bg-amber-500 text-white text-[10px] font-bold shadow">
+                          <span className="px-1.5 py-0.5 rounded-md bg-black/60 text-white text-[9px] font-bold">
                             {book.price.toLocaleString()} so'm
                           </span>
                         ) : (
-                          <span className="px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold shadow">
+                          <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/90 text-white text-[9px] font-bold">
                             Bepul
                           </span>
                         )}
                       </div>
-                      {/* Category badge */}
-                      {book.category && (
-                        <div className="absolute bottom-2 left-2">
-                          <span className="px-2 py-0.5 rounded-full bg-black/50 text-white text-[10px] font-medium backdrop-blur-sm capitalize">
-                            {book.category}
-                          </span>
-                        </div>
-                      )}
                     </div>
 
                     {/* Info */}
-                    <div className="p-3 space-y-1.5">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white line-clamp-2 leading-snug">
-                        {book.title}
-                      </p>
-                      <p className="text-[11px] text-sahifa-600 dark:text-sahifa-400 font-medium truncate">
-                        {book.author}
-                      </p>
-                      <div className="flex items-center justify-between pt-0.5">
-                        <div className="flex items-center gap-1 text-[11px] text-gray-500 dark:text-gray-400">
-                          {book.rating > 0 && (
-                            <span className="inline-flex items-center gap-0.5">
-                              <StarIcon className="w-3 h-3 text-amber-400" />
-                              {book.rating.toFixed(1)}
-                            </span>
-                          )}
-                        </div>
+                    <div className="flex-1 min-w-0 flex flex-col justify-between py-0.5">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-800 dark:text-white line-clamp-2 leading-snug">
+                          {book.title}
+                        </p>
+                        <p className="text-[11px] text-sahifa-600 dark:text-sahifa-400 font-medium mt-0.5 truncate">
+                          {book.author}
+                        </p>
+                        {book.category && (
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5 capitalize">{book.category}</p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                        {book.rating > 0 && (
+                          <span className="inline-flex items-center gap-0.5">
+                            <StarIcon className="w-3 h-3 text-amber-400" />
+                            {book.rating.toFixed(1)}
+                          </span>
+                        )}
                         {book.downloads > 0 && (
-                          <span className="text-[11px] text-gray-400">↓ {book.downloads}</span>
+                          <span>↓ {book.downloads}</span>
                         )}
                       </div>
                     </div>
