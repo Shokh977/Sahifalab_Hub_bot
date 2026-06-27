@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { TrophyIcon, UsersIcon, ClockIcon } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
@@ -90,7 +90,7 @@ const Avatar: React.FC<{ entry: Entry; size?: 'sm' | 'md' | 'lg'; isSelf?: boole
 }
 
 // ── Podium (top 3) ────────────────────────────────────────────────────────────
-const Podium: React.FC<{ top3: Entry[]; selfId: number | null }> = ({ top3, selfId }) => {
+const Podium: React.FC<{ top3: Entry[]; selfId: number | null; onPress: (id: number) => void }> = ({ top3, selfId, onPress }) => {
   if (top3.length === 0) return null
   const [first, second, third] = top3
 
@@ -104,7 +104,7 @@ const Podium: React.FC<{ top3: Entry[]; selfId: number | null }> = ({ top3, self
       : 'bg-amber-700/60 dark:bg-amber-900/40'
     return (
       <div className={`flex flex-col items-center gap-1 ${rank === 1 ? 'order-2' : rank === 2 ? 'order-1' : 'order-3'}`}>
-        <Link to={`/profile/${entry.telegram_id}`} className="flex flex-col items-center gap-1">
+        <button onClick={() => onPress(entry.telegram_id)} className="flex flex-col items-center gap-1 active:opacity-70 transition-opacity">
           {rank === 1 && <span className="text-xl mb-0.5">👑</span>}
           <Avatar entry={entry} size={rank === 1 ? 'lg' : 'md'} isSelf={isSelf} />
           <p className={`text-[11px] font-semibold max-w-[72px] text-center truncate ${isSelf ? 'text-sahifa-500' : 'text-gray-800 dark:text-white'}`}>
@@ -115,7 +115,7 @@ const Podium: React.FC<{ top3: Entry[]; selfId: number | null }> = ({ top3, self
             <p className="text-[10px] text-gray-400">⏱ {formatMinutes(entry.minutes)}</p>
           )}
           <span className="text-xl">{MEDALS[rank - 1]}</span>
-        </Link>
+        </button>
         <div className={`w-16 ${barH} ${barColor} rounded-t-xl`} />
       </div>
     )
@@ -131,7 +131,7 @@ const Podium: React.FC<{ top3: Entry[]; selfId: number | null }> = ({ top3, self
 }
 
 // ── List Row ──────────────────────────────────────────────────────────────────
-const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number }> = ({ entry, selfId, delay }) => {
+const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number; onPress: (id: number) => void }> = ({ entry, selfId, delay, onPress }) => {
   const isSelf = entry.telegram_id === selfId
   const skin = getProfileSkin({ level: entry.level, totalXP: entry.score, quizzesCompleted: 0, focusSeconds: entry.minutes * 60 })
   return (
@@ -139,8 +139,8 @@ const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number }> = ({
       initial={{ opacity: 0, x: -12 }}
       animate={{ opacity: 1, x: 0 }}
       transition={{ duration: 0.3, delay }}
-    >
-    <Link to={`/profile/${entry.telegram_id}`} className={`flex items-center gap-3 p-3 rounded-2xl border transition-colors ${
+      onClick={() => onPress(entry.telegram_id)}
+      className={`flex items-center gap-3 p-3 rounded-2xl border cursor-pointer active:opacity-70 transition-all ${
         isSelf
           ? 'bg-sahifa-50 dark:bg-sahifa-900/20 border-sahifa-200 dark:border-sahifa-700/50'
           : 'bg-white dark:bg-[#1A1A1A] border-slate-100 dark:border-[#2A2A2A]'
@@ -173,7 +173,6 @@ const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number }> = ({
           {entry.score.toLocaleString()} XP
         </p>
       </div>
-    </Link>
     </motion.div>
   )
 }
@@ -181,7 +180,10 @@ const Row: React.FC<{ entry: Entry; selfId: number | null; delay: number }> = ({
 // ── Page ──────────────────────────────────────────────────────────────────────
 const LeaderboardPage: React.FC = () => {
   const { user: authUser } = useAuth()
+  const navigate = useNavigate()
   const selfId: number | null = authUser?.id ?? null
+
+  const goToProfile = useCallback((id: number) => navigate(`/profile/${id}`), [navigate])
 
   const [tab,     setTab]     = useState<TabKey>('global')
   const [period,  setPeriod]  = useState<Period>('week')
@@ -312,11 +314,11 @@ const LeaderboardPage: React.FC = () => {
             className="space-y-2"
           >
             {/* Podium: top 3 */}
-            <Podium top3={top3} selfId={selfId} />
+            <Podium top3={top3} selfId={selfId} onPress={goToProfile} />
 
             {/* Rows: 4th place and below */}
             {rest.map((e, i) => (
-              <Row key={e.telegram_id} entry={e} selfId={selfId} delay={i * 0.04} />
+              <Row key={e.telegram_id} entry={e} selfId={selfId} delay={i * 0.04} onPress={goToProfile} />
             ))}
 
             {/* My rank if outside visible list */}
