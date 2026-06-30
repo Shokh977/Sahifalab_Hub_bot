@@ -510,7 +510,7 @@ def get_user_connections(
 
 @router.get("/users/{target_id}/profile")
 def get_profile(
-    target_id: int,
+    target_id: str,
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ):

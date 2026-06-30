@@ -859,8 +859,16 @@ def get_following(db: Session, user_id: int, page: int = 1, page_size: int = 50)
 
 # ── Profile / Discovery ─────────────────────────────────────────────────────
 
-def get_public_profile(db: Session, target_id: int, viewer_id: Optional[int] = None) -> Optional[dict]:
-    profile = db.query(Profile).filter(Profile.telegram_id == target_id).first()
+def get_public_profile(db: Session, target_id: str, viewer_id: Optional[int] = None) -> Optional[dict]:
+    """target_id may be a site_username or a numeric telegram_id — profile links use whichever was available."""
+    target_id = target_id.lstrip("@").strip()
+    profile = (
+        db.query(Profile)
+        .filter(func.lower(Profile.site_username) == target_id.lower())
+        .first()
+    )
+    if not profile and target_id.isdigit():
+        profile = db.query(Profile).filter(Profile.telegram_id == int(target_id)).first()
     if not profile:
         return None
     result = _profile_to_author(profile)
@@ -868,7 +876,7 @@ def get_public_profile(db: Session, target_id: int, viewer_id: Optional[int] = N
     result["about_me"] = getattr(profile, "about_me", None)
     result["followers_count"] = getattr(profile, "followers_count", 0) or 0
     result["following_count"] = getattr(profile, "following_count", 0) or 0
-    result["is_following"] = is_following(db, viewer_id, target_id) if viewer_id else False
+    result["is_following"] = is_following(db, viewer_id, profile.telegram_id) if viewer_id else False
     return result
 
 
