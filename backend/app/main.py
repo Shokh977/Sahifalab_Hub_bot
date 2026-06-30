@@ -666,6 +666,23 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS idx_deck_reports_pending ON deck_reports(status, created_at DESC) WHERE status = 'pending'"
                 ))
+                # 18. Deck moderation audit log (067_deck_audit_log)
+                conn.execute(_sa_text("""
+                    CREATE TABLE IF NOT EXISTS deck_audit_log (
+                        id                 BIGSERIAL    PRIMARY KEY,
+                        deck_id            BIGINT,
+                        action             VARCHAR(50)  NOT NULL,
+                        admin_telegram_id  BIGINT,
+                        details            JSONB,
+                        created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+                    )
+                """))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS idx_deck_audit_log_deck ON deck_audit_log(deck_id)"
+                ))
+                conn.execute(_sa_text(
+                    "CREATE INDEX IF NOT EXISTS idx_deck_audit_log_admin ON deck_audit_log(admin_telegram_id)"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
