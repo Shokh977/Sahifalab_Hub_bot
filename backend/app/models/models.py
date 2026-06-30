@@ -59,6 +59,8 @@ class Profile(Base):
     daily_goal_minutes  = Column(Integer, default=20, nullable=True)
     streak_days         = Column(Integer, default=0,  nullable=True)
     streak_last_date    = Column(Date, nullable=True)
+    # Public deck publishing (066_public_flashcard_decks) — admin can revoke via "Muallifni bloklash"
+    can_publish         = Column(Boolean, default=True, nullable=False)
 
 
 class AuthCode(Base):
@@ -162,6 +164,19 @@ class FlashcardDeck(Base):
     course_id      = Column(Integer, nullable=True)
     created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    # Public deck library (066_public_flashcard_decks)
+    published_at        = Column(DateTime(timezone=True), nullable=True)
+    is_anonymous         = Column(Boolean, default=False, nullable=False)
+    category             = Column(String(50), nullable=True)
+    badge_type           = Column(String(20), default='none', nullable=False)   # none | official | verified_creator
+    is_featured          = Column(Boolean, default=False, nullable=False)
+    is_verified          = Column(Boolean, default=False, nullable=False)       # admin checked accuracy (required for 'official' badge)
+    clone_count          = Column(Integer, default=0, nullable=False)
+    rating_avg           = Column(Float, default=0.0, nullable=False)
+    rating_count          = Column(Integer, default=0, nullable=False)
+    cloned_from_deck_id  = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="SET NULL"), nullable=True)
+    moderation_status    = Column(String(20), default='approved', nullable=False)  # approved | pending_review | removed
+    removed_reason       = Column(Text, nullable=True)
 
     cards = relationship("Flashcard", back_populates="deck", cascade="all, delete-orphan")
 
@@ -199,6 +214,51 @@ class FlashcardReview(Base):
     rating       = Column(Integer, nullable=False)   # 1=forgot 2=hard 3=good 4=easy
     reviewed_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     time_spent_ms = Column(Integer, nullable=True)
+
+
+class DeckClone(Base):
+    """Tracks who cloned which public deck — enforces one clone per user per deck."""
+    __tablename__ = "deck_clones"
+
+    id               = Column(BigInteger, primary_key=True, autoincrement=True)
+    original_deck_id = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    cloned_deck_id   = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False)
+    cloned_by        = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    created_at       = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("original_deck_id", "cloned_by", name="uq_deck_clone_user"),)
+
+
+class DeckRating(Base):
+    """1-5 star rating + optional comment on a public deck. Only cloners may rate (enforced in API)."""
+    __tablename__ = "deck_ratings"
+
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    deck_id    = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    rating     = Column(Integer, nullable=False)   # 1-5
+    comment    = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("deck_id", "user_id", name="uq_deck_rating_user"),)
+
+
+class DeckReport(Base):
+    """User report on a public deck — 3+ pending reports auto-hides the deck for admin review."""
+    __tablename__ = "deck_reports"
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    deck_id     = Column(BigInteger, ForeignKey("flashcard_decks.id", ondelete="CASCADE"), nullable=False, index=True)
+    reported_by = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    reason      = Column(String(30), nullable=False)   # spam | errors | inappropriate | offensive | copyright | other
+    details     = Column(Text, nullable=True)
+    status      = Column(String(20), default='pending', nullable=False)  # pending | reviewed | dismissed | actioned
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    reviewed_by = Column(BigInteger, ForeignKey("profiles.telegram_id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (UniqueConstraint("deck_id", "reported_by", name="uq_deck_report_user"),)
 
 
 class TeacherProfile(Base):

@@ -17,6 +17,20 @@ class EnrollmentAuditLog(Base):
     details           = Column(JSON, nullable=True)
     created_at        = Column(DateTime, default=datetime.utcnow, index=True)
 
+class DeckAuditLog(Base):
+    """Audit trail for admin moderation actions on public flashcard decks (step-14)."""
+    __tablename__ = "deck_audit_log"
+
+    id         = Column(BigInteger, primary_key=True, index=True)
+    deck_id    = Column(BigInteger, nullable=True, index=True)
+    action     = Column(String(50), nullable=False)
+    # deck_approved | deck_removed | creator_banned | official_deck_created |
+    # deck_verified | deck_badge_set | deck_featured_toggled
+    admin_telegram_id = Column(BigInteger, nullable=True, index=True)
+    details    = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class AdminUser(Base):
     __tablename__ = "admin_user"
     

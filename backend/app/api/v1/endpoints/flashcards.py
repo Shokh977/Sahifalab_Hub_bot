@@ -14,9 +14,23 @@ GET    /flashcards/decks/:id/study     — ordered study session (failed→due�
 POST   /flashcards/cards/:id/review    — submit rating, apply SM-2, award XP
 POST   /flashcards/decks/:id/complete  — session done: session XP + daily goal
 GET    /flashcards/stats               — overall stats (due count, mastered, etc.)
+
+Public deck library (step-14-public-flashcard-decks):
+PATCH  /flashcards/decks/:id/publish     — publish own deck to the public library
+PATCH  /flashcards/decks/:id/unpublish   — make a public deck private again
+GET    /flashcards/public                — browse public decks (category/sort/search)
+GET    /flashcards/public/featured       — admin-curated featured decks
+GET    /flashcards/public/:id            — public deck preview (5 sample cards)
+POST   /flashcards/public/:id/clone      — clone a public deck into a private copy
+POST   /flashcards/public/:id/rate       — rate a deck (cloners only)
+GET    /flashcards/public/:id/ratings    — paginated ratings/reviews
+POST   /flashcards/public/:id/report     — report a deck for moderation
+GET    /flashcards/share/:id             — PUBLIC, no auth — web landing page data
 """
 
 import asyncio
+import logging
+import httpx
 from datetime import datetime, UTC, timedelta, date as Date
 from typing import Optional
 
@@ -32,12 +46,12 @@ from app.api.v1.endpoints.notifications import send_notification
 from app.api.v1.endpoints.focus import _check_and_award_challenges
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 MAX_NEW_PER_SESSION = 10
 
-XP_PER_REVIEW   = 2   # every card reviewed
-XP_BONUS_RECALL = 3   # additional when rating >= 3
-XP_SESSION_DONE = 15  # completing a full session
+XP_PER_REVIEW   = 1   # every card reviewed, regardless of rating (honesty must never be punished)
+XP_SESSION_DONE = 12  # completing a full session
 XP_MASTERY_CARD = 5   # first time a card reaches mastered
 XP_MASTERY_DECK = 50  # 100% deck mastery
 
@@ -155,6 +169,24 @@ class CompleteSessionRequest(BaseModel):
     local_date:     Optional[str] = None
 
 
+# ── Public deck library schemas ────────────────────────────────────────────────
+
+_CATEGORIES = {"english", "ielts", "business", "arabic", "programming", "medical", "other"}
+_REPORT_REASONS = {"spam", "errors", "inappropriate", "offensive", "copyright", "other"}
+
+class PublishRequest(BaseModel):
+    is_anonymous: bool = False
+    category:     str  = Field(..., min_length=1, max_length=50)
+
+class RateRequest(BaseModel):
+    rating:  int = Field(..., ge=1, le=5)
+    comment: Optional[str] = Field(None, max_length=1000)
+
+class ReportRequest(BaseModel):
+    reason:  str = Field(..., max_length=30)
+    details: Optional[str] = Field(None, max_length=1000)
+
+
 # ── Helper: verify deck ownership ─────────────────────────────────────────────
 
 def _get_deck_or_404(db: Session, deck_id: int, user_id: int):
@@ -180,6 +212,139 @@ def _get_card_or_404(db: Session, card_id: int, user_id: int):
     if not row:
         raise HTTPException(status_code=404, detail="Card not found")
     return row
+
+
+# ── Content safety (Part 6) ─────────────────────────────────────────────────────
+# Word-list based screen, run synchronously on publish. No external moderation
+# API is wired up (none of the integrations available here have credentials
+# configured) — this is a conservative substring screen in EN/RU/UZ, kept
+# deliberately broad rather than precise so it over-flags into manual review
+# instead of under-flagging into the public library.
+
+_BANNED_SUBSTRINGS = {
+    # English — profanity, sexual content, violence, hate speech
+    "fuck", "shit", "bitch", "asshole", "cunt", "whore", "slut",
+    "porn", "porno", "xxx", "nude", "naked photo", "sex video",
+    "rape", "kill yourself", "suicide", "self harm",
+    "nigger", "faggot", "retard",
+    # Russian
+    "блядь", "сука", "хуй", "пизда", "ебать", "мудак", "шлюха",
+    "порно", "изнасилование", "самоубийство",
+    # Uzbek
+    "jalab", "qotoq", "kepak", "ahmoqsan", "o'zingni o'ldir",
+}
+
+# Zero-tolerance child-safety screen: a minor-indicating term co-occurring with a
+# sexual-content term in the same submission is rejected outright and escalated
+# to admin with high priority, regardless of the general screen above.
+_MINOR_INDICATOR_TERMS = {
+    "child", "kid", "minor", "underage", "schoolgirl", "schoolboy",
+    "bola", "qiz bola", "o'g'il bola", "o'quvchi",
+    "ребенок", "ребёнок", "девочка", "мальчик", "школьница",
+}
+_SEXUAL_CONTENT_TERMS = {
+    "sex", "porn", "nude", "naked", "xxx",
+    "seks", "yalang'och",
+    "секс", "порно", "голый", "голая",
+}
+
+def _content_safety_check(texts: list[str]) -> tuple[bool, str]:
+    """
+    Returns (flagged, severity). severity is 'child_safety' (zero-tolerance,
+    high-priority admin escalation) or 'general' (standard banned-term match).
+    """
+    blob = " ".join(t or "" for t in texts).lower()
+
+    has_minor_term   = any(term in blob for term in _MINOR_INDICATOR_TERMS)
+    has_sexual_term  = any(term in blob for term in _SEXUAL_CONTENT_TERMS)
+    if has_minor_term and has_sexual_term:
+        return True, "child_safety"
+
+    if any(term in blob for term in _BANNED_SUBSTRINGS):
+        return True, "general"
+
+    return False, ""
+
+
+_MODERATION_ALERT_TEXT = {
+    "deck_content_flagged":       "🚩 <b>To'plam tekshiruvga yuborildi</b>",
+    "deck_child_safety_flagged":  "🔴 <b>YUQORI USTUVORLIK — bolalar xavfsizligi tekshiruvi</b>",
+    "deck_auto_hidden_reports":   "⚠️ <b>To'plam shikoyatlar tufayli yashirildi</b>",
+}
+
+async def _notify_admins(notif_type: str, meta: dict) -> None:
+    """
+    Alerts every configured admin via both the in-app notification feed and a
+    direct Telegram message (same channel as wallet payout requests — the one
+    admins are already expected to check promptly). Fire-and-forget; never raises.
+    """
+    try:
+        from app.core.config import settings
+        admin_ids: list[int] = settings.ADMIN_TELEGRAM_IDS or []
+        bot_token: str = settings.TELEGRAM_BOT_TOKEN
+    except Exception:
+        admin_ids, bot_token = [], ""
+
+    for admin_id in admin_ids:
+        try:
+            await send_notification(admin_id, notif_type, category="SYSTEM", meta=meta)
+        except Exception:
+            pass
+
+    if not bot_token or not admin_ids:
+        return
+
+    header = _MODERATION_ALERT_TEXT.get(notif_type, "🚩 <b>Moderatsiya ogohlantirishi</b>")
+    lines = [header, ""]
+    if meta.get("deck_id") is not None:  lines.append(f"To'plam ID: <code>{meta['deck_id']}</code>")
+    if meta.get("title"):                lines.append(f"Sarlavha: {meta['title']}")
+    if meta.get("user_id") is not None:  lines.append(f"Foydalanuvchi ID: <code>{meta['user_id']}</code>")
+    if meta.get("report_count") is not None: lines.append(f"Shikoyatlar soni: {meta['report_count']}")
+    lines.append("\n📋 Admin panelda ko'rib chiqing.")
+    message = "\n".join(lines)
+
+    for chat_id in admin_ids:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+                )
+        except Exception as e:
+            logger.error(f"Failed to notify admin {chat_id} of {notif_type}: {e}")
+
+
+def _publish_error(code: str, details: str) -> HTTPException:
+    return HTTPException(status_code=400, detail={
+        "success": False,
+        "error": {"code": code, "details": details},
+    })
+
+
+# ── Rate limiting (Part 6) ────────────────────────────────────────────────────
+# Reuses the existing per-action tables (their created_at / published_at
+# timestamps) instead of a dedicated counters table — publish/clone/report
+# each already write one row per action.
+
+RATE_LIMITS = {
+    "publish": (10, "Kuniga eng ko'pi bilan 10 ta to'plam ulashish mumkin. Ertaga qayta urinib ko'ring."),
+    "clone":   (50, "Kuniga eng ko'pi bilan 50 ta to'plamdan nusxa olish mumkin. Ertaga qayta urinib ko'ring."),
+    "report":  (20, "Kuniga eng ko'pi bilan 20 ta shikoyat yuborish mumkin. Ertaga qayta urinib ko'ring."),
+}
+
+def _check_rate_limit(db: Session, action: str, user_id: int) -> None:
+    limit, message = RATE_LIMITS[action]
+    queries = {
+        "publish": "SELECT COUNT(*) FROM flashcard_decks WHERE user_id = :uid AND DATE(published_at) = CURRENT_DATE",
+        "clone":   "SELECT COUNT(*) FROM deck_clones WHERE cloned_by = :uid AND DATE(created_at) = CURRENT_DATE",
+        "report":  "SELECT COUNT(*) FROM deck_reports WHERE reported_by = :uid AND DATE(created_at) = CURRENT_DATE",
+    }
+    count = db.execute(text(queries[action]), {"uid": user_id}).scalar()
+    if int(count or 0) >= limit:
+        raise HTTPException(status_code=429, detail={
+            "success": False,
+            "error": {"code": "RATE_LIMITED", "details": message},
+        })
 
 
 # ── Deck endpoints ────────────────────────────────────────────────────────────
@@ -529,10 +694,8 @@ async def review_card(
     xp_result = {"xp_added": 0}
     total_xp  = 0
     if first_review_today:
-        xp_base    = XP_PER_REVIEW
-        xp_bonus   = XP_BONUS_RECALL if body.rating >= 3 else 0
         xp_mastery = XP_MASTERY_CARD if newly_mastered else 0
-        total_xp   = xp_base + xp_bonus + xp_mastery
+        total_xp   = XP_PER_REVIEW + xp_mastery
         try:
             xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=total_xp)
         except Exception:
@@ -758,7 +921,556 @@ async def get_stats(
     }
 
 
+# ── Publish / unpublish ─────────────────────────────────────────────────────────
+
+@router.patch("/decks/{deck_id}/publish")
+async def publish_deck(
+    deck_id: int,
+    body: PublishRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    deck = _get_deck_or_404(db, deck_id, caller_id)
+
+    can_publish = db.execute(
+        text("SELECT can_publish FROM profiles WHERE telegram_id = :uid"),
+        {"uid": caller_id},
+    ).scalar()
+    if can_publish is False:
+        raise _publish_error(
+            "PUBLISH_BANNED",
+            "Sizga ommaga ulashish taqiqlangan. Yordam uchun qo'llab-quvvatlashga murojaat qiling.",
+        )
+
+    _check_rate_limit(db, "publish", caller_id)
+
+    title = (deck.title or "").strip()
+    if not (3 <= len(title) <= 100):
+        raise _publish_error("TITLE", "Sarlavha 3-100 belgidan iborat bo'lishi kerak.")
+
+    if body.category not in _CATEGORIES:
+        raise _publish_error("CATEGORY", "Turkum tanlanishi shart.")
+
+    card_count = int(deck.card_count or 0)
+    if card_count < 10:
+        raise _publish_error(
+            "MIN_CARDS",
+            f"Ommaga ulashish uchun kamida 10 ta karta kerak. Hozir: {card_count} ta.",
+        )
+
+    empty_cards = db.execute(
+        text("""
+            SELECT COUNT(*) FROM flashcards
+            WHERE deck_id = :id AND (TRIM(front_text) = '' OR TRIM(back_text) = '')
+        """),
+        {"id": deck_id},
+    ).scalar()
+    if int(empty_cards or 0) > 0:
+        raise _publish_error("EMPTY_CARDS", "Barcha kartalar to'liq to'ldirilishi kerak.")
+
+    card_texts = db.execute(
+        text("SELECT front_text, back_text FROM flashcards WHERE deck_id = :id"),
+        {"id": deck_id},
+    ).fetchall()
+    texts = [title, deck.description or ""]
+    for c in card_texts:
+        texts.append(c.front_text or "")
+        texts.append(c.back_text or "")
+
+    flagged, severity = _content_safety_check(texts)
+    if flagged:
+        db.execute(
+            text("UPDATE flashcard_decks SET moderation_status = 'pending_review', updated_at = :now WHERE id = :id"),
+            {"id": deck_id, "now": datetime.now(UTC)},
+        )
+        db.commit()
+        await _notify_admins(
+            "deck_content_flagged" if severity == "general" else "deck_child_safety_flagged",
+            {"deck_id": deck_id, "user_id": caller_id, "title": title, "severity": severity, "priority": "high" if severity == "child_safety" else "normal"},
+        )
+        raise _publish_error(
+            "CONTENT_FLAGGED",
+            "To'plamingiz tekshiruvdan o'tmadi. Agar bu xato deb hisoblasangiz, qo'llab-quvvatlashga murojaat qiling.",
+        )
+
+    now = datetime.now(UTC)
+    row = db.execute(
+        text("""
+            UPDATE flashcard_decks SET
+                is_public         = TRUE,
+                published_at      = COALESCE(published_at, :now),
+                is_anonymous      = :anon,
+                category          = :category,
+                moderation_status = 'approved',
+                updated_at        = :now
+            WHERE id = :id
+            RETURNING *
+        """),
+        {"id": deck_id, "now": now, "anon": body.is_anonymous, "category": body.category},
+    ).fetchone()
+    db.commit()
+    return _deck_row_simple(row)
+
+
+@router.patch("/decks/{deck_id}/unpublish")
+async def unpublish_deck(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    _get_deck_or_404(db, deck_id, caller_id)
+    row = db.execute(
+        text("UPDATE flashcard_decks SET is_public = FALSE, updated_at = :now WHERE id = :id RETURNING *"),
+        {"id": deck_id, "now": datetime.now(UTC)},
+    ).fetchone()
+    db.commit()
+    return _deck_row_simple(row)
+
+
+# ── Discovery (public library) ──────────────────────────────────────────────────
+
+@router.get("/public")
+async def list_public_decks(
+    category: str = Query("all"),
+    sort:     str = Query("popular", pattern="^(popular|newest|top_rated)$"),
+    search:   Optional[str] = Query(None),
+    page:     int = Query(1, ge=1),
+    limit:    int = Query(20, ge=1, le=20),
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    offset = (page - 1) * limit
+    filters = ["d.is_public = TRUE", "d.moderation_status = 'approved'"]
+    params: dict = {"limit": limit, "offset": offset, "caller": caller_id}
+
+    if category and category != "all":
+        filters.append("d.category = :category")
+        params["category"] = category
+    if search:
+        filters.append("(d.title ILIKE :search OR d.description ILIKE :search)")
+        params["search"] = f"%{search}%"
+    if sort == "top_rated":
+        filters.append("d.rating_count >= 5")
+
+    where = " AND ".join(filters)
+    order = {
+        "popular":   "d.clone_count DESC",
+        "newest":    "d.published_at DESC NULLS LAST",
+        "top_rated": "d.rating_avg DESC",
+    }[sort]
+
+    rows = db.execute(
+        text(f"""
+            SELECT d.id, d.title, d.description, d.card_count, d.category, d.badge_type,
+                   d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
+                   p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
+                   EXISTS (
+                       SELECT 1 FROM deck_clones dc
+                       WHERE dc.original_deck_id = d.id AND dc.cloned_by = :caller
+                   ) AS already_cloned
+            FROM flashcard_decks d
+            LEFT JOIN profiles p ON p.telegram_id = d.user_id
+            WHERE {where}
+            ORDER BY {order}
+            LIMIT :limit OFFSET :offset
+        """),
+        params,
+    ).fetchall()
+
+    total = db.execute(
+        text(f"SELECT COUNT(*) FROM flashcard_decks d WHERE {where}"),
+        {k: v for k, v in params.items() if k not in ("limit", "offset")},
+    ).scalar()
+
+    return {
+        "decks": [_public_deck_item(r) for r in rows],
+        "total": int(total or 0),
+        "page":  page,
+        "limit": limit,
+    }
+
+
+@router.get("/public/featured")
+async def list_featured_decks(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    rows = db.execute(
+        text("""
+            SELECT d.id, d.title, d.description, d.card_count, d.category, d.badge_type,
+                   d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
+                   p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
+                   EXISTS (
+                       SELECT 1 FROM deck_clones dc
+                       WHERE dc.original_deck_id = d.id AND dc.cloned_by = :caller
+                   ) AS already_cloned
+            FROM flashcard_decks d
+            LEFT JOIN profiles p ON p.telegram_id = d.user_id
+            WHERE d.is_public = TRUE AND d.moderation_status = 'approved' AND d.is_featured = TRUE
+            ORDER BY d.published_at DESC NULLS LAST
+            LIMIT 10
+        """),
+        {"caller": caller_id},
+    ).fetchall()
+    return [_public_deck_item(r) for r in rows]
+
+
+@router.get("/public/{deck_id}")
+async def get_public_deck(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    row = db.execute(
+        text("""
+            SELECT d.id, d.title, d.description, d.card_count, d.category, d.badge_type,
+                   d.is_anonymous, d.is_featured, d.is_verified, d.clone_count, d.rating_avg,
+                   d.rating_count, d.published_at,
+                   p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
+                   EXISTS (
+                       SELECT 1 FROM deck_clones dc
+                       WHERE dc.original_deck_id = d.id AND dc.cloned_by = :caller
+                   ) AS already_cloned
+            FROM flashcard_decks d
+            LEFT JOIN profiles p ON p.telegram_id = d.user_id
+            WHERE d.id = :id AND d.is_public = TRUE AND d.moderation_status = 'approved'
+        """),
+        {"id": deck_id, "caller": caller_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    preview_cards = db.execute(
+        text("SELECT front_text, back_text FROM flashcards WHERE deck_id = :id ORDER BY position, created_at LIMIT 5"),
+        {"id": deck_id},
+    ).fetchall()
+
+    recent_ratings = db.execute(
+        text("""
+            SELECT r.rating, r.comment, r.created_at,
+                   p.telegram_id AS rater_id, p.first_name AS rater_name, p.photo_url AS rater_photo
+            FROM deck_ratings r
+            JOIN profiles p ON p.telegram_id = r.user_id
+            WHERE r.deck_id = :id
+            ORDER BY r.created_at DESC
+            LIMIT 5
+        """),
+        {"id": deck_id},
+    ).fetchall()
+
+    item = _public_deck_item(row)
+    item["is_verified"]  = bool(row.is_verified)
+    item["published_at"] = row.published_at.isoformat() if row.published_at else None
+    item["preview_cards"] = [{"front_text": c.front_text, "back_text": c.back_text} for c in preview_cards]
+    item["recent_ratings"] = [
+        {
+            "rating":     int(r.rating),
+            "comment":    r.comment,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+            "rater":      {"id": int(r.rater_id), "name": r.rater_name or "", "avatar_url": r.rater_photo},
+        }
+        for r in recent_ratings
+    ]
+    return item
+
+
+# ── Cloning ───────────────────────────────────────────────────────────────────
+
+def _clone_already_response(db: Session, clone_deck_id: int) -> dict:
+    row = db.execute(text("SELECT * FROM flashcard_decks WHERE id = :id"), {"id": clone_deck_id}).fetchone()
+    result = _deck_row_simple(row)
+    result["already_cloned"] = True
+    return result
+
+
+@router.post("/public/{deck_id}/clone", status_code=201)
+async def clone_public_deck(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    original = db.execute(
+        text("SELECT * FROM flashcard_decks WHERE id = :id AND is_public = TRUE AND moderation_status = 'approved'"),
+        {"id": deck_id},
+    ).fetchone()
+    if not original:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    existing = db.execute(
+        text("SELECT cloned_deck_id FROM deck_clones WHERE original_deck_id = :id AND cloned_by = :uid"),
+        {"id": deck_id, "uid": caller_id},
+    ).fetchone()
+    if existing:
+        return _clone_already_response(db, int(existing.cloned_deck_id))
+
+    _check_rate_limit(db, "clone", caller_id)
+
+    now = datetime.now(UTC)
+    cards = db.execute(
+        text("""
+            SELECT front_text, back_text, front_image, back_image, position
+            FROM flashcards WHERE deck_id = :id ORDER BY position, created_at
+        """),
+        {"id": deck_id},
+    ).fetchall()
+
+    new_deck = db.execute(
+        text("""
+            INSERT INTO flashcard_decks
+                (user_id, title, description, color, icon, card_count, mastered_count,
+                 cloned_from_deck_id, created_at, updated_at)
+            VALUES (:uid, :title, :desc, :color, :icon, :card_count, 0, :orig_id, :now, :now)
+            RETURNING *
+        """),
+        {
+            "uid": caller_id, "title": original.title, "desc": original.description,
+            "color": original.color, "icon": original.icon, "card_count": len(cards),
+            "orig_id": deck_id, "now": now,
+        },
+    ).fetchone()
+
+    for c in cards:
+        db.execute(
+            text("""
+                INSERT INTO flashcards
+                    (deck_id, front_text, back_text, front_image, back_image, position,
+                     ease_factor, interval_days, repetitions, status, next_review, created_at)
+                VALUES (:did, :front, :back, :fimg, :bimg, :pos, 2.5, 0, 0, 'new', :now, :now)
+            """),
+            {
+                "did": int(new_deck.id), "front": c.front_text, "back": c.back_text,
+                "fimg": c.front_image, "bimg": c.back_image, "pos": c.position, "now": now,
+            },
+        )
+
+    # ON CONFLICT DO NOTHING guards a double-tap/retry race on the same (deck, user) pair.
+    db.execute(
+        text("""
+            INSERT INTO deck_clones (original_deck_id, cloned_deck_id, cloned_by, created_at)
+            VALUES (:orig, :clone, :uid, :now)
+            ON CONFLICT (original_deck_id, cloned_by) DO NOTHING
+        """),
+        {"orig": deck_id, "clone": int(new_deck.id), "uid": caller_id, "now": now},
+    )
+    winner = db.execute(
+        text("SELECT cloned_deck_id FROM deck_clones WHERE original_deck_id = :id AND cloned_by = :uid"),
+        {"id": deck_id, "uid": caller_id},
+    ).fetchone()
+
+    if int(winner.cloned_deck_id) != int(new_deck.id):
+        # Lost the race — another request already registered the canonical clone; discard ours.
+        db.execute(text("DELETE FROM flashcard_decks WHERE id = :id"), {"id": int(new_deck.id)})
+        db.commit()
+        return _clone_already_response(db, int(winner.cloned_deck_id))
+
+    db.execute(text("UPDATE flashcard_decks SET clone_count = clone_count + 1 WHERE id = :id"), {"id": deck_id})
+    db.commit()
+
+    result = _deck_row_simple(new_deck)
+    result["card_count"] = len(cards)
+    result["already_cloned"] = False
+    return result
+
+
+# ── Ratings ───────────────────────────────────────────────────────────────────
+
+@router.post("/public/{deck_id}/rate")
+async def rate_public_deck(
+    deck_id: int,
+    body: RateRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    cloned = db.execute(
+        text("SELECT 1 FROM deck_clones WHERE original_deck_id = :id AND cloned_by = :uid"),
+        {"id": deck_id, "uid": caller_id},
+    ).fetchone()
+    if not cloned:
+        raise HTTPException(status_code=403, detail={
+            "success": False,
+            "error": {"code": "NOT_CLONED", "details": "Faqat nusxa olingan to'plamlarni baholash mumkin."},
+        })
+
+    now = datetime.now(UTC)
+    db.execute(
+        text("""
+            INSERT INTO deck_ratings (deck_id, user_id, rating, comment, created_at, updated_at)
+            VALUES (:did, :uid, :rating, :comment, :now, :now)
+            ON CONFLICT (deck_id, user_id) DO UPDATE
+                SET rating = EXCLUDED.rating, comment = EXCLUDED.comment, updated_at = :now
+        """),
+        {"did": deck_id, "uid": caller_id, "rating": body.rating, "comment": body.comment, "now": now},
+    )
+
+    summary = db.execute(
+        text("""
+            UPDATE flashcard_decks SET
+                rating_avg   = COALESCE((SELECT AVG(rating)::real FROM deck_ratings WHERE deck_id = :id), 0),
+                rating_count = (SELECT COUNT(*) FROM deck_ratings WHERE deck_id = :id)
+            WHERE id = :id
+            RETURNING rating_avg, rating_count
+        """),
+        {"id": deck_id},
+    ).fetchone()
+    db.commit()
+
+    return {
+        "rating_avg":   round(float(summary.rating_avg or 0), 2),
+        "rating_count": int(summary.rating_count or 0),
+        "my_rating":    body.rating,
+    }
+
+
+@router.get("/public/{deck_id}/ratings")
+async def list_deck_ratings(
+    deck_id: int,
+    page:  int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=50),
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    offset = (page - 1) * limit
+    rows = db.execute(
+        text("""
+            SELECT r.rating, r.comment, r.created_at,
+                   p.telegram_id AS rater_id, p.first_name AS rater_name, p.photo_url AS rater_photo
+            FROM deck_ratings r
+            JOIN profiles p ON p.telegram_id = r.user_id
+            WHERE r.deck_id = :id
+            ORDER BY r.created_at DESC
+            LIMIT :limit OFFSET :offset
+        """),
+        {"id": deck_id, "limit": limit, "offset": offset},
+    ).fetchall()
+    total = db.execute(text("SELECT COUNT(*) FROM deck_ratings WHERE deck_id = :id"), {"id": deck_id}).scalar()
+
+    return {
+        "ratings": [
+            {
+                "rating":     int(r.rating),
+                "comment":    r.comment,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "rater":      {"id": int(r.rater_id), "name": r.rater_name or "", "avatar_url": r.rater_photo},
+            }
+            for r in rows
+        ],
+        "total": int(total or 0),
+        "page":  page,
+        "limit": limit,
+    }
+
+
+# ── Reporting ─────────────────────────────────────────────────────────────────
+
+@router.post("/public/{deck_id}/report")
+async def report_public_deck(
+    deck_id: int,
+    body: ReportRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    if body.reason not in _REPORT_REASONS:
+        raise HTTPException(status_code=400, detail="Invalid reason")
+
+    deck = db.execute(text("SELECT id, title FROM flashcard_decks WHERE id = :id"), {"id": deck_id}).fetchone()
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    _check_rate_limit(db, "report", caller_id)
+
+    now = datetime.now(UTC)
+    db.execute(
+        text("""
+            INSERT INTO deck_reports (deck_id, reported_by, reason, details, created_at)
+            VALUES (:did, :uid, :reason, :details, :now)
+            ON CONFLICT (deck_id, reported_by) DO NOTHING
+        """),
+        {"did": deck_id, "uid": caller_id, "reason": body.reason, "details": body.details, "now": now},
+    )
+
+    pending_count = db.execute(
+        text("SELECT COUNT(DISTINCT reported_by) FROM deck_reports WHERE deck_id = :id AND status = 'pending'"),
+        {"id": deck_id},
+    ).scalar()
+
+    auto_hidden = False
+    if int(pending_count or 0) >= 3:
+        result = db.execute(
+            text("""
+                UPDATE flashcard_decks SET moderation_status = 'pending_review'
+                WHERE id = :id AND moderation_status = 'approved'
+                RETURNING id
+            """),
+            {"id": deck_id},
+        ).fetchone()
+        auto_hidden = result is not None
+
+    db.commit()
+
+    if auto_hidden:
+        await _notify_admins("deck_auto_hidden_reports", {
+            "deck_id": deck_id, "title": deck.title, "report_count": int(pending_count or 0),
+        })
+
+    return {"ok": True}
+
+
+# ── Sharing (public link resolution, no auth) ──────────────────────────────────
+
+@router.get("/share/{deck_id}")
+async def get_share_info(
+    deck_id: int,
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        text("""
+            SELECT d.title, d.card_count, d.category, d.badge_type, d.is_anonymous,
+                   p.first_name AS creator_name
+            FROM flashcard_decks d
+            LEFT JOIN profiles p ON p.telegram_id = d.user_id
+            WHERE d.id = :id AND d.is_public = TRUE AND d.moderation_status = 'approved'
+        """),
+        {"id": deck_id},
+    ).fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Deck not found")
+
+    preview_cards = db.execute(
+        text("SELECT front_text, back_text FROM flashcards WHERE deck_id = :id ORDER BY position, created_at LIMIT 3"),
+        {"id": deck_id},
+    ).fetchall()
+
+    is_official = (row.badge_type == "official")
+    creator_name = "Anonim" if (row.is_anonymous or is_official) else (row.creator_name or "Anonim")
+
+    return {
+        "title":         row.title,
+        "card_count":    int(row.card_count or 0),
+        "category":      row.category,
+        "creator_name":  creator_name,
+        "badge_type":    row.badge_type or "none",
+        "preview_cards": [{"front_text": c.front_text, "back_text": c.back_text} for c in preview_cards],
+    }
+
+
 # ── Serialisers ───────────────────────────────────────────────────────────────
+
+def _public_fields(r) -> dict:
+    """Public-deck-library fields shared by _deck_row and _deck_row_simple."""
+    return {
+        "is_anonymous":        bool(getattr(r, "is_anonymous", False)),
+        "category":            getattr(r, "category", None),
+        "badge_type":          getattr(r, "badge_type", None) or "none",
+        "is_featured":         bool(getattr(r, "is_featured", False)),
+        "is_verified":         bool(getattr(r, "is_verified", False)),
+        "clone_count":         int(getattr(r, "clone_count", 0) or 0),
+        "rating_avg":          round(float(getattr(r, "rating_avg", 0) or 0), 2),
+        "rating_count":        int(getattr(r, "rating_count", 0) or 0),
+        "moderation_status":   getattr(r, "moderation_status", None) or "approved",
+        "cloned_from_deck_id": getattr(r, "cloned_from_deck_id", None),
+        "published_at":        r.published_at.isoformat() if getattr(r, "published_at", None) else None,
+    }
+
 
 def _deck_row(r) -> dict:
     return {
@@ -775,6 +1487,7 @@ def _deck_row(r) -> dict:
         "due_count":      int(getattr(r, "due_count", 0) or 0),
         "created_at":     r.created_at.isoformat() if r.created_at else None,
         "updated_at":     r.updated_at.isoformat() if r.updated_at else None,
+        **_public_fields(r),
     }
 
 
@@ -793,6 +1506,38 @@ def _deck_row_simple(r) -> dict:
         "due_count":      0,
         "created_at":     r.created_at.isoformat() if r.created_at else None,
         "updated_at":     r.updated_at.isoformat() if r.updated_at else None,
+        **_public_fields(r),
+    }
+
+
+def _creator_info(r) -> Optional[dict]:
+    """None when the deck is anonymous or official (no personal profile to link to)."""
+    if r.is_anonymous or r.badge_type == "official":
+        return None
+    if r.creator_id is None:
+        return None
+    return {
+        "id":         int(r.creator_id),
+        "name":       r.creator_name or "",
+        "avatar_url": r.creator_photo,
+    }
+
+
+def _public_deck_item(r) -> dict:
+    """Item shape for /public listing endpoints (library card, featured row)."""
+    return {
+        "id":             int(r.id),
+        "title":          r.title,
+        "description":    r.description,
+        "card_count":     int(r.card_count or 0),
+        "category":       r.category,
+        "badge_type":     r.badge_type or "none",
+        "creator":        _creator_info(r),
+        "clone_count":    int(r.clone_count or 0),
+        "rating_avg":     round(float(r.rating_avg or 0), 2),
+        "rating_count":   int(r.rating_count or 0),
+        "is_featured":    bool(r.is_featured),
+        "already_cloned": bool(r.already_cloned),
     }
 
 
