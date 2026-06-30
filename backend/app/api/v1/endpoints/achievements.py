@@ -200,6 +200,15 @@ ACHIEVEMENTS = [
         "requirement_text": "5 ta aloqa o'rnatish",
         "required_progress": 5, "metric": "connections_count",
     },
+    # ── Public flashcard decks (step-14) ─────────────────────────────────────────
+    {
+        "id": 21, "key": "popular_creator",
+        "name": "Mashhur muallif",
+        "description": "Sizning to'plamingiz 100 marta nusxalandi!",
+        "tier": "gold", "sort_order": 21,
+        "requirement_text": "Birorta to'plamingiz 100 marta nusxalanishi",
+        "required_progress": 100, "metric": "max_deck_clones",
+    },
 ]
 
 _ACH_BY_KEY = {a["key"]: a for a in ACHIEVEMENTS}
@@ -271,6 +280,14 @@ async def list_achievements(
         ).fetchone()
         connections_count = int(row[0]) if row else 0
 
+    max_deck_clones = 0
+    if _table_exists(db, "flashcard_decks"):
+        row = db.execute(
+            text("SELECT COALESCE(MAX(clone_count), 0) FROM flashcard_decks WHERE user_id = :uid"),
+            {"uid": caller_id},
+        ).fetchone()
+        max_deck_clones = int(row[0]) if row else 0
+
     metrics = {
         "total_xp":          total_xp,
         "streak_days":       streak_days,
@@ -278,6 +295,7 @@ async def list_achievements(
         "courses_done":      courses_done,
         "lessons_done":      lessons_done,
         "connections_count": connections_count,
+        "max_deck_clones":   max_deck_clones,
     }
 
     # ── 2. Load already-granted badges ───────────────────────────────────────

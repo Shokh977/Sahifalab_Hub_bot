@@ -2,9 +2,12 @@
 xp_service.py — Server-side XP award via the add_xp() Postgres RPC.
 
 All XP mutations MUST go through this module.  The SQL function enforces:
-  DEEP_WORK : unlimited, caller sends round(minutes × 1.66)
-  QUIZ      : 25 XP per quiz, hard cap 100 XP per UTC day
-  COURSE    : 200 XP one-time per course (deduped by reference_id)
+  DEEP_WORK      : unlimited, caller sends round(minutes × 1.66)
+  QUIZ           : 25 XP per quiz, hard cap 100 XP per UTC day
+  COURSE         : 200 XP one-time per course (deduped by reference_id)
+  DECK_MILESTONE : unlimited like DEEP_WORK at the SQL level — dedup for the
+                   one-time clone-milestone bonus is handled by the caller
+                   (flashcard_decks.clone_milestones_awarded), not this RPC.
 """
 
 from typing import Optional, Literal
@@ -20,7 +23,7 @@ DEFAULT_QUIZ_XP:   int = 25
 DEFAULT_COURSE_XP: int = 200
 QUIZ_DAILY_CAP:    int = 100
 
-XpSource = Literal["DEEP_WORK", "QUIZ", "COURSE"]
+XpSource = Literal["DEEP_WORK", "QUIZ", "COURSE", "DECK_MILESTONE"]
 
 
 def focus_minutes_to_xp(minutes: float) -> int:

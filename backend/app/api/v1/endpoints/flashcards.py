@@ -314,6 +314,47 @@ async def _notify_admins(notif_type: str, meta: dict) -> None:
             logger.error(f"Failed to notify admin {chat_id} of {notif_type}: {e}")
 
 
+# ── Gamification tie-in (Part 8) ────────────────────────────────────────────────
+# One-time XP bonus + notification to the creator when their published deck
+# crosses a clone-count milestone. Never awarded for cloning someone else's deck.
+
+CLONE_MILESTONE_XP = {10: 50, 50: 200, 100: 500}
+
+async def _check_clone_milestones(db: Session, deck_id: int) -> None:
+    row = db.execute(
+        text("SELECT user_id, title, clone_count, clone_milestones_awarded FROM flashcard_decks WHERE id = :id"),
+        {"id": deck_id},
+    ).fetchone()
+    if not row:
+        return
+
+    clone_count = int(row.clone_count or 0)
+    awarded = set(row.clone_milestones_awarded or [])
+    milestone = next((m for m in sorted(CLONE_MILESTONE_XP) if clone_count >= m and m not in awarded), None)
+    if milestone is None:
+        return
+
+    bonus = CLONE_MILESTONE_XP[milestone]
+    try:
+        add_xp(db, user_id=int(row.user_id), source="DECK_MILESTONE", amount=bonus, reference_id=deck_id)
+        db.execute(
+            text("UPDATE flashcard_decks SET clone_milestones_awarded = array_append(clone_milestones_awarded, :m) WHERE id = :id"),
+            {"m": milestone, "id": deck_id},
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Clone-milestone XP award failed for deck {deck_id}: {e}")
+        return
+
+    try:
+        await send_notification(int(row.user_id), "deck_clone_milestone", category="SYSTEM", meta={
+            "deck_id": deck_id, "deck_title": row.title, "clone_count": milestone, "bonus_xp": bonus,
+        })
+    except Exception:
+        pass
+
+
 def _publish_error(code: str, details: str) -> HTTPException:
     return HTTPException(status_code=400, detail={
         "success": False,
@@ -1061,7 +1102,7 @@ async def list_public_decks(
 
     rows = db.execute(
         text(f"""
-            SELECT d.id, d.title, d.description, d.card_count, d.category, d.badge_type,
+            SELECT d.id, d.title, d.description, d.color, d.card_count, d.category, d.badge_type,
                    d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
                    p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
                    EXISTS (
@@ -1097,7 +1138,7 @@ async def list_featured_decks(
 ):
     rows = db.execute(
         text("""
-            SELECT d.id, d.title, d.description, d.card_count, d.category, d.badge_type,
+            SELECT d.id, d.title, d.description, d.color, d.card_count, d.category, d.badge_type,
                    d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
                    p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
                    EXISTS (
@@ -1123,7 +1164,7 @@ async def get_public_deck(
 ):
     row = db.execute(
         text("""
-            SELECT d.id, d.title, d.description, d.card_count, d.category, d.badge_type,
+            SELECT d.id, d.title, d.description, d.color, d.card_count, d.category, d.badge_type,
                    d.is_anonymous, d.is_featured, d.is_verified, d.clone_count, d.rating_avg,
                    d.rating_count, d.published_at,
                    p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
@@ -1265,6 +1306,9 @@ async def clone_public_deck(
 
     db.execute(text("UPDATE flashcard_decks SET clone_count = clone_count + 1 WHERE id = :id"), {"id": deck_id})
     db.commit()
+
+    # Creator-side milestone bonus only — cloning never grants XP to the cloner.
+    await _check_clone_milestones(db, deck_id)
 
     result = _deck_row_simple(new_deck)
     result["card_count"] = len(cards)
@@ -1529,6 +1573,7 @@ def _public_deck_item(r) -> dict:
         "id":             int(r.id),
         "title":          r.title,
         "description":    r.description,
+        "color":          r.color or "#F5A623",
         "card_count":     int(r.card_count or 0),
         "category":       r.category,
         "badge_type":     r.badge_type or "none",

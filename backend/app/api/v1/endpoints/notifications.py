@@ -302,6 +302,7 @@ _PUSH_TITLES: dict[str, str] = {
     "welcome":             "Sahifalab'ga xush kelibsiz",
     "teacher_approved":    "Ariza qabul qilindi 🎉",
     "course_granted":      "Kurs ochildi! 🎉",
+    "deck_clone_milestone": "To'plamingiz mashhur bo'lmoqda! 🎉",
 }
 
 # Body templates — {actor} is replaced with the actor's name at send time
@@ -327,6 +328,7 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "welcome":             "Ilm yo'liga xush kelibsiz! Sizga 100 XP sovg'a qilindi 🎁 Profilingizni to'ldiring.",
     "teacher_approved":    "Tabriklaymiz! Siz endi o'qituvchi sifatida tasdiqlangansiz. Kurs yaratishni boshlashingiz mumkin.",
     "course_granted":      "{course_title} kursi sizga ochildi. Hozir o'rganishni boshlang!",
+    "deck_clone_milestone": "🎉 Sizning \"{deck}\" to'plamingiz {n} marta nusxa olindi!",
 }
 
 # Keep _PUSH_BODIES as fallback alias
@@ -338,7 +340,10 @@ async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: ob
     actor = meta.get("actor_name") or meta.get("first_name") or "Kimdir"
     title = _PUSH_TITLES.get(notif_type, "SAHIFALAB")
     tpl   = _PUSH_BODY_TPL.get(notif_type, "Yangi bildirishnoma")
-    body  = tpl.format(actor=actor, course_title=meta.get("course_title", "Kurs"))
+    body  = tpl.format(
+        actor=actor, course_title=meta.get("course_title", "Kurs"),
+        deck=meta.get("deck_title", ""), n=meta.get("clone_count", ""),
+    )
 
     await asyncio.gather(
         _dispatch_web_push(user_id, notif_type, meta, title, body),

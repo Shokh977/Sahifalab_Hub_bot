@@ -683,6 +683,10 @@ async def startup_event():
                 conn.execute(_sa_text(
                     "CREATE INDEX IF NOT EXISTS idx_deck_audit_log_admin ON deck_audit_log(admin_telegram_id)"
                 ))
+                # 19. Deck clone-milestone XP dedup (068_deck_clone_milestones)
+                conn.execute(_sa_text(
+                    "ALTER TABLE flashcard_decks ADD COLUMN IF NOT EXISTS clone_milestones_awarded INTEGER[] NOT NULL DEFAULT '{}'"
+                ))
             logger.info("[STARTUP] auth_codes ready (create + migrate + smoke-test OK)")
         else:
             # SQLite fallback — use ORM create_all (no SSL overhead)
