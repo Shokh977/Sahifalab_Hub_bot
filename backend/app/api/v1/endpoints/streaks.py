@@ -131,6 +131,7 @@ async def get_streak_detail(
     # and the user must have freeze charges.
     missed_date = today - timedelta(days=1)
     freeze_dates_all: set = set(profile.freeze_used_dates or [])
+    # can_freeze: user has freezes AND the 1-day window is open
     can_freeze = (
         streak_days > 0
         and not is_active
@@ -138,6 +139,14 @@ async def get_streak_detail(
         and last_date == today - timedelta(days=2)
         and missed_date not in freeze_dates_all
         and freeze_count > 0
+    )
+    # can_freeze_if_purchased: window is open regardless of current freeze balance
+    can_freeze_if_purchased = (
+        streak_days > 0
+        and not is_active
+        and last_date is not None
+        and last_date == today - timedelta(days=2)
+        and missed_date not in freeze_dates_all
     )
 
     # Study days this week (Mon–Sun) — studied days + frozen days
@@ -211,9 +220,10 @@ async def get_streak_detail(
     calendar = _build_calendar(db, caller_id, today, days=days, daily_goal=daily_goal)
 
     return {
-        "streak_days":    streak_days,
-        "is_active":      is_active,
-        "can_freeze":     can_freeze,
+        "streak_days":             streak_days,
+        "is_active":               is_active,
+        "can_freeze":              can_freeze,
+        "can_freeze_if_purchased": can_freeze_if_purchased,
         "longest_streak": longest_streak,
         "week_days":      week_days,
         "freeze_count":   freeze_count,
