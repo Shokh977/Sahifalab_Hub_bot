@@ -79,7 +79,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks'
 
 interface AdminAnnouncement {
   id:         number
@@ -374,6 +374,63 @@ const AdminPage: React.FC = () => {
   const [annImgUploading, setAnnImgUploading] = useState(false)
   const [annImgPercent, setAnnImgPercent] = useState(0)
   const [coursesMsg, setCoursesMsg] = useState('')
+
+  // ── Decks moderation state ────────────────────────────────────────────────
+  const [deckSubTab, setDeckSubTab] = useState<'reports' | 'pending' | 'official'>('reports')
+  const [deckReports, setDeckReports] = useState<any[]>([])
+  const [deckPending, setDeckPending] = useState<any[]>([])
+  const [deckOfficial, setDeckOfficial] = useState<any[]>([])
+  const [deckLoading, setDeckLoading] = useState(false)
+  const [deckReviewId, setDeckReviewId] = useState<string | null>(null)
+  const [deckReviewData, setDeckReviewData] = useState<any>(null)
+  const [deckReviewLoading, setDeckReviewLoading] = useState(false)
+  const [deckBusy, setDeckBusy] = useState(false)
+  const [deckError, setDeckError] = useState('')
+  const [deckSearch, setDeckSearch] = useState('')
+  const [deckCreateOpen, setDeckCreateOpen] = useState(false)
+  const [deckNewTitle, setDeckNewTitle] = useState('')
+  const [deckNewDesc, setDeckNewDesc] = useState('')
+  const [deckNewCategory, setDeckNewCategory] = useState('english')
+  const [deckNewCards, setDeckNewCards] = useState('')
+  const [deckCreating, setDeckCreating] = useState(false)
+
+  // ── Deck moderation loaders ───────────────────────────────────────────────
+  const loadDeckData = useCallback(async (sub: 'reports' | 'pending' | 'official', search = '') => {
+    setDeckLoading(true)
+    try {
+      if (sub === 'reports') {
+        const res = await apiService.client.get('/api/admin/decks/reports?limit=50')
+        setDeckReports(res.data?.decks ?? [])
+      } else if (sub === 'pending') {
+        const res = await apiService.client.get('/api/admin/decks/pending-review?limit=50')
+        setDeckPending(res.data?.decks ?? [])
+      } else {
+        const q = search ? `&search=${encodeURIComponent(search)}` : ''
+        const res = await apiService.client.get(`/api/admin/decks/approved?limit=50${q}`)
+        setDeckOfficial(res.data?.decks ?? [])
+      }
+    } catch (err: any) {
+      console.error('[Admin] loadDeckData:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setDeckLoading(false)
+    }
+  }, [])
+
+  const openDeckReview = useCallback(async (id: string) => {
+    setDeckReviewId(id)
+    setDeckReviewLoading(true)
+    setDeckReviewData(null)
+    setDeckError('')
+    try {
+      const res = await apiService.client.get(`/api/admin/decks/${id}`)
+      setDeckReviewData(res.data)
+    } catch (err: any) {
+      console.error('[Admin] openDeckReview:', err)
+      setDeckError(err?.response?.data?.detail || err?.message || 'Xatolik')
+    } finally {
+      setDeckReviewLoading(false)
+    }
+  }, [])
 
   // ── Auto-login from Telegram WebApp ────────────────────────────────────
   useEffect(() => {
@@ -885,7 +942,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'users') searchUsers()
     if (activeTab === 'courses') loadAdminCourses()
     if (activeTab === 'announcements') loadAnnouncements()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements])
+    if (activeTab === 'decks') loadDeckData(deckSubTab)
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -1284,6 +1342,7 @@ const AdminPage: React.FC = () => {
             { id: 'users', label: '👤 Foydalanuvchilar' },
             { id: 'courses', label: '🎬 Kurslar' },
             { id: 'announcements', label: '📢 Xabarlar' },
+            { id: 'decks', label: '🎴 To\'plamlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -3275,7 +3334,383 @@ const AdminPage: React.FC = () => {
           </div>
         )}
 
+        {/* ── Decks Tab ──────────────────────────────────────────────────── */}
+        {activeTab === 'decks' && (() => {
+          const DECK_CATS: Record<string, string> = {
+            english: 'Ingliz tili', ielts: 'IELTS/CEFR', business: 'Biznes',
+            arabic: 'Arab tili', programming: 'Dasturlash', medical: 'Tibbiyot', other: 'Boshqa',
+          }
+          const BADGE_LABELS: Record<string, string> = {
+            none: "Yo'q", official: 'Rasmiy', verified_creator: 'Tasdiqlangan ijodkor',
+          }
+          const REASON_LABELS: Record<string, string> = {
+            spam: 'Spam', errors: 'Xatolar', inappropriate: 'Nomaqbul',
+            offensive: 'Haqoratli', copyright: 'Mualliflik huquqi', other: 'Boshqa',
+          }
+
+          const currentList = deckSubTab === 'reports' ? deckReports
+            : deckSubTab === 'pending' ? deckPending
+            : deckOfficial
+
+          async function deckAct(path: string, method: 'POST' | 'PATCH', body?: any) {
+            if (!deckReviewId) return
+            setDeckBusy(true); setDeckError('')
+            try {
+              await apiService.client.request({ method, url: `/api/admin/decks/${deckReviewId}${path}`, data: body })
+              const res = await apiService.client.get(`/api/admin/decks/${deckReviewId}`)
+              setDeckReviewData(res.data)
+              loadDeckData(deckSubTab, deckSearch)
+            } catch (err: any) {
+              setDeckError(err?.response?.data?.detail || err?.message || 'Xatolik')
+            } finally {
+              setDeckBusy(false)
+            }
+          }
+
+          async function createOfficialDeck() {
+            if (!deckNewTitle.trim() || !deckNewCards.trim()) return
+            const cards = deckNewCards.trim().split('\n').map(l => {
+              const [f, ...rest] = l.split('|')
+              return { front_text: f?.trim() ?? '', back_text: rest.join('|').trim() }
+            }).filter(c => c.front_text && c.back_text)
+            if (cards.length < 10) { setDeckError('Kamida 10 ta karta kerak (front|back formatida)'); return }
+            setDeckCreating(true); setDeckError('')
+            try {
+              await apiService.client.post('/api/admin/decks/official', {
+                title: deckNewTitle.trim(), description: deckNewDesc.trim() || null,
+                category: deckNewCategory, cards,
+              })
+              setDeckCreateOpen(false)
+              setDeckNewTitle(''); setDeckNewDesc(''); setDeckNewCards(''); setDeckNewCategory('english')
+              loadDeckData('official', deckSearch)
+              setDeckSubTab('official')
+            } catch (err: any) {
+              setDeckError(err?.response?.data?.detail || err?.message || 'Xatolik')
+            } finally {
+              setDeckCreating(false)
+            }
+          }
+
+          return (
+            <div className="space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">🎴 Ommaviy to'plamlar</h2>
+                {deckSubTab === 'official' && (
+                  <button
+                    onClick={() => setDeckCreateOpen(true)}
+                    className="px-3 py-1.5 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 text-white rounded-xl transition-colors"
+                  >
+                    + Rasmiy to'plam
+                  </button>
+                )}
+              </div>
+
+              {/* Sub-tabs */}
+              <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                {([
+                  { key: 'reports',  label: 'Shikoyatlar',     emoji: '🚨' },
+                  { key: 'pending',  label: 'Tekshiruv',       emoji: '⏳' },
+                  { key: 'official', label: "Rasmiy / Barchasi", emoji: '✅' },
+                ] as const).map(s => (
+                  <button
+                    key={s.key}
+                    onClick={() => { setDeckSubTab(s.key); loadDeckData(s.key, deckSearch) }}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      deckSubTab === s.key
+                        ? 'bg-white dark:bg-gray-700 text-sahifa-600 dark:text-sahifa-400 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                    }`}
+                  >
+                    {s.emoji} {s.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search (official tab) */}
+              {deckSubTab === 'official' && (
+                <input
+                  value={deckSearch}
+                  onChange={e => setDeckSearch(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && loadDeckData('official', deckSearch)}
+                  placeholder="To'plam nomi bo'yicha qidirish…"
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                />
+              )}
+
+              {/* Error */}
+              {deckError && (
+                <div className="text-red-500 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-xl px-3 py-2">
+                  {deckError}
+                </div>
+              )}
+
+              {/* Loading */}
+              {deckLoading && (
+                <div className="text-center py-10 text-gray-400 text-sm">Yuklanmoqda…</div>
+              )}
+
+              {/* Empty */}
+              {!deckLoading && currentList.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
+                  <span className="text-4xl">🎴</span>
+                  <p className="text-sm">
+                    {deckSubTab === 'reports' ? 'Shikoyat yo\'q' :
+                     deckSubTab === 'pending' ? 'Tekshiruv kutayotgan to\'plam yo\'q' :
+                     'To\'plam topilmadi'}
+                  </p>
+                </div>
+              )}
+
+              {/* List */}
+              {!deckLoading && currentList.map((deck: any) => (
+                <div
+                  key={deck.id}
+                  className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 space-y-2 shadow-sm"
+                >
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{deck.title}</p>
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mt-0.5">
+                        {deck.creator ? (deck.creator.name || `#${deck.creator.id}`) : 'Anonim'} ·{' '}
+                        {DECK_CATS[deck.category] ?? deck.category ?? '—'} · {deck.card_count ?? '?'} karta
+                      </p>
+                    </div>
+                    {deck.badge_type && deck.badge_type !== 'none' && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-600 dark:text-sahifa-400 font-medium flex-shrink-0">
+                        {BADGE_LABELS[deck.badge_type] ?? deck.badge_type}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Report count (reports tab) */}
+                  {deckSubTab === 'reports' && deck.report_count > 0 && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-red-500 text-xs font-semibold">{deck.report_count} shikoyat</span>
+                      {(deck.reasons ?? []).map((r: any) => (
+                        <span key={r.reason} className="text-xs px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20 text-red-500">
+                          {REASON_LABELS[r.reason] ?? r.reason} ×{r.count}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Stats */}
+                  <div className="flex gap-3 text-xs text-gray-400 dark:text-gray-500">
+                    <span>📋 {deck.clone_count ?? 0} nusxa</span>
+                    {(deck.rating_count ?? 0) > 0 && <span>⭐ {(deck.rating_avg ?? 0).toFixed(1)} ({deck.rating_count})</span>}
+                    {deck.is_featured && <span className="text-yellow-500">⭐ Tanlangan</span>}
+                    <span className={`ml-auto ${
+                      deck.moderation_status === 'approved' ? 'text-green-500' :
+                      deck.moderation_status === 'removed'  ? 'text-red-500' : 'text-yellow-500'
+                    }`}>{deck.moderation_status ?? '—'}</span>
+                  </div>
+
+                  <button
+                    onClick={() => openDeckReview(deck.id)}
+                    className="w-full py-1.5 text-xs font-semibold bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 rounded-xl transition-colors"
+                  >
+                    Ko'rib chiqish →
+                  </button>
+                </div>
+              ))}
+
+              {/* Create official deck form */}
+              {deckCreateOpen && (
+                <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 space-y-3 shadow-sm">
+                  <h3 className="font-bold text-gray-900 dark:text-white text-sm">Yangi rasmiy to'plam</h3>
+                  <input value={deckNewTitle} onChange={e => setDeckNewTitle(e.target.value)}
+                    placeholder="Sarlavha *" maxLength={100}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                  <input value={deckNewDesc} onChange={e => setDeckNewDesc(e.target.value)}
+                    placeholder="Tavsif (ixtiyoriy)"
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500" />
+                  <select value={deckNewCategory} onChange={e => setDeckNewCategory(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none">
+                    {Object.entries(DECK_CATS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                  <div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Kartalar — har qatorda: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">old so'z|tarjima</code> (kamida 10 ta)</p>
+                    <textarea value={deckNewCards} onChange={e => setDeckNewCards(e.target.value)}
+                      rows={8} placeholder={'apple|olma\nbook|kitob\n...'}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 font-mono resize-y" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      {deckNewCards.trim() ? deckNewCards.trim().split('\n').filter(l => l.includes('|')).length : 0} ta karta
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={createOfficialDeck} disabled={deckCreating || !deckNewTitle.trim() || !deckNewCards.trim()}
+                      className="flex-1 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white rounded-xl transition-colors">
+                      {deckCreating ? 'Yaratilmoqda…' : 'Yaratish'}
+                    </button>
+                    <button onClick={() => { setDeckCreateOpen(false); setDeckError('') }}
+                      className="px-4 py-2 text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors">
+                      Bekor
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
+
       </div>
+
+      {/* ── Deck Review Drawer ──────────────────────────────────────── */}
+      {deckReviewId && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div className="absolute inset-0 bg-black/50" onClick={() => { setDeckReviewId(null); setDeckReviewData(null); setDeckError('') }} />
+          <div className="relative bg-white dark:bg-gray-900 rounded-t-3xl sm:rounded-3xl w-full max-w-lg max-h-[92vh] overflow-y-auto shadow-2xl">
+            <div className="sticky top-0 bg-white dark:bg-gray-900 px-5 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between z-10">
+              <h3 className="font-bold text-gray-900 dark:text-white text-base">Ko'rib chiqish</h3>
+              <button onClick={() => { setDeckReviewId(null); setDeckReviewData(null); setDeckError('') }}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors text-lg">
+                ✕
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              {deckReviewLoading && <div className="text-center py-10 text-gray-400 text-sm">Yuklanmoqda…</div>}
+              {deckError && (
+                <div className="text-red-500 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-xl px-3 py-2">
+                  {deckError}
+                </div>
+              )}
+              {deckReviewData && (() => {
+                const d = deckReviewData
+                const DECK_CATS: Record<string, string> = {
+                  english: 'Ingliz tili', ielts: 'IELTS/CEFR', business: 'Biznes',
+                  arabic: 'Arab tili', programming: 'Dasturlash', medical: 'Tibbiyot', other: 'Boshqa',
+                }
+                const BADGE_LABELS: Record<string, string> = {
+                  none: "Yo'q", official: 'Rasmiy', verified_creator: 'Tasdiqlangan',
+                }
+                const REASON_LABELS: Record<string, string> = {
+                  spam: 'Spam', errors: 'Xatolar', inappropriate: 'Nomaqbul',
+                  offensive: 'Haqoratli', copyright: 'Mualliflik huquqi', other: 'Boshqa',
+                }
+                return (
+                  <>
+                    {/* Deck info */}
+                    <div>
+                      <p className="font-bold text-gray-900 dark:text-white text-base">{d.title}</p>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+                        {d.creator ? (d.creator.name || `#${d.creator.id}`) : 'Anonim'} ·{' '}
+                        {DECK_CATS[d.category] ?? d.category} · {d.cards?.length ?? 0} karta
+                      </p>
+                    </div>
+
+                    <div className="flex gap-3 text-xs text-gray-400">
+                      <span>📋 {d.clone_count ?? 0} nusxa</span>
+                      {(d.rating_count ?? 0) > 0 && <span>⭐ {(d.rating_avg ?? 0).toFixed(1)} ({d.rating_count})</span>}
+                      <span className={`ml-auto font-medium ${
+                        d.moderation_status === 'approved' ? 'text-green-500' :
+                        d.moderation_status === 'removed'  ? 'text-red-500' : 'text-yellow-500'
+                      }`}>{d.moderation_status}</span>
+                    </div>
+
+                    {d.removed_reason && (
+                      <p className="text-red-400 text-xs bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-xl px-3 py-2">
+                        O'chirish sababi: {d.removed_reason}
+                      </p>
+                    )}
+
+                    {/* Controls */}
+                    <div className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-3 space-y-3">
+                      {/* Verified checkbox */}
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" checked={!!d.is_verified} disabled={deckBusy}
+                          onChange={() => deckAct('/verify', 'PATCH', { is_verified: !d.is_verified })}
+                          className="w-4 h-4 accent-sahifa-600" />
+                        <span className="text-gray-700 dark:text-gray-300 text-sm">Tekshirildi (kartalar aniqligi tasdiqlangan)</span>
+                      </label>
+
+                      {/* Badge */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-gray-500 dark:text-gray-400 text-xs">Belgi:</span>
+                        {Object.entries(BADGE_LABELS).map(([bt, bl]) => (
+                          <button key={bt} disabled={deckBusy || (bt === 'official' && !d.is_verified)}
+                            onClick={() => deckAct('/badge', 'PATCH', { badge_type: bt })}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
+                              d.badge_type === bt ? 'bg-sahifa-500 text-white' : 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600'
+                            }`}
+                          >{bl}</button>
+                        ))}
+                      </div>
+
+                      {/* Featured */}
+                      <label className="flex items-center gap-2.5 cursor-pointer">
+                        <input type="checkbox" checked={!!d.is_featured} disabled={deckBusy || d.moderation_status !== 'approved'}
+                          onChange={() => deckAct('/featured', 'PATCH', { is_featured: !d.is_featured })}
+                          className="w-4 h-4 accent-yellow-500" />
+                        <span className="text-gray-700 dark:text-gray-300 text-sm">⭐ Tanlangan qatorda ko'rsatish</span>
+                      </label>
+                    </div>
+
+                    {/* Reports */}
+                    {d.reports?.length > 0 && (
+                      <div>
+                        <p className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase tracking-wide mb-2">Shikoyatlar ({d.reports.length})</p>
+                        <div className="space-y-2">
+                          {d.reports.map((r: any) => (
+                            <div key={r.id} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2 text-sm">
+                              <div className="flex justify-between text-gray-700 dark:text-gray-300">
+                                <span className="font-medium">{REASON_LABELS[r.reason] ?? r.reason}</span>
+                                <span className="text-gray-400 text-xs">{r.created_at ? new Date(r.created_at).toLocaleDateString('uz-UZ') : ''}</span>
+                              </div>
+                              {r.details && <p className="text-gray-400 text-xs mt-0.5 italic">"{r.details}"</p>}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Cards preview */}
+                    <div>
+                      <p className="text-gray-500 dark:text-gray-400 text-xs font-semibold uppercase tracking-wide mb-2">
+                        Kartalar ({d.cards?.length ?? 0})
+                      </p>
+                      <div className="space-y-1 max-h-52 overflow-y-auto">
+                        {(d.cards ?? []).map((c: any, i: number) => (
+                          <div key={c.id ?? i} className="bg-gray-50 dark:bg-gray-800 rounded-xl px-3 py-2 text-sm flex gap-3">
+                            <span className="text-gray-900 dark:text-white flex-1 min-w-0 truncate">{c.front_text}</span>
+                            <span className="text-gray-400 dark:text-gray-500 flex-1 min-w-0 truncate">{c.back_text}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action buttons */}
+                    <div className="flex gap-2 flex-wrap pt-1">
+                      {d.moderation_status !== 'approved' && (
+                        <button onClick={() => deckAct('/approve', 'POST')} disabled={deckBusy}
+                          className="flex-1 py-2.5 rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800/40 text-green-600 dark:text-green-400 text-sm font-semibold disabled:opacity-50 min-w-[130px] transition-colors">
+                          ✓ Tasdiqlash
+                        </button>
+                      )}
+                      <button onClick={() => {
+                        const reason = prompt("O'chirish sababi (ixtiyoriy):")
+                        deckAct('/remove', 'POST', { reason: reason ?? '' })
+                      }} disabled={deckBusy}
+                        className="flex-1 py-2.5 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 text-sm font-semibold disabled:opacity-50 min-w-[130px] transition-colors">
+                        ✕ O'chirish
+                      </button>
+                      {d.creator && d.creator.can_publish !== false && (
+                        <button onClick={() => deckAct('/ban-creator', 'POST')} disabled={deckBusy}
+                          className="flex-1 py-2.5 rounded-xl bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-sm font-semibold disabled:opacity-50 min-w-[130px] transition-colors">
+                          🚫 Muallifni bloklash
+                        </button>
+                      )}
+                    </div>
+
+                    {deckBusy && <div className="text-center text-sm text-gray-400">Bajarilmoqda…</div>}
+                  </>
+                )
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── User Detail Drawer ─────────────────────────────────────── */}
       {openUserDetail && (() => {
