@@ -5,6 +5,7 @@ import httpx
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Header
 from pydantic import BaseModel
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.db.session import get_db
