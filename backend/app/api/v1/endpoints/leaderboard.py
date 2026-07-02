@@ -38,11 +38,10 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 
 def _since(period: str) -> str:
     if period == "week":
-        # Rolling 7-day window — avoids the ISO-week/month-boundary mismatch where
-        # date_trunc('week') can start in the previous month (e.g. Monday June 30
-        # when we're already in July), causing users active only on those days to
-        # appear in the weekly list but vanish from the monthly one.
-        return "NOW() - INTERVAL '7 days'"
+        # Monday 00:00 Tashkent time (UTC+5).  date_trunc('week') gives ISO week
+        # start (Monday), converted to Tashkent so users who studied on Monday at
+        # e.g. 01:00 local time aren't missed due to a UTC-based cutoff.
+        return "date_trunc('week', NOW() AT TIME ZONE 'Asia/Tashkent') AT TIME ZONE 'Asia/Tashkent'"
     # Month start in Tashkent local time (UTC+5).  Pure UTC truncation causes XP
     # earned on the 1st before 05:00 Tashkent to fall into the previous month.
     return "date_trunc('month', NOW() AT TIME ZONE 'Asia/Tashkent') AT TIME ZONE 'Asia/Tashkent'"
