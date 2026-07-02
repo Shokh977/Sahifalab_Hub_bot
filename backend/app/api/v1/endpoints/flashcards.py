@@ -1110,12 +1110,12 @@ async def list_public_decks(
             SELECT d.id, d.title, d.description, d.color, d.card_count, d.category, d.badge_type,
                    d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
                    p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
-                   EXISTS (
-                       SELECT 1 FROM deck_clones dc
-                       WHERE dc.original_deck_id = d.id AND dc.cloned_by = :caller
-                   ) AS already_cloned
+                   (dc_check.original_deck_id IS NOT NULL) AS already_cloned,
+                   COUNT(*) OVER() AS total_count
             FROM flashcard_decks d
             LEFT JOIN profiles p ON p.telegram_id = d.user_id
+            LEFT JOIN deck_clones dc_check
+                   ON dc_check.original_deck_id = d.id AND dc_check.cloned_by = :caller
             WHERE {where}
             ORDER BY {order}
             LIMIT :limit OFFSET :offset
@@ -1123,14 +1123,9 @@ async def list_public_decks(
         params,
     ).fetchall()
 
-    total = db.execute(
-        text(f"SELECT COUNT(*) FROM flashcard_decks d WHERE {where}"),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
-    ).scalar()
-
     return {
         "decks": [_public_deck_item(r) for r in rows],
-        "total": int(total or 0),
+        "total": int(rows[0].total_count) if rows else 0,
         "page":  page,
         "limit": limit,
     }
@@ -1146,12 +1141,11 @@ async def list_featured_decks(
             SELECT d.id, d.title, d.description, d.color, d.card_count, d.category, d.badge_type,
                    d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
                    p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
-                   EXISTS (
-                       SELECT 1 FROM deck_clones dc
-                       WHERE dc.original_deck_id = d.id AND dc.cloned_by = :caller
-                   ) AS already_cloned
+                   (dc_check.original_deck_id IS NOT NULL) AS already_cloned
             FROM flashcard_decks d
             LEFT JOIN profiles p ON p.telegram_id = d.user_id
+            LEFT JOIN deck_clones dc_check
+                   ON dc_check.original_deck_id = d.id AND dc_check.cloned_by = :caller
             WHERE d.is_public = TRUE AND d.moderation_status = 'approved' AND d.is_featured = TRUE
             ORDER BY d.published_at DESC NULLS LAST
             LIMIT 10
