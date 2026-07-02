@@ -57,6 +57,10 @@ export interface ProfileHeaderCardProps {
   followLoading?: boolean
   /** Open messenger */
   onMessage?: () => void
+  /** Open followers list modal */
+  onFollowersClick?: () => void
+  /** Open following list modal */
+  onFollowingClick?: () => void
   /** Navigate to /kabinet for editing (from PublicProfile) */
   onEditProfile?: () => void
   /** Upload avatar photo (Kabinet) */
@@ -86,6 +90,8 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   onFollow,
   followLoading = false,
   onMessage,
+  onFollowersClick,
+  onFollowingClick,
   onEditProfile,
   onAvatarUpload,
   avatarUploading = false,
@@ -194,16 +200,36 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
           {/* ── Stats row ────────────────────────────────────────────────── */}
           <div className="flex items-center justify-center sm:justify-start gap-5 mt-4 flex-wrap">
             {profile.followers_count !== undefined && (
-              <div className="text-center">
-                <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
-                <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuvchi</span>
-              </div>
+              onFollowersClick ? (
+                <button
+                  onClick={onFollowersClick}
+                  className="text-center group hover:opacity-70 transition-opacity active:scale-95"
+                >
+                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
+                  <span className="text-xs text-gray-400 dark:text-white/40 group-hover:text-sahifa-500 dark:group-hover:text-sahifa-400 transition-colors">Kuzatuvchi</span>
+                </button>
+              ) : (
+                <div className="text-center">
+                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
+                  <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuvchi</span>
+                </div>
+              )
             )}
             {profile.following_count !== undefined && (
-              <div className="text-center">
-                <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
-                <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuv</span>
-              </div>
+              onFollowingClick ? (
+                <button
+                  onClick={onFollowingClick}
+                  className="text-center group hover:opacity-70 transition-opacity active:scale-95"
+                >
+                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
+                  <span className="text-xs text-gray-400 dark:text-white/40 group-hover:text-sahifa-500 dark:group-hover:text-sahifa-400 transition-colors">Kuzatuv</span>
+                </button>
+              ) : (
+                <div className="text-center">
+                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
+                  <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuv</span>
+                </div>
+              )
             )}
             <div className="text-center">
               <span className="block text-lg font-bold text-gray-900 dark:text-white">{postCount}</span>

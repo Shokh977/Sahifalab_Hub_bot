@@ -101,7 +101,7 @@ def _parse_local_date(local_date: Optional[str]) -> Date:
 
 
 class CompleteSessionRequest(BaseModel):
-    minutes: int = Field(..., ge=1, le=480)
+    minutes: int = Field(..., ge=1, le=1440)  # 24 h max per submit
     local_date: Optional[str] = None   # YYYY-MM-DD from device calendar
 
 

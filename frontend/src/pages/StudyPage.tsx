@@ -363,12 +363,17 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
   // Session-local display counter (minutes of focus this session)
   const [sessionXP, setSessionXP]     = useState(0)
 
-  // Per-second tick during focus: accumulates addFocusSeconds(1) so XP and
-  // daily counters are always up-to-date even across pauses and page navigation.
+  // Focus time tracking via absolute timestamps — immune to browser throttling
+  // in background tabs. Records the real wall-clock elapsed seconds when focus
+  // pauses, ends, or transitions to a break, instead of counting 1-second ticks
+  // (which browsers cap to ≤1/min when the tab is hidden).
   useEffect(() => {
     if (!timer.isRunning || timer.isBreak) return
-    const iv = setInterval(() => addFocusSeconds(1), 1_000)
-    return () => clearInterval(iv)
+    const startedAt = Date.now()
+    return () => {
+      const elapsed = Math.round((Date.now() - startedAt) / 1000)
+      if (elapsed > 0) addFocusSeconds(elapsed)
+    }
   }, [timer.isRunning, timer.isBreak, addFocusSeconds])
 
   // Session XP display: +1 visible point per minute of focus
@@ -378,7 +383,9 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     return () => clearInterval(iv)
   }, [timer.isRunning, timer.isBreak])
 
-  // Sync to server when focus pauses / timer completes / component unmounts
+  // Sync to server when focus pauses / timer completes / component unmounts.
+  // Also catches focus→break transitions (skip): React batches pause()+startBreak()
+  // into one render so isRunning never passes through false — catch via isBreak flip.
   const prevIsRunningRef = useRef(timer.isRunning)
   const prevIsBreakRef   = useRef(timer.isBreak)
   useEffect(() => {
@@ -386,7 +393,7 @@ export const StudyTimer: React.FC<StudyTimerProps> = ({
     const wasBreak   = prevIsBreakRef.current
     prevIsRunningRef.current = timer.isRunning
     prevIsBreakRef.current   = timer.isBreak
-    if (wasRunning && !timer.isRunning && !wasBreak) {
+    if (wasRunning && !wasBreak && (!timer.isRunning || timer.isBreak)) {
       flushFocusSeconds()
     }
   }, [timer.isRunning, timer.isBreak, flushFocusSeconds])

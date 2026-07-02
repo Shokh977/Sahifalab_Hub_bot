@@ -28,6 +28,7 @@ import api from '../services/apiService'
 import apiService from '../services/apiService'
 import { getRankInfo } from '../components/social/UserIdentity'
 import ProfileHeaderCard from '../components/ProfileHeaderCard'
+import FollowListModal from '../components/social/FollowListModal'
 import PostCard from '../components/social/PostCard'
 import CourseCard from '../components/CourseCard'
 import type { PostData } from '../components/social/PostCard'
@@ -98,6 +99,9 @@ const PublicProfile: React.FC = () => {
 
   // Guest-follow modal state
   const [showFollowAuthModal, setShowFollowAuthModal] = useState(false)
+
+  // Followers / following list modal
+  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null)
 
   // ── Determine available tabs ────────────────────────────────────────────
   const tabs = useMemo(() => {
@@ -325,8 +329,22 @@ const PublicProfile: React.FC = () => {
           onFollow={handleFollow}
           followLoading={followLoading}
           onMessage={handleMessage}
+          onFollowersClick={() => setFollowListType('followers')}
+          onFollowingClick={() => setFollowListType('following')}
           onEditProfile={() => navigate('/cabinet')}
         />
+
+        {/* ── Followers / Following modal ───────────────────────────────── */}
+        {targetId && (
+          <FollowListModal
+            isOpen={followListType !== null}
+            onClose={() => setFollowListType(null)}
+            userId={targetId}
+            type={followListType ?? 'followers'}
+            count={followListType === 'followers' ? (profile.followers_count ?? 0) : (profile.following_count ?? 0)}
+            currentUserId={myId}
+          />
+        )}
 
         {/* ── Tab bar ──────────────────────────────────────────────────────── */}
         <div className="mt-5 flex gap-1 p-1 rounded-xl bg-gray-100/80 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06]">
