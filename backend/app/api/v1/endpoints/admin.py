@@ -1590,6 +1590,91 @@ async def admin_stats_revenue(
     }
 
 
+@router.get("/stats/features")
+async def admin_feature_stats(
+    period: str = Query("7d", pattern="^(7d|30d|all)$"),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Feature usage breakdown — sessions and unique users per feature for the given period."""
+    await verify_admin(authorization=authorization, db=db)
+
+    interval = {"7d": "7 days", "30d": "30 days"}.get(period)
+
+    def ts_filter(col: str) -> str:
+        return f"AND {col} >= NOW() - INTERVAL '{interval}'" if interval else ""
+
+    def date_filter(col: str) -> str:
+        return f"AND {col} >= CURRENT_DATE - INTERVAL '{interval}'" if interval else ""
+
+    def _run(sql: str) -> tuple[int, int]:
+        row = db.execute(text(sql)).fetchone()
+        return (int(row[0] or 0), int(row[1] or 0)) if row else (0, 0)
+
+    focus_cnt, focus_users = _run(
+        f"SELECT COUNT(*), COUNT(DISTINCT user_id) FROM focus_sessions WHERE 1=1 {date_filter('session_date')}"
+    )
+    cards_cnt, cards_users = _run(
+        f"SELECT COUNT(*), COUNT(DISTINCT user_id) FROM flashcard_reviews WHERE 1=1 {ts_filter('reviewed_at')}"
+    )
+    quiz_cnt, quiz_users = _run(
+        f"SELECT COUNT(*), COUNT(DISTINCT telegram_id) FROM user_quiz_completion WHERE 1=1 {ts_filter('completed_at')}"
+    )
+    books_cnt, books_users = _run(
+        f"SELECT COUNT(*), COUNT(DISTINCT telegram_id) FROM book_read_progress WHERE 1=1 {ts_filter('updated_at')}"
+    )
+    plan_cnt, plan_users = _run(
+        f"SELECT COUNT(*), COUNT(DISTINCT user_id) FROM planner_tasks WHERE status='done' {ts_filter('updated_at')}"
+    )
+
+    features = sorted([
+        {"key": "focus",      "label": "Taymer",        "emoji": "⏱️", "sessions": focus_cnt, "unique_users": focus_users},
+        {"key": "flashcards", "label": "Flesh kartalar", "emoji": "🃏", "sessions": cards_cnt, "unique_users": cards_users},
+        {"key": "quiz",       "label": "Testlar",        "emoji": "📝", "sessions": quiz_cnt,  "unique_users": quiz_users},
+        {"key": "books",      "label": "Kitoblar",       "emoji": "📚", "sessions": books_cnt, "unique_users": books_users},
+        {"key": "planner",    "label": "Reja",           "emoji": "📋", "sessions": plan_cnt,  "unique_users": plan_users},
+    ], key=lambda f: f["sessions"], reverse=True)
+
+    # Daily trend for last 7 or 30 days
+    trend_interval = "30 days" if period == "30d" else "7 days"
+    daily_rows = db.execute(text(f"""
+        SELECT d.day::date AS day,
+               COALESCE(f.cnt,  0) AS focus,
+               COALESCE(fl.cnt, 0) AS flashcards,
+               COALESCE(q.cnt,  0) AS quiz,
+               COALESCE(b.cnt,  0) AS books,
+               COALESCE(p.cnt,  0) AS planner
+        FROM generate_series(
+            CURRENT_DATE - INTERVAL '{trend_interval}',
+            CURRENT_DATE, '1 day'
+        ) AS d(day)
+        LEFT JOIN (SELECT session_date AS day, COUNT(*) AS cnt FROM focus_sessions
+                   WHERE session_date >= CURRENT_DATE - INTERVAL '{trend_interval}'
+                   GROUP BY session_date) f  ON f.day  = d.day::date
+        LEFT JOIN (SELECT DATE(reviewed_at) AS day, COUNT(*) AS cnt FROM flashcard_reviews
+                   WHERE reviewed_at >= NOW() - INTERVAL '{trend_interval}'
+                   GROUP BY DATE(reviewed_at)) fl ON fl.day = d.day::date
+        LEFT JOIN (SELECT DATE(completed_at) AS day, COUNT(*) AS cnt FROM user_quiz_completion
+                   WHERE completed_at >= NOW() - INTERVAL '{trend_interval}'
+                   GROUP BY DATE(completed_at)) q ON q.day = d.day::date
+        LEFT JOIN (SELECT DATE(updated_at) AS day, COUNT(*) AS cnt FROM book_read_progress
+                   WHERE updated_at >= NOW() - INTERVAL '{trend_interval}'
+                   GROUP BY DATE(updated_at)) b ON b.day = d.day::date
+        LEFT JOIN (SELECT DATE(updated_at) AS day, COUNT(*) AS cnt FROM planner_tasks
+                   WHERE status = 'done' AND updated_at >= NOW() - INTERVAL '{trend_interval}'
+                   GROUP BY DATE(updated_at)) p ON p.day = d.day::date
+        ORDER BY d.day
+    """)).fetchall()
+
+    daily = [
+        {"date": str(r[0]), "focus": int(r[1]), "flashcards": int(r[2]),
+         "quiz": int(r[3]), "books": int(r[4]), "planner": int(r[5])}
+        for r in daily_rows
+    ]
+
+    return {"period": period, "features": features, "daily": daily}
+
+
 # ── User management ────────────────────────────────────────────────────────────
 
 @router.get("/users")

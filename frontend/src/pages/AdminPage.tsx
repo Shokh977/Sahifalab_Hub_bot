@@ -79,7 +79,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage'
 
 interface AdminAnnouncement {
   id:         number
@@ -394,6 +394,11 @@ const AdminPage: React.FC = () => {
   const [deckNewCards, setDeckNewCards] = useState('')
   const [deckCreating, setDeckCreating] = useState(false)
 
+  // ── Feature usage stats ───────────────────────────────────────────────────
+  const [featurePeriod, setFeaturePeriod] = useState<'7d' | '30d' | 'all'>('7d')
+  const [featureStats, setFeatureStats] = useState<any>(null)
+  const [featureLoading, setFeatureLoading] = useState(false)
+
   // ── Deck moderation loaders ───────────────────────────────────────────────
   const loadDeckData = useCallback(async (sub: 'reports' | 'pending' | 'official', search = '') => {
     setDeckLoading(true)
@@ -429,6 +434,18 @@ const AdminPage: React.FC = () => {
       setDeckError(err?.response?.data?.detail || err?.message || 'Xatolik')
     } finally {
       setDeckReviewLoading(false)
+    }
+  }, [])
+
+  const loadFeatureStats = useCallback(async (period: string) => {
+    setFeatureLoading(true)
+    try {
+      const res = await apiService.client.get(`/api/admin/stats/features?period=${period}`)
+      setFeatureStats(res.data)
+    } catch (err: any) {
+      console.error('[Admin] loadFeatureStats:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setFeatureLoading(false)
     }
   }, [])
 
@@ -943,7 +960,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'courses') loadAdminCourses()
     if (activeTab === 'announcements') loadAnnouncements()
     if (activeTab === 'decks') loadDeckData(deckSubTab)
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab])
+    if (activeTab === 'feature_usage') loadFeatureStats(featurePeriod)
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab, loadFeatureStats, featurePeriod])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -1343,6 +1361,7 @@ const AdminPage: React.FC = () => {
             { id: 'courses', label: '🎬 Kurslar' },
             { id: 'announcements', label: '📢 Xabarlar' },
             { id: 'decks', label: '🎴 To\'plamlar' },
+            { id: 'feature_usage', label: '📊 Xususiyatlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -3945,6 +3964,121 @@ const AdminPage: React.FC = () => {
           </div>
         )
       })()}
+
+        {activeTab === 'feature_usage' && (() => {
+          const features: any[] = featureStats?.features ?? []
+          const daily: any[] = featureStats?.daily ?? []
+          const maxSessions = features.length > 0 ? Math.max(...features.map((f: any) => f.sessions), 1) : 1
+
+          const FEATURE_COLORS: Record<string, string> = {
+            focus:      'bg-blue-500',
+            flashcards: 'bg-purple-500',
+            quiz:       'bg-green-500',
+            books:      'bg-amber-500',
+            planner:    'bg-rose-500',
+          }
+
+          const periodLabels: Record<string, string> = { '7d': 'Oxirgi 7 kun', '30d': 'Oxirgi 30 kun', 'all': 'Barcha vaqt' }
+
+          return (
+            <div className="p-4 sm:p-6 space-y-6 max-w-3xl mx-auto">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Xususiyat foydalanishi</h2>
+                <div className="flex gap-1.5">
+                  {(['7d', '30d', 'all'] as const).map(p => (
+                    <button key={p}
+                      onClick={() => { setFeaturePeriod(p); loadFeatureStats(p) }}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        featurePeriod === p
+                          ? 'bg-sahifa-600 text-white'
+                          : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
+                      }`}>
+                      {periodLabels[p]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {featureLoading && (
+                <div className="text-center py-16 text-gray-400 text-sm">Yuklanmoqda…</div>
+              )}
+
+              {!featureLoading && features.length === 0 && (
+                <div className="text-center py-16 text-gray-400 text-sm">Ma'lumot yo'q</div>
+              )}
+
+              {!featureLoading && features.length > 0 && (
+                <>
+                  {/* Feature ranking */}
+                  <div className="space-y-3">
+                    {features.map((f: any, i: number) => (
+                      <div key={f.key} className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-base leading-none">{f.emoji}</span>
+                            <span className="font-semibold text-gray-900 dark:text-white text-sm">{f.label}</span>
+                            {i === 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400 font-medium">🏆 1-o'rin</span>}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-sm font-bold text-gray-900 dark:text-white">{f.sessions.toLocaleString()}</p>
+                            <p className="text-xs text-gray-400">{f.unique_users.toLocaleString()} foydalanuvchi</p>
+                          </div>
+                        </div>
+                        <div className="h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all duration-500 ${FEATURE_COLORS[f.key] ?? 'bg-gray-400'}`}
+                            style={{ width: `${Math.round((f.sessions / maxSessions) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1 text-right">
+                          {Math.round((f.sessions / maxSessions) * 100)}% maksimaldan
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Daily trend table */}
+                  {daily.length > 0 && (
+                    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl overflow-hidden">
+                      <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+                        <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Kunlik trend</h3>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-100 dark:border-gray-700">
+                              <th className="px-4 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Sana</th>
+                              <th className="px-3 py-2 text-right font-medium text-blue-500">⏱️</th>
+                              <th className="px-3 py-2 text-right font-medium text-purple-500">🃏</th>
+                              <th className="px-3 py-2 text-right font-medium text-green-500">📝</th>
+                              <th className="px-3 py-2 text-right font-medium text-amber-500">📚</th>
+                              <th className="px-3 py-2 text-right font-medium text-rose-500">📋</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {daily.slice().reverse().map((row: any) => {
+                              const total = row.focus + row.flashcards + row.quiz + row.books + row.planner
+                              return (
+                                <tr key={row.date} className={`border-b border-gray-50 dark:border-gray-700/50 ${total === 0 ? 'opacity-40' : ''}`}>
+                                  <td className="px-4 py-2 text-gray-600 dark:text-gray-300 font-mono">{row.date.slice(5)}</td>
+                                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.focus || '—'}</td>
+                                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.flashcards || '—'}</td>
+                                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.quiz || '—'}</td>
+                                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.books || '—'}</td>
+                                  <td className="px-3 py-2 text-right text-gray-700 dark:text-gray-300">{row.planner || '—'}</td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )
+        })()}
 
     </div>
   )
