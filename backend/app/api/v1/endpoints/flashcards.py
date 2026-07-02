@@ -30,6 +30,7 @@ GET    /flashcards/share/:id             — PUBLIC, no auth — web landing pag
 
 import asyncio
 import logging
+import math
 import httpx
 from datetime import datetime, UTC, timedelta, date as Date
 from typing import Optional
@@ -50,10 +51,7 @@ logger = logging.getLogger(__name__)
 
 MAX_NEW_PER_SESSION = 10
 
-XP_PER_REVIEW   = 1   # every card reviewed, regardless of rating (honesty must never be punished)
-XP_SESSION_DONE = 12  # completing a full session
-XP_MASTERY_CARD = 5   # first time a card reaches mastered
-XP_MASTERY_DECK = 50  # 100% deck mastery
+XP_MASTERY_DECK = 50  # 100% deck mastery (all cards ever mastered)
 
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
@@ -731,17 +729,6 @@ async def review_card(
 
     db.commit()
 
-    # XP only on first review of this card today (subsequent practice = no XP)
-    xp_result = {"xp_added": 0}
-    total_xp  = 0
-    if first_review_today:
-        xp_mastery = XP_MASTERY_CARD if newly_mastered else 0
-        total_xp   = XP_PER_REVIEW + xp_mastery
-        try:
-            xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=total_xp)
-        except Exception:
-            pass
-
     # Check deck mastery (100% of cards mastered)
     deck_bonus_xp = 0
     deck_row = db.execute(
@@ -779,7 +766,7 @@ async def review_card(
         "new_status":    sm2["status"],
         "next_review":   sm2["next_review"].isoformat() if sm2["next_review"] else None,
         "interval_days": sm2["interval_days"],
-        "xp_awarded":    xp_result.get("xp_added", total_xp),
+        "xp_awarded":    0,
         "deck_bonus_xp": deck_bonus_xp,
         "newly_mastered": newly_mastered,
     }
@@ -804,6 +791,14 @@ async def complete_session(
     today     = _parse_local_date(body.local_date)
     yesterday = today - timedelta(days=1)
 
+    # XP = ceil(card_count / 5) — e.g. 500 cards → 100 XP, 477 cards → 96 XP
+    deck_row = db.execute(
+        text("SELECT card_count FROM flashcard_decks WHERE id = :did"),
+        {"did": deck_id},
+    ).fetchone()
+    card_count  = int(deck_row.card_count) if deck_row and deck_row.card_count else 0
+    session_xp  = math.ceil(card_count / 5) if card_count > 0 else 0
+
     # Award session XP once per deck per day (sentinel rating=98)
     already_session_xp = db.execute(
         text("""
@@ -818,7 +813,7 @@ async def complete_session(
     xp_result = {"xp_added": 0}
     if not already_session_xp:
         try:
-            xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=XP_SESSION_DONE)
+            xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=session_xp)
             # Record sentinel so subsequent sessions today give no XP
             any_card = db.execute(
                 text("SELECT id FROM flashcards WHERE deck_id = :did LIMIT 1"),
@@ -916,7 +911,7 @@ async def complete_session(
 
     return {
         "ok":                  True,
-        "xp_awarded":          xp_result.get("xp_added", XP_SESSION_DONE),
+        "xp_awarded":          xp_result.get("xp_added", 0),
         "flash_minutes":       flash_minutes,
         "today_minutes":       today_minutes,
         "streak_days":         streak_days,
