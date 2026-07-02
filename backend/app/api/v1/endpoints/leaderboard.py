@@ -38,8 +38,14 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 
 def _since(period: str) -> str:
     if period == "week":
-        return "date_trunc('week', NOW())"
-    return "date_trunc('month', NOW())"
+        # Rolling 7-day window — avoids the ISO-week/month-boundary mismatch where
+        # date_trunc('week') can start in the previous month (e.g. Monday June 30
+        # when we're already in July), causing users active only on those days to
+        # appear in the weekly list but vanish from the monthly one.
+        return "NOW() - INTERVAL '7 days'"
+    # Month start in Tashkent local time (UTC+5).  Pure UTC truncation causes XP
+    # earned on the 1st before 05:00 Tashkent to fall into the previous month.
+    return "date_trunc('month', NOW() AT TIME ZONE 'Asia/Tashkent') AT TIME ZONE 'Asia/Tashkent'"
 
 
 @router.get("/weekly")
