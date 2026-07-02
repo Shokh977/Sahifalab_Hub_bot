@@ -9,7 +9,7 @@ Endpoints:
 """
 from fastapi import APIRouter, HTTPException, Header, Request
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 import os, logging, httpx, json
 
 from app.services.auth_service import decode_token
@@ -49,10 +49,10 @@ async def _get_tid(authorization: Optional[str]) -> int:
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class AnalyticsEvent(BaseModel):
-    event_type: str          # 'course_view' | 'course_impression' | 'profile_visit' | 'post_impression'
-    target_id: int           # course_id or profile telegram_id or post_id
-    teacher_id: int = 0      # the owner teacher's telegram_id
-    source: str = "direct"   # 'lenta' | 'search' | 'external' | 'direct'
+    event_type: Literal["course_view", "course_impression", "profile_visit", "post_impression"]
+    target_id: int
+    teacher_id: int = 0
+    source: Literal["lenta", "search", "external", "direct"] = "direct"
     meta: dict = {}
 
 
@@ -90,7 +90,7 @@ async def track_events(
             "event_type": ev.event_type,
             "actor_id": actor_id,
             "target_id": ev.target_id,
-            "teacher_id": ev.teacher_id,
+            "teacher_id": 0,  # never trust client-supplied; resolved by analytics queries via course ownership
             "source": ev.source,
             "meta": ev.meta,
         })

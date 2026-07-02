@@ -82,8 +82,6 @@ async def _require_admin(authorization: Optional[str] = Header(None)) -> int:
     
     return payload["telegram_id"]
 
-_last_motivation_ts: float = 0.0
-
 # ── Request models ─────────────────────────────────────────────────────────────
 
 class ProfileUpsertRequest(BaseModel):
@@ -132,17 +130,21 @@ async def get_leaderboard(limit: int = 10, db: Session = Depends(get_db)):
 @router.get("/dashboard-stats")
 async def get_dashboard_stats(db: Session = Depends(get_db)):
     """Summary stats for the teacher dashboard."""
-    yesterday    = datetime.now(UTC) - timedelta(days=1)
-    total        = db.query(Profile).count()
-    active_today = db.query(Profile).filter(Profile.app_online_at >= yesterday).count()
-    rows         = db.query(Profile.total_xp, Profile.quizzes_completed).all()
-    avg_xp       = round(sum(r.total_xp or 0 for r in rows) / len(rows)) if rows else 0
-    total_q      = sum(r.quizzes_completed or 0 for r in rows)
+    yesterday = datetime.now(UTC) - timedelta(days=1)
+    from sqlalchemy import text
+    row = db.execute(text("""
+        SELECT
+            COUNT(*) AS total,
+            COUNT(*) FILTER (WHERE app_online_at >= :yesterday) AS active_today,
+            COALESCE(ROUND(AVG(COALESCE(total_xp, 0))), 0) AS avg_xp,
+            COALESCE(SUM(COALESCE(quizzes_completed, 0)), 0) AS total_q
+        FROM profiles
+    """), {"yesterday": yesterday}).fetchone()
     return {
-        "totalStudents": total,
-        "activeToday":   active_today,
-        "avgXP":         avg_xp,
-        "totalQuizzes":  total_q,
+        "totalStudents": int(row.total or 0),
+        "activeToday":   int(row.active_today or 0),
+        "avgXP":         int(row.avg_xp or 0),
+        "totalQuizzes":  int(row.total_q or 0),
     }
 
 
@@ -377,7 +379,7 @@ async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     """Fetch a single user's gamification state."""
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if not profile:
-        return None
+        raise HTTPException(status_code=404, detail="Profile not found")
     return {
         "telegram_id":          profile.telegram_id,
         "total_xp":             profile.total_xp          or 0,

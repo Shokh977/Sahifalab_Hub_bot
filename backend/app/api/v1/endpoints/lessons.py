@@ -173,7 +173,7 @@ async def list_lessons(course_id: int = Query(..., description="Course ID")):
             f"{SUPABASE_URL}/rest/v1/lessons",
             params={
                 "course_id": f"eq.{course_id}",
-                "select": "id, course_id, title, description, video_source, encoding_status, duration_minutes, order_index, is_free, lesson_type, section_title, material_url, material_name, created_at",
+                "select": "id, course_id, title, description, video_source, encoding_status, duration_minutes, order_index, is_free, lesson_type, section_title, material_name, created_at",
                 "order": "order_index.asc",
             },
             headers=_supabase_headers(),
@@ -292,6 +292,9 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
     elif is_bunny and not has_access:
         # Legacy CDN video — hide URL for non-enrolled
         lesson = {**lesson, "video_url": ""}
+
+    if not has_access:
+        lesson = {**lesson, "material_url": ""}
 
     return lesson
 

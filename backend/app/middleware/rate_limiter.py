@@ -119,28 +119,24 @@ class RateLimiter:
             
             return True
     
-    def get_remaining_requests(self, request: Request) -> Dict[str, int]:
-        """Get remaining requests for this client"""
+    async def get_remaining_requests(self, request: Request) -> Dict[str, int]:
+        """Get remaining requests for this client (lock-protected read)."""
         client_id = self.get_client_id(request)
         now = datetime.utcnow()
-        
-        history = self.request_history[client_id]
-        
-        # Clean old entries
-        history = [
-            (timestamp, method, endpoint)
-            for timestamp, method, endpoint in history
-            if now - timestamp < timedelta(hours=24)
-        ]
-        
-        # Count requests in different windows
+
+        async with self.lock:
+            history = [
+                entry for entry in self.request_history[client_id]
+                if now - entry[0] < timedelta(hours=24)
+            ]
+
         minute_ago = now - timedelta(minutes=1)
         hour_ago = now - timedelta(hours=1)
-        
+
         minute_requests = sum(1 for ts, _, _ in history if ts > minute_ago)
         hour_requests = sum(1 for ts, _, _ in history if ts > hour_ago)
         day_requests = len(history)
-        
+
         return {
             "remaining_per_minute": max(0, self.requests_per_minute - minute_requests),
             "remaining_per_hour": max(0, self.requests_per_hour - hour_requests),
@@ -165,8 +161,8 @@ async def rate_limit_middleware(request: Request, call_next):
     
     if not allowed:
         # Get remaining requests info
-        remaining = rate_limiter.get_remaining_requests(request)
-        
+        remaining = await rate_limiter.get_remaining_requests(request)
+
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -175,11 +171,11 @@ async def rate_limit_middleware(request: Request, call_next):
                 "remaining": remaining,
             },
         )
-    
+
     response = await call_next(request)
-    
+
     # Add rate limit headers to response
-    remaining = rate_limiter.get_remaining_requests(request)
+    remaining = await rate_limiter.get_remaining_requests(request)
     response.headers["X-RateLimit-Remaining-Minute"] = str(remaining["remaining_per_minute"])
     response.headers["X-RateLimit-Remaining-Hour"] = str(remaining["remaining_per_hour"])
     response.headers["X-RateLimit-Remaining-Day"] = str(remaining["remaining_per_day"])

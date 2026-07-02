@@ -7,9 +7,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
+from sqlalchemy import text
 from app.db.session import get_db
 from app.services.auth_service import decode_token
-from app.models.models import Profile
+from app.models.models import Profile, AuthCode
 
 router = APIRouter(prefix="/settings", tags=["settings"])
 
@@ -66,6 +67,12 @@ def delete_account(
     profile = db.query(Profile).filter(Profile.telegram_id == user_id).first()
     if not profile:
         raise HTTPException(404, "Profile not found")
+
+    # auth_codes has no FK to profiles so must be cleaned up manually
+    db.query(AuthCode).filter(AuthCode.telegram_id == user_id).delete()
+
+    # All other related tables (auth_tokens, xp_logs, flashcard_decks, focus_sessions, …)
+    # have ON DELETE CASCADE on their FK to profiles.telegram_id and are handled by the DB.
     db.delete(profile)
     db.commit()
     return {"success": True}

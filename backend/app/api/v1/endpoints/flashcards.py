@@ -795,6 +795,11 @@ async def complete_session(
     caller_id: int = Depends(_require_token),
 ):
     _get_deck_or_404(db, deck_id, caller_id)
+
+    # Ignore bot/scripted calls with no measurable study time
+    if body.total_time_ms < 1000:
+        return {"ok": True, "xp_awarded": 0, "streak_days": 0, "goal_met": False, "today_minutes": 0, "daily_goal": 20}
+
     now       = datetime.now(UTC)
     today     = _parse_local_date(body.local_date)
     yesterday = today - timedelta(days=1)
@@ -1416,7 +1421,10 @@ async def report_public_deck(
     if body.reason not in _REPORT_REASONS:
         raise HTTPException(status_code=400, detail="Invalid reason")
 
-    deck = db.execute(text("SELECT id, title FROM flashcard_decks WHERE id = :id"), {"id": deck_id}).fetchone()
+    deck = db.execute(
+        text("SELECT id, title FROM flashcard_decks WHERE id = :id AND is_public = TRUE"),
+        {"id": deck_id},
+    ).fetchone()
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found")
 

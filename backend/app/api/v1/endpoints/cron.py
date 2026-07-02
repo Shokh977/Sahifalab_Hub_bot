@@ -16,6 +16,7 @@ Configure Railway cron jobs:
 """
 
 import os
+import hmac
 import logging
 import asyncio
 
@@ -43,7 +44,7 @@ def _require_cron_secret(x_cron_secret: str = Header(None)):
     if not CRON_SECRET:
         # Safety: if CRON_SECRET not configured, block all calls
         raise HTTPException(status_code=503, detail="Cron not configured")
-    if x_cron_secret != CRON_SECRET:
+    if not hmac.compare_digest(x_cron_secret or "", CRON_SECRET):
         raise HTTPException(status_code=403, detail="Invalid cron secret")
 
 
@@ -335,14 +336,6 @@ async def send_streak_reminders(
             "sound": "default",
         })
 
-    result = await _send_expo_push(
-        [m["to"] for m in messages],
-        "",   # title handled per-message below — use batch directly
-        "",
-        {},
-    )
-
-    # Override _send_expo_push for per-message personalisation
     sent = failed = 0
     for i in range(0, len(messages), 100):
         batch = messages[i:i + 100]

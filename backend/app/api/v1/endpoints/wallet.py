@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from typing import Optional
 import logging
 
-from app.services.auth_service import decode_token
+from app.services.auth_service import decode_token_payload
 from app.services import wallet_service as ws
 
 logger = logging.getLogger(__name__)
@@ -27,10 +27,12 @@ async def _get_telegram_id(authorization: Optional[str]) -> int:
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    telegram_id = decode_token(parts[1])
-    if not telegram_id:
+    payload = decode_token_payload(parts[1])
+    if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return telegram_id
+    if payload.get("role") not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Teacher account required")
+    return int(payload["telegram_id"])
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────

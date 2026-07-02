@@ -260,16 +260,19 @@ async def purchase_freeze(
     if total_xp < xp_cost:
         raise HTTPException(status_code=400, detail=f"Not enough XP. Need {xp_cost}, have {total_xp}")
 
-    # Deduct XP directly (negative award)
-    db.execute(
+    # Atomic deduction: WHERE total_xp >= :cost prevents double-spend under concurrency
+    result = db.execute(
         text("""
             UPDATE profiles
-            SET total_xp     = GREATEST(0, total_xp - :cost),
+            SET total_xp     = total_xp - :cost,
                 freeze_count = COALESCE(freeze_count, 0) + :n
-            WHERE telegram_id = :uid
+            WHERE telegram_id = :uid AND total_xp >= :cost
         """),
         {"cost": xp_cost, "n": body.count, "uid": caller_id},
     )
+    if result.rowcount == 0:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=f"Not enough XP. Need {xp_cost}, have {total_xp}")
     db.commit()
 
     new_row = db.execute(

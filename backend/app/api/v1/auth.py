@@ -5,6 +5,7 @@ All profile/user data is accessed via SQLAlchemy ORM (direct Postgres TCP),
 bypassing Supabase's REST API entirely — unaffected by cached-egress quota.
 """
 import re
+import hmac
 from fastapi import APIRouter, HTTPException, Header, Depends
 from fastapi import UploadFile, File
 from fastapi.responses import JSONResponse
@@ -680,7 +681,7 @@ async def bot_claim_code(body: BotClaimCodeRequest, db: Session = Depends(get_db
     Validates the shared secret (bot token), then writes the user's Telegram ID
     into the auth_codes row so the polling /verify-code endpoint can proceed.
     """
-    if not BOT_TOKEN or body.bot_secret != BOT_TOKEN:
+    if not BOT_TOKEN or not hmac.compare_digest(body.bot_secret, BOT_TOKEN):
         raise HTTPException(status_code=403, detail="Unauthorized")
 
     auth_code = db.query(AuthCode).filter(AuthCode.code == body.code).first()
@@ -728,12 +729,6 @@ async def verify_code(code: str, db: Session = Depends(get_db)):
     username    = auth_code.username
     photo_url   = auth_code.photo_url
 
-    auth_code.used = True
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-
     existing_profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     has_any_photo  = bool(existing_profile and existing_profile.photo_url)
     has_first_name = bool(existing_profile and existing_profile.first_name)
@@ -745,6 +740,16 @@ async def verify_code(code: str, db: Session = Depends(get_db)):
         **({"username":   username}   if not has_username   else {}),
         **({"photo_url":  photo_url}  if not has_any_photo  else {}),
     )
+
+    # Mark used only after profile is ready — both changes commit together so
+    # a profile-creation failure won't consume the code without creating an account.
+    auth_code.used = True
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Account yaratishda xatolik yuz berdi")
+
     token_data = create_access_token(telegram_id, profile.role or "student")
     return {
         "status": "ok", "telegram_id": telegram_id,
@@ -1074,6 +1079,16 @@ def _get_mergeable_tables():
     try:
         from app.models.models import Enrollment
         _MERGEABLE_TABLES.append((Enrollment, "user_id"))
+    except ImportError:
+        pass
+    try:
+        from app.models.models import FlashcardDeck
+        _MERGEABLE_TABLES.append((FlashcardDeck, "user_id"))
+    except ImportError:
+        pass
+    try:
+        from app.models.models import FlashcardReview
+        _MERGEABLE_TABLES.append((FlashcardReview, "user_id"))
     except ImportError:
         pass
     return _MERGEABLE_TABLES

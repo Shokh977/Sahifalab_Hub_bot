@@ -110,7 +110,7 @@ async def _get_item_info(item_type: str, item_id: int) -> dict:
     elif item_type == "book":
         async with httpx.AsyncClient(timeout=10) as client:
             res = await client.get(
-                f"{url}/rest/v1/book",
+                f"{url}/rest/v1/books",
                 params={"id": f"eq.{item_id}", "select": "id,title,price,is_paid"},
                 headers=headers,
             )
@@ -749,7 +749,7 @@ async def _reverse_fulfillment(payment: dict):
             teacher_id = int(rows[0]["teacher_id"])
             # Use dedicated refund_wallet RPC (safe reversal, guards against negative balance)
             async with httpx.AsyncClient(timeout=10) as client:
-                await client.post(
+                refund_res = await client.post(
                     f"{url}/rest/v1/rpc/refund_wallet",
                     json={
                         "p_teacher_id": teacher_id,
@@ -759,8 +759,11 @@ async def _reverse_fulfillment(payment: dict):
                     },
                     headers=ps._sb_headers(),
                 )
+            if refund_res.status_code not in (200, 204):
+                raise RuntimeError(f"refund_wallet returned {refund_res.status_code}: {refund_res.text}")
     except Exception as e:
         logger.error("[Cancel] Failed to reverse teacher credit: %s", e)
+        raise
 
 
 async def _payme_check(params: dict) -> dict:

@@ -15,7 +15,7 @@ import logging
 import httpx
 from datetime import datetime, UTC
 
-from app.services.auth_service import decode_token
+from app.services.auth_service import decode_token_payload
 
 logger = logging.getLogger(__name__)
 
@@ -42,16 +42,18 @@ def _ensure_supabase():
         )
 
 
-async def _get_telegram_id(authorization: Optional[str]) -> int:
+async def _get_telegram_id(authorization: Optional[str], require_teacher: bool = False) -> int:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     parts = authorization.split()
     if len(parts) != 2 or parts[0] != "Bearer":
         raise HTTPException(status_code=401, detail="Invalid authorization header")
-    telegram_id = decode_token(parts[1])
-    if not telegram_id:
+    payload = decode_token_payload(parts[1])
+    if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    return telegram_id
+    if require_teacher and payload.get("role") not in ("teacher", "admin"):
+        raise HTTPException(status_code=403, detail="Teacher account required")
+    return int(payload["telegram_id"])
 
 
 async def _get_profile_row(telegram_id: int) -> dict:
@@ -124,7 +126,7 @@ async def get_own_teacher_profile(authorization: Optional[str] = Header(None)):
     backend trusts the JWT but doesn't re-check role here).
     """
     _ensure_supabase()
-    telegram_id = await _get_telegram_id(authorization)
+    telegram_id = await _get_telegram_id(authorization, require_teacher=True)
 
     row = await _get_profile_row(telegram_id)
     if not row:
@@ -144,7 +146,7 @@ async def update_own_teacher_profile(
     Sets profile_complete=true automatically when all required fields are filled.
     """
     _ensure_supabase()
-    telegram_id = await _get_telegram_id(authorization)
+    telegram_id = await _get_telegram_id(authorization, require_teacher=True)
 
     # Ensure row exists
     existing = await _get_profile_row(telegram_id)

@@ -86,19 +86,31 @@ async def list_reported_decks(
         {"limit": limit, "offset": offset},
     ).fetchall()
 
+    if not rows:
+        return {"decks": [], "total": 0, "page": page, "limit": limit}
+
+    deck_ids = [int(r.id) for r in rows]
+    id_list  = ",".join(str(i) for i in deck_ids)
+
+    # Fetch all reasons for the page's decks in one query
+    reason_rows = db.execute(
+        text(f"""
+            SELECT deck_id, reason, COUNT(*) AS cnt FROM deck_reports
+            WHERE deck_id IN ({id_list}) AND status = 'pending'
+            GROUP BY deck_id, reason ORDER BY cnt DESC
+        """),
+    ).fetchall()
+
+    from collections import defaultdict
+    reasons_by_deck: dict = defaultdict(list)
+    for rr in reason_rows:
+        reasons_by_deck[int(rr.deck_id)].append({"reason": rr.reason, "count": int(rr.cnt)})
+
     items = []
     for r in rows:
-        reasons = db.execute(
-            text("""
-                SELECT reason, COUNT(*) AS cnt FROM deck_reports
-                WHERE deck_id = :id AND status = 'pending'
-                GROUP BY reason ORDER BY cnt DESC
-            """),
-            {"id": int(r.id)},
-        ).fetchall()
         item = _deck_summary(r)
         item["report_count"] = int(r.report_count)
-        item["reasons"] = [{"reason": x.reason, "count": int(x.cnt)} for x in reasons]
+        item["reasons"] = reasons_by_deck[int(r.id)]
         items.append(item)
 
     total = db.execute(
