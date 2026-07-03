@@ -791,23 +791,21 @@ async def complete_session(
     today     = _parse_local_date(body.local_date)
     yesterday = today - timedelta(days=1)
 
-    # XP = ceil(card_count / 5) — e.g. 500 cards → 100 XP, 477 cards → 96 XP
-    deck_row = db.execute(
-        text("SELECT card_count FROM flashcard_decks WHERE id = :did"),
-        {"did": deck_id},
-    ).fetchone()
-    card_count  = int(deck_row.card_count) if deck_row and deck_row.card_count else 0
-    session_xp  = math.ceil(card_count / 5) if card_count > 0 else 0
+    # XP = ceil(cards_reviewed_this_session / 5)
+    # Using actual cards reviewed, not total deck size, to prevent XP farming
+    # when the session shows only a subset (e.g. 10 of 500 cards).
+    reviewed = max(0, int(body.cards_reviewed))
+    session_xp = math.ceil(reviewed / 5) if reviewed > 0 else 0
 
-    # Award session XP once per deck per day (sentinel rating=98)
+    # Award XP once per day across ALL decks — only the first completed deck earns XP
     already_session_xp = db.execute(
         text("""
             SELECT 1 FROM flashcard_reviews
-            WHERE user_id = :uid AND deck_id = :did AND rating = 98
+            WHERE user_id = :uid AND rating = 98
               AND DATE(reviewed_at) = CURRENT_DATE
             LIMIT 1
         """),
-        {"uid": caller_id, "did": deck_id},
+        {"uid": caller_id},
     ).fetchone()
 
     xp_result = {"xp_added": 0}
