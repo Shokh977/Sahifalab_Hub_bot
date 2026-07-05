@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Sun, Moon, Check, Loader2, X, AlertTriangle, Eye, EyeOff } from 'lucide-react'
+import { Sun, Moon, Check, Loader2, X, AlertTriangle, Eye, EyeOff, Camera } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useThemeStore } from '../context/themeStore'
 import api from '../services/apiService'
@@ -115,7 +115,7 @@ const Toggle: React.FC<ToggleProps> = ({ checked, onChange, label, description }
 // ═══════════════════════════════════════════════════════════════════════════════
 
 const ProfileSection: React.FC = () => {
-  const { user } = useAuth()
+  const { user, updateUser } = useAuth()
   const [form, setForm] = useState({
     first_name:    (user as any)?.first_name    || '',
     headline:      (user as any)?.headline      || '',
@@ -126,6 +126,10 @@ const ProfileSection: React.FC = () => {
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [error,  setError]  = useState<string | null>(null)
+  const [avatarUploading, setAvatarUploading] = useState(false)
+  const [coverUploading,  setCoverUploading]  = useState(false)
+  const avatarInputRef = React.useRef<HTMLInputElement>(null)
+  const coverInputRef  = React.useRef<HTMLInputElement>(null)
 
   const set = (key: string, val: string) => {
     setForm(f => ({ ...f, [key]: val }))
@@ -145,9 +149,66 @@ const ProfileSection: React.FC = () => {
     }
   }
 
+  const handleImageUpload = async (file: File, type: 'avatar' | 'cover') => {
+    const setUploading = type === 'avatar' ? setAvatarUploading : setCoverUploading
+    setUploading(true)
+    try {
+      const body = new FormData()
+      body.append('file', file)
+      body.append('type', type)
+      const res = await api.client.post('/api/profile/me/upload', body, {
+        headers: { 'Content-Type': undefined },
+      })
+      updateUser({ [type === 'avatar' ? 'photo_url' : 'cover_image_url']: res.data.url })
+    } catch {
+      setError("Rasm yuklashda xatolik yuz berdi")
+    } finally {
+      setUploading(false)
+    }
+  }
+
   return (
     <Card title="Profil">
       <div className="space-y-4">
+        {/* ── Avatar / cover upload ──────────────────────────────────────── */}
+        <div className="flex items-center gap-4 pb-2">
+          <div className="relative group flex-shrink-0">
+            <div className="w-16 h-16 rounded-full overflow-hidden bg-gray-100 dark:bg-white/[0.06]">
+              {(user as any)?.photo_url
+                ? <img src={(user as any).photo_url} alt="" className="w-full h-full object-cover" />
+                : <div className="w-full h-full flex items-center justify-center text-gray-400 font-bold text-lg">
+                    {((user as any)?.first_name || '?').charAt(0).toUpperCase()}
+                  </div>}
+            </div>
+            <input ref={avatarInputRef} type="file" accept="image/*" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'avatar'); e.target.value = '' }} />
+            <button
+              onClick={() => avatarInputRef.current?.click()}
+              disabled={avatarUploading}
+              className="absolute inset-0 rounded-full bg-black/0 group-hover:bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all"
+            >
+              {avatarUploading ? <Loader2 className="w-5 h-5 text-white animate-spin" /> : <Camera className="w-5 h-5 text-white" />}
+            </button>
+          </div>
+
+          <div className="flex-1">
+            <Label>Muqova rasmi</Label>
+            <div className="relative group h-16 rounded-xl overflow-hidden bg-gray-100 dark:bg-white/[0.06]">
+              {(user as any)?.cover_image_url && (
+                <img src={(user as any).cover_image_url} alt="" className="w-full h-full object-cover" />
+              )}
+              <input ref={coverInputRef} type="file" accept="image/*" className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'cover'); e.target.value = '' }} />
+              <button
+                onClick={() => coverInputRef.current?.click()}
+                disabled={coverUploading}
+                className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 opacity-0 group-hover:opacity-100 transition-all"
+              >
+                {coverUploading ? <Loader2 className="w-4 h-4 text-white animate-spin" /> : <Camera className="w-4 h-4 text-white" />}
+              </button>
+            </div>
+          </div>
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
             <Label>Ism</Label>

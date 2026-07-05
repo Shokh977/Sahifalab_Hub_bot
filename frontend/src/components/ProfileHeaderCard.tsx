@@ -13,11 +13,12 @@ import React, { useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   BadgeCheck, Shield, UserPlus, UserMinus, MessageCircle,
-  PenSquare, Camera, Loader2,
+  PenSquare, Camera, Loader2, MapPin, Globe,
 } from 'lucide-react'
 import UserIdentity, { getRankInfo } from './social/UserIdentity'
 import type { UserIdentityUser } from './social/UserIdentity'
 import { levelProgress, levelBounds } from '../context/progressStore'
+import CoverPhoto from './profile/CoverPhoto'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -75,6 +76,20 @@ export interface ProfileHeaderCardProps {
   liveFirstName?: string
   /** Override bio from form input */
   liveBio?: string
+
+  // ── LinkedIn-style cover/headline/location (all optional, opt-in) ─────────
+
+  /** Cover banner URL. Passing this prop (even null) switches the card into
+   * "cover mode": banner bleeds to the card edges and the avatar overlaps it. */
+  coverImageUrl?: string | null
+  /** Enables the cover hover-upload overlay (owner only) */
+  onCoverUpload?: (file: File) => void
+  coverUploading?: boolean
+  /** Headline shown under @username, e.g. "Frontend Developer @ Sahifalab" */
+  headline?: string | null
+  /** City shown alongside the website link */
+  locationCity?: string | null
+  websiteUrl?: string | null
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -98,11 +113,18 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   onEditClick,
   liveFirstName,
   liveBio,
+  coverImageUrl,
+  onCoverUpload,
+  coverUploading = false,
+  headline,
+  locationCity,
+  websiteUrl,
 }) => {
   const rank = getRankInfo(profile.level || 1)
   const isTeacher = profile.role === 'teacher'
   const isAdmin = profile.role === 'admin'
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const hasCover = coverImageUrl !== undefined
 
   // Live preview: use overrides if provided, else fall back to profile data
   const displayName = liveFirstName ?? profile.full_name ?? profile.first_name ?? profile.username ?? 'Foydalanuvchi'
@@ -120,13 +142,21 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className="rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-[0_2px_24px_rgba(0,0,0,0.04)] dark:shadow-none p-6"
+      className={`rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-[0_2px_24px_rgba(0,0,0,0.04)] dark:shadow-none overflow-hidden ${hasCover ? '' : 'p-6'}`}
     >
+      {/* ── Cover banner (bleeds to card edges) ───────────────────────────── */}
+      {hasCover && (
+        <CoverPhoto url={coverImageUrl} onUpload={onCoverUpload} uploading={coverUploading} />
+      )}
+
+      <div className={hasCover ? 'p-6' : ''}>
       <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
 
         {/* ── Avatar with rank ring ───────────────────────────────────────── */}
-        <div className="relative group">
-          <UserIdentity user={{ ...profile, full_name: displayName }} size="xl" showName={false} />
+        <div className={`relative group flex-shrink-0 ${hasCover ? '-mt-14 sm:-mt-16' : ''}`}>
+          <div className={hasCover ? 'rounded-full ring-4 ring-white dark:ring-[#0C0C10]' : ''}>
+            <UserIdentity user={{ ...profile, full_name: displayName }} size="xl" showName={false} />
+          </div>
 
           {/* Edit overlay on avatar (Kabinet mode) */}
           {editMode && onAvatarUpload && (
@@ -181,6 +211,30 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
           {/* Username */}
           {profile.username && (
             <p className="text-sm text-gray-400 dark:text-white/40">@{profile.username}</p>
+          )}
+
+          {/* Headline */}
+          {headline && (
+            <p className="text-sm text-gray-700 dark:text-white/70 font-medium mt-1">{headline}</p>
+          )}
+
+          {/* Location + website */}
+          {(locationCity || websiteUrl) && (
+            <div className="flex items-center justify-center sm:justify-start flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-gray-400 dark:text-white/40">
+              {locationCity && (
+                <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" /> {locationCity}</span>
+              )}
+              {websiteUrl && (
+                <a
+                  href={websiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
+                >
+                  <Globe className="w-3 h-3" /> {websiteUrl.replace(/^https?:\/\//, '')}
+                </a>
+              )}
+            </div>
           )}
 
           {/* Teacher specialization */}
@@ -327,6 +381,7 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
             )}
           </div>
         </div>
+      </div>
       </div>
     </motion.div>
   )
