@@ -27,6 +27,7 @@ import type { EducationItem } from '../components/profile/EducationModal'
 import type { SkillItem } from '../components/profile/SkillsSection'
 import type { CertificateItem } from '../components/profile/CertificatesSection'
 import type { ActivityItem } from '../components/profile/RecentActivityPreview'
+import FollowListModal from '../components/social/FollowListModal'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -135,6 +136,7 @@ const ProfilePage: React.FC = () => {
   const [followLoading, setFollowLoading] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
   const [connectionLoading, setConnectionLoading] = useState(false)
+  const [followListType, setFollowListType] = useState<'followers' | 'following' | null>(null)
 
   const myId = (authUser as any)?.telegram_id ?? (authUser as any)?.id
 
@@ -329,6 +331,17 @@ const ProfilePage: React.FC = () => {
         onMessage={!isOwnProfile ? handleMessage : undefined}
         canMessage={profile.can_message}
         onEditProfile={isOwnProfile ? () => navigate('/settings') : undefined}
+        onFollowersClick={() => setFollowListType('followers')}
+        onFollowingClick={() => setFollowListType('following')}
+      />
+
+      <FollowListModal
+        isOpen={followListType !== null}
+        onClose={() => setFollowListType(null)}
+        userId={profile.telegram_id}
+        type={followListType ?? 'followers'}
+        count={followListType === 'following' ? profile.following_count : profile.followers_count}
+        currentUserId={myId}
       />
 
       {/* Stats strip */}
