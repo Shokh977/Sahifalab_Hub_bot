@@ -13,7 +13,7 @@ import React, { useRef } from 'react'
 import { motion } from 'framer-motion'
 import {
   BadgeCheck, Shield, UserPlus, UserMinus, MessageCircle,
-  PenSquare, Camera, Loader2, MapPin, Globe,
+  PenSquare, Camera, Loader2, MapPin, Globe, UserCheck, Clock, Check, X, Lock,
 } from 'lucide-react'
 import UserIdentity, { getRankInfo } from './social/UserIdentity'
 import type { UserIdentityUser } from './social/UserIdentity'
@@ -56,8 +56,21 @@ export interface ProfileHeaderCardProps {
   /** Follow/unfollow */
   onFollow?: () => void
   followLoading?: boolean
-  /** Open messenger */
+  /** Open messenger — always shown when provided, disabled unless canMessage */
   onMessage?: () => void
+  /** Gates the Message button — blocked (visible but disabled) until an
+   * accepted connection exists (or a teacher-student link, per backend rules) */
+  canMessage?: boolean
+
+  // ── Mutual connection (LinkedIn-style, gates messaging) ───────────────────
+
+  connectionStatus?: 'own' | 'none' | 'accepted' | 'pending_sent' | 'pending_received'
+  onConnect?: () => void
+  onCancelConnect?: () => void
+  onAcceptConnect?: () => void
+  onDeclineConnect?: () => void
+  connectionLoading?: boolean
+
   /** Open followers list modal */
   onFollowersClick?: () => void
   /** Open following list modal */
@@ -105,6 +118,13 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   onFollow,
   followLoading = false,
   onMessage,
+  canMessage = false,
+  connectionStatus,
+  onConnect,
+  onCancelConnect,
+  onAcceptConnect,
+  onDeclineConnect,
+  connectionLoading = false,
   onFollowersClick,
   onFollowingClick,
   onEditProfile,
@@ -342,29 +362,83 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
               </button>
             )}
 
-            {/* Not own profile → Follow + Message */}
+            {/* Not own profile → Connection state + Follow + Message */}
             {!isOwnProfile && !editMode && (
               <>
+                {connectionStatus === 'none' && onConnect && (
+                  <button
+                    onClick={onConnect}
+                    disabled={connectionLoading}
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-sahifa-500 text-white hover:bg-sahifa-600 transition-all active:scale-95 disabled:opacity-60"
+                  >
+                    {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />} Ulanish
+                  </button>
+                )}
+
+                {connectionStatus === 'pending_sent' && onCancelConnect && (
+                  <button
+                    onClick={onCancelConnect}
+                    disabled={connectionLoading}
+                    title="So'rovni bekor qilish"
+                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/60 border border-gray-200/60 dark:border-white/[0.08] hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 transition-all active:scale-95 disabled:opacity-60"
+                  >
+                    {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />} Kutilmoqda
+                  </button>
+                )}
+
+                {connectionStatus === 'pending_received' && (
+                  <div className="flex items-center gap-2">
+                    {onAcceptConnect && (
+                      <button
+                        onClick={onAcceptConnect}
+                        disabled={connectionLoading}
+                        className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-sahifa-500 text-white hover:bg-sahifa-600 transition-all active:scale-95 disabled:opacity-60"
+                      >
+                        {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Qabul qilish
+                      </button>
+                    )}
+                    {onDeclineConnect && (
+                      <button
+                        onClick={onDeclineConnect}
+                        disabled={connectionLoading}
+                        title="Rad etish"
+                        className="p-2 rounded-xl text-gray-400 dark:text-white/40 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors disabled:opacity-60"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {connectionStatus === 'accepted' && (
+                  <span className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border border-green-200/60 dark:border-green-500/20">
+                    <UserCheck className="w-4 h-4" /> Ulangan
+                  </span>
+                )}
+
                 {onFollow && (
                   <button
                     onClick={onFollow}
                     disabled={followLoading}
-                    className={`flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold transition-all active:scale-95 ${
-                      profile.is_following
-                        ? 'bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/60 hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 dark:hover:text-red-400 border border-gray-200/60 dark:border-white/[0.08]'
-                        : 'bg-sahifa-500 text-white hover:bg-sahifa-600'
-                    }`}
+                    title={profile.is_following ? 'Kuzatishdan chiqish' : 'Kuzatish'}
+                    className="p-2.5 rounded-xl text-gray-500 dark:text-white/60 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors disabled:opacity-60"
                   >
-                    {profile.is_following ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                    {profile.is_following ? 'Kuzatishdan chiqish' : 'Kuzatish'}
+                    {followLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : profile.is_following ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
                   </button>
                 )}
+
                 {onMessage && (
                   <button
-                    onClick={onMessage}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium text-gray-500 dark:text-white/60 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors active:scale-95"
+                    onClick={canMessage ? onMessage : undefined}
+                    disabled={!canMessage}
+                    title={canMessage ? 'Xabar yuborish' : "Xabar yuborish uchun avval ulaning"}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors active:scale-95 ${
+                      canMessage
+                        ? 'text-gray-500 dark:text-white/60 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10]'
+                        : 'text-gray-300 dark:text-white/25 bg-gray-50 dark:bg-white/[0.03] border border-gray-200/40 dark:border-white/[0.05] cursor-not-allowed'
+                    }`}
                   >
-                    <MessageCircle className="w-4 h-4" /> Xabar
+                    {canMessage ? <MessageCircle className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />} Xabar
                   </button>
                 )}
               </>

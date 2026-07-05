@@ -64,6 +64,8 @@ interface ProfileData {
 
   is_following: boolean
   can_message: boolean
+  connection_status: 'own' | 'none' | 'accepted' | 'pending_sent' | 'pending_received'
+  connection_id: number | null
 
   skills: SkillItem[]
   experiences: ExperienceItem[]
@@ -109,6 +111,8 @@ function normalizeProfile(raw: any): ProfileData {
 
     is_following:      raw.is_following ?? false,
     can_message:       raw.can_message ?? false,
+    connection_status: raw.connection_status ?? 'none',
+    connection_id:     raw.connection_id ?? null,
 
     skills:            Array.isArray(raw.skills) ? raw.skills : [],
     experiences:       Array.isArray(raw.experiences) ? raw.experiences : [],
@@ -130,6 +134,7 @@ const ProfilePage: React.FC = () => {
   const [error, setError]         = useState<string | null>(null)
   const [followLoading, setFollowLoading] = useState(false)
   const [coverUploading, setCoverUploading] = useState(false)
+  const [connectionLoading, setConnectionLoading] = useState(false)
 
   const myId = (authUser as any)?.telegram_id ?? (authUser as any)?.id
 
@@ -164,6 +169,52 @@ const ProfilePage: React.FC = () => {
     } catch {}
     setFollowLoading(false)
   }, [profile, isAuthenticated, navigate])
+
+  // ── Mutual connection (request/cancel/accept/decline) ──────────────────────
+  const handleConnect = useCallback(async () => {
+    if (!profile || !isAuthenticated) { navigate('/login'); return }
+    setConnectionLoading(true)
+    try {
+      const res = await api.client.post('/api/connections/request', { receiver_id: profile.telegram_id })
+      setProfile(p => p ? { ...p, connection_status: 'pending_sent', connection_id: res.data.id } : p)
+    } catch {}
+    setConnectionLoading(false)
+  }, [profile, isAuthenticated, navigate])
+
+  const handleCancelConnect = useCallback(async () => {
+    if (!profile?.connection_id) return
+    setConnectionLoading(true)
+    try {
+      await api.client.post('/api/connections/cancel', { connection_id: profile.connection_id })
+      setProfile(p => p ? { ...p, connection_status: 'none', connection_id: null } : p)
+    } catch {}
+    setConnectionLoading(false)
+  }, [profile])
+
+  const handleAcceptConnect = useCallback(async () => {
+    if (!profile?.connection_id) return
+    setConnectionLoading(true)
+    try {
+      await api.client.put(`/api/connections/${profile.connection_id}/accept`)
+      setProfile(p => p ? {
+        ...p,
+        connection_status: 'accepted',
+        can_message: true,
+        connections_count: p.connections_count + 1,
+      } : p)
+    } catch {}
+    setConnectionLoading(false)
+  }, [profile])
+
+  const handleDeclineConnect = useCallback(async () => {
+    if (!profile?.connection_id) return
+    setConnectionLoading(true)
+    try {
+      await api.client.put(`/api/connections/${profile.connection_id}/decline`)
+      setProfile(p => p ? { ...p, connection_status: 'none', connection_id: null } : p)
+    } catch {}
+    setConnectionLoading(false)
+  }, [profile])
 
   // ── Message ──────────────────────────────────────────────────────────────
   const handleMessage = useCallback(async () => {
@@ -269,7 +320,14 @@ const ProfilePage: React.FC = () => {
         websiteUrl={profile.website_url}
         onFollow={!isOwnProfile ? handleFollow : undefined}
         followLoading={followLoading}
-        onMessage={!isOwnProfile && profile.can_message ? handleMessage : undefined}
+        connectionStatus={profile.connection_status}
+        onConnect={!isOwnProfile ? handleConnect : undefined}
+        onCancelConnect={!isOwnProfile ? handleCancelConnect : undefined}
+        onAcceptConnect={!isOwnProfile ? handleAcceptConnect : undefined}
+        onDeclineConnect={!isOwnProfile ? handleDeclineConnect : undefined}
+        connectionLoading={connectionLoading}
+        onMessage={!isOwnProfile ? handleMessage : undefined}
+        canMessage={profile.can_message}
         onEditProfile={isOwnProfile ? () => navigate('/settings') : undefined}
       />
 
