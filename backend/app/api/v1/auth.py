@@ -84,6 +84,9 @@ GOOGLE_CLIENT_ID = settings.GOOGLE_CLIENT_ID or os.getenv("GOOGLE_CLIENT_ID", ""
 BOT_USERNAME     = os.getenv("BOT_USERNAME", "Sahifalab_hub_bot")
 CODE_TTL_MINUTES = 10
 
+_EXPERIENCE_LEVELS     = {"beginner", "intermediate", "advanced"}
+_LEARNING_MOTIVATIONS  = {"career", "skill", "self", "exam"}
+
 
 # ── Pydantic models ───────────────────────────────────────────────────────────
 
@@ -94,11 +97,13 @@ class PhotoUpdateRequest(BaseModel):
     photo_url: HttpUrl
 
 class ProfileUpdateRequest(BaseModel):
-    first_name:         Optional[str] = None
-    username:           Optional[str] = None
-    bio:                Optional[str] = None
-    about_me:           Optional[str] = None
-    daily_goal_minutes: Optional[int] = None
+    first_name:          Optional[str] = None
+    username:            Optional[str] = None
+    bio:                 Optional[str] = None
+    about_me:            Optional[str] = None
+    daily_goal_minutes:  Optional[int] = None
+    experience_level:    Optional[str] = None   # beginner | intermediate | advanced
+    learning_motivation: Optional[str] = None   # career | skill | self | exam
 
 class ApplyTeacherRequest(BaseModel):
     specialization:   str
@@ -412,6 +417,7 @@ async def get_current_user(
     profile = _get_profile(db, telegram_id)
     if not profile:
         raise HTTPException(status_code=404, detail="User not found")
+    user_settings = profile.user_settings or {}
     return {
         "telegram_id":   profile.telegram_id,
         "first_name":    profile.first_name,
@@ -428,6 +434,9 @@ async def get_current_user(
         "about_me":      getattr(profile, "about_me", None),
         "streak_days":   getattr(profile, "streak_days",        0) or 0,
         "daily_goal_minutes": getattr(profile, "daily_goal_minutes", 20) or 20,
+        "experience_level":    user_settings.get("experience_level"),
+        "learning_motivation": user_settings.get("learning_motivation"),
+        "interests":           user_settings.get("interests", []),
     }
 
 
@@ -497,10 +506,30 @@ async def update_my_profile(
         payload["about_me"] = body.about_me.strip() or None
     if body.daily_goal_minutes is not None:
         payload["daily_goal_minutes"] = max(5, min(480, body.daily_goal_minutes))
-    if not payload:
+
+    settings_update: dict = {}
+    if body.experience_level is not None:
+        if body.experience_level not in _EXPERIENCE_LEVELS:
+            raise HTTPException(status_code=422, detail="Invalid experience_level")
+        settings_update["experience_level"] = body.experience_level
+    if body.learning_motivation is not None:
+        if body.learning_motivation not in _LEARNING_MOTIVATIONS:
+            raise HTTPException(status_code=422, detail="Invalid learning_motivation")
+        settings_update["learning_motivation"] = body.learning_motivation
+
+    if not payload and not settings_update:
         return {"ok": True}
+
+    if settings_update:
+        profile = _get_profile(db, telegram_id)
+        if not profile:
+            raise HTTPException(status_code=404, detail="User not found")
+        current = dict(profile.user_settings or {})
+        current.update(settings_update)
+        payload["user_settings"] = current
+
     _upsert_profile(db, telegram_id, **payload)
-    return {"ok": True, **payload}
+    return {"ok": True, **{k: v for k, v in payload.items() if k != "user_settings"}, **settings_update}
 
 
 @router.delete("/me")

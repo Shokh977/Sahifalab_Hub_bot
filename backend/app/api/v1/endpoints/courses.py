@@ -28,6 +28,7 @@ import re
 from app.services.auth_service import decode_token
 from app.db.session import get_db
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,16 @@ def _supabase_headers() -> dict:
 def _ensure_supabase():
     if not SUPABASE_URL or not SUPABASE_KEY:
         raise HTTPException(status_code=503, detail="Supabase not configured")
+
+
+def _optional_caller_id(authorization: Optional[str]) -> Optional[int]:
+    """Best-effort decode of a Bearer token; returns None instead of raising."""
+    if not authorization:
+        return None
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0] != "Bearer":
+        return None
+    return decode_token(parts[1])
 
 
 async def _resolve_teacher_id(authorization: Optional[str]) -> int:
@@ -217,6 +228,8 @@ async def list_courses(
     is_paid:    Optional[bool] = Query(None, description="true=paid only, false=free only"),
     limit:      int            = Query(20, ge=1, le=100),
     offset:     int            = Query(0, ge=0),
+    authorization: Optional[str] = Header(None),
+    db:         Session        = Depends(get_db),
 ):
     """Public: list published courses with optional filters."""
     _ensure_supabase()
@@ -265,7 +278,23 @@ async def list_courses(
         raise HTTPException(status_code=502, detail=f"Supabase error: {res.text}")
 
     total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
-    return {"courses": res.json(), "total": total, "limit": limit, "offset": offset}
+    courses_data = res.json()
+
+    # Personalize ordering using the caller's onboarding interests, when no explicit
+    # category filter was requested — matched-category courses are moved to the front.
+    if not category:
+        caller_id = _optional_caller_id(authorization)
+        if caller_id:
+            row = db.execute(
+                text("SELECT user_settings FROM profiles WHERE telegram_id = :uid"),
+                {"uid": caller_id},
+            ).fetchone()
+            interests = (row.user_settings or {}).get("interests") if row and row.user_settings else None
+            if interests:
+                interest_set = set(interests)
+                courses_data.sort(key=lambda c: 0 if c.get("category_id") in interest_set else 1)
+
+    return {"courses": courses_data, "total": total, "limit": limit, "offset": offset}
 
 
 @router.post("")

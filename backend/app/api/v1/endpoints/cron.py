@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from fastapi import Depends
 from sqlalchemy import text
 from datetime import datetime, UTC, timedelta
+from typing import Optional
 
 from app.db.session import get_db
 
@@ -284,7 +285,8 @@ async def send_streak_reminders(
             p.telegram_id,
             p.first_name,
             p.streak_days,
-            p.user_settings->>'expo_push_token' AS token
+            p.user_settings->>'expo_push_token' AS token,
+            p.user_settings->>'learning_motivation' AS motivation
         FROM profiles p
         WHERE
             p.streak_days > 0
@@ -304,30 +306,44 @@ async def send_streak_reminders(
     if not rows:
         return {"ok": True, "sent": 0, "eligible": 0}
 
-    def _streak_body(streak: int, name: str) -> tuple[str, str]:
+    # Short closing nudge tailored to the user's onboarding motivation — appended to
+    # the base streak message so copy stays relevant to why they're learning.
+    _MOTIVATION_NUDGE = {
+        "career": "Karyerangiz uchun bir qadam yaqinlashing.",
+        "skill":  "Yangi ko'nikma — bugun ozgina, ertaga katta natija.",
+        "self":   "O'zingiz uchun boshlagan ishni davom ettiring.",
+        "exam":   "Imtihonga tayyorgarlik uchun har kun muhim.",
+    }
+
+    def _streak_body(streak: int, name: str, motivation: Optional[str]) -> tuple[str, str]:
         if streak >= 100:
-            return (
+            title, body = (
                 f"💎 {streak} kunlik seriya! Qo'ldan chiqarmang!",
                 f"{name}, siz {streak} kundan beri har kuni o'qiyapsiz — bugun ham davom eting!",
             )
-        if streak >= 30:
-            return (
+        elif streak >= 30:
+            title, body = (
                 f"🏆 {streak} kun — ajoyib! Bugun ham o'qing",
                 f"Seriyangiz {streak} kunga yetdi. Bugun o'tkazib yubormang!",
             )
-        if streak >= 7:
-            return (
+        elif streak >= 7:
+            title, body = (
                 f"🔥 {streak} kunlik seriya xavf ostida!",
                 f"Bugun o'qimay qolsangiz {streak} kunlik seriyangiz tugaydi. 5 daqiqa kifoya!",
             )
-        return (
-            "⚡ Bugun dars o'tmaganiz!",
-            f"Seriyangizni saqlash uchun hozir o'qing — {streak} kun ketadi!",
-        )
+        else:
+            title, body = (
+                "⚡ Bugun dars o'tmaganiz!",
+                f"Seriyangizni saqlash uchun hozir o'qing — {streak} kun ketadi!",
+            )
+        nudge = _MOTIVATION_NUDGE.get(motivation or "")
+        if nudge:
+            body = f"{body} {nudge}"
+        return title, body
 
     messages = []
     for row in rows:
-        title, body = _streak_body(int(row.streak_days or 1), row.first_name or "Salom")
+        title, body = _streak_body(int(row.streak_days or 1), row.first_name or "Salom", row.motivation)
         messages.append({
             "to":    row.token,
             "title": title,

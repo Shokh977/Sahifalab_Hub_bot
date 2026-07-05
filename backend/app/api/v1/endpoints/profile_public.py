@@ -166,6 +166,17 @@ class ReorderSkillsRequest(BaseModel):
     skill_ids: list[int]   # ordered list of skill PKs — new display_order = index
 
 
+class InterestsUpdateRequest(BaseModel):
+    category_ids: list[int]   # course/deck category IDs picked during onboarding
+
+    @field_validator("category_ids")
+    @classmethod
+    def validate_category_ids(cls, v):
+        if not v:
+            raise ValueError("category_ids bo'sh bo'lmasligi kerak")
+        return v[:20]
+
+
 # ── Profile view deduplication ────────────────────────────────────────────────
 
 def _maybe_log_view(db: Session, profile_id: int, viewer_id: Optional[int]) -> None:
@@ -363,6 +374,29 @@ def get_my_views(
         "total_count":    total_count,
         "recent_viewers": recent_viewers,
     }
+
+
+@profile_router.post("/interests")
+def save_my_interests(
+    body: InterestsUpdateRequest,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Persist the user's selected interest/category IDs from onboarding, used to
+    personalize recommended courses/decks on the dashboard."""
+    viewer_id = _require_viewer(authorization)
+    profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profil topilmadi")
+    current = dict(profile.user_settings or {})
+    current["interests"] = body.category_ids
+    profile.user_settings = current
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Ma'lumotlar bazasi xatoligi")
+    return {"ok": True, "category_ids": body.category_ids}
 
 
 @profile_router.get("/me")

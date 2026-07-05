@@ -123,6 +123,25 @@ def _apply_sm2(card: dict, rating: int, now: datetime) -> dict:
     }
 
 
+# Initial (ease_factor, interval_days) seed for a freshly-cloned deck, based on the
+# cloner's self-reported onboarding experience level. Beginners start on an easier
+# curve (more repetitions before intervals grow); advanced users skip ahead slightly.
+_EXPERIENCE_SM2_SEED = {
+    "beginner":     (2.3, 0),
+    "intermediate": (2.5, 0),
+    "advanced":     (2.7, 1),
+}
+
+
+def _sm2_seed_for_experience(db: Session, user_id: int) -> tuple:
+    row = db.execute(
+        text("SELECT user_settings FROM profiles WHERE telegram_id = :uid"),
+        {"uid": user_id},
+    ).fetchone()
+    level = (row.user_settings or {}).get("experience_level") if row and row.user_settings else None
+    return _EXPERIENCE_SM2_SEED.get(level, (2.5, 0))
+
+
 # ── Pydantic schemas ──────────────────────────────────────────────────────────
 
 class DeckCreate(BaseModel):
@@ -1262,17 +1281,19 @@ async def clone_public_deck(
         },
     ).fetchone()
 
+    seed_ef, seed_iv = _sm2_seed_for_experience(db, caller_id)
     for c in cards:
         db.execute(
             text("""
                 INSERT INTO flashcards
                     (deck_id, front_text, back_text, front_image, back_image, position,
                      ease_factor, interval_days, repetitions, status, next_review, created_at)
-                VALUES (:did, :front, :back, :fimg, :bimg, :pos, 2.5, 0, 0, 'new', :now, :now)
+                VALUES (:did, :front, :back, :fimg, :bimg, :pos, :ef, :iv, 0, 'new', :now, :now)
             """),
             {
                 "did": int(new_deck.id), "front": c.front_text, "back": c.back_text,
-                "fimg": c.front_image, "bimg": c.back_image, "pos": c.position, "now": now,
+                "fimg": c.front_image, "bimg": c.back_image, "pos": c.position,
+                "ef": seed_ef, "iv": seed_iv, "now": now,
             },
         )
 
