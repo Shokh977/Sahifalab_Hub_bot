@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy.pool import NullPool, StaticPool
+from sqlalchemy.pool import StaticPool
 from app.core.config import settings
 import ssl
 import logging
@@ -39,10 +39,25 @@ def _build_connect_args():
 
 def _create_engine_safe(db_url: str):
     try:
+        if _is_sqlite:
+            return create_engine(
+                db_url,
+                echo=settings.DATABASE_ECHO,
+                poolclass=StaticPool,
+                connect_args=_build_connect_args(),
+            )
+        # Reuse real TCP/TLS connections across requests instead of opening a fresh
+        # one per request (NullPool) — that per-request handshake was the dominant
+        # cost behind slow flashcard/deck endpoints. pool_pre_ping guards against
+        # stale connections being handed out; pool_recycle avoids the DB/pooler
+        # silently dropping idle connections out from under us.
         return create_engine(
             db_url,
             echo=settings.DATABASE_ECHO,
-            poolclass=StaticPool if _is_sqlite else NullPool,
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=280,
+            pool_pre_ping=True,
             connect_args=_build_connect_args(),
         )
     except Exception as e:

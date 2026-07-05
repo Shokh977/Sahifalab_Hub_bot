@@ -35,12 +35,12 @@ import httpx
 from datetime import datetime, UTC, timedelta, date as Date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 from app.api.v1.endpoints.notifications import send_notification
@@ -1117,13 +1117,17 @@ async def list_public_decks(
         "top_rated": "d.rating_avg DESC",
     }[sort]
 
+    # Two separate queries beat a single COUNT(*) OVER() here: the window function
+    # forces Postgres to materialize every matching row (defeating the LIMIT-aware
+    # index scan) just to attach a total to each of the 20 returned rows. A plain
+    # COUNT(*) against flashcard_decks alone (no joins needed — filters are all on
+    # d.*) stays index-only and cheap regardless of catalog size.
     rows = db.execute(
         text(f"""
             SELECT d.id, d.title, d.description, d.color, d.card_count, d.category, d.badge_type,
                    d.is_anonymous, d.is_featured, d.clone_count, d.rating_avg, d.rating_count,
                    p.telegram_id AS creator_id, p.first_name AS creator_name, p.photo_url AS creator_photo,
-                   (dc_check.original_deck_id IS NOT NULL) AS already_cloned,
-                   COUNT(*) OVER() AS total_count
+                   (dc_check.original_deck_id IS NOT NULL) AS already_cloned
             FROM flashcard_decks d
             LEFT JOIN profiles p ON p.telegram_id = d.user_id
             LEFT JOIN deck_clones dc_check
@@ -1135,9 +1139,11 @@ async def list_public_decks(
         params,
     ).fetchall()
 
+    total = db.execute(text(f"SELECT COUNT(*) FROM flashcard_decks d WHERE {where}"), params).scalar()
+
     return {
         "decks": [_public_deck_item(r) for r in rows],
-        "total": int(rows[0].total_count) if rows else 0,
+        "total": int(total or 0),
         "page":  page,
         "limit": limit,
     }
@@ -1235,9 +1241,56 @@ def _clone_already_response(db: Session, clone_deck_id: int) -> dict:
     return result
 
 
+# A study session only ever pulls MAX_NEW_PER_SESSION (10) cards at a time, so a
+# freshly-cloned deck only needs this many rows present before the user can start
+# practicing. Decks at or under this size clone fully inline; larger decks get this
+# many cards inserted synchronously and the remainder finishes in the background so
+# the clone request itself doesn't wait on N sequential/bulk inserts.
+CLONE_SYNC_BATCH = 30
+
+
+def _bulk_insert_cloned_cards(db: Session, deck_id: int, cards: list, ef: float, iv: int, now: datetime) -> None:
+    """Single multi-row INSERT for a batch of cloned cards — one round trip regardless of batch size."""
+    if not cards:
+        return
+    values_sql = []
+    params: dict = {"did": deck_id, "ef": ef, "iv": iv, "now": now}
+    for i, c in enumerate(cards):
+        values_sql.append(f"(:did, :front_{i}, :back_{i}, :fimg_{i}, :bimg_{i}, :pos_{i}, :ef, :iv, 0, 'new', :now, :now)")
+        params[f"front_{i}"] = c.front_text
+        params[f"back_{i}"] = c.back_text
+        params[f"fimg_{i}"] = c.front_image
+        params[f"bimg_{i}"] = c.back_image
+        params[f"pos_{i}"] = c.position
+    db.execute(
+        text(f"""
+            INSERT INTO flashcards
+                (deck_id, front_text, back_text, front_image, back_image, position,
+                 ease_factor, interval_days, repetitions, status, next_review, created_at)
+            VALUES {", ".join(values_sql)}
+        """),
+        params,
+    )
+
+
+def _finish_clone_in_background(new_deck_id: int, remaining_cards: list, ef: float, iv: int, now: datetime) -> None:
+    """Runs after the clone response has already been sent. Uses its own DB session
+    since the request-scoped session may already be torn down by the time this fires."""
+    bg_db = SessionLocal()
+    try:
+        _bulk_insert_cloned_cards(bg_db, new_deck_id, remaining_cards, ef, iv, now)
+        bg_db.commit()
+    except Exception as e:
+        bg_db.rollback()
+        logger.error(f"Background clone card insert failed for deck {new_deck_id}: {e}")
+    finally:
+        bg_db.close()
+
+
 @router.post("/public/{deck_id}/clone", status_code=201)
 async def clone_public_deck(
     deck_id: int,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -1282,20 +1335,9 @@ async def clone_public_deck(
     ).fetchone()
 
     seed_ef, seed_iv = _sm2_seed_for_experience(db, caller_id)
-    for c in cards:
-        db.execute(
-            text("""
-                INSERT INTO flashcards
-                    (deck_id, front_text, back_text, front_image, back_image, position,
-                     ease_factor, interval_days, repetitions, status, next_review, created_at)
-                VALUES (:did, :front, :back, :fimg, :bimg, :pos, :ef, :iv, 0, 'new', :now, :now)
-            """),
-            {
-                "did": int(new_deck.id), "front": c.front_text, "back": c.back_text,
-                "fimg": c.front_image, "bimg": c.back_image, "pos": c.position,
-                "ef": seed_ef, "iv": seed_iv, "now": now,
-            },
-        )
+    first_batch = cards[:CLONE_SYNC_BATCH]
+    remaining   = cards[CLONE_SYNC_BATCH:]
+    _bulk_insert_cloned_cards(db, int(new_deck.id), first_batch, seed_ef, seed_iv, now)
 
     # ON CONFLICT DO NOTHING guards a double-tap/retry race on the same (deck, user) pair.
     db.execute(
@@ -1322,6 +1364,9 @@ async def clone_public_deck(
 
     # Creator-side milestone bonus only — cloning never grants XP to the cloner.
     await _check_clone_milestones(db, deck_id)
+
+    if remaining:
+        background_tasks.add_task(_finish_clone_in_background, int(new_deck.id), remaining, seed_ef, seed_iv, now)
 
     result = _deck_row_simple(new_deck)
     result["card_count"] = len(cards)
