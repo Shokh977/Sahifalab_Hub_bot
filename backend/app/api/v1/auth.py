@@ -113,6 +113,15 @@ class ApplyTeacherRequest(BaseModel):
     motivation:       str
     contact:          str
 
+class ApproveTeacherRequest(BaseModel):
+    # Fraction 0.0-1.0 (e.g. 0.20 = teacher keeps 20%). Omit to keep the
+    # existing/default rate. The frontend converts its percent input (0-100)
+    # to this fraction before sending — this endpoint only ever sees 0.0-1.0.
+    commission_rate: Optional[float] = None
+
+class UpdateTeacherCommissionRequest(BaseModel):
+    commission_rate: float
+
 class SetUserRoleRequest(BaseModel):
     role:   str
     status: str = "active"
@@ -873,12 +882,23 @@ async def list_teacher_requests(
 @router.post("/admin/approve-teacher/{target_telegram_id}")
 async def approve_teacher(
     target_telegram_id: int,
+    body: Optional[ApproveTeacherRequest] = None,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
     _require_admin(db, authorization)
     profile = _get_profile(db, target_telegram_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
+
+    if body is not None and body.commission_rate is not None:
+        if not (0.0 <= body.commission_rate <= 1.0):
+            raise HTTPException(status_code=422, detail="commission_rate must be between 0.0 and 1.0")
+        tp = db.query(TeacherProfile).filter(TeacherProfile.telegram_id == target_telegram_id).first()
+        if tp is None:
+            tp = TeacherProfile(telegram_id=target_telegram_id)
+            db.add(tp)
+        tp.commission_rate = body.commission_rate
+
     profile.role = "teacher"
     profile.status = "active"
     db.commit()
@@ -893,6 +913,30 @@ async def approve_teacher(
     except Exception:
         pass
     return {"success": True, "message": "Teacher approved", "telegram_id": target_telegram_id}
+
+
+@router.patch("/admin/teacher-commission/{target_telegram_id}")
+async def update_teacher_commission(
+    target_telegram_id: int,
+    body: UpdateTeacherCommissionRequest,
+    authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
+):
+    """Adjust an already-approved teacher's revenue-share rate."""
+    _require_admin(db, authorization)
+    if not (0.0 <= body.commission_rate <= 1.0):
+        raise HTTPException(status_code=422, detail="commission_rate must be between 0.0 and 1.0")
+    profile = _get_profile(db, target_telegram_id)
+    if not profile or profile.role != "teacher":
+        raise HTTPException(status_code=404, detail="Teacher not found")
+
+    tp = db.query(TeacherProfile).filter(TeacherProfile.telegram_id == target_telegram_id).first()
+    if tp is None:
+        tp = TeacherProfile(telegram_id=target_telegram_id)
+        db.add(tp)
+    tp.commission_rate = body.commission_rate
+    db.commit()
+    db.refresh(tp)
+    return {"success": True, "telegram_id": target_telegram_id, "commission_rate": float(tp.commission_rate)}
 
 
 @router.post("/admin/reject-teacher/{target_telegram_id}")

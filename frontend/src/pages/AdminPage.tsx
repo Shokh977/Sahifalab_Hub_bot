@@ -867,9 +867,15 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      // The commission-rate input isn't persisted — the approval endpoint has no
-      // concept of it (Profile-based teacher flow, not the unrelated `teachers` table).
-      await apiService.client.post(`/api/auth/admin/approve-teacher/${telegramId}`)
+      // Backend stores commission as a 0.0-1.0 fraction; this input collects a
+      // 0-100 percent, so convert here. An empty/invalid value omits the field
+      // entirely, leaving the teacher on the DB default (70%) rather than
+      // silently sending something like commission_rate: NaN.
+      const pct = Number(teacherCommission)
+      const body = Number.isFinite(pct) && pct >= 0 && pct <= 100
+        ? { commission_rate: pct / 100 }
+        : undefined
+      await apiService.client.post(`/api/auth/admin/approve-teacher/${telegramId}`, body)
       setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
       setTeacherApproveId(null)
       loadTeacherRequests()
@@ -885,7 +891,7 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      // Rejection feedback isn't persisted — same gap as commission_rate above.
+      // Rejection feedback isn't persisted — the reject endpoint takes no body.
       await apiService.client.post(`/api/auth/admin/reject-teacher/${telegramId}`)
       setTeacherMsg(`🚫 ${telegramId} rad etildi`)
       setTeacherRejectId(null)

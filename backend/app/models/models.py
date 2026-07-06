@@ -1,5 +1,5 @@
 from datetime import datetime, UTC
-from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, DateTime, Date, ForeignKey, Table, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, Numeric, DateTime, Date, ForeignKey, Table, Boolean, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
 from sqlalchemy.orm import relationship
 from app.db.session import Base
@@ -274,6 +274,10 @@ class TeacherProfile(Base):
     motivation       = Column(Text, nullable=True)
     contact          = Column(String(255), nullable=True)
     applied_at       = Column(DateTime(timezone=True), nullable=True)
+    # Per-teacher revenue share (fraction 0.0-1.0, e.g. 0.70 = teacher keeps 70%).
+    # Column already exists in Postgres (migration 006_teacher_profiles.sql) —
+    # this was previously undeclared here (ORM/DB drift), not a missing column.
+    commission_rate  = Column(Numeric(4, 2), nullable=False, server_default="0.70")
 
 # Association table for cart items
 cart_items = Table(

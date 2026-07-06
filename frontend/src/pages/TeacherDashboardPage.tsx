@@ -29,7 +29,9 @@ import {
 } from '../components/charts/AnalyticsCharts'
 
 const ADMIN_IDS = [807466591]
-const PLATFORM_FEE = 0.30   // 30 % platform commission
+// Commission is per-teacher now (teacherProfile.commission_rate, set by admin on
+// approval) — this is only the fallback used before that profile has loaded.
+const DEFAULT_TEACHER_SHARE_RATE = 0.70
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -90,7 +92,7 @@ function buildSparkline(seed: number, days = 30): number[] {
   return arr
 }
 
-function netIncome(gross: number): number { return gross * (1 - PLATFORM_FEE) }
+function netIncome(gross: number, teacherShareRate: number): number { return gross * teacherShareRate }
 
 function calcProfileStrength(user: any, tp: TeacherProfile | null) {
   const steps = [
@@ -259,7 +261,8 @@ const TeacherDashboardPage: React.FC = () => {
 
   // ── Derived analytics vars ──────────────────────────────────────────────
   const grossUZS  = analytics?.total_revenue_uzs ?? 0
-  const netUZS    = Math.round(netIncome(grossUZS))
+  const teacherShareRate = teacherProfile?.commission_rate ?? DEFAULT_TEACHER_SHARE_RATE
+  const netUZS    = Math.round(netIncome(grossUZS, teacherShareRate))
   const commUZS   = grossUZS - netUZS
   const convRate  = (analytics?.total_students && analytics.completed_orders)
     ? ((analytics.completed_orders / analytics.total_students) * 100).toFixed(1) : '0.0'

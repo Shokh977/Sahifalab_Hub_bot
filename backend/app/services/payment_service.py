@@ -412,10 +412,35 @@ async def _mark_fulfilled(order_id: str):
         )
 
 
+async def _get_teacher_share_rate(teacher_id: int) -> float:
+    """Per-teacher revenue share, from teacher_profiles.commission_rate (fraction
+    0.0-1.0). Falls back to the global default for teachers with no profile row
+    or an out-of-range/corrupt stored value — never let a bad row break payouts."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                params={"telegram_id": f"eq.{teacher_id}", "select": "commission_rate"},
+                headers=_sb_headers(),
+            )
+        rows = res.json() if res.status_code == 200 else []
+        if rows and rows[0].get("commission_rate") is not None:
+            rate = float(rows[0]["commission_rate"])
+            if 0.0 < rate <= 1.0:
+                return rate
+            logger.warning(
+                "[Wallet] teacher %d has out-of-range commission_rate=%s — using default %.2f",
+                teacher_id, rows[0]["commission_rate"], TEACHER_SHARE_RATE,
+            )
+    except Exception as e:
+        logger.warning("[Wallet] commission_rate lookup failed for teacher %d: %s — using default", teacher_id, e)
+    return TEACHER_SHARE_RATE
+
+
 async def _credit_teacher_for_sale(item_type: str, item_id: int, amount: float, order_id: str):
     """Look up the teacher who owns the item, credit their wallet via Supabase RPC.
-    
-    Teacher receives (amount × TEACHER_SHARE_RATE) — platform keeps PLATFORM_COMMISSION_RATE.
+
+    Teacher receives (amount × their own commission_rate) — platform keeps the rest.
     """
     teacher_id = None
     try:
@@ -436,8 +461,9 @@ async def _credit_teacher_for_sale(item_type: str, item_id: int, amount: float, 
         logger.info("[Wallet] No teacher_id found for %s/%s — skipping credit", item_type, item_id)
         return
 
-    # Apply platform commission — teacher gets 70%
-    teacher_amount = round(amount * TEACHER_SHARE_RATE, 2)
+    # Apply this teacher's own commission rate (falls back to the global default)
+    teacher_share_rate = await _get_teacher_share_rate(teacher_id)
+    teacher_amount = round(amount * teacher_share_rate, 2)
 
     # Call the atomic credit_wallet RPC
     async with httpx.AsyncClient(timeout=10) as client:
@@ -447,14 +473,14 @@ async def _credit_teacher_for_sale(item_type: str, item_id: int, amount: float, 
                 "p_teacher_id": teacher_id,
                 "p_amount": teacher_amount,
                 "p_reference": order_id,
-                "p_note": f"{item_type}:{item_id} sale (teacher {int(TEACHER_SHARE_RATE*100)}%)",
+                "p_note": f"{item_type}:{item_id} sale (teacher {int(teacher_share_rate*100)}%)",
             },
             headers=_sb_headers(),
         )
     if res.status_code in (200, 201):
         logger.info(
             "[Wallet] Credited teacher %d: %.2f UZS (%.0f%% of %.2f) for %s",
-            teacher_id, teacher_amount, TEACHER_SHARE_RATE * 100, amount, order_id,
+            teacher_id, teacher_amount, teacher_share_rate * 100, amount, order_id,
         )
     else:
         logger.warning("[Wallet] credit_wallet RPC failed: %s", res.text)
