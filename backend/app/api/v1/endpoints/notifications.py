@@ -303,6 +303,11 @@ _PUSH_TITLES: dict[str, str] = {
     "teacher_approved":    "Ariza qabul qilindi 🎉",
     "course_granted":      "Kurs ochildi! 🎉",
     "deck_clone_milestone": "To'plamingiz mashhur bo'lmoqda! 🎉",
+    "connection_achievement":     "Yangi yutuq",
+    "connection_course_published": "Yangi kurs",
+    "deck_content_flagged":       "To'plam tekshiruvda",
+    "deck_child_safety_flagged":  "⚠️ Bolalar xavfsizligi",
+    "deck_auto_hidden_reports":   "To'plam yashirildi",
 }
 
 # Body templates — {actor} is replaced with the actor's name at send time
@@ -329,6 +334,11 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "teacher_approved":    "Tabriklaymiz! Siz endi o'qituvchi sifatida tasdiqlangansiz. Kurs yaratishni boshlashingiz mumkin.",
     "course_granted":      "{course_title} kursi sizga ochildi. Hozir o'rganishni boshlang!",
     "deck_clone_milestone": "🎉 Sizning \"{deck}\" to'plamingiz {n} marta nusxa olindi!",
+    "connection_achievement":      "{actor} yangi yutuqqa erishdi — profilini ko'ring!",
+    "connection_course_published": "{actor} yangi kurs e'lon qildi: «{course_title}»",
+    "deck_content_flagged":        "Bitta to'plam tekshiruv uchun belgilandi. Admin panelda ko'rib chiqing.",
+    "deck_child_safety_flagged":   "⚠️ Bolalar xavfsizligi bo'yicha to'plam belgilandi — zudlik bilan ko'rib chiqing!",
+    "deck_auto_hidden_reports":    "Ko'p shikoyat tufayli to'plam avtomatik yashirildi — ko'rib chiqing.",
 }
 
 # Keep _PUSH_BODIES as fallback alias
@@ -438,10 +448,16 @@ def _expo_screen_data(notif_type: str, meta: dict) -> dict:
         return {"screen": "certificate", "code": meta["code"]}
     if notif_type == "quiz_pass" and meta.get("test_id"):
         return {"screen": "test", "test_id": meta["test_id"]}
+    if notif_type == "connection_achievement" and meta.get("actor_id"):
+        return {"screen": "profile", "actor_id": meta["actor_id"]}
+    if notif_type == "connection_course_published" and meta.get("course_id"):
+        return {"screen": "course", "course_id": meta["course_id"]}
     mapping: dict[str, dict] = {
         "follow":              {"screen": "profile"},
         "connection_request":  {"screen": "profile"},
         "connection_accepted": {"screen": "profile"},
+        "connection_achievement":      {"screen": "profile"},
+        "connection_course_published": {"screen": "courses"},
         "like":                {"screen": "home"},
         "comment":             {"screen": "home"},
         "comment_reply":       {"screen": "home"},
@@ -537,6 +553,11 @@ def _push_route(notif_type: str, meta: dict) -> str:
         "achievement":     "/profile/me",
         "welcome":         "/profile/me",
         "leaderboard_rank":"/leaderboard",
+        "connection_achievement":      f"/profile/{meta.get('actor_id', '')}" if meta.get("actor_id") else "/network",
+        "connection_course_published": f"/courses/{meta['course_id']}" if meta.get("course_id") else "/courses",
+        "deck_content_flagged":       "/admin",
+        "deck_child_safety_flagged":  "/admin",
+        "deck_auto_hidden_reports":   "/admin",
     }
     return routes.get(notif_type, "/notifications")
 

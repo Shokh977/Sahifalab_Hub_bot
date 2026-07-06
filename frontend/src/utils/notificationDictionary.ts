@@ -16,7 +16,7 @@ import {
   Heart, MessageCircle, UserPlus, Repeat2, AtSign,
   GraduationCap, BookCheck, Award, HelpCircle, BookOpen,
   TrendingUp, Trophy, Flame, Medal, Zap,
-  Users, Star, Banknote, ShieldCheck, BarChart3,
+  Users, Star, Banknote, ShieldCheck, BarChart3, AlertTriangle,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -312,6 +312,67 @@ const dict: Record<string, NotifDef> = {
         ? `${m.rating}★ baho qo'yildi.`
         : "Kursga yangi sharh qoldirildi.",
     route: (m) => m.course_id ? `/courses/${m.course_id}` : '/teacher',
+  },
+
+  // ─────────────────────────── SOCIAL (connections) ─────────────────────────
+
+  connection_achievement: {
+    icon: Trophy,
+    label: 'Yangi yutuq',
+    color: 'text-yellow-600 dark:text-yellow-400',
+    bgColor: 'bg-yellow-100 dark:bg-yellow-900/30',
+    message: (m) => {
+      const who = actor(m)
+      if (m.achievement === 'course_completed') return `${who} "${m.course_title ?? 'kurs'}"ni yakunladi! 🎓`
+      if (m.achievement === 'quiz_passed')       return `${who} testni ${m.score ?? ''}% natija bilan topshirdi! 🏆`
+      if (m.achievement === 'level_up')          return `${who} ${m.level_name ?? 'yangi'} darajasiga ko'tarildi! ⭐`
+      return `${who} yangi yutuqqa erishdi!`
+    },
+    route: (m) => m.actor_id ? `/profile/${m.actor_id}` : '/network',
+  },
+
+  connection_course_published: {
+    icon: GraduationCap,
+    label: 'Yangi kurs',
+    color: 'text-sahifa-600 dark:text-sahifa-400',
+    bgColor: 'bg-sahifa-100 dark:bg-sahifa-900/30',
+    message: (m) =>
+      m.course_title
+        ? `${actor(m)} yangi kurs e'lon qildi: "${m.course_title}"`
+        : `${actor(m)} yangi kurs e'lon qildi.`,
+    route: (m) => m.course_id ? `/courses/${m.course_id}` : '/courses',
+  },
+
+  // ─────────────────────────── SYSTEM (admin moderation) ────────────────────
+
+  deck_content_flagged: {
+    icon: AlertTriangle,
+    label: "To'plam tekshiruvda",
+    color: 'text-red-600 dark:text-red-400',
+    bgColor: 'bg-red-100 dark:bg-red-900/30',
+    message: (m) => m.title ? `"${m.title}" tekshiruv uchun belgilandi.` : "To'plam tekshiruv uchun belgilandi.",
+    route: () => '/admin',
+  },
+
+  deck_child_safety_flagged: {
+    icon: AlertTriangle,
+    label: '⚠️ Bolalar xavfsizligi',
+    color: 'text-red-600 dark:text-red-400',
+    bgColor: 'bg-red-100 dark:bg-red-900/30',
+    message: (m) => m.title ? `⚠️ "${m.title}" — bolalar xavfsizligi bo'yicha belgilandi, zudlik bilan ko'rib chiqing!` : '⚠️ Bolalar xavfsizligi bo\'yicha to\'plam belgilandi.',
+    route: () => '/admin',
+  },
+
+  deck_auto_hidden_reports: {
+    icon: AlertTriangle,
+    label: "To'plam yashirildi",
+    color: 'text-red-600 dark:text-red-400',
+    bgColor: 'bg-red-100 dark:bg-red-900/30',
+    message: (m) =>
+      m.report_count
+        ? `"${m.title ?? "To'plam"}" ${m.report_count} ta shikoyat tufayli avtomatik yashirildi.`
+        : "To'plam ko'p shikoyat tufayli avtomatik yashirildi.",
+    route: () => '/admin',
   },
 }
 
