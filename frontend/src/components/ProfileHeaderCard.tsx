@@ -192,8 +192,8 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
       <div className={hasCover ? 'px-7 pb-7' : ''}>
 
         {/* ── Avatar, overlapping the cover ────────────────────────────────── */}
-        <div className={`relative inline-flex group ${hasCover ? '-mt-11' : ''}`}>
-          <div className={hasCover ? 'rounded-full ring-[5px] ring-white dark:ring-[#0C0C10] shadow-lg' : ''}>
+        <div className={`relative inline-flex leading-none group ${hasCover ? '-mt-11' : ''}`}>
+          <div className={hasCover ? 'inline-flex leading-none rounded-full p-[5px] bg-white dark:bg-[#0C0C10] shadow-lg' : ''}>
             <UserIdentity user={{ ...profile, full_name: displayName }} size="xl" showName={false} />
           </div>
 
