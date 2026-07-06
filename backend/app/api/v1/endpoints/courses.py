@@ -29,6 +29,7 @@ from app.services.auth_service import decode_token
 from app.db.session import get_db
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 
 logger = logging.getLogger(__name__)
 
@@ -285,11 +286,16 @@ async def list_courses(
     if not category:
         caller_id = _optional_caller_id(authorization)
         if caller_id:
-            row = db.execute(
-                text("SELECT user_settings FROM profiles WHERE telegram_id = :uid"),
-                {"uid": caller_id},
-            ).fetchone()
-            interests = (row.user_settings or {}).get("interests") if row and row.user_settings else None
+            # Blocking DB call — offloaded to a worker thread so it doesn't stall the
+            # event loop (and every other in-flight request) while it runs.
+            def _fetch_interests() -> Optional[list]:
+                row = db.execute(
+                    text("SELECT user_settings FROM profiles WHERE telegram_id = :uid"),
+                    {"uid": caller_id},
+                ).fetchone()
+                return (row.user_settings or {}).get("interests") if row and row.user_settings else None
+
+            interests = await run_in_threadpool(_fetch_interests)
             if interests:
                 interest_set = set(interests)
                 courses_data.sort(key=lambda c: 0 if c.get("category_id") in interest_set else 1)
