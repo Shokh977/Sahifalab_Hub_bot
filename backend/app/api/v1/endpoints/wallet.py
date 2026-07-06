@@ -10,6 +10,8 @@ from fastapi import APIRouter, HTTPException, Header, Query
 from pydantic import BaseModel, Field
 from typing import Optional
 import logging
+import os
+import httpx
 
 from app.services.auth_service import decode_token_payload
 from app.services import wallet_service as ws
@@ -18,8 +20,33 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
 
 # ── Auth helper (same pattern as teacher.py) ──────────────────────────────────
+
+async def _get_current_role(telegram_id: int) -> str:
+    """Fresh role lookup from the DB — see teacher.py's _get_current_role for
+    why the JWT's role claim can't be trusted here (goes stale on approve/demote)."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "role"},
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                    "Content-Type": "application/json",
+                },
+            )
+        rows = res.json() if res.status_code == 200 else []
+        if rows:
+            return rows[0].get("role") or "student"
+    except Exception as e:
+        logger.warning("_get_current_role lookup failed for %d: %s", telegram_id, e)
+    return "student"
+
 
 async def _get_telegram_id(authorization: Optional[str]) -> int:
     if not authorization:
@@ -30,9 +57,11 @@ async def _get_telegram_id(authorization: Optional[str]) -> int:
     payload = decode_token_payload(parts[1])
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    if payload.get("role") not in ("teacher", "admin"):
+    telegram_id = int(payload["telegram_id"])
+    current_role = await _get_current_role(telegram_id)
+    if current_role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Teacher account required")
-    return int(payload["telegram_id"])
+    return telegram_id
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
