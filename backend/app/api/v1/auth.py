@@ -20,7 +20,7 @@ import httpx
 import bcrypt
 from pydantic import BaseModel, HttpUrl, EmailStr
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 
 try:
     from google.oauth2 import id_token as google_id_token
@@ -877,6 +877,78 @@ async def list_teacher_requests(
         }
         for p in profiles
     ]
+
+
+@router.get("/admin/teachers")
+async def list_active_teachers(
+    authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
+):
+    """
+    All currently-active teachers with their commission rate and real revenue.
+
+    Revenue is aggregated from the live `payments` table (item_type/item_id/status),
+    NOT the legacy `course_payment_orders`/`teachers` tables some older/dead admin
+    endpoints still reference — those predate the Click/Payme payment rewrite and
+    no longer receive real data.
+    """
+    _require_admin(db, authorization)
+
+    profiles = (
+        db.query(Profile)
+        .filter(Profile.role == "teacher")
+        .order_by(Profile.first_name)
+        .all()
+    )
+    if not profiles:
+        return []
+
+    tids = [p.telegram_id for p in profiles]
+    tp_map = {
+        tp.telegram_id: tp
+        for tp in db.query(TeacherProfile).filter(TeacherProfile.telegram_id.in_(tids)).all()
+    }
+
+    revenue_map: dict = {}
+    try:
+        revenue_rows = db.execute(text("""
+            SELECT teacher_id, SUM(amount) AS gross_revenue_uzs, COUNT(*) AS completed_orders
+            FROM (
+                SELECT c.teacher_id, p.amount
+                FROM payments p
+                JOIN courses c ON c.id = p.item_id
+                WHERE p.item_type = 'course' AND p.status = 'completed'
+                UNION ALL
+                SELECT b.teacher_id, p.amount
+                FROM payments p
+                JOIN book b ON b.id = p.item_id
+                WHERE p.item_type = 'book' AND p.status = 'completed'
+            ) sales
+            GROUP BY teacher_id
+        """)).fetchall()
+        revenue_map = {int(r.teacher_id): r for r in revenue_rows if r.teacher_id is not None}
+    except Exception as e:
+        logger.warning("list_active_teachers: revenue aggregation failed, showing zeros: %s", e)
+
+    result = []
+    for p in profiles:
+        tp = tp_map.get(p.telegram_id)
+        rate = float(tp.commission_rate) if tp and tp.commission_rate is not None else 0.70
+        rev = revenue_map.get(p.telegram_id)
+        gross = float(rev.gross_revenue_uzs) if rev else 0.0
+        result.append({
+            "telegram_id": p.telegram_id,
+            "first_name": p.first_name,
+            "username": p.site_username,
+            "photo_url": p.photo_url,
+            "status": p.status,
+            "specialization": tp.specialization if tp else None,
+            "commission_rate": rate,
+            "gross_revenue_uzs": gross,
+            "completed_orders": int(rev.completed_orders) if rev else 0,
+            "net_income_uzs": round(gross * rate, 2),
+            "platform_income_uzs": round(gross * (1 - rate), 2),
+        })
+    return result
 
 
 @router.post("/admin/approve-teacher/{target_telegram_id}")

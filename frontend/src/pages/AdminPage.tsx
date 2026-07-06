@@ -115,6 +115,20 @@ interface TeacherRequest {
   status:           'pending' | 'approved' | 'rejected' | string
 }
 
+interface ActiveTeacher {
+  telegram_id:        number
+  first_name:         string | null
+  username:           string | null
+  photo_url:          string | null
+  status:              string
+  specialization:      string | null
+  commission_rate:     number   // fraction 0.0-1.0
+  gross_revenue_uzs:   number
+  completed_orders:    number
+  net_income_uzs:      number
+  platform_income_uzs: number
+}
+
 // ─── Platform analytics types (Step 15) ──────────────────────────────────────
 interface PlatformSummary {
   total_courses: number
@@ -293,6 +307,17 @@ const AdminPage: React.FC = () => {
   const [teacherCommission, setTeacherCommission] = useState('30')
   const [teacherRejectId, setTeacherRejectId] = useState<number | null>(null)
   const [teacherRejectFeedback, setTeacherRejectFeedback] = useState('')
+
+  // Active teachers (commission edit, demote, income) — shown under the
+  // "Tasdiqlangan" filter tab
+  const [activeTeachers, setActiveTeachers] = useState<ActiveTeacher[]>([])
+  const [activeTeachersLoading, setActiveTeachersLoading] = useState(false)
+  const [activeTeachersError, setActiveTeachersError] = useState('')
+  const [commissionEditId, setCommissionEditId] = useState<number | null>(null)
+  const [commissionEditValue, setCommissionEditValue] = useState('')
+  const [commissionSavingId, setCommissionSavingId] = useState<number | null>(null)
+  const [demoteConfirmId, setDemoteConfirmId] = useState<number | null>(null)
+  const [demotingId, setDemotingId] = useState<number | null>(null)
 
   // Platform Analytics (Step 15)
   const [platformAnalytics, setPlatformAnalytics] = useState<PlatformAnalytics | null>(null)
@@ -603,11 +628,11 @@ const AdminPage: React.FC = () => {
     setTeacherReqLoading(true)
     setTeacherReqError('')
     try {
-      // NOTE: /api/auth/admin/teacher-requests only ever returns PENDING applications
-      // (Profile.status == 'pending') — there is no backend concept of a separately
-      // queryable "approved"/"rejected" history, since approving/rejecting just flips
-      // the profile back to status='active'. The approved/rejected filter tabs above
-      // have no matching data source yet; only the "pending" (default) view is real.
+      // /api/auth/admin/teacher-requests only ever returns PENDING applications
+      // (Profile.status == 'pending'). "Tasdiqlangan" (approved) has its own real
+      // data source — currently-active teachers — loaded by loadActiveTeachers()
+      // below. "Rad etilgan" (rejected) still has no queryable history: rejecting
+      // just flips the profile back to status='active' with no distinct trace.
       const res = await apiService.client.get('/api/auth/admin/teacher-requests')
       const raw = res.data
       const list = Array.isArray(raw) ? raw : (raw?.items ?? [])
@@ -624,6 +649,57 @@ const AdminPage: React.FC = () => {
       setTeacherReqLoading(false)
     }
   }, [adminId])
+
+  const loadActiveTeachers = useCallback(async () => {
+    if (!adminId) return
+    setActiveTeachersLoading(true)
+    setActiveTeachersError('')
+    try {
+      const res = await apiService.client.get('/api/auth/admin/teachers')
+      setActiveTeachers(Array.isArray(res.data) ? res.data : [])
+    } catch (err: any) {
+      console.error('[Admin] loadActiveTeachers error:', err?.response?.data?.detail || err?.message)
+      setActiveTeachersError('Xatolik yuz berdi')
+    } finally {
+      setActiveTeachersLoading(false)
+    }
+  }, [adminId])
+
+  const handleSaveCommission = async (telegramId: number) => {
+    const pct = Number(commissionEditValue)
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      setActiveTeachersError("Komissiya 0 dan 100 gacha bo'lishi kerak")
+      return
+    }
+    setCommissionSavingId(telegramId)
+    try {
+      const rate = pct / 100
+      await apiService.client.patch(`/api/auth/admin/teacher-commission/${telegramId}`, { commission_rate: rate })
+      setActiveTeachers(prev => prev.map(t => t.telegram_id === telegramId
+        ? { ...t, commission_rate: rate, net_income_uzs: Math.round(t.gross_revenue_uzs * rate * 100) / 100, platform_income_uzs: Math.round(t.gross_revenue_uzs * (1 - rate) * 100) / 100 }
+        : t))
+      setCommissionEditId(null)
+    } catch (err: any) {
+      console.error('[Admin] handleSaveCommission error:', err?.response?.data?.detail || err?.message)
+      setActiveTeachersError('Komissiyani saqlashda xatolik')
+    } finally {
+      setCommissionSavingId(null)
+    }
+  }
+
+  const handleDemoteTeacher = async (telegramId: number) => {
+    setDemotingId(telegramId)
+    try {
+      await apiService.client.patch(`/api/auth/admin/users/${telegramId}/role`, { role: 'student', status: 'active' })
+      setActiveTeachers(prev => prev.filter(t => t.telegram_id !== telegramId))
+      setDemoteConfirmId(null)
+    } catch (err: any) {
+      console.error('[Admin] handleDemoteTeacher error:', err?.response?.data?.detail || err?.message)
+      setActiveTeachersError("Talabaga aylantirishda xatolik")
+    } finally {
+      setDemotingId(null)
+    }
+  }
 
   const loadPlatformAnalytics = useCallback(async () => {
     if (!adminId) return
@@ -977,6 +1053,13 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'decks') loadDeckData(deckSubTab)
     if (activeTab === 'feature_usage') loadFeatureStats(featurePeriod)
   }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab, loadFeatureStats, featurePeriod])
+
+  // "Tasdiqlangan" filter tab has its own real data source (active teachers,
+  // not applications) — load it lazily only when that filter is selected.
+  useEffect(() => {
+    if (!adminId || activeTab !== 'teachers' || teacherFilter !== 'approved') return
+    loadActiveTeachers()
+  }, [adminId, activeTab, teacherFilter, loadActiveTeachers])
 
   // ── Hero handlers ─────────────────────────────────────────────────────────
   const handleSaveHero = async () => {
@@ -2483,7 +2566,7 @@ const AdminPage: React.FC = () => {
               </div>
             )}
 
-            {teacherReqLoading ? (
+            {teacherFilter !== 'approved' && (teacherReqLoading ? (
               <div className="space-y-3">
                 {[1, 2, 3].map(i => (
                   <div key={i} className="h-20 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
@@ -2670,6 +2753,149 @@ const AdminPage: React.FC = () => {
                   )
                 })}
               </div>
+            ))}
+
+            {teacherFilter === 'approved' && (
+              activeTeachersError ? (
+                <div className="text-xs p-2.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-100 dark:border-red-800/50">
+                  ❌ {activeTeachersError}
+                </div>
+              ) : null
+            )}
+
+            {teacherFilter === 'approved' && (
+              activeTeachersLoading ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <div key={i} className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                  ))}
+                </div>
+              ) : activeTeachers.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-6 text-center">
+                  <div className="text-4xl mb-2">👩‍🏫</div>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Faol o'qituvchilar yo'q</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activeTeachers.map(t => {
+                    const isEditingCommission = commissionEditId === t.telegram_id
+                    const isSavingCommission  = commissionSavingId === t.telegram_id
+                    const isConfirmingDemote  = demoteConfirmId === t.telegram_id
+                    const isDemoting          = demotingId === t.telegram_id
+                    return (
+                      <div key={t.telegram_id} className="bg-white dark:bg-gray-800 rounded-2xl p-4 border border-gray-100 dark:border-gray-700 shadow-sm">
+                        {/* Header */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <a href={`/profile/${t.telegram_id}`} target="_blank" rel="noreferrer" className="shrink-0">
+                            {t.photo_url ? (
+                              <img src={t.photo_url} alt={t.first_name || ''} className="w-10 h-10 rounded-xl object-cover hover:opacity-80 transition-opacity" />
+                            ) : (
+                              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-sahifa-400 to-sahifa-600 flex items-center justify-center text-white font-bold hover:opacity-80 transition-opacity">
+                                {(t.first_name || '?').charAt(0).toUpperCase()}
+                              </div>
+                            )}
+                          </a>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-gray-900 dark:text-white truncate">
+                              {t.first_name || "Noma'lum"}
+                              {t.username && <span className="text-gray-400 ml-1 font-normal">@{t.username}</span>}
+                            </p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
+                              ID: {t.telegram_id}{t.specialization && ` · ${t.specialization}`}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Income */}
+                        <div className="grid grid-cols-3 gap-2 mb-3 border-t border-gray-100 dark:border-gray-700 pt-3">
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Umumiy tushum</p>
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-0.5">{t.gross_revenue_uzs.toLocaleString()} so'm</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">O'qituvchi (net)</p>
+                            <p className="text-xs font-semibold text-green-600 dark:text-green-400 mt-0.5">{t.net_income_uzs.toLocaleString()} so'm</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">Platforma ulushi</p>
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mt-0.5">{t.platform_income_uzs.toLocaleString()} so'm</p>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mb-3">{t.completed_orders} ta yakunlangan buyurtma</p>
+
+                        {/* Commission editor */}
+                        <div className="flex items-center gap-2 mb-3">
+                          {isEditingCommission ? (
+                            <>
+                              <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-700 rounded-xl px-3 py-2">
+                                <input
+                                  type="number"
+                                  value={commissionEditValue}
+                                  onChange={e => setCommissionEditValue(e.target.value)}
+                                  min={0} max={100}
+                                  className="w-14 bg-transparent text-sm text-center text-gray-900 dark:text-white focus:outline-none"
+                                />
+                                <span className="text-xs text-gray-500 dark:text-gray-400">%</span>
+                              </div>
+                              <button
+                                onClick={() => setCommissionEditId(null)}
+                                className="px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                              >
+                                Bekor
+                              </button>
+                              <button
+                                onClick={() => handleSaveCommission(t.telegram_id)}
+                                disabled={isSavingCommission}
+                                className="px-3 py-2 rounded-xl bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                              >
+                                {isSavingCommission ? '…' : 'Saqlash'}
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => { setCommissionEditId(t.telegram_id); setCommissionEditValue(String(Math.round(t.commission_rate * 100))) }}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-xs font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600"
+                            >
+                              💰 Komissiya: {Math.round(t.commission_rate * 100)}%
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Demote */}
+                        {isConfirmingDemote ? (
+                          <div className="flex flex-col gap-2">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                              {t.first_name || 'Bu foydalanuvchi'} talaba roliga qaytariladi. Davom etasizmi?
+                            </p>
+                            <div className="flex gap-2">
+                              <button
+                                onClick={() => setDemoteConfirmId(null)}
+                                className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 text-xs font-medium hover:bg-gray-50 dark:hover:bg-gray-700"
+                              >
+                                Bekor
+                              </button>
+                              <button
+                                onClick={() => handleDemoteTeacher(t.telegram_id)}
+                                disabled={isDemoting}
+                                className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                              >
+                                {isDemoting ? '…' : 'Tasdiqlash'}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setDemoteConfirmId(t.telegram_id)}
+                            className="w-full py-2 rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 text-red-600 dark:text-red-400 text-xs font-semibold transition-colors border border-red-200 dark:border-red-800"
+                          >
+                            🎓➜🧑‍🎓 Talabaga aylantirish
+                          </button>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )
             )}
           </div>
         )}
