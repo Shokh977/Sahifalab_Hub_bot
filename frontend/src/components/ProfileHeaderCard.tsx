@@ -9,11 +9,12 @@
  * Premium Light/Dark glass aesthetics with frosted blur and subtle shadows.
  */
 
-import React, { useRef } from 'react'
+import React, { useRef, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
   BadgeCheck, Shield, UserPlus, UserMinus, MessageCircle,
   PenSquare, Camera, Loader2, MapPin, Globe, UserCheck, Clock, Check, X, Lock,
+  MoreHorizontal,
 } from 'lucide-react'
 import UserIdentity, { getRankInfo } from './social/UserIdentity'
 import type { UserIdentityUser } from './social/UserIdentity'
@@ -157,24 +158,42 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
+  // Follow lives in a small overflow menu — it's a secondary action and keeping
+  // it as a separate icon-only button next to the text pills read as inconsistent.
+  const [moreOpen, setMoreOpen] = useState(false)
+  const moreRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!moreOpen) return
+    const onClickOutside = (e: MouseEvent) => {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false)
+    }
+    document.addEventListener('mousedown', onClickOutside)
+    return () => document.removeEventListener('mousedown', onClickOutside)
+  }, [moreOpen])
+
+  // Shared pill sizing so every action button reads as one consistent family.
+  const pillBase = 'h-9 inline-flex items-center gap-1.5 rounded-full text-sm font-semibold transition-all active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed'
+  const pillPrimary   = `${pillBase} px-4 bg-sahifa-500 text-white hover:bg-sahifa-600`
+  const pillSecondary = `${pillBase} px-4 bg-gray-100 dark:bg-white/[0.06] text-gray-600 dark:text-white/70 border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10]`
+  const pillGhostIcon = `${pillBase} w-9 justify-center px-0 bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/50 border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10]`
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className={`rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-[0_2px_24px_rgba(0,0,0,0.04)] dark:shadow-none overflow-hidden ${hasCover ? '' : 'p-6'}`}
+      className={`rounded-2xl border border-gray-200/60 dark:border-white/[0.06] bg-white/70 dark:bg-white/[0.03] backdrop-blur-md shadow-[0_2px_24px_rgba(0,0,0,0.04)] dark:shadow-none overflow-hidden ${hasCover ? '' : 'p-7'}`}
     >
       {/* ── Cover banner (bleeds to card edges) ───────────────────────────── */}
       {hasCover && (
         <CoverPhoto url={coverImageUrl} onUpload={onCoverUpload} uploading={coverUploading} />
       )}
 
-      <div className={hasCover ? 'p-6' : ''}>
-      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+      <div className={hasCover ? 'px-7 pb-7' : ''}>
 
-        {/* ── Avatar with rank ring ───────────────────────────────────────── */}
-        <div className={`relative group flex-shrink-0 ${hasCover ? '-mt-14 sm:-mt-16' : ''}`}>
-          <div className={hasCover ? 'rounded-full ring-4 ring-white dark:ring-[#0C0C10]' : ''}>
+        {/* ── Avatar, overlapping the cover ────────────────────────────────── */}
+        <div className={`relative inline-flex group ${hasCover ? '-mt-11' : ''}`}>
+          <div className={hasCover ? 'rounded-full ring-[5px] ring-white dark:ring-[#0C0C10] shadow-lg' : ''}>
             <UserIdentity user={{ ...profile, full_name: displayName }} size="xl" showName={false} />
           </div>
 
@@ -203,259 +222,222 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
           )}
         </div>
 
-        {/* ── Info section ────────────────────────────────────────────────── */}
-        <div className="flex-1 text-center sm:text-left min-w-0">
+        {/* ── Identity row: name/headline on the left, actions on the right ── */}
+        <div className="mt-4 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
 
-          {/* Name + badges + edit icon */}
-          <div className="flex items-center justify-center sm:justify-start gap-2 mb-1 group/name">
-            <span className="text-lg font-bold text-gray-900 dark:text-white truncate max-w-[240px]">
-              {displayName}
-            </span>
-            {isTeacher && (
-              <BadgeCheck className="w-[18px] h-[18px] text-blue-400 fill-blue-400/20 flex-shrink-0" />
-            )}
-            {isAdmin && (
-              <Shield className="w-[18px] h-[18px] text-sahifa-500 fill-sahifa-500/20 flex-shrink-0" />
-            )}
-            {editMode && onEditClick && (
-              <button
-                onClick={onEditClick}
-                className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.06]"
-                title="Tahrirlash"
-              >
-                <PenSquare className="w-3.5 h-3.5 text-gray-400 dark:text-white/40" />
-              </button>
-            )}
-          </div>
-
-          {/* Username */}
-          {profile.username && (
-            <p className="text-sm text-gray-400 dark:text-white/40">@{profile.username}</p>
-          )}
-
-          {/* Headline */}
-          {headline && (
-            <p className="text-sm text-gray-700 dark:text-white/70 font-medium mt-1">{headline}</p>
-          )}
-
-          {/* Location + website */}
-          {(locationCity || websiteUrl) && (
-            <div className="flex items-center justify-center sm:justify-start flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-gray-400 dark:text-white/40">
-              {locationCity && (
-                <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" /> {locationCity}</span>
+          {/* Identity block */}
+          <div className="min-w-0">
+            <div className="flex items-center flex-wrap gap-2 group/name">
+              <span className="text-xl font-bold text-gray-900 dark:text-white truncate max-w-[280px]">
+                {displayName}
+              </span>
+              {isTeacher && (
+                <BadgeCheck className="w-[18px] h-[18px] text-blue-400 fill-blue-400/20 flex-shrink-0" />
               )}
-              {websiteUrl && (
-                <a
-                  href={websiteUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
+              {isAdmin && (
+                <Shield className="w-[18px] h-[18px] text-sahifa-500 fill-sahifa-500/20 flex-shrink-0" />
+              )}
+              {editMode && onEditClick && (
+                <button
+                  onClick={onEditClick}
+                  className="opacity-0 group-hover/name:opacity-100 transition-opacity p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-white/[0.06]"
+                  title="Tahrirlash"
                 >
-                  <Globe className="w-3 h-3" /> {websiteUrl.replace(/^https?:\/\//, '')}
-                </a>
+                  <PenSquare className="w-3.5 h-3.5 text-gray-400 dark:text-white/40" />
+                </button>
               )}
-            </div>
-          )}
-
-          {/* Teacher specialization */}
-          {isTeacher && specialization && (
-            <div className="mt-2">
-              <span className="inline-block px-3 py-1 rounded-full bg-sahifa-500/10 dark:bg-sahifa-500/20 border border-sahifa-500/20 dark:border-sahifa-500/30 text-sahifa-600 dark:text-sahifa-300 text-xs font-semibold">
-                {specialization}
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-white/50 bg-gray-100 dark:bg-white/[0.05] rounded-full px-2 py-0.5">
+                {rank.emoji} Lvl {profile.level || 1}
               </span>
             </div>
-          )}
 
-          {/* Bio (short) — always show, with role fallback */}
-          <p className="text-sm text-gray-500 dark:text-white/50 mt-2 leading-relaxed line-clamp-3">
-            {displayBio || bioFallback}
-          </p>
+            {profile.username && (
+              <p className="text-sm text-gray-400 dark:text-white/40 mt-0.5">@{profile.username}</p>
+            )}
 
-          {/* ── Stats row ────────────────────────────────────────────────── */}
-          <div className="flex items-center justify-center sm:justify-start gap-5 mt-4 flex-wrap">
-            {profile.followers_count !== undefined && (
-              onFollowersClick ? (
-                <button
-                  onClick={onFollowersClick}
-                  className="text-center group hover:opacity-70 transition-opacity active:scale-95"
-                >
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40 group-hover:text-sahifa-500 dark:group-hover:text-sahifa-400 transition-colors">Kuzatuvchi</span>
-                </button>
-              ) : (
-                <div className="text-center">
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuvchi</span>
-                </div>
-              )
+            {headline && (
+              <p className="text-sm text-gray-700 dark:text-white/70 font-medium mt-1.5">{headline}</p>
             )}
-            {profile.following_count !== undefined && (
-              onFollowingClick ? (
-                <button
-                  onClick={onFollowingClick}
-                  className="text-center group hover:opacity-70 transition-opacity active:scale-95"
-                >
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40 group-hover:text-sahifa-500 dark:group-hover:text-sahifa-400 transition-colors">Kuzatuv</span>
-                </button>
-              ) : (
-                <div className="text-center">
-                  <span className="block text-lg font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
-                  <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuv</span>
-                </div>
-              )
-            )}
-            <div className="text-center">
-              <span className="block text-lg font-bold text-gray-900 dark:text-white">{postCount}</span>
-              <span className="text-xs text-gray-400 dark:text-white/40">Post</span>
-            </div>
-            {isTeacher && courseCount !== undefined && (
-              <div className="text-center">
-                <span className="block text-lg font-bold text-gray-900 dark:text-white">{courseCount}</span>
-                <span className="text-xs text-gray-400 dark:text-white/40">Kurs</span>
+
+            {(locationCity || websiteUrl) && (
+              <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1.5 text-xs text-gray-400 dark:text-white/40">
+                {locationCity && (
+                  <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" /> {locationCity}</span>
+                )}
+                {websiteUrl && (
+                  <a
+                    href={websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 hover:text-sahifa-500 dark:hover:text-sahifa-400 transition-colors"
+                  >
+                    <Globe className="w-3 h-3" /> {websiteUrl.replace(/^https?:\/\//, '')}
+                  </a>
+                )}
               </div>
             )}
-            {isTeacher && studentCount !== undefined && (
-              <div className="text-center">
-                <span className="block text-lg font-bold text-gray-900 dark:text-white">{studentCount}</span>
-                <span className="text-xs text-gray-400 dark:text-white/40">Talaba</span>
-              </div>
+
+            {isTeacher && specialization && (
+              <span className="inline-block mt-2 px-3 py-1 rounded-full bg-sahifa-500/10 dark:bg-sahifa-500/20 border border-sahifa-500/20 dark:border-sahifa-500/30 text-sahifa-600 dark:text-sahifa-300 text-xs font-semibold">
+                {specialization}
+              </span>
             )}
           </div>
 
-          {/* ── Rank badge ───────────────────────────────────────────────── */}
-          <div className="mt-3 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gray-100 dark:bg-white/[0.04] border border-gray-200/60 dark:border-white/[0.06]">
-            <span>{rank.emoji}</span>
-            <span className="text-xs font-medium text-gray-600 dark:text-white/60">{rank.title}</span>
-            <span className="text-xs text-gray-400 dark:text-white/30">· Lvl {profile.level || 1}</span>
-          </div>
+          {/* Actions block */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+              {isOwnProfile && !editMode && onEditProfile && (
+                <button onClick={onEditProfile} className={pillSecondary}>
+                  <PenSquare className="w-4 h-4" /> Tahrirlash
+                </button>
+              )}
 
-          {/* ── XP Progress (Kabinet mode) ───────────────────────────────── */}
-          {editMode && profile.xp !== undefined && (() => {
-            const xp = profile.xp || 0
-            const pct = Math.round(levelProgress(xp) * 100)
-            const { end } = levelBounds(profile.level || 1)
-            return (
-              <div className="mt-3">
-                <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-500"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">
-                  {xp.toLocaleString()} / {end.toLocaleString()} XP · {pct}%
-                </p>
-              </div>
-            )
-          })()}
+              {!isOwnProfile && !editMode && (
+                <>
+                  {connectionStatus === 'none' && onConnect && (
+                    <button onClick={onConnect} disabled={connectionLoading} className={pillPrimary}>
+                      {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />} Ulanish
+                    </button>
+                  )}
 
-          {/* ── Action buttons ───────────────────────────────────────────── */}
-          <div className="flex items-center justify-center sm:justify-start gap-3 mt-4">
-            {/* Own profile on PublicProfile → "Edit Profile" button */}
-            {isOwnProfile && !editMode && onEditProfile && (
-              <button
-                onClick={onEditProfile}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-gray-100 dark:bg-white/[0.06] text-gray-700 dark:text-white/70 border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-all active:scale-95"
-              >
-                <PenSquare className="w-4 h-4" /> Profilni tahrirlash
-              </button>
-            )}
+                  {connectionStatus === 'pending_sent' && onCancelConnect && (
+                    <button onClick={onCancelConnect} disabled={connectionLoading} title="So'rovni bekor qilish" className={pillSecondary}>
+                      {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />} Kutilmoqda
+                    </button>
+                  )}
 
-            {/* Not own profile → Connection state + Follow + Message */}
-            {!isOwnProfile && !editMode && (
-              <>
-                {connectionStatus === 'none' && onConnect && (
-                  <button
-                    onClick={onConnect}
-                    disabled={connectionLoading}
-                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-sahifa-500 text-white hover:bg-sahifa-600 transition-all active:scale-95 disabled:opacity-60"
-                  >
-                    {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UserCheck className="w-4 h-4" />} Ulanish
-                  </button>
-                )}
+                  {connectionStatus === 'pending_received' && (
+                    <>
+                      {onAcceptConnect && (
+                        <button onClick={onAcceptConnect} disabled={connectionLoading} className={pillPrimary}>
+                          {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Qabul qilish
+                        </button>
+                      )}
+                      {onDeclineConnect && (
+                        <button onClick={onDeclineConnect} disabled={connectionLoading} title="Rad etish" className={pillGhostIcon}>
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </>
+                  )}
 
-                {connectionStatus === 'pending_sent' && onCancelConnect && (
-                  <button
-                    onClick={onCancelConnect}
-                    disabled={connectionLoading}
-                    title="So'rovni bekor qilish"
-                    className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-gray-100 dark:bg-white/[0.06] text-gray-500 dark:text-white/60 border border-gray-200/60 dark:border-white/[0.08] hover:bg-red-50 dark:hover:bg-red-500/10 hover:text-red-500 transition-all active:scale-95 disabled:opacity-60"
-                  >
-                    {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Clock className="w-4 h-4" />} Kutilmoqda
-                  </button>
-                )}
+                  {connectionStatus === 'accepted' && (
+                    <span className={`${pillBase} px-4 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border border-green-200/60 dark:border-green-500/20`}>
+                      <UserCheck className="w-4 h-4" /> Ulangan
+                    </span>
+                  )}
 
-                {connectionStatus === 'pending_received' && (
-                  <div className="flex items-center gap-2">
-                    {onAcceptConnect && (
-                      <button
-                        onClick={onAcceptConnect}
-                        disabled={connectionLoading}
-                        className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-sahifa-500 text-white hover:bg-sahifa-600 transition-all active:scale-95 disabled:opacity-60"
-                      >
-                        {connectionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />} Qabul qilish
+                  {onMessage && (
+                    <button
+                      onClick={canMessage ? onMessage : undefined}
+                      disabled={!canMessage}
+                      title={canMessage ? 'Xabar yuborish' : "Xabar yuborish uchun avval ulaning"}
+                      className={canMessage ? pillSecondary : `${pillBase} px-4 text-gray-300 dark:text-white/25 bg-gray-50 dark:bg-white/[0.03] border border-gray-200/40 dark:border-white/[0.05]`}
+                    >
+                      {canMessage ? <MessageCircle className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />} Xabar
+                    </button>
+                  )}
+
+                  {onFollow && (
+                    <div className="relative" ref={moreRef}>
+                      <button onClick={() => setMoreOpen(o => !o)} title="Boshqa amallar" className={pillGhostIcon}>
+                        <MoreHorizontal className="w-4 h-4" />
                       </button>
-                    )}
-                    {onDeclineConnect && (
-                      <button
-                        onClick={onDeclineConnect}
-                        disabled={connectionLoading}
-                        title="Rad etish"
-                        className="p-2 rounded-xl text-gray-400 dark:text-white/40 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors disabled:opacity-60"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    )}
-                  </div>
-                )}
+                      {moreOpen && (
+                        <div className="absolute right-0 top-full mt-2 w-52 rounded-xl border border-gray-200/60 dark:border-white/[0.08] bg-white dark:bg-[#1C1C22] shadow-xl z-20 py-1.5 overflow-hidden">
+                          <button
+                            onClick={() => { onFollow(); setMoreOpen(false) }}
+                            disabled={followLoading}
+                            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-gray-700 dark:text-white/70 hover:bg-gray-50 dark:hover:bg-white/[0.06] transition-colors text-left disabled:opacity-60"
+                          >
+                            {followLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : profile.is_following ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                            {profile.is_following ? 'Kuzatishdan chiqish' : 'Kuzatish'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
 
-                {connectionStatus === 'accepted' && (
-                  <span className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border border-green-200/60 dark:border-green-500/20">
-                    <UserCheck className="w-4 h-4" /> Ulangan
-                  </span>
-                )}
-
-                {onFollow && (
-                  <button
-                    onClick={onFollow}
-                    disabled={followLoading}
-                    title={profile.is_following ? 'Kuzatishdan chiqish' : 'Kuzatish'}
-                    className="p-2.5 rounded-xl text-gray-500 dark:text-white/60 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10] transition-colors disabled:opacity-60"
-                  >
-                    {followLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : profile.is_following ? <UserMinus className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
-                  </button>
-                )}
-
-                {onMessage && (
-                  <button
-                    onClick={canMessage ? onMessage : undefined}
-                    disabled={!canMessage}
-                    title={canMessage ? 'Xabar yuborish' : "Xabar yuborish uchun avval ulaning"}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors active:scale-95 ${
-                      canMessage
-                        ? 'text-gray-500 dark:text-white/60 bg-gray-100 dark:bg-white/[0.06] border border-gray-200/60 dark:border-white/[0.08] hover:bg-gray-200 dark:hover:bg-white/[0.10]'
-                        : 'text-gray-300 dark:text-white/25 bg-gray-50 dark:bg-white/[0.03] border border-gray-200/40 dark:border-white/[0.05] cursor-not-allowed'
-                    }`}
-                  >
-                    {canMessage ? <MessageCircle className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />} Xabar
-                  </button>
-                )}
-              </>
-            )}
-
-            {/* Kabinet mode → edit button */}
-            {editMode && onEditClick && (
-              <button
-                onClick={onEditClick}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold bg-sahifa-500 text-white hover:bg-sahifa-600 transition-all active:scale-95"
-              >
-                <PenSquare className="w-4 h-4" /> Profilni tahrirlash
-              </button>
-            )}
+              {editMode && onEditClick && (
+                <button onClick={onEditClick} className={pillPrimary}>
+                  <PenSquare className="w-4 h-4" /> Profilni tahrirlash
+                </button>
+              )}
           </div>
         </div>
-      </div>
+
+        {/* Bio (short) — always show, with role fallback */}
+        <p className="text-sm text-gray-500 dark:text-white/50 mt-4 leading-relaxed line-clamp-3 max-w-2xl">
+          {displayBio || bioFallback}
+        </p>
+
+        {/* ── Stats row ────────────────────────────────────────────────── */}
+        <div className="flex items-center gap-5 mt-4 pt-4 border-t border-gray-100 dark:border-white/[0.06] flex-wrap">
+          {profile.followers_count !== undefined && (
+            onFollowersClick ? (
+              <button onClick={onFollowersClick} className="flex items-baseline gap-1.5 group hover:opacity-70 transition-opacity active:scale-95">
+                <span className="text-base font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
+                <span className="text-xs text-gray-400 dark:text-white/40 group-hover:text-sahifa-500 dark:group-hover:text-sahifa-400 transition-colors">Kuzatuvchi</span>
+              </button>
+            ) : (
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-base font-bold text-gray-900 dark:text-white">{profile.followers_count}</span>
+                <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuvchi</span>
+              </div>
+            )
+          )}
+          {profile.following_count !== undefined && (
+            onFollowingClick ? (
+              <button onClick={onFollowingClick} className="flex items-baseline gap-1.5 group hover:opacity-70 transition-opacity active:scale-95">
+                <span className="text-base font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
+                <span className="text-xs text-gray-400 dark:text-white/40 group-hover:text-sahifa-500 dark:group-hover:text-sahifa-400 transition-colors">Kuzatuv</span>
+              </button>
+            ) : (
+              <div className="flex items-baseline gap-1.5">
+                <span className="text-base font-bold text-gray-900 dark:text-white">{profile.following_count}</span>
+                <span className="text-xs text-gray-400 dark:text-white/40">Kuzatuv</span>
+              </div>
+            )
+          )}
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-base font-bold text-gray-900 dark:text-white">{postCount}</span>
+            <span className="text-xs text-gray-400 dark:text-white/40">Post</span>
+          </div>
+          {isTeacher && courseCount !== undefined && (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-base font-bold text-gray-900 dark:text-white">{courseCount}</span>
+              <span className="text-xs text-gray-400 dark:text-white/40">Kurs</span>
+            </div>
+          )}
+          {isTeacher && studentCount !== undefined && (
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-base font-bold text-gray-900 dark:text-white">{studentCount}</span>
+              <span className="text-xs text-gray-400 dark:text-white/40">Talaba</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── XP Progress (Kabinet mode) ───────────────────────────────── */}
+        {editMode && profile.xp !== undefined && (() => {
+          const xp = profile.xp || 0
+          const pct = Math.round(levelProgress(xp) * 100)
+          const { end } = levelBounds(profile.level || 1)
+          return (
+            <div className="mt-4">
+              <div className="h-1.5 rounded-full bg-gray-100 dark:bg-white/[0.06] overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-gradient-to-r from-orange-400 to-red-400 transition-all duration-500"
+                  style={{ width: `${pct}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-white/30 mt-1">
+                {xp.toLocaleString()} / {end.toLocaleString()} XP · {pct}%
+              </p>
+            </div>
+          )
+        })()}
       </div>
     </motion.div>
   )
