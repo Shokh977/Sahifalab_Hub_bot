@@ -603,17 +603,27 @@ const AdminPage: React.FC = () => {
     setTeacherReqLoading(true)
     setTeacherReqError('')
     try {
-      const params = teacherFilter ? `?status=${teacherFilter}` : ''
-      const res = await apiService.client.get(`/api/admin/teachers${params}`)
+      // NOTE: /api/auth/admin/teacher-requests only ever returns PENDING applications
+      // (Profile.status == 'pending') — there is no backend concept of a separately
+      // queryable "approved"/"rejected" history, since approving/rejecting just flips
+      // the profile back to status='active'. The approved/rejected filter tabs above
+      // have no matching data source yet; only the "pending" (default) view is real.
+      const res = await apiService.client.get('/api/auth/admin/teacher-requests')
       const raw = res.data
-      setTeacherRequests(Array.isArray(raw) ? raw : (raw?.items ?? []))
+      const list = Array.isArray(raw) ? raw : (raw?.items ?? [])
+      setTeacherRequests(list.map((r: any) => ({
+        ...r,
+        status: r.status ?? 'pending',
+        created_at: r.created_at ?? r.applied_at ?? null,
+        intro_video_url: r.intro_video_url ?? null,
+      })))
     } catch (err: any) {
       console.error('[Admin] loadTeacherRequests error:', err?.response?.data?.detail || err?.message)
       setTeacherReqError('Xatolik yuz berdi')
     } finally {
       setTeacherReqLoading(false)
     }
-  }, [adminId, teacherFilter])
+  }, [adminId])
 
   const loadPlatformAnalytics = useCallback(async () => {
     if (!adminId) return
@@ -857,9 +867,9 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.client.post(`/api/admin/teachers/${telegramId}/approve`, {
-        commission_rate: teacherCommission ? Number(teacherCommission) : null,
-      })
+      // The commission-rate input isn't persisted — the approval endpoint has no
+      // concept of it (Profile-based teacher flow, not the unrelated `teachers` table).
+      await apiService.client.post(`/api/auth/admin/approve-teacher/${telegramId}`)
       setTeacherMsg(`✅ ${telegramId} tasdiqlandi`)
       setTeacherApproveId(null)
       loadTeacherRequests()
@@ -875,9 +885,8 @@ const AdminPage: React.FC = () => {
     setTeacherActionId(telegramId)
     setTeacherMsg('')
     try {
-      await apiService.client.post(`/api/admin/teachers/${telegramId}/reject`, {
-        feedback: teacherRejectFeedback || null,
-      })
+      // Rejection feedback isn't persisted — same gap as commission_rate above.
+      await apiService.client.post(`/api/auth/admin/reject-teacher/${telegramId}`)
       setTeacherMsg(`🚫 ${telegramId} rad etildi`)
       setTeacherRejectId(null)
       setTeacherRejectFeedback('')
