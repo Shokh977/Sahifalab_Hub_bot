@@ -299,16 +299,32 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
     return lesson
 
 
+_QUALITY_ALLOWLIST = ("360p", "480p", "720p")
+_QUALITY_FALLBACK_ORDER = {
+    "720p": ("720p", "480p", "360p"),
+    "480p": ("480p", "360p", "720p"),
+    "360p": ("360p", "480p", "720p"),
+}
+
+
 @router.get("/{lesson_id}/download-url")
 async def get_lesson_download_url(
     lesson_id: int,
+    quality: str = Query("480p", description="Preferred rendition: 360p | 480p | 720p"),
     authorization: Optional[str] = Header(None),
 ):
     """
     Return a short-lived signed MP4 download URL for offline use.
     Requires the caller to be enrolled in the course (or be the teacher/admin).
     The URL expires in 1 hour — the client should download immediately.
+
+    `quality` is validated against an allowlist and falls back to the nearest
+    available rendition if the requested one wasn't transcoded (Bunny only
+    produces renditions up to the source resolution).
     """
+    if quality not in _QUALITY_ALLOWLIST:
+        raise HTTPException(status_code=422, detail="Noto'g'ri sifat. 360p, 480p yoki 720p bo'lishi kerak")
+
     _ensure_supabase()
     caller_id = await _resolve_caller(authorization)
 
@@ -339,11 +355,13 @@ async def get_lesson_download_url(
     if not bunny_vid or not is_bunny:
         raise HTTPException(status_code=422, detail="Bu dars uchun yuklab olish mavjud emas")
 
+    course_id = lesson["course_id"]
+
     # Verify access
-    teacher_id      = await _get_course_teacher(lesson["course_id"])
+    teacher_id      = await _get_course_teacher(course_id)
     is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
     if not is_owner_or_admin:
-        enrolled = await _is_enrolled(lesson["course_id"], caller_id)
+        enrolled = await _is_enrolled(course_id, caller_id)
         if not enrolled:
             raise HTTPException(status_code=403, detail="Bu kursga yozilmagan")
 
@@ -355,26 +373,93 @@ async def get_lesson_download_url(
     _parsed = _urlparse(_hls)
     cdn_host_from_url = _parsed.netloc if _parsed.netloc else ""
 
+    EXPIRES_SECONDS = 3600
     try:
         from app.services import bunny_stream_service as bss
-        # Pick the best available resolution (Bunny only transcodes up to the
-        # source resolution, so 720p may not exist for lower-quality uploads).
-        resolution = "720p"
+        # Pick the closest available rendition to what was requested (Bunny
+        # only transcodes up to the source resolution).
+        resolution = quality
         try:
             video_info = await bss.get_video(bunny_vid)
             available  = video_info.get("availableResolutions") or ""
-            for r in ("1080p", "720p", "480p", "360p"):
+            for r in _QUALITY_FALLBACK_ORDER[quality]:
                 if r in available:
                     resolution = r
                     break
         except Exception:
-            pass  # Use 720p as best-effort default
-        url = bss.signed_mp4_url(bunny_vid, resolution=resolution, expires_seconds=3600, cdn_host_override=cdn_host_from_url)
+            pass  # Use the requested quality as best-effort default
+        url = bss.signed_mp4_url(bunny_vid, resolution=resolution, expires_seconds=EXPIRES_SECONDS, cdn_host_override=cdn_host_from_url)
     except Exception as e:
         logger.warning("signed_mp4_url failed for lesson %s: %s", lesson_id, e)
         raise HTTPException(status_code=503, detail="Yuklab olish URL yaratilmadi")
 
-    return {"download_url": url, "expires_in": 3600, "resolution": resolution}
+    from datetime import datetime, timedelta, timezone
+    expires_at = (datetime.now(timezone.utc) + timedelta(seconds=EXPIRES_SECONDS)).isoformat()
+
+    return {
+        "url": url,
+        "quality": resolution,
+        "size_bytes": None,   # Bunny Stream API doesn't expose per-rendition size
+        "expires_at": expires_at,
+        "expires_in": EXPIRES_SECONDS,
+        "lesson_id": lesson_id,
+        "course_id": course_id,
+    }
+
+
+@router.post("/downloads/verify")
+async def verify_downloads(
+    body: dict,
+    authorization: Optional[str] = Header(None),
+):
+    """
+    Re-check that the caller still has access to a set of previously-downloaded
+    lessons (e.g. their enrollment was refunded/revoked since downloading).
+    Body: { "lesson_ids": [1, 2, 3] }
+    Returns: { "allowed": [...], "revoked": [...] }
+    """
+    caller_id = await _resolve_caller(authorization)
+    lesson_ids = body.get("lesson_ids") or []
+    if not lesson_ids:
+        return {"allowed": [], "revoked": []}
+
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lessons",
+            params={
+                "id": f"in.({','.join(str(int(i)) for i in lesson_ids)})",
+                "select": "id,course_id",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    course_ids = {r["course_id"] for r in rows if r.get("course_id")}
+
+    # Resolve access per course once, then map back to lessons
+    access_by_course: dict[int, bool] = {}
+    for course_id in course_ids:
+        teacher_id = await _get_course_teacher(course_id)
+        if caller_id == teacher_id or caller_id in ADMIN_IDS:
+            access_by_course[course_id] = True
+        else:
+            access_by_course[course_id] = await _is_enrolled(course_id, caller_id)
+
+    found_ids = {r["id"] for r in rows}
+    allowed: list[int] = []
+    revoked: list[int] = []
+    for lid in lesson_ids:
+        lid = int(lid)
+        if lid not in found_ids:
+            revoked.append(lid)  # lesson deleted entirely
+            continue
+        course_id = next((r["course_id"] for r in rows if r["id"] == lid), None)
+        if course_id is not None and access_by_course.get(course_id):
+            allowed.append(lid)
+        else:
+            revoked.append(lid)
+
+    return {"allowed": allowed, "revoked": revoked}
 
 
 @router.post("")
