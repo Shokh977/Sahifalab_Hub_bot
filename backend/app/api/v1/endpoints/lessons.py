@@ -329,28 +329,28 @@ async def get_lesson_download_url(
     caller_id = await _resolve_caller(authorization)
 
     # Fetch lesson row
+    # NOTE: "hls_url" is NOT a real column on the lessons table (it's synthesized
+    # in Python by GET /lessons/{id} via bss.signed_hls_url()). Selecting it by
+    # name here makes PostgREST return HTTP 400 ("column lessons.hls_url does not
+    # exist"), which the status_code==200 check below silently turns into an
+    # empty result set — i.e. every download-url request looked like "Lesson not
+    # found" regardless of the actual lesson. Do not add hls_url back here.
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.get(
             f"{SUPABASE_URL}/rest/v1/lessons",
-            params={"id": f"eq.{lesson_id}", "select": "id,course_id,bunny_video_id,video_source,hls_url,title"},
+            params={"id": f"eq.{lesson_id}", "select": "id,course_id,bunny_video_id,video_source,title"},
             headers=_supabase_headers(),
         )
-    rows = res.json() if res.status_code == 200 else []
+    if res.status_code != 200:
+        logger.error("Lesson lookup failed for id %s: %s %s", lesson_id, res.status_code, res.text[:300])
+        raise HTTPException(status_code=502, detail="Dars ma'lumotlarini olishda xatolik")
+    rows = res.json()
     if not rows:
         raise HTTPException(status_code=404, detail="Lesson not found")
     lesson = rows[0]
 
     bunny_vid = lesson.get("bunny_video_id") or ""
     is_bunny  = lesson.get("video_source", "bunny") == "bunny"
-
-    # Many lessons have bunny_video_id unpopulated even though hls_url is a valid
-    # Bunny CDN URL.  Extract the UUID from the URL as a fallback.
-    if not bunny_vid and is_bunny:
-        import re as _re
-        hls_url = lesson.get("hls_url") or ""
-        m = _re.search(r'/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/', hls_url)
-        if m:
-            bunny_vid = m.group(1)
 
     if not bunny_vid or not is_bunny:
         raise HTTPException(status_code=422, detail="Bu dars uchun yuklab olish mavjud emas")
@@ -365,13 +365,10 @@ async def get_lesson_download_url(
         if not enrolled:
             raise HTTPException(status_code=403, detail="Bu kursga yozilmagan")
 
-    # Extract CDN host from hls_url as a fallback when BUNNY_STREAM_CDN_HOST
-    # is not configured in the environment (e.g. fresh Railway deployments).
-    # hls_url format: https://{cdn_host}/{video_id}/playlist.m3u8
-    from urllib.parse import urlparse as _urlparse
-    _hls = lesson.get("hls_url") or ""
-    _parsed = _urlparse(_hls)
-    cdn_host_from_url = _parsed.netloc if _parsed.netloc else ""
+    # cdn_host_from_url previously tried to parse a CDN hostname out of the
+    # (non-existent) hls_url DB column and was always empty in practice.
+    # signed_mp4_url() falls back to settings.BUNNY_STREAM_CDN_HOST directly.
+    cdn_host_from_url = ""
 
     EXPIRES_SECONDS = 3600
     try:
