@@ -1713,7 +1713,9 @@ async def admin_list_courses(
     _ensure_supabase()
 
     params: dict = {
-        "select": "id,title,thumbnail_url,price,is_paid,is_published,enrolled_count,rating,created_at,teacher_id",
+        "select": "id,teacher_id,category_id,title,description,thumbnail_url,price,is_paid,"
+                  "is_published,level,language,total_lessons,total_duration_minutes,"
+                  "enrolled_count,rating,created_at,categories(name,icon)",
         "order":  "created_at.desc",
         "limit":  str(page_size),
         "offset": str((page - 1) * page_size),
@@ -1730,7 +1732,50 @@ async def admin_list_courses(
     rows  = res.json() if res.status_code == 200 else []
     total = int(res.headers.get("content-range", "0/0").split("/")[-1] or 0)
 
-    return {"items": rows, "total": total, "page": page, "page_size": page_size}
+    # Resolve teacher names for this page of courses (categories are embedded above)
+    teacher_ids = {int(r["teacher_id"]) for r in rows if r.get("teacher_id")}
+    teacher_info: dict[int, dict] = {}
+    if teacher_ids:
+        async with httpx.AsyncClient(timeout=10) as client:
+            teachers_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/teacher_profiles",
+                params={
+                    "select": "telegram_id,first_name,username",
+                    "telegram_id": f"in.({','.join(str(t) for t in teacher_ids)})",
+                },
+                headers=_pending_supabase_headers(),
+            )
+        if teachers_res.status_code == 200:
+            teacher_info = {int(t["telegram_id"]): t for t in teachers_res.json()}
+
+    items = []
+    for r in rows:
+        cat = r.get("categories") or {}
+        tid = r.get("teacher_id")
+        teacher = teacher_info.get(int(tid)) if tid else {}
+        items.append({
+            "id": r.get("id"),
+            "title": r.get("title"),
+            "description": r.get("description"),
+            "thumbnail_url": r.get("thumbnail_url"),
+            "teacher_id": tid,
+            "teacher_name": (teacher or {}).get("first_name") or (f"Teacher {tid}" if tid else "—"),
+            "teacher_username": (teacher or {}).get("username"),
+            "category_name": cat.get("name"),
+            "category_icon": cat.get("icon"),
+            "is_published": r.get("is_published"),
+            "is_paid": r.get("is_paid"),
+            "price": r.get("price"),
+            "level": r.get("level"),
+            "language": r.get("language"),
+            "enrolled_count": r.get("enrolled_count"),
+            "rating": r.get("rating"),
+            "total_lessons": r.get("total_lessons"),
+            "total_duration_minutes": r.get("total_duration_minutes"),
+            "created_at": r.get("created_at"),
+        })
+
+    return {"items": items, "total": total, "page": page, "page_size": page_size}
 
 
 class _CourseActionBody(BaseModel):

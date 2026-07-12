@@ -45,7 +45,9 @@ function _flush(): void {
   if (_pending.length === 0) return
   const ids = _pending.splice(0)               // drain in-place
   api.client
-    .post('/api/v1/social/posts/views/bulk', { post_ids: ids })
+    .post('/api/v1/social/posts/views/bulk', { post_ids: ids }, {
+      headers: { 'X-Show-Error-Toast': 'false' },
+    })
     .catch(() => {})                           // fire-and-forget
 }
 

@@ -213,11 +213,12 @@ def vote_poll(
 def bulk_view(
     body: BulkViewRequest,
     db: Session = Depends(get_db),
-    user_id: int = Depends(get_current_user_id),
+    user_id: Optional[int] = Depends(get_optional_user_id),
 ):
     """Batch increment views_count for all supplied post IDs in one DB UPDATE.
 
     Called by the client-side view-buffer every 10 s or when the buffer hits 10 IDs.
+    Views are counted for guests too — no auth is required to browse posts.
     """
     svc.increment_views_bulk(db, body.post_ids)
     return {"ok": True}

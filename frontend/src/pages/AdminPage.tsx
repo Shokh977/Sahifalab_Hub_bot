@@ -724,7 +724,7 @@ const AdminPage: React.FC = () => {
     setCoursesMsg('')
     try {
       const res = await apiService.getAdminCourses(adminId)
-      setAdminCourses(res.data ?? [])
+      setAdminCourses(res.data?.items ?? [])
     } catch (err: any) {
       console.error('[Admin] loadAdminCourses error:', err?.response?.data?.detail || err?.message)
       setAdminCoursesError('Xatolik yuz berdi')
