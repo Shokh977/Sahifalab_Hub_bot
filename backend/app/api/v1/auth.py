@@ -60,13 +60,17 @@ def _send_welcome(user_id: int, first_name: str = "", db: Session = None):
     """Award 100 welcome XP and fire a welcome notification for new users."""
     if user_id <= 0:
         return
-    # Award 100 XP — 'WELCOME' source falls through add_xp with no cap/dedup
+    # Award 100 XP — 'WELCOME' source falls through add_xp with no cap/dedup.
+    # Must not block signup on failure, but a failure here must be loud —
+    # this call was silently failing on every signup for an unknown period
+    # because 'WELCOME' violated the xp_logs CHECK constraint (fixed in
+    # migrations/070_widen_xp_logs_source_constraint.sql).
     if db is not None:
         try:
             from app.services.xp_service import add_xp
             add_xp(db, user_id=user_id, source="WELCOME", amount=100)
         except Exception:
-            pass
+            logger.error("Welcome XP award failed for user_id=%s amount=100 source=WELCOME", user_id, exc_info=True)
     # Push notification (fire-and-forget)
     try:
         from app.api.v1.endpoints.notifications import send_notification

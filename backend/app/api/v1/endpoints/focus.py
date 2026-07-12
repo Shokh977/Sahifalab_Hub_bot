@@ -11,6 +11,7 @@ GET  /api/focus/weekly         — 7-day breakdown [{ date, minutes, goal_met }]
 
 import asyncio
 import json
+import logging
 from datetime import datetime, UTC, timedelta, date as Date
 from typing import Optional
 
@@ -23,6 +24,8 @@ from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, focus_minutes_to_xp
 from app.api.v1.endpoints.notifications import send_notification
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -39,54 +42,103 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
     return telegram_id
 
 
-# ── Streak challenge definitions (mirrors DB seed) ────────────────────────────
-_CHALLENGE_MILESTONES = [7, 14, 30, 100]
+# ── Streak stage milestones ─────────────────────────────────────────────────
+# The milestone-day list lives ONLY in the streak_stages table (migration
+# 072_streak_stages_consolidation.sql) — do not reintroduce a hardcoded list
+# here. This function is the single place that checks + awards stage XP; it
+# is shared (imported) by flashcards.py's session-complete handler too, so a
+# flashcard-only study day triggers stage awards exactly like a focus-timer
+# day does.
 
-
-def _check_and_award_challenges(db: Session, caller_id: int, streak_days: int) -> list[dict]:
+def _check_and_award_stages(db: Session, caller_id: int, streak_days: int) -> list[dict]:
     """
-    Check whether any streak challenge has been newly earned.
-    Awards bonus XP once per challenge per user.
-    Returns list of newly-completed challenges.
+    Check every active streak_stages row the user has now reached and award
+    any that aren't already recorded in user_stage_completions. Awards bonus
+    XP once per stage per user (STREAK_STAGE source, distinct from ordinary
+    DEEP_WORK XP so the ledger is auditable). Returns the list of
+    newly-completed stages (only ones where XP was actually granted — a
+    failed award is never recorded as completed, so it can be retried on the
+    next check instead of being silently and permanently marked "earned"
+    with 0 XP).
     """
     newly_done: list[dict] = []
-    for milestone in _CHALLENGE_MILESTONES:
-        if streak_days < milestone:
-            continue
-        key = f"streak_{milestone}"
-        # Check if already awarded
+
+    stages = db.execute(
+        text("""
+            SELECT key, stage_number, title, bonus_xp, required_days
+            FROM   streak_stages
+            WHERE  is_active = TRUE AND required_days <= :streak_days
+            ORDER BY required_days ASC
+        """),
+        {"streak_days": streak_days},
+    ).fetchall()
+
+    for stage in stages:
+        key = stage.key
         existing = db.execute(
-            text("SELECT id FROM user_challenge_completions WHERE user_id = :uid AND challenge_key = :key"),
+            text("SELECT id FROM user_stage_completions WHERE user_id = :uid AND stage_key = :key"),
             {"uid": caller_id, "key": key},
         ).fetchone()
         if existing:
             continue
-        # Fetch challenge definition for bonus XP
-        ch = db.execute(
-            text("SELECT bonus_xp, title FROM streak_challenges WHERE key = :key AND is_active = TRUE"),
-            {"key": key},
-        ).fetchone()
-        if not ch:
-            continue
-        # Award bonus XP
-        bonus = int(ch.bonus_xp or 0)
+
+        bonus = int(stage.bonus_xp or 0)
         try:
-            xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=bonus)
+            xp_result = add_xp(db, user_id=caller_id, source="STREAK_STAGE", amount=bonus, reference_id=stage.stage_number)
         except Exception:
-            xp_result = {"xp_added": 0}
-        # Record completion
+            logger.error(
+                "Streak-stage XP award failed for user_id=%s stage_key=%s amount=%s source=STREAK_STAGE",
+                caller_id, key, bonus, exc_info=True,
+            )
+            continue  # do not record completion — retry on the next check
+
         try:
             db.execute(
                 text("""
-                    INSERT INTO user_challenge_completions (user_id, challenge_key, xp_awarded)
+                    INSERT INTO user_stage_completions (user_id, stage_key, xp_awarded)
                     VALUES (:uid, :key, :xp)
                     ON CONFLICT DO NOTHING
                 """),
                 {"uid": caller_id, "key": key, "xp": xp_result.get("xp_added", 0)},
             )
         except Exception:
-            pass
-        newly_done.append({"key": key, "title": ch.title, "bonus_xp": bonus})
+            logger.error(
+                "Failed to record stage completion for user_id=%s stage_key=%s (XP was already granted)",
+                caller_id, key, exc_info=True,
+            )
+            # XP was already granted above — do not skip appending to
+            # newly_done, the user did earn it even if this row failed.
+
+        # Grant the matching achievement badge (stage_1..stage_10) at the
+        # same moment — one event: XP + badge + tree evolution together.
+        # Badge key is always "stage_{stage_number}", NOT streak_stages.key —
+        # stages 3/4/5 keep their legacy DB keys (streak_7/streak_14/
+        # streak_30) for FK safety (see migration 072), but achievements.py's
+        # badge catalogue uses stage_3/stage_4/stage_5 uniformly for all 10.
+        # Best-effort: a failure here must never undo the XP/completion above.
+        badge_key = f"stage_{stage.stage_number}"
+        try:
+            db.execute(
+                text("""
+                    INSERT INTO user_badges (user_id, badge_key, granted_at)
+                    VALUES (:uid, :key, NOW())
+                    ON CONFLICT (user_id, badge_key) DO NOTHING
+                """),
+                {"uid": caller_id, "key": badge_key},
+            )
+        except Exception:
+            logger.error(
+                "Failed to grant stage badge for user_id=%s badge_key=%s",
+                caller_id, badge_key, exc_info=True,
+            )
+
+        newly_done.append({
+            "key": key,
+            "stage_number": stage.stage_number,
+            "title": stage.title,
+            "required_days": stage.required_days,
+            "bonus_xp": bonus,
+        })
     return newly_done
 
 
@@ -121,6 +173,10 @@ async def complete_focus_session(
     try:
         result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=xp_amount)
     except Exception:
+        logger.error(
+            "Focus-session XP award failed for user_id=%s amount=%s source=DEEP_WORK",
+            caller_id, xp_amount, exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="XP award failed")
 
     today = _parse_local_date(body.local_date)
@@ -178,11 +234,15 @@ async def complete_focus_session(
     current_streak = int(streak_row.streak_days or 0) if streak_row else 0
 
     # Check and award streak challenges
-    newly_completed = _check_and_award_challenges(db, caller_id, current_streak)
+    newly_completed = _check_and_award_stages(db, caller_id, current_streak)
     try:
         db.commit()
     except Exception:
         db.rollback()
+        logger.error(
+            "Failed to commit streak-stage completion records for user_id=%s streak_days=%s",
+            caller_id, current_streak, exc_info=True,
+        )
 
     # Append focus session to activity_log (best-effort)
     try:
@@ -213,10 +273,14 @@ async def complete_focus_session(
             caller_id, "level_up", category="SYSTEM",
             meta={"level": new_level},
         ))
-    for ch in newly_completed:
+    for stage in newly_completed:
         asyncio.create_task(send_notification(
             caller_id, "achievement", category="SYSTEM",
-            meta={"challenge_key": ch.get("key", ""), "bonus_xp": ch.get("bonus_xp", 0)},
+            meta={
+                "stage_key":    stage.get("key", ""),
+                "stage_number": stage.get("stage_number"),
+                "bonus_xp":     stage.get("bonus_xp", 0),
+            },
         ))
 
     return {
@@ -225,7 +289,7 @@ async def complete_focus_session(
         "level":               new_level,
         "level_up":            new_level > old_level,
         "achievements_earned": [],
-        "challenges_completed": newly_completed,
+        "stages_completed":    newly_completed,
     }
 
 
@@ -261,46 +325,69 @@ async def get_active_study_count(db: Session = Depends(get_db)):
         return {"count": 0}
 
 
-@router.get("/challenges")
-async def get_challenges(
+@router.get("/stages")
+async def get_stages(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    """All streak challenges with per-user earned status and current streak progress."""
+    """
+    All 10 tree stages with per-user earned status and current streak progress.
+    This is the single canonical stage-progress endpoint — the equivalent
+    `milestones` array previously returned by GET /api/streaks/detail was
+    removed (migration 072 + streaks.py) so there is exactly one source of
+    per-user stage progress in the API surface.
+    """
     profile = db.execute(
         text("SELECT streak_days FROM profiles WHERE telegram_id = :uid"),
         {"uid": caller_id},
     ).fetchone()
     current_streak = int(profile.streak_days or 0) if profile else 0
 
-    # Load completed challenges for this user
+    # Load completed stages for this user
     done_rows = db.execute(
-        text("SELECT challenge_key, completed_at, xp_awarded FROM user_challenge_completions WHERE user_id = :uid"),
+        text("SELECT stage_key, completed_at, xp_awarded FROM user_stage_completions WHERE user_id = :uid"),
         {"uid": caller_id},
     ).fetchall()
-    done_map = {r.challenge_key: {"completed_at": r.completed_at.isoformat(), "xp_awarded": r.xp_awarded} for r in done_rows}
+    done_map = {r.stage_key: {"completed_at": r.completed_at.isoformat(), "xp_awarded": r.xp_awarded} for r in done_rows}
 
-    # Load definitions
-    ch_rows = db.execute(
-        text("SELECT key, title, description, required_days, bonus_xp, icon FROM streak_challenges WHERE is_active = TRUE ORDER BY sort_order"),
+    # Load definitions — the ONLY place the 10 stage day-thresholds live
+    stage_rows = db.execute(
+        text("""
+            SELECT key, stage_number, title, description, required_days, bonus_xp, icon
+            FROM   streak_stages
+            WHERE  is_active = TRUE
+            ORDER BY sort_order
+        """),
     ).fetchall()
 
     result = []
-    for ch in ch_rows:
-        earned = ch.key in done_map
+    for st in stage_rows:
+        earned = st.key in done_map
         result.append({
-            "key":           ch.key,
-            "title":         ch.title,
-            "description":   ch.description,
-            "required_days": ch.required_days,
-            "bonus_xp":      ch.bonus_xp,
-            "icon":          ch.icon,
+            "key":           st.key,
+            "stage_number":  st.stage_number,
+            "title":         st.title,
+            "description":   st.description,
+            "required_days": st.required_days,
+            "bonus_xp":      st.bonus_xp,
+            "icon":          st.icon,
             "earned":        earned,
-            "completed_at":  done_map[ch.key]["completed_at"] if earned else None,
-            "current_days":  min(current_streak, ch.required_days),
-            "progress_pct":  min(100, round(current_streak / ch.required_days * 100)),
+            "completed_at":  done_map[st.key]["completed_at"] if earned else None,
+            "current_days":  min(current_streak, st.required_days),
+            "progress_pct":  min(100, round(current_streak / st.required_days * 100)) if st.required_days > 0 else 100,
         })
     return result
+
+
+@router.get("/challenges", deprecated=True)
+async def get_challenges_legacy(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    """Deprecated alias for GET /api/focus/stages — kept only so an old mobile
+    build already on the App/Play Store during rollout doesn't 404. Remove
+    once the app store minimum version is bumped past this release."""
+    return await get_stages(db=db, caller_id=caller_id)
 
 
 @router.get("/stats")

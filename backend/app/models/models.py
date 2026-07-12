@@ -1,6 +1,6 @@
 from datetime import datetime, UTC
 from sqlalchemy import Column, Integer, BigInteger, String, Text, Float, Numeric, DateTime, Date, ForeignKey, Table, Boolean, UniqueConstraint
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY, UUID as PGUUID
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 
@@ -61,6 +61,13 @@ class Profile(Base):
     streak_last_date    = Column(Date, nullable=True)
     # Public deck publishing (066_public_flashcard_decks) — admin can revoke via "Muallifni bloklash"
     can_publish         = Column(Boolean, default=True, nullable=False)
+    # Streak freeze (061_streak_freeze) — was previously accessed only via
+    # raw text() SQL everywhere; declared here now so the ORM model matches
+    # the live table (step-20 Phase 4D).
+    freeze_count        = Column(Integer, default=0, nullable=False)
+    freeze_used_dates   = Column(ARRAY(Date), default=list, nullable=False)
+    # Active-study heartbeat (059_streak_challenges_heartbeat)
+    study_pulse_at      = Column(DateTime(timezone=True), nullable=True)
 
 
 class AuthCode(Base):

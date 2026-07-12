@@ -8,6 +8,19 @@ All XP mutations MUST go through this module.  The SQL function enforces:
   DECK_MILESTONE : unlimited like DEEP_WORK at the SQL level — dedup for the
                    one-time clone-milestone bonus is handled by the caller
                    (flashcard_decks.clone_milestones_awarded), not this RPC.
+  WELCOME        : unlimited like DEEP_WORK at the SQL level — dedup for the
+                   one-time new-user bonus is handled by the caller.
+  STREAK_STAGE   : unlimited like DEEP_WORK at the SQL level — dedup for the
+                   one-time per-stage bonus is handled by the caller
+                   (user_stage_completions UNIQUE(user_id, stage_key)).
+
+IMPORTANT: xp_logs.source has a Postgres CHECK constraint
+(migrations/070_widen_xp_logs_source_constraint.sql) restricting it to
+exactly the values below. Any new source added to XpSource MUST be added to
+that constraint in the same PR, or every award using it will fail silently
+if the caller swallows the exception (this happened to WELCOME and
+DECK_MILESTONE for an unknown period before migration 070 — never wrap
+add_xp() in a bare `except: pass` again).
 """
 
 from typing import Optional, Literal
@@ -23,7 +36,7 @@ DEFAULT_QUIZ_XP:   int = 25
 DEFAULT_COURSE_XP: int = 200
 QUIZ_DAILY_CAP:    int = 100
 
-XpSource = Literal["DEEP_WORK", "QUIZ", "COURSE", "DECK_MILESTONE"]
+XpSource = Literal["DEEP_WORK", "QUIZ", "COURSE", "WELCOME", "DECK_MILESTONE", "STREAK_STAGE"]
 
 
 def focus_minutes_to_xp(minutes: float) -> int:

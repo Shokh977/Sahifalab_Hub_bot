@@ -6,6 +6,7 @@ GET  /api/xp/daily/{uid}      — today's quiz XP budget & remaining quizzes
 GET  /api/xp/badges/{uid}     — all earned badges for a user
 """
 
+import logging
 from datetime import datetime, UTC
 from typing import Optional
 
@@ -24,6 +25,8 @@ from app.services.xp_service import (
     QUIZ_DAILY_CAP,
 )
 from app.services.integration_service import hook_course_completed, hook_level_up
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -125,6 +128,10 @@ async def award_xp(
             reference_id=body.reference_id,
         )
     except Exception:
+        logger.error(
+            "Generic XP award failed for user_id=%s amount=%s source=%s",
+            telegram_id, amount, source, exc_info=True,
+        )
         raise HTTPException(status_code=500, detail="XP qo'shishda xatolik yuz berdi")
 
     # ── Integration hooks (fire-and-forget, never block) ──────────────────────

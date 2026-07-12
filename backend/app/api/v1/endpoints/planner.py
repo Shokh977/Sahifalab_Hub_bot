@@ -16,6 +16,7 @@ PUT    /api/planner/notes/{note_id}      — update note
 DELETE /api/planner/notes/{note_id}      — delete note
 """
 
+import logging
 from datetime import datetime, UTC
 from typing import Optional, List
 
@@ -27,6 +28,8 @@ from sqlalchemy import text
 from app.db.session import get_db
 from app.models.models import PlannerTask, PlannerNote
 from app.services.auth_service import decode_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -196,6 +199,10 @@ async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_
             db.commit()
         except Exception:
             db.rollback()
+            logger.error(
+                "Planner task-done XP award failed for user_id=%s task_id=%s amount=20 source=DEEP_WORK",
+                task.user_id, task.id, exc_info=True,
+            )
 
     result = _task_dict(task)
     result["xp_awarded"] = xp_awarded
@@ -241,7 +248,10 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db), cal
                         xp_awarded += int(row.xp_added)
                     task.xp_claimed = True
                 except Exception:
-                    pass
+                    logger.error(
+                        "Planner reorder-done XP award failed for user_id=%s task_id=%s amount=20 source=DEEP_WORK",
+                        caller_id, task.id, exc_info=True,
+                    )
 
     db.commit()
     return {"ok": True, "xp_awarded": xp_awarded}

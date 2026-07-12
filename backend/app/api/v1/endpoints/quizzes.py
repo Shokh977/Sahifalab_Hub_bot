@@ -226,7 +226,11 @@ async def verify_quiz(
         try:
             add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
         except Exception:
-            pass  # XP failure must not block the response
+            # XP failure must not block the response, but must not be silent either
+            logger.error(
+                "Quiz XP award failed for user_id=%s amount=%s source=QUIZ",
+                telegram_id, DEFAULT_QUIZ_XP, exc_info=True,
+            )
         # skill_tags: quizzes don't have a first-class skill_tags column yet —
         # pass empty list; future migration can add it to the Quiz model.
         hook_quiz_passed(

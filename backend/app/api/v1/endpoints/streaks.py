@@ -1,8 +1,11 @@
 """
 streaks.py — Streak detail, freeze purchase, and freeze use endpoints.
 
-GET  /api/streaks/detail          — full streak info (streak_days, freeze_count,
-                                    calendar, milestones, challenges)
+GET  /api/streaks/detail          — streak_days, freeze_count, calendar.
+                                    Stage-milestone progress lives at
+                                    GET /api/focus/stages, not here — do not
+                                    re-add a `milestones` field to this
+                                    response, it was dead data on the client.
 POST /api/streaks/freeze/purchase — spend XP to purchase freeze charges
 POST /api/streaks/freeze/use      — manually mark today as freeze-protected
 """
@@ -46,15 +49,18 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 
 
 # ── Freeze purchase options ───────────────────────────────────────────────────
-_FREEZE_PACKAGES = {
-    1:  200,   # 1 freeze  = 200 XP
-    3:  500,   # 3 freezes = 500 XP
-    5:  750,   # 5 freezes = 750 XP
-    10: 1200,  # 10 freezes = 1200 XP
-}
+# MAX_FREEZE_COUNT caps how many freeze charges a user can hold at once
+# (step-20 Phase 4B — freeze_count previously had no ceiling, only a
+# CHECK(freeze_count >= 0) floor). The old 10-pack (1200 XP) is removed here
+# since it could never be purchased against a cap of 5 — do not re-add a
+# package larger than MAX_FREEZE_COUNT.
+MAX_FREEZE_COUNT = 5
 
-# ── Milestone definitions ─────────────────────────────────────────────────────
-_MILESTONES = [3, 7, 14, 30, 60, 100, 200, 365]
+_FREEZE_PACKAGES = {
+    1: 200,   # 1 freeze  = 200 XP
+    3: 500,   # 3 freezes = 500 XP
+    5: 750,   # 5 freezes = 750 XP
+}
 
 
 def _build_calendar(db: Session, user_id: int, today: date, days: int = 7, daily_goal: int = 20) -> list[dict]:
@@ -198,25 +204,10 @@ async def get_streak_detail(
     ).fetchone()
     longest_streak = int(longest_row.longest or 0) if longest_row else 0
 
-    # Completed milestone challenges
-    done_rows = db.execute(
-        text("SELECT challenge_key, completed_at FROM user_challenge_completions WHERE user_id = :uid"),
-        {"uid": caller_id},
-    ).fetchall()
-    done_map = {r.challenge_key: r.completed_at.isoformat() for r in done_rows}
-
-    milestones = []
-    for m in _MILESTONES:
-        key = f"streak_{m}"
-        earned = key in done_map
-        milestones.append({
-            "days":         m,
-            "earned":       earned,
-            "completed_at": done_map.get(key),
-            "current":      min(streak_days, m),
-            "pct":          min(100, round(streak_days / m * 100)),
-        })
-
+    # Stage-milestone progress moved to GET /api/focus/stages (the single
+    # canonical stage-progress endpoint — see migration 072 + focus.py). This
+    # response no longer duplicates it; the old `milestones` field was
+    # fetched by the mobile client but never rendered anywhere (dead data).
     calendar = _build_calendar(db, caller_id, today, days=days, daily_goal=daily_goal)
 
     return {
@@ -227,7 +218,6 @@ async def get_streak_detail(
         "longest_streak": longest_streak,
         "week_days":      week_days,
         "freeze_count":   freeze_count,
-        "milestones":     milestones,
         "calendar":       calendar,
         "freeze_packages": [
             {"count": k, "xp_cost": v} for k, v in _FREEZE_PACKAGES.items()
@@ -256,23 +246,37 @@ async def purchase_freeze(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    total_xp = int(profile.total_xp or 0)
+    total_xp     = int(profile.total_xp or 0)
+    freeze_count = int(profile.freeze_count or 0)
+
     if total_xp < xp_cost:
         raise HTTPException(status_code=400, detail=f"Not enough XP. Need {xp_cost}, have {total_xp}")
 
-    # Atomic deduction: WHERE total_xp >= :cost prevents double-spend under concurrency
+    if freeze_count + body.count > MAX_FREEZE_COUNT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Freeze limiti: {MAX_FREEZE_COUNT} tagacha. Sizda hozir {freeze_count} ta bor.",
+        )
+
+    # Atomic deduction: WHERE total_xp >= :cost AND freeze_count + :n <= cap
+    # prevents both double-spend and cap-overrun under concurrent purchases.
     result = db.execute(
         text("""
             UPDATE profiles
             SET total_xp     = total_xp - :cost,
                 freeze_count = COALESCE(freeze_count, 0) + :n
-            WHERE telegram_id = :uid AND total_xp >= :cost
+            WHERE telegram_id = :uid
+              AND total_xp >= :cost
+              AND COALESCE(freeze_count, 0) + :n <= :cap
         """),
-        {"cost": xp_cost, "n": body.count, "uid": caller_id},
+        {"cost": xp_cost, "n": body.count, "uid": caller_id, "cap": MAX_FREEZE_COUNT},
     )
     if result.rowcount == 0:
         db.rollback()
-        raise HTTPException(status_code=400, detail=f"Not enough XP. Need {xp_cost}, have {total_xp}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Freeze sotib olinmadi — XP yoki freeze limiti yetarli emas.",
+        )
     db.commit()
 
     new_row = db.execute(

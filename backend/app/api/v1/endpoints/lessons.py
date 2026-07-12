@@ -729,8 +729,11 @@ async def complete_lesson(
             # Award course completion XP (deduplicated by course_id — one-time only)
             try:
                 add_xp(db, user_id=caller_id, source="COURSE", amount=DEFAULT_COURSE_XP, reference_id=course_id)
-            except Exception as e:
-                logger.warning("Failed to award course XP for course %s, student %s: %s", course_id, caller_id, e)
+            except Exception:
+                logger.error(
+                    "Course-completion XP award failed for user_id=%s course_id=%s amount=%s source=COURSE",
+                    caller_id, course_id, DEFAULT_COURSE_XP, exc_info=True,
+                )
     except Exception as e:
         logger.warning("Failed to auto-issue course certificate for course %s, student %s: %s", course_id, caller_id, e)
 

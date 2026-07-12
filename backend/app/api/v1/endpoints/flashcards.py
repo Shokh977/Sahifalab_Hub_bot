@@ -44,7 +44,7 @@ from app.db.session import get_db, SessionLocal
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 from app.api.v1.endpoints.notifications import send_notification
-from app.api.v1.endpoints.focus import _check_and_award_challenges
+from app.api.v1.endpoints.focus import _check_and_award_stages
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -359,9 +359,12 @@ async def _check_clone_milestones(db: Session, deck_id: int) -> None:
             {"m": milestone, "id": deck_id},
         )
         db.commit()
-    except Exception as e:
+    except Exception:
         db.rollback()
-        logger.error(f"Clone-milestone XP award failed for deck {deck_id}: {e}")
+        logger.error(
+            "Clone-milestone XP award failed for deck_id=%s user_id=%s milestone=%s amount=%s source=DECK_MILESTONE",
+            deck_id, row.user_id, milestone, bonus, exc_info=True,
+        )
         return
 
     try:
@@ -778,7 +781,11 @@ async def review_card(
                 )
                 db.commit()
             except Exception:
-                pass
+                db.rollback()
+                logger.error(
+                    "Deck-mastery XP award failed for user_id=%s deck_id=%s amount=%s source=DEEP_WORK",
+                    caller_id, deck_id, XP_MASTERY_DECK, exc_info=True,
+                )
 
     return {
         "ok":            True,
@@ -845,7 +852,10 @@ async def complete_session(
                     {"uid": caller_id, "cid": int(any_card.id), "did": deck_id, "now": now},
                 )
         except Exception:
-            pass
+            logger.error(
+                "Flashcard session XP award failed for user_id=%s deck_id=%s amount=%s source=DEEP_WORK",
+                caller_id, deck_id, session_xp, exc_info=True,
+            )
 
     # Count flashcard study time toward daily goal (1 min = 1 min)
     flash_minutes = max(1, body.total_time_ms // 60_000) if body.total_time_ms > 0 else 1
@@ -913,27 +923,35 @@ async def complete_session(
     daily_goal    = int(stats_row.daily_goal)     if stats_row else 20
     goal_met      = today_minutes >= daily_goal
 
-    # Check and award streak milestone challenges
-    newly_completed = _check_and_award_challenges(db, caller_id, streak_days)
+    # Check and award streak stage milestones
+    newly_completed = _check_and_award_stages(db, caller_id, streak_days)
     try:
         db.commit()
     except Exception:
         db.rollback()
+        logger.error(
+            "Failed to commit streak-stage completion records for user_id=%s streak_days=%s",
+            caller_id, streak_days, exc_info=True,
+        )
 
-    for ch in newly_completed:
+    for stage in newly_completed:
         asyncio.create_task(send_notification(
             caller_id, "achievement", category="SYSTEM",
-            meta={"challenge_key": ch.get("key", ""), "bonus_xp": ch.get("bonus_xp", 0)},
+            meta={
+                "stage_key":    stage.get("key", ""),
+                "stage_number": stage.get("stage_number"),
+                "bonus_xp":     stage.get("bonus_xp", 0),
+            },
         ))
 
     return {
-        "ok":                  True,
-        "xp_awarded":          xp_result.get("xp_added", 0),
-        "flash_minutes":       flash_minutes,
-        "today_minutes":       today_minutes,
-        "streak_days":         streak_days,
-        "goal_met":            goal_met,
-        "challenges_completed": newly_completed,
+        "ok":               True,
+        "xp_awarded":       xp_result.get("xp_added", 0),
+        "flash_minutes":    flash_minutes,
+        "today_minutes":    today_minutes,
+        "streak_days":      streak_days,
+        "goal_met":         goal_met,
+        "stages_completed": newly_completed,
     }
 
 

@@ -7,6 +7,7 @@ POST /api/tests/{lesson_id}/attempts   — start a test attempt (student)
 POST /api/tests/{test_id}/attempts/{attempt_id}/submit — submit answers (student)
 """
 
+import logging
 from datetime import datetime
 from typing import Optional, List
 
@@ -18,6 +19,8 @@ from app.db.session import get_db
 from app.models.models import LessonQuiz, LessonQuizAttempt
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -269,7 +272,10 @@ async def submit_attempt(
             xp_result = add_xp(db, telegram_id, "QUIZ", LESSON_QUIZ_XP)
             xp = xp_result.get("xp_added", 0)
         except Exception:
-            pass
+            logger.error(
+                "Lesson-quiz XP award failed for user_id=%s amount=%s source=QUIZ",
+                telegram_id, LESSON_QUIZ_XP, exc_info=True,
+            )
 
     attempt.xp_awarded = xp
     db.commit()

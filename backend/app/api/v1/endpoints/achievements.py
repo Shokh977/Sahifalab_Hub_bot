@@ -117,39 +117,14 @@ ACHIEVEMENTS = [
         "requirement_text": "100 soat ta'lim o'tkazish",
         "required_progress": 6000, "metric": "focus_minutes",
     },
-    # ── Streak milestones ─────────────────────────────────────────────────────
-    {
-        "id": 11, "key": "streak_3",
-        "name": "Doimiy",
-        "description": "3 kun ketma-ket o'qidingiz!",
-        "tier": "bronze", "sort_order": 11,
-        "requirement_text": "3 kunlik streak yig'ing",
-        "required_progress": 3, "metric": "streak_days",
-    },
-    {
-        "id": 12, "key": "streak_7",
-        "name": "Haftalik olov",
-        "description": "7 kun ketma-ket o'qidingiz!",
-        "tier": "silver", "sort_order": 12,
-        "requirement_text": "7 kunlik streak yig'ing",
-        "required_progress": 7, "metric": "streak_days",
-    },
-    {
-        "id": 13, "key": "streak_30",
-        "name": "Oylik olov",
-        "description": "30 kun ketma-ket o'qidingiz! Ajoyib!",
-        "tier": "gold", "sort_order": 13,
-        "requirement_text": "30 kunlik streak yig'ing",
-        "required_progress": 30, "metric": "streak_days",
-    },
-    {
-        "id": 14, "key": "streak_100",
-        "name": "Olov ustasi",
-        "description": "100 kun ketma-ket o'qidingiz! Siz afsonasiz!",
-        "tier": "platinum", "sort_order": 14,
-        "requirement_text": "100 kunlik streak yig'ing",
-        "required_progress": 100, "metric": "streak_days",
-    },
+    # Streak milestones (streak_3/streak_7/streak_30/streak_100) — REMOVED.
+    # Superseded by the "Stage milestones" block at the end of this list,
+    # which is aligned 1:1 with the 10 tree stages (streak_stages table) and
+    # granted in real time by focus.py:_check_and_award_stages() at the same
+    # moment as the stage's XP bonus, instead of being lazily recomputed here
+    # on every GET. If any user already holds the old streak_3/7/30/100
+    # badge_key rows in user_badges, those rows are left untouched (not
+    # revoked) — they just no longer appear in this list's response.
     # ── XP milestones ─────────────────────────────────────────────────────────
     {
         "id": 15, "key": "xp_100",
@@ -208,6 +183,80 @@ ACHIEVEMENTS = [
         "tier": "gold", "sort_order": 21,
         "requirement_text": "Birorta to'plamingiz 100 marta nusxalanishi",
         "required_progress": 100, "metric": "max_deck_clones",
+    },
+    # ── Stage milestones (aligned 1:1 with the 10 tree stages) ────────────────
+    # Granted in real time by focus.py:_check_and_award_stages() at the same
+    # moment the stage's XP bonus is awarded — the lazy earned>=required check
+    # below is a harmless idempotent safety net, not the primary grant path.
+    {
+        "id": 22, "key": "stage_1", "name": "O'zgarish urug'i",
+        "description": "Birinchi kuningizni yakunladingiz!",
+        "tier": "bronze", "sort_order": 22,
+        "requirement_text": "1 kunlik streak yig'ing",
+        "required_progress": 1, "metric": "streak_days",
+    },
+    {
+        "id": 23, "key": "stage_2", "name": "Kichik ko'chat",
+        "description": "3 kun ketma-ket o'qidingiz!",
+        "tier": "bronze", "sort_order": 23,
+        "requirement_text": "3 kunlik streak yig'ing",
+        "required_progress": 3, "metric": "streak_days",
+    },
+    {
+        "id": 24, "key": "stage_3", "name": "Yosh nihol",
+        "description": "7 kun ketma-ket o'qidingiz!",
+        "tier": "silver", "sort_order": 24,
+        "requirement_text": "7 kunlik streak yig'ing",
+        "required_progress": 7, "metric": "streak_days",
+    },
+    {
+        "id": 25, "key": "stage_4", "name": "O'suvchi daraxt",
+        "description": "14 kun ketma-ket o'qidingiz!",
+        "tier": "silver", "sort_order": 25,
+        "requirement_text": "14 kunlik streak yig'ing",
+        "required_progress": 14, "metric": "streak_days",
+    },
+    {
+        "id": 26, "key": "stage_5", "name": "Gullayotgan daraxt",
+        "description": "30 kun ketma-ket o'qidingiz! Ajoyib!",
+        "tier": "gold", "sort_order": 26,
+        "requirement_text": "30 kunlik streak yig'ing",
+        "required_progress": 30, "metric": "streak_days",
+    },
+    {
+        "id": 27, "key": "stage_6", "name": "Sehrli daraxt",
+        "description": "50 kun ketma-ket o'qidingiz!",
+        "tier": "gold", "sort_order": 27,
+        "requirement_text": "50 kunlik streak yig'ing",
+        "required_progress": 50, "metric": "streak_days",
+    },
+    {
+        "id": 28, "key": "stage_7", "name": "Gullab-yashnagan",
+        "description": "75 kun ketma-ket o'qidingiz!",
+        "tier": "platinum", "sort_order": 28,
+        "requirement_text": "75 kunlik streak yig'ing",
+        "required_progress": 75, "metric": "streak_days",
+    },
+    {
+        "id": 29, "key": "stage_8", "name": "Qadimiy bilim",
+        "description": "120 kun ketma-ket o'qidingiz!",
+        "tier": "platinum", "sort_order": 29,
+        "requirement_text": "120 kunlik streak yig'ing",
+        "required_progress": 120, "metric": "streak_days",
+    },
+    {
+        "id": 30, "key": "stage_9", "name": "Samoviy daraxt",
+        "description": "200 kun ketma-ket o'qidingiz!",
+        "tier": "diamond", "sort_order": 30,
+        "requirement_text": "200 kunlik streak yig'ing",
+        "required_progress": 200, "metric": "streak_days",
+    },
+    {
+        "id": 31, "key": "stage_10", "name": "Abadiy dunyo daraxti",
+        "description": "365 kun ketma-ket o'qidingiz! Siz afsonaviy insonsiz!",
+        "tier": "legend", "sort_order": 31,
+        "requirement_text": "365 kunlik streak yig'ing",
+        "required_progress": 365, "metric": "streak_days",
     },
 ]
 
