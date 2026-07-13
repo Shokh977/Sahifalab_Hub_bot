@@ -40,6 +40,7 @@ from app.models.social_models import (
 )
 from app.services.auth_service import decode_token
 from app.services.integration_service import calculate_profile_completeness
+from app.services.badge_service import get_badge_groups
 
 logger = logging.getLogger(__name__)
 
@@ -411,6 +412,20 @@ def get_my_profile(
         raise HTTPException(status_code=404, detail="Profil topilmadi")
     identifier = profile.site_username or str(profile.telegram_id)
     return get_public_profile(username=identifier, authorization=authorization, db=db)
+
+
+@profile_router.get("/me/badges")
+def get_my_badges(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Trofey Xonasi (step-24), own profile — grouped { challenges, stages,
+    achievements }, INCLUDING locked/unearned badges (this is your own
+    profile — locked badges are aspirational here, not noise).
+    """
+    viewer_id = _require_viewer(authorization)
+    return get_badge_groups(db, viewer_id, include_locked=True)
 
 
 @profile_router.put("/me")
@@ -1015,6 +1030,36 @@ def get_public_profile(
         # Meta
         "profile_completeness": completeness,
     }
+
+
+@profile_router.get("/{username}/badges")
+def get_user_badges(
+    username: str,
+    db: Session = Depends(get_db),
+):
+    """
+    Trofey Xonasi (step-24), someone else's profile — grouped { challenges,
+    stages, achievements }, EARNED ONLY. A public profile is a display case,
+    not a to-do list — this must never leak another user's locked badges.
+    """
+    username = username.lstrip("@").strip()
+    if not username:
+        raise HTTPException(status_code=400, detail="Foydalanuvchi nomi noto'g'ri")
+
+    profile = (
+        db.query(Profile)
+        .filter(func.lower(Profile.site_username) == username.lower())
+        .first()
+    )
+    if not profile:
+        try:
+            profile = db.query(Profile).filter(Profile.telegram_id == int(username)).first()
+        except ValueError:
+            pass
+    if not profile:
+        raise HTTPException(status_code=404, detail="Foydalanuvchi topilmadi")
+
+    return get_badge_groups(db, profile.telegram_id, include_locked=False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

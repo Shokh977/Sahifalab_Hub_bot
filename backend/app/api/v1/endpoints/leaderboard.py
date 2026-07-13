@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
+from app.services.badge_service import get_top_badges_map
 
 router = APIRouter()
 
@@ -190,6 +191,8 @@ async def weekly_leaderboard(
 
     rows = db.execute(sql, {"uid": caller_id}).fetchall()
 
+    top_badge_map = get_top_badges_map(db, [r.telegram_id for r in rows])
+
     my_rank: Optional[int] = None
     entries = []
     for r in rows:
@@ -207,6 +210,7 @@ async def weekly_leaderboard(
             "minutes":      int(r.minutes),
             "account_type": r.account_type or "student",
             "is_me":        is_me,
+            "top_badge":    top_badge_map.get(r.telegram_id),
         })
 
     # Caller rank when outside the top list

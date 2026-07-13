@@ -44,6 +44,7 @@ from app.db.session import get_db, SessionLocal
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 from app.services.study_activity import record_study_activity
+from app.services.badge_service import get_top_badges_map
 from app.api.v1.endpoints.notifications import send_notification
 
 router = APIRouter()
@@ -1086,8 +1087,10 @@ async def list_public_decks(
 
     total = db.execute(text(f"SELECT COUNT(*) FROM flashcard_decks d WHERE {where}"), params).scalar()
 
+    top_badge_map = get_top_badges_map(db, [r.creator_id for r in rows if r.creator_id is not None])
+
     return {
-        "decks": [_public_deck_item(r) for r in rows],
+        "decks": [_public_deck_item(r, top_badge_map) for r in rows],
         "total": int(total or 0),
         "page":  page,
         "limit": limit,
@@ -1115,7 +1118,8 @@ async def list_featured_decks(
         """),
         {"caller": caller_id},
     ).fetchall()
-    return [_public_deck_item(r) for r in rows]
+    top_badge_map = get_top_badges_map(db, [r.creator_id for r in rows if r.creator_id is not None])
+    return [_public_deck_item(r, top_badge_map) for r in rows]
 
 
 @router.get("/public/{deck_id}")
@@ -1161,7 +1165,8 @@ async def get_public_deck(
         {"id": deck_id},
     ).fetchall()
 
-    item = _public_deck_item(row)
+    top_badge_map = get_top_badges_map(db, [row.creator_id] if row.creator_id is not None else [])
+    item = _public_deck_item(row, top_badge_map)
     item["is_verified"]  = bool(row.is_verified)
     item["published_at"] = row.published_at.isoformat() if row.published_at else None
     item["preview_cards"] = [{"front_text": c.front_text, "back_text": c.back_text} for c in preview_cards]
@@ -1560,7 +1565,7 @@ def _deck_row_simple(r) -> dict:
     }
 
 
-def _creator_info(r) -> Optional[dict]:
+def _creator_info(r, top_badge: Optional[dict] = None) -> Optional[dict]:
     """None when the deck is anonymous or official (no personal profile to link to)."""
     if r.is_anonymous or r.badge_type == "official":
         return None
@@ -1570,11 +1575,13 @@ def _creator_info(r) -> Optional[dict]:
         "id":         int(r.creator_id),
         "name":       r.creator_name or "",
         "avatar_url": r.creator_photo,
+        "top_badge":  top_badge,
     }
 
 
-def _public_deck_item(r) -> dict:
+def _public_deck_item(r, top_badge_map: Optional[dict] = None) -> dict:
     """Item shape for /public listing endpoints (library card, featured row)."""
+    top_badge = (top_badge_map or {}).get(r.creator_id) if r.creator_id is not None else None
     return {
         "id":             int(r.id),
         "title":          r.title,
@@ -1583,7 +1590,7 @@ def _public_deck_item(r) -> dict:
         "card_count":     int(r.card_count or 0),
         "category":       r.category,
         "badge_type":     r.badge_type or "none",
-        "creator":        _creator_info(r),
+        "creator":        _creator_info(r, top_badge),
         "clone_count":    int(r.clone_count or 0),
         "rating_avg":     round(float(r.rating_avg or 0), 2),
         "rating_count":   int(r.rating_count or 0),
