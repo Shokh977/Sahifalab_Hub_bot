@@ -120,7 +120,7 @@ ACHIEVEMENTS = [
     # Streak milestones (streak_3/streak_7/streak_30/streak_100) — REMOVED.
     # Superseded by the "Stage milestones" block at the end of this list,
     # which is aligned 1:1 with the 10 tree stages (streak_stages table) and
-    # granted in real time by focus.py:_check_and_award_stages() at the same
+    # granted in real time by stage_service.py:check_and_award_stages() at the same
     # moment as the stage's XP bonus, instead of being lazily recomputed here
     # on every GET. If any user already holds the old streak_3/7/30/100
     # badge_key rows in user_badges, those rows are left untouched (not
@@ -185,7 +185,7 @@ ACHIEVEMENTS = [
         "required_progress": 100, "metric": "max_deck_clones",
     },
     # ── Stage milestones (aligned 1:1 with the 10 tree stages) ────────────────
-    # Granted in real time by focus.py:_check_and_award_stages() at the same
+    # Granted in real time by stage_service.py:check_and_award_stages() at the same
     # moment the stage's XP bonus is awarded — the lazy earned>=required check
     # below is a harmless idempotent safety net, not the primary grant path.
     {

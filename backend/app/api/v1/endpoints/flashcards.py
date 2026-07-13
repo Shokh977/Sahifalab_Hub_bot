@@ -32,7 +32,7 @@ import asyncio
 import logging
 import math
 import httpx
-from datetime import datetime, UTC, timedelta, date as Date
+from datetime import datetime, UTC, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query
@@ -43,8 +43,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db, SessionLocal
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
+from app.services.study_activity import record_study_activity
 from app.api.v1.endpoints.notifications import send_notification
-from app.api.v1.endpoints.focus import _check_and_award_stages
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -169,16 +169,6 @@ class CardUpdate(BaseModel):
 class ReviewRequest(BaseModel):
     rating:        int = Field(..., ge=1, le=4)
     time_spent_ms: Optional[int] = None
-
-def _parse_local_date(local_date: Optional[str]) -> Date:
-    """Return the client's local calendar date, or UTC today as fallback."""
-    if local_date:
-        try:
-            return Date.fromisoformat(local_date)
-        except ValueError:
-            pass
-    return datetime.now(UTC).date()
-
 
 class CompleteSessionRequest(BaseModel):
     total_time_ms:  int = Field(..., ge=0)
@@ -813,9 +803,7 @@ async def complete_session(
     if body.total_time_ms < 1000:
         return {"ok": True, "xp_awarded": 0, "streak_days": 0, "goal_met": False, "today_minutes": 0, "daily_goal": 20}
 
-    now       = datetime.now(UTC)
-    today     = _parse_local_date(body.local_date)
-    yesterday = today - timedelta(days=1)
+    now = datetime.now(UTC)
 
     # XP = ceil(cards_reviewed_this_session / 5)
     # Using actual cards reviewed, not total deck size, to prevent XP farming
@@ -860,81 +848,18 @@ async def complete_session(
     # Count flashcard study time toward daily goal (1 min = 1 min)
     flash_minutes = max(1, body.total_time_ms // 60_000) if body.total_time_ms > 0 else 1
 
-    # Record a focus_session row so streak + goal logic fires
-    db.execute(
-        text("""
-            INSERT INTO focus_sessions (user_id, minutes, xp_awarded, session_date)
-            VALUES (:uid, :min, :xp, :today)
-        """),
-        {"uid": caller_id, "min": flash_minutes, "xp": xp_result.get("xp_added", 0), "today": today},
+    # Single write path for "the user did some studying" — see
+    # app/services/study_activity.py. source='flashcards' (NOT 'focus_timer')
+    # is deliberate: flashcard study still maintains the streak below, but by
+    # product rule must NOT count toward a focus_minutes cohort challenge —
+    # that challenge is named and marketed as a focus-timer marathon.
+    activity = record_study_activity(
+        db, user_id=caller_id, minutes=flash_minutes,
+        source="flashcards", xp_awarded=xp_result.get("xp_added", 0),
+        local_date=body.local_date,
     )
 
-    # Update streak — only advance when today's total meets the daily goal
-    db.execute(
-        text("""
-            UPDATE profiles SET
-                total_focus_minutes = COALESCE(total_focus_minutes, 0) + :min,
-                streak_days = CASE
-                    WHEN (
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN
-                        CASE
-                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
-                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
-                            ELSE 1
-                        END
-                    ELSE COALESCE(streak_days, 0)
-                END,
-                streak_last_date = CASE
-                    WHEN (
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN :today
-                    ELSE streak_last_date
-                END
-            WHERE telegram_id = :uid
-        """),
-        {"min": flash_minutes, "uid": caller_id, "today": today, "yesterday": yesterday},
-    )
-    db.commit()
-
-    # Fetch fresh stats for goal-complete check
-    stats_row = db.execute(
-        text("""
-            SELECT
-                COALESCE(SUM(minutes) FILTER (WHERE session_date = :today), 0) AS today_minutes,
-                COALESCE(streak_days, 0) AS streak_days,
-                COALESCE(daily_goal_minutes, 20) AS daily_goal
-            FROM focus_sessions fs
-            JOIN profiles p ON p.telegram_id = :uid
-            WHERE fs.user_id = :uid
-            GROUP BY streak_days, daily_goal_minutes
-        """),
-        {"uid": caller_id, "today": today},
-    ).fetchone()
-
-    today_minutes = int(stats_row.today_minutes) if stats_row else flash_minutes
-    streak_days   = int(stats_row.streak_days)   if stats_row else 1
-    daily_goal    = int(stats_row.daily_goal)     if stats_row else 20
-    goal_met      = today_minutes >= daily_goal
-
-    # Check and award streak stage milestones
-    newly_completed = _check_and_award_stages(db, caller_id, streak_days)
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        logger.error(
-            "Failed to commit streak-stage completion records for user_id=%s streak_days=%s",
-            caller_id, streak_days, exc_info=True,
-        )
-
-    for stage in newly_completed:
+    for stage in activity.stages_completed:
         asyncio.create_task(send_notification(
             caller_id, "achievement", category="SYSTEM",
             meta={
@@ -945,13 +870,15 @@ async def complete_session(
         ))
 
     return {
-        "ok":               True,
-        "xp_awarded":       xp_result.get("xp_added", 0),
-        "flash_minutes":    flash_minutes,
-        "today_minutes":    today_minutes,
-        "streak_days":      streak_days,
-        "goal_met":         goal_met,
-        "stages_completed": newly_completed,
+        "ok":                    True,
+        "xp_awarded":            xp_result.get("xp_added", 0),
+        "flash_minutes":         flash_minutes,
+        "today_minutes":         activity.today_minutes,
+        "streak_days":           activity.streak_days,
+        "goal_met":              activity.goal_met,
+        "stages_completed":      activity.stages_completed,
+        "challenges_completed":  activity.challenges_completed,
+        "challenges_progressed": activity.challenges_progressed,
     }
 
 

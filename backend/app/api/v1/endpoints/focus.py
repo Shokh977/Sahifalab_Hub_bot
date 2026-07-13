@@ -12,7 +12,7 @@ GET  /api/focus/weekly         — 7-day breakdown [{ date, minutes, goal_met }]
 import asyncio
 import json
 import logging
-from datetime import datetime, UTC, timedelta, date as Date
+from datetime import datetime, UTC, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, focus_minutes_to_xp
+from app.services.study_activity import record_study_activity, parse_local_date as _parse_local_date
 from app.api.v1.endpoints.notifications import send_notification
 
 logger = logging.getLogger(__name__)
@@ -40,116 +41,6 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
     if not telegram_id:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     return telegram_id
-
-
-# ── Streak stage milestones ─────────────────────────────────────────────────
-# The milestone-day list lives ONLY in the streak_stages table (migration
-# 072_streak_stages_consolidation.sql) — do not reintroduce a hardcoded list
-# here. This function is the single place that checks + awards stage XP; it
-# is shared (imported) by flashcards.py's session-complete handler too, so a
-# flashcard-only study day triggers stage awards exactly like a focus-timer
-# day does.
-
-def _check_and_award_stages(db: Session, caller_id: int, streak_days: int) -> list[dict]:
-    """
-    Check every active streak_stages row the user has now reached and award
-    any that aren't already recorded in user_stage_completions. Awards bonus
-    XP once per stage per user (STREAK_STAGE source, distinct from ordinary
-    DEEP_WORK XP so the ledger is auditable). Returns the list of
-    newly-completed stages (only ones where XP was actually granted — a
-    failed award is never recorded as completed, so it can be retried on the
-    next check instead of being silently and permanently marked "earned"
-    with 0 XP).
-    """
-    newly_done: list[dict] = []
-
-    stages = db.execute(
-        text("""
-            SELECT key, stage_number, title, bonus_xp, required_days
-            FROM   streak_stages
-            WHERE  is_active = TRUE AND required_days <= :streak_days
-            ORDER BY required_days ASC
-        """),
-        {"streak_days": streak_days},
-    ).fetchall()
-
-    for stage in stages:
-        key = stage.key
-        existing = db.execute(
-            text("SELECT id FROM user_stage_completions WHERE user_id = :uid AND stage_key = :key"),
-            {"uid": caller_id, "key": key},
-        ).fetchone()
-        if existing:
-            continue
-
-        bonus = int(stage.bonus_xp or 0)
-        try:
-            xp_result = add_xp(db, user_id=caller_id, source="STREAK_STAGE", amount=bonus, reference_id=stage.stage_number)
-        except Exception:
-            logger.error(
-                "Streak-stage XP award failed for user_id=%s stage_key=%s amount=%s source=STREAK_STAGE",
-                caller_id, key, bonus, exc_info=True,
-            )
-            continue  # do not record completion — retry on the next check
-
-        try:
-            db.execute(
-                text("""
-                    INSERT INTO user_stage_completions (user_id, stage_key, xp_awarded)
-                    VALUES (:uid, :key, :xp)
-                    ON CONFLICT DO NOTHING
-                """),
-                {"uid": caller_id, "key": key, "xp": xp_result.get("xp_added", 0)},
-            )
-        except Exception:
-            logger.error(
-                "Failed to record stage completion for user_id=%s stage_key=%s (XP was already granted)",
-                caller_id, key, exc_info=True,
-            )
-            # XP was already granted above — do not skip appending to
-            # newly_done, the user did earn it even if this row failed.
-
-        # Grant the matching achievement badge (stage_1..stage_10) at the
-        # same moment — one event: XP + badge + tree evolution together.
-        # Badge key is always "stage_{stage_number}", NOT streak_stages.key —
-        # stages 3/4/5 keep their legacy DB keys (streak_7/streak_14/
-        # streak_30) for FK safety (see migration 072), but achievements.py's
-        # badge catalogue uses stage_3/stage_4/stage_5 uniformly for all 10.
-        # Best-effort: a failure here must never undo the XP/completion above.
-        badge_key = f"stage_{stage.stage_number}"
-        try:
-            db.execute(
-                text("""
-                    INSERT INTO user_badges (user_id, badge_key, granted_at)
-                    VALUES (:uid, :key, NOW())
-                    ON CONFLICT (user_id, badge_key) DO NOTHING
-                """),
-                {"uid": caller_id, "key": badge_key},
-            )
-        except Exception:
-            logger.error(
-                "Failed to grant stage badge for user_id=%s badge_key=%s",
-                caller_id, badge_key, exc_info=True,
-            )
-
-        newly_done.append({
-            "key": key,
-            "stage_number": stage.stage_number,
-            "title": stage.title,
-            "required_days": stage.required_days,
-            "bonus_xp": bonus,
-        })
-    return newly_done
-
-
-def _parse_local_date(local_date: Optional[str]) -> Date:
-    """Return the client's local calendar date, or UTC today as fallback."""
-    if local_date:
-        try:
-            return Date.fromisoformat(local_date)
-        except ValueError:
-            pass
-    return datetime.now(UTC).date()
 
 
 class CompleteSessionRequest(BaseModel):
@@ -179,70 +70,15 @@ async def complete_focus_session(
         )
         raise HTTPException(status_code=500, detail="XP award failed")
 
-    today = _parse_local_date(body.local_date)
-    yesterday = today - timedelta(days=1)
-
-    db.execute(
-        text("""
-            INSERT INTO focus_sessions (user_id, minutes, xp_awarded, session_date)
-            VALUES (:uid, :min, :xp, :dt)
-        """),
-        {"uid": caller_id, "min": body.minutes, "xp": result["xp_added"], "dt": today},
+    # Single write path for "the user did some studying" — see
+    # app/services/study_activity.py. source='focus_timer' is what makes this
+    # session eligible to count toward a focus_minutes cohort challenge
+    # (step-21); flashcards.py passes 'flashcards' instead, which never does.
+    activity = record_study_activity(
+        db, user_id=caller_id, minutes=body.minutes,
+        source="focus_timer", xp_awarded=result["xp_added"],
+        local_date=body.local_date,
     )
-
-    # Streak logic: only advance streak when today's total minutes meets the daily goal.
-    # The subquery runs after the INSERT above so it includes the just-added session.
-    db.execute(
-        text("""
-            UPDATE profiles SET
-                total_focus_minutes = COALESCE(total_focus_minutes, 0) + :min,
-                streak_days = CASE
-                    WHEN (
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN
-                        CASE
-                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
-                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
-                            ELSE 1
-                        END
-                    ELSE COALESCE(streak_days, 0)
-                END,
-                streak_last_date = CASE
-                    WHEN (
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN :today
-                    ELSE streak_last_date
-                END,
-                study_pulse_at = NULL
-            WHERE telegram_id = :uid
-        """),
-        {"min": body.minutes, "uid": caller_id, "today": today, "yesterday": yesterday},
-    )
-    db.commit()
-
-    # Read back current streak for challenge checking
-    streak_row = db.execute(
-        text("SELECT streak_days FROM profiles WHERE telegram_id = :uid"),
-        {"uid": caller_id},
-    ).fetchone()
-    current_streak = int(streak_row.streak_days or 0) if streak_row else 0
-
-    # Check and award streak challenges
-    newly_completed = _check_and_award_stages(db, caller_id, current_streak)
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        logger.error(
-            "Failed to commit streak-stage completion records for user_id=%s streak_days=%s",
-            caller_id, current_streak, exc_info=True,
-        )
 
     # Append focus session to activity_log (best-effort)
     try:
@@ -273,7 +109,7 @@ async def complete_focus_session(
             caller_id, "level_up", category="SYSTEM",
             meta={"level": new_level},
         ))
-    for stage in newly_completed:
+    for stage in activity.stages_completed:
         asyncio.create_task(send_notification(
             caller_id, "achievement", category="SYSTEM",
             meta={
@@ -282,14 +118,21 @@ async def complete_focus_session(
                 "bonus_xp":     stage.get("bonus_xp", 0),
             },
         ))
+    for ch in activity.challenges_completed:
+        asyncio.create_task(send_notification(
+            caller_id, "challenge_completed", category="SYSTEM",
+            meta={"slug": ch.get("slug", ""), "reward_xp": ch.get("reward_xp", 0)},
+        ))
 
     return {
-        "xp_awarded":          result["xp_added"],
-        "total_xp":            int(row.total_xp or 0) if row else result["new_xp"],
-        "level":               new_level,
-        "level_up":            new_level > old_level,
-        "achievements_earned": [],
-        "stages_completed":    newly_completed,
+        "xp_awarded":            result["xp_added"],
+        "total_xp":              int(row.total_xp or 0) if row else result["new_xp"],
+        "level":                 new_level,
+        "level_up":              new_level > old_level,
+        "achievements_earned":   [],
+        "stages_completed":      activity.stages_completed,
+        "challenges_completed":  activity.challenges_completed,
+        "challenges_progressed": activity.challenges_progressed,
     }
 
 
