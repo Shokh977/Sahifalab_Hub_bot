@@ -97,6 +97,7 @@ interface AdminChallenge {
   badge_key:         string | null
   color:             string
   icon:              string
+  cover_image_url:   string | null
   is_featured:       boolean
   status:            'upcoming' | 'active' | 'ended' | 'cancelled'
   participant_count: number
@@ -446,12 +447,14 @@ const AdminPage: React.FC = () => {
   const [chEditTarget,  setChEditTarget]  = useState<AdminChallenge | null>(null)
   const [chForm, setChForm] = useState({
     slug: '', title: '', description: '', target_hours: '20', starts_at: '', ends_at: '',
-    reward_xp: '500', badge_key: '', color: '#F5A623', icon: 'timer',
+    reward_xp: '500', badge_key: '', color: '#F5A623', icon: 'timer', cover_image_url: '',
     is_featured: false, max_participants: '',
   })
   const [chSlugTouched, setChSlugTouched] = useState(false)
   const [chSaving,      setChSaving]      = useState(false)
   const [chError,       setChError]       = useState('')
+  const [chImgUploading, setChImgUploading] = useState(false)
+  const [chImgPercent,   setChImgPercent]   = useState(0)
   const [chDetailId,    setChDetailId]    = useState<string | null>(null)
   const [chDetail,      setChDetail]      = useState<AdminChallengeDetail | null>(null)
   const [chDetailLoading, setChDetailLoading] = useState(false)
@@ -933,7 +936,7 @@ const AdminPage: React.FC = () => {
     setChSlugTouched(false)
     setChForm({
       slug: '', title: '', description: '', target_hours: '20', starts_at: '', ends_at: '',
-      reward_xp: '500', badge_key: '', color: '#F5A623', icon: 'timer',
+      reward_xp: '500', badge_key: '', color: '#F5A623', icon: 'timer', cover_image_url: '',
       is_featured: false, max_participants: '',
     })
     setChError('')
@@ -948,11 +951,58 @@ const AdminPage: React.FC = () => {
       target_hours: String(ch.target_hours),
       starts_at: ch.starts_at.slice(0, 16), ends_at: ch.ends_at.slice(0, 16),
       reward_xp: String(ch.reward_xp), badge_key: ch.badge_key ?? '',
-      color: ch.color, icon: ch.icon, is_featured: ch.is_featured,
+      color: ch.color, icon: ch.icon, cover_image_url: ch.cover_image_url ?? '',
+      is_featured: ch.is_featured,
       max_participants: ch.max_participants != null ? String(ch.max_participants) : '',
     })
     setChError('')
     setChFormOpen(true)
+  }
+
+  const uploadChImage = async (file: File) => {
+    const jwt = token || localStorage.getItem('auth_token')
+    if (!jwt) return
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+      setChError('Faqat JPG, PNG yoki WebP formatdagi rasm yuklang')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      setChError("Rasm hajmi 2 MB dan oshmasligi kerak")
+      return
+    }
+    setChError('')
+    setChImgUploading(true)
+    setChImgPercent(0)
+    const apiBase = API_BASE.replace(/\/api\/?$/, '')
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      form.append('folder', 'challenges')
+      const url = await new Promise<string>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.open('POST', `${apiBase}/api/upload/file`)
+        xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setChImgPercent(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try { resolve(JSON.parse(xhr.responseText).url) }
+            catch { reject(new Error("Server javobi noto'g'ri")) }
+          } else {
+            try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Xato: ${xhr.status}`)) }
+            catch { reject(new Error(`Xato: ${xhr.status}`)) }
+          }
+        }
+        xhr.onerror = () => reject(new Error('Tarmoq xatosi'))
+        xhr.send(form)
+      })
+      setChForm(f => ({ ...f, cover_image_url: url }))
+    } catch (err: any) {
+      console.error('[Admin] uploadChImage:', err?.message)
+    } finally {
+      setChImgUploading(false)
+    }
   }
 
   const saveChallenge = async () => {
@@ -968,7 +1018,8 @@ const AdminPage: React.FC = () => {
       if (chEditTarget) {
         const payload: any = {
           title: chForm.title.trim(), description: chForm.description.trim() || null,
-          color: chForm.color, icon: chForm.icon, is_featured: chForm.is_featured,
+          color: chForm.color, icon: chForm.icon, cover_image_url: chForm.cover_image_url || null,
+          is_featured: chForm.is_featured,
           max_participants: chForm.max_participants === '' ? null : Number(chForm.max_participants),
           badge_key: chForm.badge_key.trim() || null, reward_xp: Number(chForm.reward_xp),
         }
@@ -984,7 +1035,8 @@ const AdminPage: React.FC = () => {
           metric: 'focus_minutes', target_hours: Number(chForm.target_hours),
           starts_at: new Date(chForm.starts_at).toISOString(), ends_at: new Date(chForm.ends_at).toISOString(),
           reward_xp: Number(chForm.reward_xp), badge_key: chForm.badge_key.trim() || null,
-          color: chForm.color, icon: chForm.icon, is_featured: chForm.is_featured,
+          color: chForm.color, icon: chForm.icon, cover_image_url: chForm.cover_image_url || null,
+          is_featured: chForm.is_featured,
           max_participants: chForm.max_participants === '' ? null : Number(chForm.max_participants),
         })
       }
@@ -3834,6 +3886,74 @@ const AdminPage: React.FC = () => {
                   onChange={e => setChForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 resize-none"
                 />
+
+                {/* Cover image (step-23) */}
+                <div className="space-y-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400">Muqova rasmi (ixtiyoriy)</label>
+                  <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
+                    Nisbati 16:9 (tavsiya: 1200×675) · Maks. 2 MB · JPG, PNG yoki WebP.{' '}
+                    Rasm baland sifatli va motivatsion bo'lsin. Matn rasmda ko'rinadi — juda band rasm tanlamang.
+                  </p>
+                  {chForm.cover_image_url && (
+                    <div className="relative rounded-xl overflow-hidden aspect-video">
+                      <img src={chForm.cover_image_url} alt="" className="w-full h-full object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => setChForm(f => ({ ...f, cover_image_url: '' }))}
+                        className="absolute top-1.5 right-1.5 bg-black/60 text-white text-xs px-2 py-0.5 rounded-lg"
+                      >
+                        ✕ O'chirish
+                      </button>
+                    </div>
+                  )}
+                  {!chForm.cover_image_url && (
+                    <label className={`flex items-center justify-center gap-2 w-full h-24 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+                      chImgUploading
+                        ? 'border-sahifa-400 bg-sahifa-50 dark:bg-sahifa-900/10'
+                        : 'border-gray-300 dark:border-gray-600 hover:border-sahifa-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        className="hidden"
+                        disabled={chImgUploading}
+                        onChange={e => { const f = e.target.files?.[0]; if (f) uploadChImage(f) }}
+                      />
+                      {chImgUploading
+                        ? <span className="text-sm text-sahifa-600 dark:text-sahifa-400">⬆️ {chImgPercent}% yuklanmoqda…</span>
+                        : <span className="text-sm text-gray-400 dark:text-gray-500">🖼 Muqova rasmini yuklash</span>
+                      }
+                    </label>
+                  )}
+
+                  {/* Live mobile-card preview */}
+                  <div>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-1">Ilovada qanday ko'rinadi:</p>
+                    <div
+                      className="relative rounded-2xl overflow-hidden aspect-video flex flex-col justify-between p-3"
+                      style={chForm.cover_image_url ? {
+                        backgroundImage: `url(${chForm.cover_image_url})`, backgroundSize: 'cover', backgroundPosition: 'center',
+                      } : {
+                        background: `linear-gradient(135deg, ${chForm.color}, ${chForm.color}cc)`,
+                      }}
+                    >
+                      {/* scrims — same treatment as the mobile card */}
+                      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, rgba(0,0,0,0.45) 0%, transparent 40%)' }} />
+                      <div className="absolute inset-0" style={{ background: 'linear-gradient(180deg, transparent 35%, rgba(0,0,0,0.30) 60%, rgba(0,0,0,0.80) 100%)' }} />
+                      {!chForm.cover_image_url && (
+                        <span className="absolute inset-0 flex items-center justify-center text-white/15 text-6xl">🏆</span>
+                      )}
+                      <div className="relative flex justify-between">
+                        <span className="text-[10px] font-semibold text-white bg-black/45 px-2 py-0.5 rounded-full">Faol</span>
+                        <span className="text-[10px] font-semibold text-white bg-black/45 px-2 py-0.5 rounded-full">12 kun qoldi</span>
+                      </div>
+                      <p className="relative text-white font-bold text-base leading-tight" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
+                        {chForm.title || 'Musobaqa sarlavhasi'}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
                 {(() => {
                   const locked = !!chEditTarget && chEditTarget.status !== 'upcoming'
                   return (

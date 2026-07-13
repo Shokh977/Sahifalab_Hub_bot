@@ -48,7 +48,7 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
     return telegram_id
 
 
-def _challenge_dict(row, caller_participation: Optional[dict] = None) -> dict:
+def _challenge_dict(row, caller_participation: Optional[dict] = None, avatars: Optional[list] = None) -> dict:
     d = {
         "id":                str(row.id),
         "slug":               row.slug,
@@ -68,6 +68,8 @@ def _challenge_dict(row, caller_participation: Optional[dict] = None) -> dict:
         "icon":               row.icon,
         "is_featured":        row.is_featured,
         "max_participants":   row.max_participants,
+        "cover_image_url":    row.cover_image_url,
+        "participant_avatars": avatars or [],
     }
     if caller_participation is not None:
         d["joined"] = True
@@ -80,6 +82,33 @@ def _challenge_dict(row, caller_participation: Optional[dict] = None) -> dict:
         d["completed_at"] = None
         d["rank"] = None
     return d
+
+
+def _fetch_avatar_map(db: Session, challenge_ids: list) -> dict:
+    """
+    Up to 4 recent-joiner avatar URLs per challenge, for the Ochiq card's
+    participant stack (step-23). Decoration, not a leaderboard — cheap by
+    design: one batched query, capped at 4 rows/challenge via ROW_NUMBER.
+    """
+    if not challenge_ids:
+        return {}
+    rows = db.execute(
+        text("""
+            SELECT challenge_id, photo_url FROM (
+                SELECT cp.challenge_id, p.photo_url,
+                       ROW_NUMBER() OVER (PARTITION BY cp.challenge_id ORDER BY cp.joined_at DESC) AS rn
+                FROM challenge_participants cp
+                JOIN profiles p ON p.telegram_id = cp.user_id
+                WHERE cp.challenge_id = ANY(:ids) AND p.photo_url IS NOT NULL AND p.photo_url != ''
+            ) ranked
+            WHERE rn <= 4
+        """),
+        {"ids": challenge_ids},
+    ).fetchall()
+    avatar_map: dict = {}
+    for r in rows:
+        avatar_map.setdefault(r.challenge_id, []).append(r.photo_url)
+    return avatar_map
 
 
 # ── List ─────────────────────────────────────────────────────────────────────
@@ -124,7 +153,8 @@ async def list_challenges(
         ).fetchall()
         participation_map = {p.challenge_id: {"progress_value": p.progress_value, "completed_at": p.completed_at} for p in p_rows}
 
-    return [_challenge_dict(r, participation_map.get(r.id)) for r in rows]
+    avatar_map = _fetch_avatar_map(db, challenge_ids)
+    return [_challenge_dict(r, participation_map.get(r.id), avatar_map.get(r.id)) for r in rows]
 
 
 # ── Detail ───────────────────────────────────────────────────────────────────
@@ -148,6 +178,7 @@ async def my_challenges(
         {"uid": caller_id},
     ).fetchall()
 
+    avatar_map = _fetch_avatar_map(db, [r.id for r in rows])
     result = []
     for r in rows:
         rank = None
@@ -162,7 +193,7 @@ async def my_challenges(
                 {"cid": r.id, "uid": caller_id},
             ).fetchone()
             rank = rank_row.rank if rank_row else None
-        result.append(_challenge_dict(r, {"progress_value": r.progress_value, "completed_at": r.completed_at, "rank": rank}))
+        result.append(_challenge_dict(r, {"progress_value": r.progress_value, "completed_at": r.completed_at, "rank": rank}, avatar_map.get(r.id)))
     return result
 
 
@@ -197,7 +228,8 @@ async def get_challenge(
         {"cid": row.id},
     ).fetchall()
 
-    result = _challenge_dict(row, caller_participation)
+    avatar_map = _fetch_avatar_map(db, [row.id])
+    result = _challenge_dict(row, caller_participation, avatar_map.get(row.id))
     result["leaderboard"] = [
         {
             "rank": r.rank, "user_id": r.telegram_id, "first_name": r.first_name,

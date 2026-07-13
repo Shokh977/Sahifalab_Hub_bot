@@ -875,7 +875,7 @@ class ApiService {
     metric?: string; target_hours: number
     starts_at: string; ends_at: string; join_deadline?: string | null
     reward_xp?: number; badge_key?: string | null
-    color?: string; icon?: string; is_featured?: boolean
+    color?: string; icon?: string; cover_image_url?: string | null; is_featured?: boolean
     max_participants?: number | null
   }) {
     return this.axiosInstance.post('/api/admin/challenges', data)
@@ -883,7 +883,7 @@ class ApiService {
 
   async updateChallenge(id: string, data: Partial<{
     title: string; description: string | null
-    color: string; icon: string; is_featured: boolean
+    color: string; icon: string; cover_image_url: string | null; is_featured: boolean
     max_participants: number | null; badge_key: string | null; reward_xp: number
     target_hours: number; starts_at: string; ends_at: string; join_deadline: string | null; metric: string
   }>) {

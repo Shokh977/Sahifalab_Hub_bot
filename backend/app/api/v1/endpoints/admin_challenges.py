@@ -84,7 +84,7 @@ async def _broadcast_new_challenge(title: str, slug: str) -> None:
         except Exception:
             logger.error("Failed to broadcast new-challenge announcement batch %d", i // 100, exc_info=True)
 
-_EDITABLE_ANYTIME = {"title", "description", "color", "icon", "is_featured", "max_participants", "badge_key", "reward_xp"}
+_EDITABLE_ANYTIME = {"title", "description", "color", "icon", "is_featured", "max_participants", "badge_key", "reward_xp", "cover_image_url"}
 _EDITABLE_ONLY_UPCOMING = {"target_value", "starts_at", "ends_at", "join_deadline", "metric"}
 
 
@@ -112,6 +112,7 @@ class ChallengeCreate(BaseModel):
     icon:             str = "timer"
     is_featured:      bool = False
     max_participants: Optional[int] = None
+    cover_image_url:  Optional[str] = None
 
 
 class ChallengeUpdate(BaseModel):
@@ -123,6 +124,7 @@ class ChallengeUpdate(BaseModel):
     max_participants: Optional[int] = None
     badge_key:        Optional[str] = None
     reward_xp:        Optional[int] = None
+    cover_image_url:  Optional[str] = None
     # Only editable while status == 'upcoming' — enforced below, not just in the UI
     target_hours:     Optional[float] = Field(None, gt=0)
     starts_at:        Optional[datetime] = None
@@ -152,6 +154,7 @@ def _challenge_admin_dict(row) -> dict:
         "badge_key":          row.badge_key,
         "color":              row.color,
         "icon":               row.icon,
+        "cover_image_url":    row.cover_image_url,
         "is_featured":        row.is_featured,
         "status":             row.status,
         "participant_count":  row.participant_count,
@@ -188,11 +191,11 @@ async def create_challenge(
                 INSERT INTO challenges (
                     slug, title, description, metric, target_value,
                     starts_at, ends_at, join_deadline, is_official, created_by,
-                    reward_xp, badge_key, color, icon, is_featured, max_participants, status
+                    reward_xp, badge_key, color, icon, cover_image_url, is_featured, max_participants, status
                 ) VALUES (
                     :slug, :title, :description, :metric, :target_value,
                     :starts_at, :ends_at, :join_deadline, TRUE, NULL,
-                    :reward_xp, :badge_key, :color, :icon, :is_featured, :max_participants, :status
+                    :reward_xp, :badge_key, :color, :icon, :cover_image_url, :is_featured, :max_participants, :status
                 ) RETURNING *
             """),
             {
@@ -200,7 +203,8 @@ async def create_challenge(
                 "metric": body.metric, "target_value": target_minutes,
                 "starts_at": body.starts_at, "ends_at": body.ends_at, "join_deadline": body.join_deadline,
                 "reward_xp": body.reward_xp, "badge_key": body.badge_key,
-                "color": body.color, "icon": body.icon, "is_featured": body.is_featured,
+                "color": body.color, "icon": body.icon, "cover_image_url": body.cover_image_url,
+                "is_featured": body.is_featured,
                 "max_participants": body.max_participants, "status": status,
             },
         ).fetchone()
