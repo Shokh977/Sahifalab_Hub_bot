@@ -79,7 +79,45 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges'
+
+interface AdminChallenge {
+  id:                string
+  slug:              string
+  title:             string
+  description:       string | null
+  metric:            string
+  target_value:      number
+  target_hours:      number
+  starts_at:         string
+  ends_at:           string
+  join_deadline:     string | null
+  max_participants:  number | null
+  reward_xp:         number
+  badge_key:         string | null
+  color:             string
+  icon:              string
+  is_featured:       boolean
+  status:            'upcoming' | 'active' | 'ended' | 'cancelled'
+  participant_count: number
+  completion_count:  number
+  completion_rate:   number
+  created_at:        string
+}
+
+interface AdminChallengeParticipant {
+  user_id:         number
+  first_name:      string | null
+  username:        string | null
+  progress_value:  number
+  xp_awarded:      number
+  completed_at:    string | null
+  joined_at:       string
+}
+
+interface AdminChallengeDetail extends AdminChallenge {
+  participants: AdminChallengeParticipant[]
+}
 
 interface AdminAnnouncement {
   id:         number
@@ -399,6 +437,24 @@ const AdminPage: React.FC = () => {
   const [annImgUploading, setAnnImgUploading] = useState(false)
   const [annImgPercent, setAnnImgPercent] = useState(0)
   const [coursesMsg, setCoursesMsg] = useState('')
+
+  // ── Musobaqalar (cohort challenges) state ─────────────────────────────────
+  const [chList,        setChList]        = useState<AdminChallenge[]>([])
+  const [chLoading,     setChLoading]     = useState(false)
+  const [chStatusTab,   setChStatusTab]   = useState<AdminChallenge['status'] | null>(null)
+  const [chFormOpen,    setChFormOpen]    = useState(false)
+  const [chEditTarget,  setChEditTarget]  = useState<AdminChallenge | null>(null)
+  const [chForm, setChForm] = useState({
+    slug: '', title: '', description: '', target_hours: '20', starts_at: '', ends_at: '',
+    reward_xp: '500', badge_key: '', color: '#F5A623', icon: 'timer',
+    is_featured: false, max_participants: '',
+  })
+  const [chSlugTouched, setChSlugTouched] = useState(false)
+  const [chSaving,      setChSaving]      = useState(false)
+  const [chError,       setChError]       = useState('')
+  const [chDetailId,    setChDetailId]    = useState<string | null>(null)
+  const [chDetail,      setChDetail]      = useState<AdminChallengeDetail | null>(null)
+  const [chDetailLoading, setChDetailLoading] = useState(false)
 
   // ── Decks moderation state ────────────────────────────────────────────────
   const [deckSubTab, setDeckSubTab] = useState<'reports' | 'pending' | 'official'>('reports')
@@ -853,6 +909,123 @@ const AdminPage: React.FC = () => {
     }
   }
 
+  // ── Musobaqalar (cohort challenges) ───────────────────────────────────────
+
+  const loadChallenges = useCallback(async () => {
+    setChLoading(true)
+    try {
+      const res = await apiService.getAdminChallenges()
+      setChList(res.data ?? [])
+    } catch (err: any) {
+      console.error('[Admin] loadChallenges:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setChLoading(false)
+    }
+  }, [])
+
+  const slugify = (s: string) =>
+    s.trim().toLowerCase()
+      .replace(/[oʻoʼ']/g, 'o').replace(/[gʻgʼ']/g, 'g')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+
+  const openChCreate = () => {
+    setChEditTarget(null)
+    setChSlugTouched(false)
+    setChForm({
+      slug: '', title: '', description: '', target_hours: '20', starts_at: '', ends_at: '',
+      reward_xp: '500', badge_key: '', color: '#F5A623', icon: 'timer',
+      is_featured: false, max_participants: '',
+    })
+    setChError('')
+    setChFormOpen(true)
+  }
+
+  const openChEdit = (ch: AdminChallenge) => {
+    setChEditTarget(ch)
+    setChSlugTouched(true)
+    setChForm({
+      slug: ch.slug, title: ch.title, description: ch.description ?? '',
+      target_hours: String(ch.target_hours),
+      starts_at: ch.starts_at.slice(0, 16), ends_at: ch.ends_at.slice(0, 16),
+      reward_xp: String(ch.reward_xp), badge_key: ch.badge_key ?? '',
+      color: ch.color, icon: ch.icon, is_featured: ch.is_featured,
+      max_participants: ch.max_participants != null ? String(ch.max_participants) : '',
+    })
+    setChError('')
+    setChFormOpen(true)
+  }
+
+  const saveChallenge = async () => {
+    if (!chForm.title.trim() || chForm.title.trim().length < 3) { setChError("Sarlavha kamida 3 belgi bo'lishi kerak"); return }
+    if (!chEditTarget && !chForm.slug.trim()) { setChError('Slug kiritilishi kerak'); return }
+    if (!chForm.target_hours || Number(chForm.target_hours) <= 0) { setChError("Maqsad soat 0 dan katta bo'lishi kerak"); return }
+    if (!chForm.starts_at || !chForm.ends_at) { setChError('Boshlanish va tugash sanalarini kiriting'); return }
+    if (new Date(chForm.ends_at) <= new Date(chForm.starts_at)) { setChError("Tugash sanasi boshlanishdan keyin bo'lishi kerak"); return }
+
+    const locked = !!chEditTarget && chEditTarget.status !== 'upcoming'
+    setChSaving(true); setChError('')
+    try {
+      if (chEditTarget) {
+        const payload: any = {
+          title: chForm.title.trim(), description: chForm.description.trim() || null,
+          color: chForm.color, icon: chForm.icon, is_featured: chForm.is_featured,
+          max_participants: chForm.max_participants === '' ? null : Number(chForm.max_participants),
+          badge_key: chForm.badge_key.trim() || null, reward_xp: Number(chForm.reward_xp),
+        }
+        if (!locked) {
+          payload.target_hours = Number(chForm.target_hours)
+          payload.starts_at = new Date(chForm.starts_at).toISOString()
+          payload.ends_at   = new Date(chForm.ends_at).toISOString()
+        }
+        await apiService.updateChallenge(chEditTarget.id, payload)
+      } else {
+        await apiService.createChallenge({
+          slug: chForm.slug.trim(), title: chForm.title.trim(), description: chForm.description.trim() || null,
+          metric: 'focus_minutes', target_hours: Number(chForm.target_hours),
+          starts_at: new Date(chForm.starts_at).toISOString(), ends_at: new Date(chForm.ends_at).toISOString(),
+          reward_xp: Number(chForm.reward_xp), badge_key: chForm.badge_key.trim() || null,
+          color: chForm.color, icon: chForm.icon, is_featured: chForm.is_featured,
+          max_participants: chForm.max_participants === '' ? null : Number(chForm.max_participants),
+        })
+      }
+      setChFormOpen(false)
+      loadChallenges()
+      if (chDetailId) loadChallengeDetail(chDetailId)
+    } catch (err: any) {
+      setChError(err?.response?.data?.detail || err?.message || 'Xatolik yuz berdi')
+    } finally {
+      setChSaving(false)
+    }
+  }
+
+  const loadChallengeDetail = useCallback(async (id: string) => {
+    setChDetailLoading(true)
+    try {
+      const res = await apiService.getAdminChallengeDetail(id)
+      setChDetail(res.data ?? null)
+    } catch (err: any) {
+      console.error('[Admin] loadChallengeDetail:', err?.response?.data?.detail || err?.message)
+    } finally {
+      setChDetailLoading(false)
+    }
+  }, [])
+
+  const openChDetail = (id: string) => {
+    setChDetailId(id)
+    loadChallengeDetail(id)
+  }
+
+  const cancelChallengeAdmin = async (ch: AdminChallenge) => {
+    if (!window.confirm(`"${ch.title}" musobaqasini bekor qilasizmi? Ishtirokchilardan hech narsa olib qo'yilmaydi.`)) return
+    try {
+      await apiService.cancelChallenge(ch.id)
+      loadChallenges()
+      if (chDetailId === ch.id) loadChallengeDetail(ch.id)
+    } catch (err: any) {
+      console.error('[Admin] cancelChallengeAdmin:', err?.response?.data?.detail || err?.message)
+    }
+  }
+
   const uploadAnnImage = async (file: File) => {
     const jwt = token || localStorage.getItem('auth_token')
     if (!jwt) return
@@ -1052,7 +1225,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'announcements') loadAnnouncements()
     if (activeTab === 'decks') loadDeckData(deckSubTab)
     if (activeTab === 'feature_usage') loadFeatureStats(featurePeriod)
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab, loadFeatureStats, featurePeriod])
+    if (activeTab === 'challenges') loadChallenges()
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab, loadFeatureStats, featurePeriod, loadChallenges])
 
   // "Tasdiqlangan" filter tab has its own real data source (active teachers,
   // not applications) — load it lazily only when that filter is selected.
@@ -1459,6 +1633,7 @@ const AdminPage: React.FC = () => {
             { id: 'courses', label: '🎬 Kurslar' },
             { id: 'announcements', label: '📢 Xabarlar' },
             { id: 'decks', label: '🎴 To\'plamlar' },
+            { id: 'challenges', label: '🏆 Musobaqalar' },
             { id: 'feature_usage', label: '📊 Xususiyatlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
@@ -3591,6 +3766,326 @@ const AdminPage: React.FC = () => {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* ── Musobaqalar Tab (cohort challenges, step-21) ─────────────────── */}
+        {activeTab === 'challenges' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">🏆 Musobaqalar</h2>
+              <button
+                onClick={openChCreate}
+                className="px-4 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 text-white rounded-xl transition-colors"
+              >
+                + Yangi musobaqa
+              </button>
+            </div>
+
+            {/* Status filter tabs */}
+            <div className="flex gap-2 flex-wrap">
+              {([
+                { key: null, label: 'Barchasi' },
+                { key: 'upcoming', label: 'Boshlanmagan' },
+                { key: 'active', label: 'Faol' },
+                { key: 'ended', label: 'Yakunlangan' },
+                { key: 'cancelled', label: 'Bekor' },
+              ] as { key: AdminChallenge['status'] | null; label: string }[]).map(t => (
+                <button
+                  key={String(t.key)}
+                  onClick={() => setChStatusTab(t.key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-colors ${
+                    chStatusTab === t.key
+                      ? 'bg-sahifa-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Create / Edit form */}
+            {chFormOpen && (
+              <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
+                  {chEditTarget ? 'Musobaqani tahrirlash' : 'Yangi musobaqa yaratish'}
+                </h3>
+                <input
+                  type="text" placeholder="Sarlavha * — Masalan: 20 Soat Fokus Marafoni"
+                  value={chForm.title}
+                  onChange={e => {
+                    const v = e.target.value
+                    setChForm(f => ({ ...f, title: v, slug: chSlugTouched ? f.slug : slugify(v) }))
+                  }}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                />
+                {!chEditTarget && (
+                  <input
+                    type="text" placeholder="slug (masalan: 20-soat-fokus-marafoni)"
+                    value={chForm.slug}
+                    onChange={e => { setChForm(f => ({ ...f, slug: e.target.value })); setChSlugTouched(true) }}
+                    className="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                  />
+                )}
+                <textarea
+                  placeholder="Izoh (ixtiyoriy)" rows={2}
+                  value={chForm.description}
+                  onChange={e => setChForm(f => ({ ...f, description: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 resize-none"
+                />
+                {(() => {
+                  const locked = !!chEditTarget && chEditTarget.status !== 'upcoming'
+                  return (
+                    <>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Maqsad (soat) *</label>
+                          <input
+                            type="number" min="1" step="0.5" disabled={locked}
+                            value={chForm.target_hours}
+                            onChange={e => setChForm(f => ({ ...f, target_hours: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot XP</label>
+                          <input
+                            type="number" min="0"
+                            value={chForm.reward_xp}
+                            onChange={e => setChForm(f => ({ ...f, reward_xp: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Boshlanish *</label>
+                          <input
+                            type="datetime-local" disabled={locked}
+                            value={chForm.starts_at}
+                            onChange={e => setChForm(f => ({ ...f, starts_at: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="flex-1">
+                          <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Tugash *</label>
+                          <input
+                            type="datetime-local" disabled={locked}
+                            value={chForm.ends_at}
+                            onChange={e => setChForm(f => ({ ...f, ends_at: e.target.value }))}
+                            className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500 disabled:opacity-50"
+                          />
+                        </div>
+                      </div>
+                      {locked && (
+                        <p className="text-[11px] text-amber-500">
+                          Musobaqa faollashgach maqsad va sanalar qulflanadi — ishtirokchilarga adolatli bo'lishi uchun.
+                        </p>
+                      )}
+                    </>
+                  )
+                })()}
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Belgi kaliti (badge_key)</label>
+                    <input
+                      type="text" placeholder="marafonchi"
+                      value={chForm.badge_key}
+                      onChange={e => setChForm(f => ({ ...f, badge_key: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm font-mono rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Maks. ishtirokchi (ixtiyoriy)</label>
+                    <input
+                      type="number" min="1"
+                      value={chForm.max_participants}
+                      onChange={e => setChForm(f => ({ ...f, max_participants: e.target.value }))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 items-center">
+                  <input
+                    type="color"
+                    value={chForm.color}
+                    onChange={e => setChForm(f => ({ ...f, color: e.target.value }))}
+                    className="w-10 h-9 rounded-lg border border-gray-200 dark:border-gray-600 cursor-pointer bg-transparent"
+                  />
+                  <input
+                    type="text" placeholder="Ikonka (mas. timer)"
+                    value={chForm.icon}
+                    onChange={e => setChForm(f => ({ ...f, icon: e.target.value }))}
+                    className="flex-1 px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-sahifa-500"
+                  />
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={chForm.is_featured}
+                    onChange={e => setChForm(f => ({ ...f, is_featured: e.target.checked }))}
+                    className="w-4 h-4 accent-sahifa-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    Tavsiya etilgan — barcha foydalanuvchilarga push bildirishnoma yuboriladi
+                  </span>
+                </label>
+                {chError && <p className="text-red-500 text-sm">{chError}</p>}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    onClick={saveChallenge}
+                    disabled={chSaving}
+                    className="flex-1 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 disabled:opacity-50 text-white rounded-xl transition-colors"
+                  >
+                    {chSaving ? 'Saqlanmoqda…' : chEditTarget ? 'Saqlash' : 'Yaratish'}
+                  </button>
+                  <button
+                    onClick={() => setChFormOpen(false)}
+                    className="px-4 py-2 text-sm font-semibold bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-xl transition-colors"
+                  >
+                    Bekor
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Loading / empty */}
+            {chLoading && (
+              <div className="text-center py-10 text-gray-400 text-sm">Yuklanmoqda…</div>
+            )}
+            {!chLoading && chList.filter(c => chStatusTab === null || c.status === chStatusTab).length === 0 && (
+              <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
+                <span className="text-4xl">🏆</span>
+                <p className="text-sm">Musobaqa topilmadi</p>
+              </div>
+            )}
+
+            {/* Challenge cards */}
+            {!chLoading && chList
+              .filter(c => chStatusTab === null || c.status === chStatusTab)
+              .map(ch => (
+                <div
+                  key={ch.id}
+                  onClick={() => openChDetail(ch.id)}
+                  className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 p-3 cursor-pointer hover:border-sahifa-400 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0"
+                      style={{ backgroundColor: ch.color + '22' }}
+                    >🏆</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{ch.title}</p>
+                        {ch.is_featured && <span className="text-amber-500 text-xs shrink-0">★</span>}
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
+                          ch.status === 'active'    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                          ch.status === 'upcoming'  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                          ch.status === 'cancelled' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' :
+                                                       'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                        }`}>
+                          {ch.status === 'active' ? 'Faol' : ch.status === 'upcoming' ? 'Boshlanmagan' : ch.status === 'cancelled' ? 'Bekor' : 'Yakunlangan'}
+                        </span>
+                        <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                          {ch.target_hours} soat · +{ch.reward_xp} XP
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{ch.participant_count}</p>
+                      <p className="text-[10px] text-gray-400">ishtirokchi</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+            {/* Detail drawer */}
+            {chDetailId && (
+              <div
+                className="fixed inset-0 bg-black/60 flex items-end sm:items-center justify-center z-50 p-4"
+                onClick={() => setChDetailId(null)}
+              >
+                <div
+                  className="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto p-5 shadow-2xl"
+                  onClick={e => e.stopPropagation()}
+                >
+                  {chDetailLoading || !chDetail ? (
+                    <div className="text-center py-16 text-gray-400 text-sm">Yuklanmoqda…</div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <p className="text-base font-bold text-gray-900 dark:text-white">{chDetail.title}</p>
+                          <p className="text-xs text-gray-400 font-mono">{chDetail.slug}</p>
+                        </div>
+                        <button onClick={() => setChDetailId(null)} className="text-gray-400 hover:text-gray-700 dark:hover:text-white text-xl leading-none">✕</button>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-2.5">
+                          <p className="text-[10px] text-gray-400">Maqsad</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{chDetail.target_hours} soat</p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-2.5">
+                          <p className="text-[10px] text-gray-400">Ishtirokchilar</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{chDetail.participant_count}</p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-2.5">
+                          <p className="text-[10px] text-gray-400">Yakunlagan</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{chDetail.completion_count} ({chDetail.completion_rate}%)</p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-2.5">
+                          <p className="text-[10px] text-gray-400">Mukofot</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">+{chDetail.reward_xp} XP</p>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2 mb-4">
+                        <button
+                          onClick={() => openChEdit(chDetail)}
+                          className="flex-1 py-2 text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors"
+                        >
+                          ✏️ Tahrirlash
+                        </button>
+                        {chDetail.status !== 'cancelled' && chDetail.status !== 'ended' && (
+                          <button
+                            onClick={() => cancelChallengeAdmin(chDetail)}
+                            className="flex-1 py-2 text-xs font-semibold bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 rounded-lg transition-colors"
+                          >
+                            🗑️ Bekor qilish
+                          </button>
+                        )}
+                      </div>
+
+                      <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                        Ishtirokchilar ({chDetail.participants.length})
+                      </p>
+                      {chDetail.participants.length === 0 ? (
+                        <p className="text-sm text-gray-400 text-center py-6">Hali hech kim qo'shilmagan</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {chDetail.participants.map((p, i) => (
+                            <div key={p.user_id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-700/40">
+                              <span className="text-[10px] text-gray-400 w-5 shrink-0">#{i + 1}</span>
+                              <p className="flex-1 text-xs text-gray-900 dark:text-white truncate">
+                                {p.first_name}{p.username ? ` @${p.username}` : ''}
+                              </p>
+                              <span className="text-[11px] text-gray-400">
+                                {Math.round(p.progress_value / 60 * 10) / 10}/{chDetail.target_hours} soat
+                              </span>
+                              {p.completed_at && <span className="text-[11px] text-green-500">✓</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

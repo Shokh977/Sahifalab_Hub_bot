@@ -860,6 +860,40 @@ class ApiService {
     return this.axiosInstance.delete(`/api/announcements/admin/${id}`)
   }
 
+  // ── Musobaqalar (cohort challenges) ───────────────────────────────────────────
+
+  async getAdminChallenges() {
+    return this.axiosInstance.get('/api/admin/challenges')
+  }
+
+  async getAdminChallengeDetail(id: string) {
+    return this.axiosInstance.get(`/api/admin/challenges/${id}`)
+  }
+
+  async createChallenge(data: {
+    slug: string; title: string; description?: string | null
+    metric?: string; target_hours: number
+    starts_at: string; ends_at: string; join_deadline?: string | null
+    reward_xp?: number; badge_key?: string | null
+    color?: string; icon?: string; is_featured?: boolean
+    max_participants?: number | null
+  }) {
+    return this.axiosInstance.post('/api/admin/challenges', data)
+  }
+
+  async updateChallenge(id: string, data: Partial<{
+    title: string; description: string | null
+    color: string; icon: string; is_featured: boolean
+    max_participants: number | null; badge_key: string | null; reward_xp: number
+    target_hours: number; starts_at: string; ends_at: string; join_deadline: string | null; metric: string
+  }>) {
+    return this.axiosInstance.patch(`/api/admin/challenges/${id}`, data)
+  }
+
+  async cancelChallenge(id: string) {
+    return this.axiosInstance.post(`/api/admin/challenges/${id}/cancel`)
+  }
+
   async getLeaderboard(scope: 'global' | 'friends', period: 'week' | 'month' | 'all') {
     return this.axiosInstance.get('/api/leaderboard/weekly', { params: { scope, period } })
   }
