@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
@@ -19,6 +19,7 @@ api_router.include_router(books.router, prefix="/books", tags=["books"])
 api_router.include_router(resources.router, prefix="/resources", tags=["resources"])
 api_router.include_router(admin.router, prefix="/admin", tags=["admin"])
 api_router.include_router(admin_decks.router, prefix="/admin/decks", tags=["admin"])
+api_router.include_router(admin_challenges.router, prefix="/admin/challenges", tags=["admin"])
 api_router.include_router(audio.router, prefix="/audio", tags=["audio"])
 api_router.include_router(ai.router, prefix="/ai", tags=["ai"])
 api_router.include_router(teacher.router, prefix="/teacher", tags=["teacher"])
@@ -78,6 +79,9 @@ api_router.include_router(tests.router, prefix="/tests", tags=["tests"])
 
 # Broadcast announcements (modal on app launch)
 api_router.include_router(announcements.router, prefix="/announcements", tags=["announcements"])
+
+# Musobaqalar — cohort focus challenges (step-21)
+api_router.include_router(challenges.router, prefix="/challenges", tags=["challenges"])
 
 # Internal maintenance (secret-key protected)
 api_router.include_router(cron.router)

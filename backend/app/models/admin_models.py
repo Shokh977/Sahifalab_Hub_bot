@@ -31,6 +31,19 @@ class DeckAuditLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class ChallengeAuditLog(Base):
+    """Audit trail for admin actions on Musobaqalar cohort challenges (step-21)."""
+    __tablename__ = "challenge_audit_log"
+
+    id            = Column(BigInteger, primary_key=True, index=True)
+    challenge_id  = Column(String(36), nullable=True, index=True)  # challenges.id (UUID) as text
+    action        = Column(String(50), nullable=False)
+    # challenge_created | challenge_updated | challenge_cancelled
+    admin_telegram_id = Column(BigInteger, nullable=True, index=True)
+    details       = Column(JSON, nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 class AdminUser(Base):
     __tablename__ = "admin_user"
     
