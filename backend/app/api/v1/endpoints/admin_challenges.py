@@ -181,6 +181,13 @@ async def create_challenge(
     if existing:
         raise HTTPException(status_code=400, detail="Bu slug allaqachon band")
 
+    if body.badge_key:
+        existing_badge = db.execute(
+            text("SELECT id FROM challenges WHERE badge_key = :key"), {"key": body.badge_key},
+        ).fetchone()
+        if existing_badge:
+            raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa musobaqada band")
+
     target_minutes = round(body.target_hours * 60)
     now = datetime.now(UTC)
     status = "active" if body.starts_at <= now else "upcoming"
@@ -288,6 +295,14 @@ async def update_challenge(
 
     if not updates:
         raise HTTPException(status_code=400, detail="O'zgartiriladigan maydon topilmadi")
+
+    if updates.get("badge_key"):
+        existing_badge = db.execute(
+            text("SELECT id FROM challenges WHERE badge_key = :key AND id != :cid"),
+            {"key": updates["badge_key"], "cid": str(challenge_id)},
+        ).fetchone()
+        if existing_badge:
+            raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa musobaqada band")
 
     # Server-side enforcement: target_value and dates are frozen once the
     # challenge is no longer 'upcoming' — never relax this, it would be unfair

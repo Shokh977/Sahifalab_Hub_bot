@@ -389,12 +389,18 @@ def get_badge_groups(db: Session, user_id: int, include_locked: bool) -> dict:
     _, granted = compute_and_grant_achievements(db, user_id)
 
     # ── Challenges — real challenges table joined against user_badges ────────
+    # DISTINCT ON (badge_key): badge_key is meant to be unique per challenge —
+    # user_badges only ever holds one row per (user_id, badge_key) regardless
+    # — but nothing in the schema enforces that today, so two challenges can
+    # collide on the same key (this has actually happened with test data).
+    # Collapsing here keeps the badge grid from rendering duplicate React
+    # keys / two tiles for what is mechanically a single earned badge.
     rows = db.execute(
         text("""
-            SELECT badge_key, title, color, cover_image_url, reward_xp
+            SELECT DISTINCT ON (badge_key) badge_key, title, color, cover_image_url, reward_xp
             FROM challenges
             WHERE badge_key IS NOT NULL
-            ORDER BY created_at DESC
+            ORDER BY badge_key, created_at DESC
         """)
     ).fetchall()
     challenges = []
