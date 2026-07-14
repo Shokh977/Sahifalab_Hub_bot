@@ -287,7 +287,7 @@ async def get_challenge(
 ):
     row = db.execute(text("SELECT * FROM challenges WHERE slug = :slug"), {"slug": slug}).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 
     participation = db.execute(
         text("""
@@ -391,10 +391,10 @@ async def join_challenge(
     """
     row = db.execute(text("SELECT * FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 
     if row.status not in ("upcoming", "active"):
-        raise HTTPException(status_code=400, detail="Musobaqa allaqachon tugagan")
+        raise HTTPException(status_code=400, detail="Bellashuv allaqachon tugagan")
 
     now = datetime.now(UTC)
     if row.join_deadline and now > row.join_deadline:
@@ -411,11 +411,18 @@ async def join_challenge(
         raise HTTPException(status_code=400, detail="Siz allaqachon qo'shilgansiz")
 
     # Join cap (step-25 Part 3) — scarcity makes each challenge matter.
+    # Must exclude challenges the caller has personally already finished
+    # (completed_at/is_winner/failed_at set) even if the challenge's overall
+    # status is still 'active' — e.g. a cumulative challenge reached early,
+    # while other participants keep running until the shared end date.
+    # Counting those would permanently occupy a cap slot for something the
+    # user is already done with.
     active_joined = db.execute(
         text("""
             SELECT c.title FROM challenge_participants cp
             JOIN challenges c ON c.id = cp.challenge_id
             WHERE cp.user_id = :uid AND c.status IN ('upcoming', 'active')
+              AND cp.completed_at IS NULL AND cp.is_winner = FALSE AND cp.failed_at IS NULL
         """),
         {"uid": caller_id},
     ).fetchall()
@@ -423,7 +430,7 @@ async def join_challenge(
         names = ", ".join(f"«{r.title}»" for r in active_joined)
         raise HTTPException(
             status_code=400,
-            detail=f"Siz bir vaqtda eng ko'pi {MAX_ACTIVE_CHALLENGES} ta musobaqada qatnasha olasiz. "
+            detail=f"Siz bir vaqtda eng ko'pi {MAX_ACTIVE_CHALLENGES} ta bellashuvda qatnasha olasiz. "
                    f"Avval birortasini yakunlang: {names}.",
         )
 
@@ -469,16 +476,16 @@ async def leave_challenge(
 ):
     challenge = db.execute(text("SELECT status, challenge_type FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not challenge:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 
     participant = db.execute(
         text("SELECT id, completed_at FROM challenge_participants WHERE challenge_id = :cid AND user_id = :uid"),
         {"cid": str(challenge_id), "uid": caller_id},
     ).fetchone()
     if not participant:
-        raise HTTPException(status_code=404, detail="Siz bu musobaqaga qo'shilmagansiz")
+        raise HTTPException(status_code=404, detail="Siz bu bellashuvga qo'shilmagansiz")
     if participant.completed_at is not None:
-        raise HTTPException(status_code=400, detail="Yakunlangan musobaqadan chiqib bo'lmaydi")
+        raise HTTPException(status_code=400, detail="Yakunlangan bellashuvdan chiqib bo'lmaydi")
 
     # step-25 Part 4: once a team challenge is active, leaving is blocked —
     # a departure would unbalance the teams and the leaver's contribution is
@@ -513,7 +520,7 @@ async def challenge_leaderboard(
 ):
     challenge = db.execute(text("SELECT id FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not challenge:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 
     rows = db.execute(
         text("""
@@ -591,9 +598,9 @@ async def team_leaderboard(
     """
     row = db.execute(text("SELECT * FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
     if row.challenge_type != "team":
-        raise HTTPException(status_code=400, detail="Bu musobaqa guruh jangi emas")
+        raise HTTPException(status_code=400, detail="Bu bellashuv guruh jangi emas")
 
     def _top_contributors(team: str) -> list[dict]:
         rows = db.execute(

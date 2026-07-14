@@ -71,7 +71,7 @@ async def _broadcast_new_challenge(title: str, slug: str) -> None:
     messages = [
         {
             "to": r.token,
-            "title": "Yangi musobaqa boshlandi! 🏁",
+            "title": "Yangi bellashuv boshlandi! 🏁",
             "body": f"{title} — hoziroq qo'shiling!",
             "data": {"screen": "challenge_detail", "slug": slug},
             "sound": "default",
@@ -292,7 +292,7 @@ async def create_challenge(
     if body.challenge_type == "consistency":
         duration_days = (body.ends_at - body.starts_at).days
         if body.required_days > duration_days:
-            raise HTTPException(status_code=422, detail="Kunlar soni musobaqa davomidan oshib ketmasligi kerak")
+            raise HTTPException(status_code=422, detail="Kunlar soni bellashuv davomidan oshib ketmasligi kerak")
 
     existing = db.execute(text("SELECT id FROM challenges WHERE slug = :slug"), {"slug": body.slug}).fetchone()
     if existing:
@@ -303,14 +303,14 @@ async def create_challenge(
             text("SELECT id FROM challenges WHERE badge_key = :key"), {"key": body.badge_key},
         ).fetchone()
         if existing_badge:
-            raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa musobaqada band")
+            raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa bellashuvda band")
 
     # step-25 Part 2 — the core fix, no override flag.
     conflict = _check_metric_overlap(db, body.metric, body.starts_at, body.ends_at)
     if conflict:
         raise HTTPException(
             status_code=400,
-            detail=f"Bu vaqt oralig'ida ushbu metrika bo'yicha faol musobaqa allaqachon mavjud: "
+            detail=f"Bu vaqt oralig'ida ushbu metrika bo'yicha faol bellashuv allaqachon mavjud: "
                    f"«{conflict.title}». Avval uni yakunlang yoki sanalarni o'zgartiring.",
         )
 
@@ -354,7 +354,7 @@ async def create_challenge(
     except Exception:
         db.rollback()
         logger.error("Failed to create challenge slug=%s", body.slug, exc_info=True)
-        raise HTTPException(status_code=500, detail="Musobaqa yaratishda xatolik")
+        raise HTTPException(status_code=500, detail="Bellashuv yaratishda xatolik")
 
     # Announce featured challenges to everyone — this is the marketing/
     # discovery engine (step-21 Phase 6 framing). Non-featured challenges
@@ -401,7 +401,7 @@ async def get_challenge_admin(
     await verify_admin(authorization=authorization, db=db)
     row = db.execute(text("SELECT * FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 
     order_clause = "cp.progress_value DESC, cp.joined_at ASC"
     participants = db.execute(
@@ -453,7 +453,7 @@ async def update_challenge(
     admin = await verify_admin(authorization=authorization, db=db)
     row = db.execute(text("SELECT * FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 
     updates = body.model_dump(exclude_none=True, exclude={"target_amount"})
     if body.target_amount is not None:
@@ -468,7 +468,7 @@ async def update_challenge(
             {"key": updates["badge_key"], "cid": str(challenge_id)},
         ).fetchone()
         if existing_badge:
-            raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa musobaqada band")
+            raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa bellashuvda band")
 
     # Server-side enforcement: type/metric/target/dates/team-config are frozen
     # once the challenge is no longer 'upcoming' — never relax this, it would
@@ -478,7 +478,7 @@ async def update_challenge(
         if locked_fields:
             raise HTTPException(
                 status_code=400,
-                detail=f"Musobaqa faol bo'lgach, quyidagilarni o'zgartirib bo'lmaydi: {', '.join(sorted(locked_fields))}",
+                detail=f"Bellashuv faol bo'lgach, quyidagilarni o'zgartirib bo'lmaydi: {', '.join(sorted(locked_fields))}",
             )
 
     new_start = updates.get("starts_at", row.starts_at)
@@ -495,7 +495,7 @@ async def update_challenge(
         if conflict:
             raise HTTPException(
                 status_code=400,
-                detail=f"Bu vaqt oralig'ida ushbu metrika bo'yicha faol musobaqa allaqachon mavjud: "
+                detail=f"Bu vaqt oralig'ida ushbu metrika bo'yicha faol bellashuv allaqachon mavjud: "
                        f"«{conflict.title}». Avval uni yakunlang yoki sanalarni o'zgartiring.",
             )
 
@@ -526,9 +526,9 @@ async def cancel_challenge(
     admin = await verify_admin(authorization=authorization, db=db)
     row = db.execute(text("SELECT * FROM challenges WHERE id = :cid"), {"cid": str(challenge_id)}).fetchone()
     if not row:
-        raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
+        raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
     if row.status == "cancelled":
-        raise HTTPException(status_code=400, detail="Musobaqa allaqachon bekor qilingan")
+        raise HTTPException(status_code=400, detail="Bellashuv allaqachon bekor qilingan")
 
     try:
         db.execute(text("UPDATE challenges SET status = 'cancelled' WHERE id = :cid"), {"cid": str(challenge_id)})

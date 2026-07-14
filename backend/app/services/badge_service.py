@@ -411,7 +411,7 @@ def get_badge_groups(db: Session, user_id: int, include_locked: bool) -> dict:
         challenges.append({
             "key":         r.badge_key,
             "name":        r.title,
-            "description": f"\"{r.title}\" musobaqasini yakunlab, ushbu nishonni qo'lga kiriting.",
+            "description": f"\"{r.title}\" bellashuvini yakunlab, ushbu nishonni qo'lga kiriting.",
             "group":       "challenges",
             "tier":        None,
             "earned":      earned_at is not None,

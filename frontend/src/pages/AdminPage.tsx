@@ -1218,7 +1218,7 @@ const AdminPage: React.FC = () => {
   }
 
   const cancelChallengeAdmin = async (ch: AdminChallenge) => {
-    if (!window.confirm(`"${ch.title}" musobaqasini bekor qilasizmi? Ishtirokchilardan hech narsa olib qo'yilmaydi.`)) return
+    if (!window.confirm(`"${ch.title}" bellashuvini bekor qilasizmi? Ishtirokchilardan hech narsa olib qo'yilmaydi.`)) return
     try {
       await apiService.cancelChallenge(ch.id)
       loadChallenges()
@@ -1835,7 +1835,7 @@ const AdminPage: React.FC = () => {
             { id: 'courses', label: '🎬 Kurslar' },
             { id: 'announcements', label: '📢 Xabarlar' },
             { id: 'decks', label: '🎴 To\'plamlar' },
-            { id: 'challenges', label: '🏆 Musobaqalar' },
+            { id: 'challenges', label: '🏆 Bellashuv' },
             { id: 'feature_usage', label: '📊 Xususiyatlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
@@ -3975,12 +3975,12 @@ const AdminPage: React.FC = () => {
         {activeTab === 'challenges' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-bold text-gray-900 dark:text-white">🏆 Musobaqalar</h2>
+              <h2 className="text-lg font-bold text-gray-900 dark:text-white">🏆 Bellashuv</h2>
               <button
                 onClick={openChCreate}
                 className="px-4 py-2 text-sm font-semibold bg-sahifa-600 hover:bg-sahifa-700 text-white rounded-xl transition-colors"
               >
-                + Yangi musobaqa
+                + Yangi bellashuv
               </button>
             </div>
 
@@ -4010,7 +4010,7 @@ const AdminPage: React.FC = () => {
             {/* Create / Edit form */}
             {chFormOpen && !chEditTarget && !chTypePicked && (
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
-                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Musobaqa turini tanlang</h3>
+                <h3 className="font-semibold text-gray-900 dark:text-white text-sm">Bellashuv turini tanlang</h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
                   Har bir tur — boshqacha tajriba. Keyinroq turini o'zgartirib bo'lmaydi.
                 </p>
@@ -4042,7 +4042,7 @@ const AdminPage: React.FC = () => {
               <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900 dark:text-white text-sm">
-                    {chEditTarget ? 'Musobaqani tahrirlash' : 'Yangi musobaqa yaratish'}
+                    {chEditTarget ? 'Bellashuvni tahrirlash' : 'Yangi bellashuv yaratish'}
                   </h3>
                   <span className="text-xs font-semibold px-2 py-1 rounded-lg bg-sahifa-50 dark:bg-sahifa-900/20 text-sahifa-700 dark:text-sahifa-400">
                     {CHALLENGE_TYPE_INFO[chForm.challenge_type].emoji} {CHALLENGE_TYPE_INFO[chForm.challenge_type].label}
@@ -4156,7 +4156,7 @@ const AdminPage: React.FC = () => {
                         <span className="text-[10px] font-semibold text-white bg-black/45 px-2 py-0.5 rounded-full">12 kun qoldi</span>
                       </div>
                       <p className="relative text-white font-bold text-base leading-tight" style={{ textShadow: '0 1px 3px rgba(0,0,0,0.5)' }}>
-                        {chForm.title || 'Musobaqa sarlavhasi'}
+                        {chForm.title || 'Bellashuv sarlavhasi'}
                       </p>
                       {/* Type-specific body preview — mirrors the mobile card body */}
                       <div className="relative mt-1">
@@ -4375,12 +4375,12 @@ const AdminPage: React.FC = () => {
                       )}
                       {!chOverlapChecking && chOverlapWarning && (
                         <p className="text-[11px] text-red-500 font-medium">
-                          ⚠️ "{chOverlapWarning.title}" bilan bir xil o'lchov va mos sanalar bor — bir vaqtda ikkita musobaqa bo'lishi mumkin emas.
+                          ⚠️ "{chOverlapWarning.title}" bilan bir xil o'lchov va mos sanalar bor — bir vaqtda ikkita bellashuv bo'lishi mumkin emas.
                         </p>
                       )}
                       {locked && (
                         <p className="text-[11px] text-amber-500">
-                          Musobaqa faollashgach maqsad va sanalar qulflanadi — ishtirokchilarga adolatli bo'lishi uchun.
+                          Bellashuv faollashgach maqsad va sanalar qulflanadi — ishtirokchilarga adolatli bo'lishi uchun.
                         </p>
                       )}
                     </>
@@ -4457,7 +4457,7 @@ const AdminPage: React.FC = () => {
             {!chLoading && chList.filter(c => chStatusTab === null || c.status === chStatusTab).length === 0 && (
               <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
                 <span className="text-4xl">🏆</span>
-                <p className="text-sm">Musobaqa topilmadi</p>
+                <p className="text-sm">Bellashuv topilmadi</p>
               </div>
             )}
 
