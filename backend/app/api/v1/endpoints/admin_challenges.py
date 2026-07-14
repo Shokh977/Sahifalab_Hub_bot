@@ -1,16 +1,22 @@
 """
-admin_challenges.py — Admin CRUD for Musobaqalar cohort challenges (step-21).
+admin_challenges.py — Admin CRUD for Musobaqalar challenges (step-21,
+extended step-25 — metrics/types/team battles).
 
 Mounted at /api/admin/challenges. Admin-only (verify_admin, reused from admin.py).
 
-POST   /                — create a challenge (target entered in hours, stored as minutes)
-GET    /                 — list all challenges with status/participant/completion stats
-GET    /{id}             — full detail + full participant list with progress
-PATCH  /{id}             — edit. Once a challenge is 'active', only cosmetic
-                           fields (title/description/color/icon/is_featured)
-                           may change — target_value and dates are frozen
-                           server-side, not just hidden in the UI.
-POST   /{id}/cancel      — cancel (status='cancelled'); awards/takes nothing
+POST   /                       — create a challenge (type-specific fields — see ChallengeCreate)
+GET    /                       — list all challenges with status/participant/completion stats
+GET    /{id}                   — full detail + participant list (split by team / ranked by sprint)
+PATCH  /{id}                   — edit. Once a challenge is 'active', only cosmetic
+                                 fields may change — metric, challenge_type, target,
+                                 daily_minimum, required_days, winner_count, team
+                                 config, and dates are frozen server-side.
+POST   /{id}/cancel            — cancel (status='cancelled'); awards/takes nothing
+
+Anti-overlap rule (step-25 Part 2 — the core fix): at most one challenge per
+metric may be upcoming/active with an overlapping date range. Enforced here,
+server-side, on create AND update. No override flag — if two focus
+challenges are wanted, they run sequentially.
 
 All actions write to challenge_audit_log.
 """
@@ -22,16 +28,19 @@ from typing import Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db, SessionLocal
 from app.api.v1.endpoints.admin import verify_admin
 from app.models.admin_models import AdminUser, ChallengeAuditLog
+from app.services.challenge_service import IMPLEMENTED_METRICS
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+CHALLENGE_TYPES = {"cumulative", "consistency", "sprint", "team"}
 
 
 async def _broadcast_new_challenge(title: str, slug: str) -> None:
@@ -85,7 +94,11 @@ async def _broadcast_new_challenge(title: str, slug: str) -> None:
             logger.error("Failed to broadcast new-challenge announcement batch %d", i // 100, exc_info=True)
 
 _EDITABLE_ANYTIME = {"title", "description", "color", "icon", "is_featured", "max_participants", "badge_key", "reward_xp", "cover_image_url"}
-_EDITABLE_ONLY_UPCOMING = {"target_value", "starts_at", "ends_at", "join_deadline", "metric"}
+_EDITABLE_ONLY_UPCOMING = {
+    "target_value", "starts_at", "ends_at", "join_deadline", "metric", "challenge_type",
+    "daily_minimum", "required_days", "allowed_misses", "winner_count",
+    "team_a_name", "team_a_color", "team_a_icon", "team_b_name", "team_b_color", "team_b_icon",
+}
 
 
 def _log(db: Session, action: str, challenge_id: Optional[str], admin: AdminUser, details: dict) -> None:
@@ -97,12 +110,36 @@ def _log(db: Session, action: str, challenge_id: Optional[str], admin: AdminUser
     ))
 
 
+def _check_metric_overlap(db: Session, metric: str, starts_at: datetime, ends_at: datetime, exclude_id: Optional[str] = None):
+    """
+    step-25 Part 2 — the core anti-double-dipping fix. At most one
+    upcoming/active challenge per metric may have an overlapping date range.
+    Returns the conflicting challenge row (id, slug, title) if one exists.
+    """
+    params = {"metric": metric, "starts_at": starts_at, "ends_at": ends_at}
+    exclude_clause = ""
+    if exclude_id:
+        exclude_clause = "AND id != :exclude_id"
+        params["exclude_id"] = exclude_id
+    return db.execute(
+        text(f"""
+            SELECT id, slug, title FROM challenges
+            WHERE metric = :metric
+              AND status IN ('upcoming', 'active')
+              AND starts_at < :ends_at AND ends_at > :starts_at
+              {exclude_clause}
+            LIMIT 1
+        """),
+        params,
+    ).fetchone()
+
+
 class ChallengeCreate(BaseModel):
     slug:             str
     title:            str
     description:      Optional[str] = None
     metric:           str = "focus_minutes"
-    target_hours:     float = Field(..., gt=0, description="Entered in hours; stored as minutes")
+    challenge_type:   str = "cumulative"
     starts_at:        datetime
     ends_at:          datetime
     join_deadline:    Optional[datetime] = None
@@ -113,6 +150,38 @@ class ChallengeCreate(BaseModel):
     is_featured:      bool = False
     max_participants: Optional[int] = None
     cover_image_url:  Optional[str] = None
+
+    # cumulative — entered in the metric's natural unit (hours for
+    # focus_minutes, cards for flashcard_reviews, count for the rest);
+    # converted to storage units server-side (see _target_value_from_amount).
+    target_amount:    Optional[float] = Field(None, gt=0)
+    # consistency
+    daily_minimum:    Optional[int] = Field(None, gt=0)
+    required_days:    Optional[int] = Field(None, gt=0)
+    allowed_misses:   int = 1
+    # sprint
+    winner_count:     Optional[int] = Field(None, gt=0)
+    # team
+    team_a_name:      Optional[str] = None
+    team_a_color:     Optional[str] = None
+    team_a_icon:      Optional[str] = None
+    team_b_name:      Optional[str] = None
+    team_b_color:     Optional[str] = None
+    team_b_icon:      Optional[str] = None
+
+    @model_validator(mode="after")
+    def _validate_type_fields(self):
+        if self.challenge_type not in CHALLENGE_TYPES:
+            raise ValueError(f"challenge_type noto'g'ri: {self.challenge_type}")
+        if self.challenge_type == "cumulative" and not self.target_amount:
+            raise ValueError("To'plash turi uchun maqsad qiymati kerak")
+        if self.challenge_type == "consistency" and (not self.daily_minimum or not self.required_days):
+            raise ValueError("Izchillik turi uchun kunlik minimum va kunlar soni kerak")
+        if self.challenge_type == "sprint" and not self.winner_count:
+            raise ValueError("Sprint turi uchun g'oliblar soni kerak")
+        if self.challenge_type == "team" and not all([self.team_a_name, self.team_a_color, self.team_b_name, self.team_b_color]):
+            raise ValueError("Guruhlar jangi uchun ikkala guruh nomi va rangi kerak")
+        return self
 
 
 class ChallengeUpdate(BaseModel):
@@ -126,11 +195,43 @@ class ChallengeUpdate(BaseModel):
     reward_xp:        Optional[int] = None
     cover_image_url:  Optional[str] = None
     # Only editable while status == 'upcoming' — enforced below, not just in the UI
-    target_hours:     Optional[float] = Field(None, gt=0)
+    challenge_type:   Optional[str] = None
+    target_amount:    Optional[float] = Field(None, gt=0)
     starts_at:        Optional[datetime] = None
     ends_at:          Optional[datetime] = None
     join_deadline:    Optional[datetime] = None
     metric:           Optional[str] = None
+    daily_minimum:    Optional[int] = Field(None, gt=0)
+    required_days:    Optional[int] = Field(None, gt=0)
+    allowed_misses:   Optional[int] = None
+    winner_count:     Optional[int] = Field(None, gt=0)
+    team_a_name:      Optional[str] = None
+    team_a_color:     Optional[str] = None
+    team_a_icon:      Optional[str] = None
+    team_b_name:      Optional[str] = None
+    team_b_color:     Optional[str] = None
+    team_b_icon:      Optional[str] = None
+
+
+def _target_value_from_amount(metric: str, amount: float) -> int:
+    """
+    Admins enter the target in the metric's natural unit — hours for
+    focus_minutes, cards/lessons/courses/tests as a plain count for the
+    rest. Only focus_minutes needs an hours→minutes conversion; every other
+    metric's storage unit already IS the natural unit (getting this wrong
+    would silently multiply e.g. a "500 cards" target by 60).
+    """
+    if metric == "focus_minutes":
+        return round(amount * 60)
+    return round(amount)
+
+
+def _target_amount_from_value(metric: str, target_value: Optional[int]) -> Optional[float]:
+    if target_value is None:
+        return None
+    if metric == "focus_minutes":
+        return round(target_value / 60, 2)
+    return float(target_value)
 
 
 def _challenge_admin_dict(row) -> dict:
@@ -141,8 +242,9 @@ def _challenge_admin_dict(row) -> dict:
         "title":              row.title,
         "description":        row.description,
         "metric":             row.metric,
+        "challenge_type":     row.challenge_type,
         "target_value":       row.target_value,
-        "target_hours":       round(row.target_value / 60, 2),
+        "target_amount":      _target_amount_from_value(row.metric, row.target_value),
         "starts_at":          row.starts_at.isoformat(),
         "ends_at":            row.ends_at.isoformat(),
         "join_deadline":      row.join_deadline.isoformat() if row.join_deadline else None,
@@ -161,6 +263,16 @@ def _challenge_admin_dict(row) -> dict:
         "completion_count":   row.completion_count,
         "completion_rate":    round(completion_rate, 1),
         "created_at":         row.created_at.isoformat(),
+        "daily_minimum":      row.daily_minimum,
+        "required_days":      row.required_days,
+        "allowed_misses":     row.allowed_misses,
+        "winner_count":       row.winner_count,
+        "team_a_name":        row.team_a_name,
+        "team_a_color":       row.team_a_color,
+        "team_a_icon":        row.team_a_icon,
+        "team_b_name":        row.team_b_name,
+        "team_b_color":       row.team_b_color,
+        "team_b_icon":        row.team_b_icon,
     }
 
 
@@ -172,10 +284,15 @@ async def create_challenge(
 ):
     admin = await verify_admin(authorization=authorization, db=db)
 
-    if body.metric != "focus_minutes":
-        raise HTTPException(status_code=422, detail="Faqat 'focus_minutes' metrikasi hozircha ishlaydi")
+    if body.metric not in IMPLEMENTED_METRICS:
+        raise HTTPException(status_code=422, detail=f"'{body.metric}' metrikasi hozircha ishlamaydi (Tez kunda)")
     if body.ends_at <= body.starts_at:
         raise HTTPException(status_code=422, detail="Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak")
+
+    if body.challenge_type == "consistency":
+        duration_days = (body.ends_at - body.starts_at).days
+        if body.required_days > duration_days:
+            raise HTTPException(status_code=422, detail="Kunlar soni musobaqa davomidan oshib ketmasligi kerak")
 
     existing = db.execute(text("SELECT id FROM challenges WHERE slug = :slug"), {"slug": body.slug}).fetchone()
     if existing:
@@ -188,7 +305,16 @@ async def create_challenge(
         if existing_badge:
             raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa musobaqada band")
 
-    target_minutes = round(body.target_hours * 60)
+    # step-25 Part 2 — the core fix, no override flag.
+    conflict = _check_metric_overlap(db, body.metric, body.starts_at, body.ends_at)
+    if conflict:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bu vaqt oralig'ida ushbu metrika bo'yicha faol musobaqa allaqachon mavjud: "
+                   f"«{conflict.title}». Avval uni yakunlang yoki sanalarni o'zgartiring.",
+        )
+
+    target_value = _target_value_from_amount(body.metric, body.target_amount) if body.target_amount else None
     now = datetime.now(UTC)
     status = "active" if body.starts_at <= now else "upcoming"
 
@@ -196,26 +322,34 @@ async def create_challenge(
         row = db.execute(
             text("""
                 INSERT INTO challenges (
-                    slug, title, description, metric, target_value,
+                    slug, title, description, metric, challenge_type, target_value,
                     starts_at, ends_at, join_deadline, is_official, created_by,
-                    reward_xp, badge_key, color, icon, cover_image_url, is_featured, max_participants, status
+                    reward_xp, badge_key, color, icon, cover_image_url, is_featured, max_participants, status,
+                    daily_minimum, required_days, allowed_misses, winner_count,
+                    team_a_name, team_a_color, team_a_icon, team_b_name, team_b_color, team_b_icon
                 ) VALUES (
-                    :slug, :title, :description, :metric, :target_value,
+                    :slug, :title, :description, :metric, :challenge_type, :target_value,
                     :starts_at, :ends_at, :join_deadline, TRUE, NULL,
-                    :reward_xp, :badge_key, :color, :icon, :cover_image_url, :is_featured, :max_participants, :status
+                    :reward_xp, :badge_key, :color, :icon, :cover_image_url, :is_featured, :max_participants, :status,
+                    :daily_minimum, :required_days, :allowed_misses, :winner_count,
+                    :team_a_name, :team_a_color, :team_a_icon, :team_b_name, :team_b_color, :team_b_icon
                 ) RETURNING *
             """),
             {
                 "slug": body.slug, "title": body.title, "description": body.description,
-                "metric": body.metric, "target_value": target_minutes,
+                "metric": body.metric, "challenge_type": body.challenge_type, "target_value": target_value,
                 "starts_at": body.starts_at, "ends_at": body.ends_at, "join_deadline": body.join_deadline,
                 "reward_xp": body.reward_xp, "badge_key": body.badge_key,
                 "color": body.color, "icon": body.icon, "cover_image_url": body.cover_image_url,
                 "is_featured": body.is_featured,
                 "max_participants": body.max_participants, "status": status,
+                "daily_minimum": body.daily_minimum, "required_days": body.required_days,
+                "allowed_misses": body.allowed_misses, "winner_count": body.winner_count,
+                "team_a_name": body.team_a_name, "team_a_color": body.team_a_color, "team_a_icon": body.team_a_icon,
+                "team_b_name": body.team_b_name, "team_b_color": body.team_b_color, "team_b_icon": body.team_b_icon,
             },
         ).fetchone()
-        _log(db, "challenge_created", str(row.id), admin, {"slug": body.slug, "title": body.title})
+        _log(db, "challenge_created", str(row.id), admin, {"slug": body.slug, "title": body.title, "type": body.challenge_type})
         db.commit()
     except Exception:
         db.rollback()
@@ -241,6 +375,23 @@ async def list_challenges_admin(
     return [_challenge_admin_dict(r) for r in rows]
 
 
+@router.get("/check-overlap")
+async def check_overlap_live(
+    metric: str,
+    starts_at: datetime,
+    ends_at: datetime,
+    exclude_id: Optional[str] = None,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Live anti-overlap validation for the admin form, before save (step-25 Part 6)."""
+    await verify_admin(authorization=authorization, db=db)
+    conflict = _check_metric_overlap(db, metric, starts_at, ends_at, exclude_id)
+    if not conflict:
+        return {"conflict": None}
+    return {"conflict": {"id": str(conflict.id), "slug": conflict.slug, "title": conflict.title}}
+
+
 @router.get("/{challenge_id}")
 async def get_challenge_admin(
     challenge_id: uuid.UUID,
@@ -252,28 +403,43 @@ async def get_challenge_admin(
     if not row:
         raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
 
+    order_clause = "cp.progress_value DESC, cp.joined_at ASC"
     participants = db.execute(
-        text("""
+        text(f"""
             SELECT p.telegram_id, p.first_name, p.site_username AS username,
-                   cp.progress_value, cp.completed_at, cp.joined_at, cp.xp_awarded
+                   cp.progress_value, cp.completed_at, cp.joined_at, cp.xp_awarded,
+                   cp.team, cp.qualifying_days, cp.current_run, cp.misses_used,
+                   cp.failed_at, cp.final_rank, cp.is_winner
             FROM challenge_participants cp
             JOIN profiles p ON p.telegram_id = cp.user_id
             WHERE cp.challenge_id = :cid
-            ORDER BY cp.progress_value DESC, cp.joined_at ASC
+            ORDER BY {order_clause}
         """),
         {"cid": str(challenge_id)},
     ).fetchall()
 
     result = _challenge_admin_dict(row)
-    result["participants"] = [
+    participant_list = [
         {
             "user_id": p.telegram_id, "first_name": p.first_name, "username": p.username,
             "progress_value": p.progress_value, "xp_awarded": p.xp_awarded,
             "completed_at": p.completed_at.isoformat() if p.completed_at else None,
             "joined_at": p.joined_at.isoformat(),
+            "team": p.team, "qualifying_days": p.qualifying_days, "current_run": p.current_run,
+            "misses_used": p.misses_used, "failed_at": p.failed_at.isoformat() if p.failed_at else None,
+            "final_rank": p.final_rank, "is_winner": p.is_winner,
         }
         for p in participants
     ]
+
+    if row.challenge_type == "team":
+        result["participants_team_a"] = [p for p in participant_list if p["team"] == "A"]
+        result["participants_team_b"] = [p for p in participant_list if p["team"] == "B"]
+        result["team_a_total"] = sum(p["progress_value"] for p in result["participants_team_a"])
+        result["team_b_total"] = sum(p["progress_value"] for p in result["participants_team_b"])
+    else:
+        result["participants"] = participant_list
+
     return result
 
 
@@ -289,9 +455,9 @@ async def update_challenge(
     if not row:
         raise HTTPException(status_code=404, detail="Musobaqa topilmadi")
 
-    updates = body.model_dump(exclude_none=True, exclude={"target_hours"})
-    if body.target_hours is not None:
-        updates["target_value"] = round(body.target_hours * 60)
+    updates = body.model_dump(exclude_none=True, exclude={"target_amount"})
+    if body.target_amount is not None:
+        updates["target_value"] = _target_value_from_amount(updates.get("metric", row.metric), body.target_amount)
 
     if not updates:
         raise HTTPException(status_code=400, detail="O'zgartiriladigan maydon topilmadi")
@@ -304,9 +470,9 @@ async def update_challenge(
         if existing_badge:
             raise HTTPException(status_code=400, detail="Bu belgi kaliti (badge_key) boshqa musobaqada band")
 
-    # Server-side enforcement: target_value and dates are frozen once the
-    # challenge is no longer 'upcoming' — never relax this, it would be unfair
-    # to participants already competing under the original terms.
+    # Server-side enforcement: type/metric/target/dates/team-config are frozen
+    # once the challenge is no longer 'upcoming' — never relax this, it would
+    # be unfair to people already competing under the original terms.
     if row.status != "upcoming":
         locked_fields = set(updates.keys()) & (_EDITABLE_ONLY_UPCOMING | {"target_value"})
         if locked_fields:
@@ -315,11 +481,23 @@ async def update_challenge(
                 detail=f"Musobaqa faol bo'lgach, quyidagilarni o'zgartirib bo'lmaydi: {', '.join(sorted(locked_fields))}",
             )
 
+    new_start = updates.get("starts_at", row.starts_at)
+    new_end   = updates.get("ends_at", row.ends_at)
     if "ends_at" in updates or "starts_at" in updates:
-        new_start = updates.get("starts_at", row.starts_at)
-        new_end   = updates.get("ends_at", row.ends_at)
         if new_end <= new_start:
             raise HTTPException(status_code=422, detail="Tugash sanasi boshlanish sanasidan keyin bo'lishi kerak")
+
+    # Anti-overlap re-check whenever metric or dates are part of the edit
+    # (only reachable when status == 'upcoming', per the lock above).
+    if {"metric", "starts_at", "ends_at"} & set(updates.keys()):
+        new_metric = updates.get("metric", row.metric)
+        conflict = _check_metric_overlap(db, new_metric, new_start, new_end, exclude_id=str(challenge_id))
+        if conflict:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Bu vaqt oralig'ida ushbu metrika bo'yicha faol musobaqa allaqachon mavjud: "
+                       f"«{conflict.title}». Avval uni yakunlang yoki sanalarni o'zgartiring.",
+            )
 
     set_clause = ", ".join(f"{k} = :{k}" for k in updates.keys())
     try:

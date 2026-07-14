@@ -3,6 +3,7 @@ import hmac
 import hashlib
 import time
 import logging
+from datetime import datetime, UTC
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Query
 from sqlalchemy.orm import Session
@@ -20,6 +21,7 @@ from app.services.auth_service import decode_token, decode_token_payload
 from app.models.admin_models import AdminUser
 from app.services.integration_service import hook_quiz_passed
 from app.services.xp_service import add_xp, DEFAULT_QUIZ_XP
+from app.services.challenge_service import record_challenge_progress
 
 router = APIRouter()
 
@@ -231,6 +233,12 @@ async def verify_quiz(
                 "Quiz XP award failed for user_id=%s amount=%s source=QUIZ",
                 telegram_id, DEFAULT_QUIZ_XP, exc_info=True,
             )
+        try:
+            record_challenge_progress(db, telegram_id, "tests_passed", 1, occurred_at=datetime.now(UTC))
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.error("Failed to record tests_passed challenge progress for user_id=%s quiz_id=%s", telegram_id, quiz_id, exc_info=True)
         # skill_tags: quizzes don't have a first-class skill_tags column yet —
         # pass empty list; future migration can add it to the Quiz model.
         hook_quiz_passed(

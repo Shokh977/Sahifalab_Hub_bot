@@ -12,6 +12,7 @@ Routes:
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional, List
+from datetime import datetime, UTC
 import os
 import logging
 import httpx
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, DEFAULT_COURSE_XP
+from app.services.challenge_service import record_challenge_progress
 
 logger = logging.getLogger(__name__)
 
@@ -668,6 +670,23 @@ async def complete_lesson(
     if not await _can_access_lesson(lesson, caller_id):
         raise HTTPException(status_code=403, detail="Lesson is locked")
 
+    # Checked BEFORE the upsert below — this is what makes the
+    # lessons_completed challenge-progress call idempotent. The upsert
+    # itself doesn't tell us new-vs-already-completed (it always succeeds),
+    # so without this a user re-opening an already-completed lesson would
+    # count it again on every request.
+    async with httpx.AsyncClient(timeout=10) as client:
+        already_res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/lesson_progress",
+            params={
+                "lesson_id": f"eq.{lesson_id}", "student_id": f"eq.{caller_id}",
+                "select": "is_completed",
+            },
+            headers=_supabase_headers(),
+        )
+    already_rows = already_res.json() if already_res.status_code == 200 else []
+    was_already_completed = bool(already_rows) and bool(already_rows[0].get("is_completed"))
+
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.post(
             f"{SUPABASE_URL}/rest/v1/lesson_progress",
@@ -682,6 +701,14 @@ async def complete_lesson(
         )
     if res.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail=f"Failed to save progress: {res.text}")
+
+    if not was_already_completed:
+        try:
+            record_challenge_progress(db, caller_id, "lessons_completed", 1, occurred_at=datetime.now(UTC))
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.error("Failed to record lessons_completed challenge progress for user_id=%s lesson_id=%s", caller_id, lesson_id, exc_info=True)
 
     certificate_issued = False
     course_id = lesson["course_id"]
@@ -712,6 +739,14 @@ async def complete_lesson(
 
         if total_lessons > 0 and completed_lessons >= total_lessons:
             async with httpx.AsyncClient(timeout=10) as client:
+                existing_cert_res = await client.get(
+                    f"{SUPABASE_URL}/rest/v1/course_certificates",
+                    params={"course_id": f"eq.{course_id}", "student_id": f"eq.{caller_id}", "select": "certificate_id"},
+                    headers=_supabase_headers(),
+                )
+            cert_was_new = not (existing_cert_res.json() if existing_cert_res.status_code == 200 else [])
+
+            async with httpx.AsyncClient(timeout=10) as client:
                 cert_res = await client.post(
                     f"{SUPABASE_URL}/rest/v1/course_certificates",
                     params={"on_conflict": "course_id,student_id"},
@@ -725,6 +760,14 @@ async def complete_lesson(
                     headers={**_supabase_headers(), "Prefer": "resolution=merge-duplicates,return=representation"},
                 )
             certificate_issued = cert_res.status_code in (200, 201)
+
+            if certificate_issued and cert_was_new:
+                try:
+                    record_challenge_progress(db, caller_id, "courses_completed", 1, occurred_at=datetime.now(UTC))
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    logger.error("Failed to record courses_completed challenge progress for user_id=%s course_id=%s", caller_id, course_id, exc_info=True)
 
             # Award course completion XP (deduplicated by course_id — one-time only)
             try:

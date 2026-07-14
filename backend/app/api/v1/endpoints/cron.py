@@ -7,14 +7,16 @@ Routes (secret-key protected, NOT JWT):
   POST /api/cron/streak-reminder             — send daily streak reminder to users who haven't studied today
   POST /api/cron/expire-pending-enrollments  — mark stale awaiting_payment/paid rows as expired
   POST /api/cron/challenges-tick             — Musobaqalar: status transitions + notification cadence
+  POST /api/cron/challenges-consistency-daily — step-25: daily 'consistency' run evaluation
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
 Configure Railway cron jobs:
-    POST /api/cron/weekly-reset                — schedule: 0 0 * * 1   (Monday 00:00 UTC)
-    POST /api/cron/weekly-report               — schedule: 0 8 * * 1   (Monday 08:00 UTC)
-    POST /api/cron/streak-reminder             — schedule: 0 15 * * *  (Daily 15:00 UTC = ~20:00 Tashkent)
-    POST /api/cron/expire-pending-enrollments  — schedule: 0 * * * *   (Every hour)
-    POST /api/cron/challenges-tick             — schedule: 0 * * * *   (Every hour)
+    POST /api/cron/weekly-reset                 — schedule: 0 0 * * 1   (Monday 00:00 UTC)
+    POST /api/cron/weekly-report                — schedule: 0 8 * * 1   (Monday 08:00 UTC)
+    POST /api/cron/streak-reminder               — schedule: 0 15 * * *  (Daily 15:00 UTC = ~20:00 Tashkent)
+    POST /api/cron/expire-pending-enrollments    — schedule: 0 * * * *   (Every hour)
+    POST /api/cron/challenges-tick                — schedule: 0 * * * *   (Every hour)
+    POST /api/cron/challenges-consistency-daily  — schedule: 5 19 * * *  (~00:05 Tashkent — evaluates "yesterday")
 """
 
 import os
@@ -32,6 +34,9 @@ from typing import Optional
 
 from app.db.session import get_db
 from app.api.v1.endpoints.notifications import send_notification
+from app.services.challenge_service import (
+    evaluate_consistency_day, resolve_sprint_challenge, resolve_team_challenge,
+)
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -479,13 +484,47 @@ async def challenges_tick(
 
     # ── 2. active -> ended ───────────────────────────────────────────────────
     ended = db.execute(
-        text("UPDATE challenges SET status = 'ended' WHERE status = 'active' AND ends_at <= :now RETURNING id, title"),
+        text("""
+            UPDATE challenges SET status = 'ended'
+            WHERE status = 'active' AND ends_at <= :now
+            RETURNING id, title, challenge_type, winner_count, reward_xp, badge_key,
+                      team_a_name, team_b_name
+        """),
         {"now": now},
     ).fetchall()
     db.commit()
     results["ended"] = len(ended)
+    results["sprint_winners"] = 0
+    results["team_winner_notified"] = 0
 
     for ch in ended:
+        # step-25 — resolve sprint/team outcomes BEFORE the non-completer
+        # notification pass below, so winners (completed_at now set) are
+        # correctly excluded from the generic "didn't finish" message.
+        if ch.challenge_type == "sprint":
+            winners = resolve_sprint_challenge(db, ch.id, ch.winner_count, ch.reward_xp, ch.badge_key)
+            db.commit()
+            results["sprint_winners"] += winners
+        elif ch.challenge_type == "team":
+            winning_team = resolve_team_challenge(db, ch.id, ch.reward_xp, ch.badge_key)
+            db.commit()
+            if winning_team:
+                team_name = ch.team_a_name if winning_team == "A" else ch.team_b_name
+                participants = db.execute(
+                    text("SELECT user_id, team FROM challenge_participants WHERE challenge_id = :cid"),
+                    {"cid": ch.id},
+                ).fetchall()
+                for p in participants:
+                    won = p.team == winning_team
+                    asyncio.create_task(send_notification(
+                        p.user_id, "challenge_team_result", category="SYSTEM",
+                        meta={
+                            "challenge_id": str(ch.id), "title": ch.title,
+                            "won": won, "team_name": team_name,
+                        },
+                    ))
+                results["team_winner_notified"] += len(participants)
+
         # Defensive recompute — completion_count is normally kept accurate in
         # real time by challenge_service.py, this just guards against drift.
         db.execute(
@@ -499,8 +538,10 @@ async def challenges_tick(
         )
         db.commit()
 
-        # Warm, non-punitive summary to non-completers — ONE message, ever.
-        # Nothing is lost, nothing is shamed.
+        # Warm, non-punitive summary to everyone who didn't complete/win —
+        # ONE message, ever. Nothing is lost, nothing is shamed. (Team
+        # participants already got their own message above, so they're
+        # excluded here to avoid a duplicate.)
         non_completers = db.execute(
             text("""
                 SELECT user_id, progress_value FROM challenge_participants
@@ -508,21 +549,32 @@ async def challenges_tick(
             """),
             {"cid": ch.id},
         ).fetchall()
-        for p in non_completers:
-            asyncio.create_task(send_notification(
-                p.user_id, "challenge_ended", category="SYSTEM",
-                meta={"challenge_id": str(ch.id), "title": ch.title, "progress_value": p.progress_value},
-            ))
+        if ch.challenge_type != "team":
+            for p in non_completers:
+                asyncio.create_task(send_notification(
+                    p.user_id, "challenge_ended", category="SYSTEM",
+                    meta={"challenge_id": str(ch.id), "title": ch.title, "progress_value": p.progress_value},
+                ))
         db.execute(
             text("UPDATE challenge_participants SET end_notified = TRUE WHERE challenge_id = :cid AND completed_at IS NULL"),
+            {"cid": ch.id},
+        )
+        db.execute(
+            text("UPDATE challenge_participants SET end_notified = TRUE WHERE challenge_id = :cid AND completed_at IS NOT NULL AND NOT end_notified"),
             {"cid": ch.id},
         )
         db.commit()
         results["end_notified"] += len(non_completers)
 
     # ── 3. Midpoint + final-stretch nudges for currently-active challenges ──
+    # target_value is NULL for consistency/sprint/team (step-25) — every
+    # branch below must be type-aware; target_value-based math must never
+    # run for a type where it's None.
     active_challenges = db.execute(
-        text("SELECT id, title, starts_at, ends_at, target_value FROM challenges WHERE status = 'active'"),
+        text("""
+            SELECT id, title, starts_at, ends_at, target_value, challenge_type, winner_count
+            FROM challenges WHERE status = 'active'
+        """),
     ).fetchall()
 
     for ch in active_challenges:
@@ -531,58 +583,215 @@ async def challenges_tick(
         pct_elapsed   = (elapsed / total_window) if total_window > 0 else 1.0
         days_left     = (ch.ends_at - now).days
 
-        if pct_elapsed >= 0.5:
-            midpoint_rows = db.execute(
-                text("""
-                    SELECT user_id, progress_value FROM challenge_participants
-                    WHERE challenge_id = :cid AND completed_at IS NULL AND NOT midpoint_notified
-                """),
-                {"cid": ch.id},
-            ).fetchall()
-            for p in midpoint_rows:
-                asyncio.create_task(send_notification(
-                    p.user_id, "challenge_midpoint", category="SYSTEM",
-                    meta={
-                        "challenge_id": str(ch.id), "title": ch.title,
-                        "progress_value": p.progress_value, "target_value": ch.target_value,
-                        "days_left": days_left,
-                    },
-                ))
-            db.execute(
-                text("UPDATE challenge_participants SET midpoint_notified = TRUE WHERE challenge_id = :cid AND completed_at IS NULL"),
-                {"cid": ch.id},
-            )
-            db.commit()
-            results["midpoint_notified"] += len(midpoint_rows)
+        if ch.challenge_type == "cumulative":
+            if pct_elapsed >= 0.5:
+                midpoint_rows = db.execute(
+                    text("""
+                        SELECT user_id, progress_value FROM challenge_participants
+                        WHERE challenge_id = :cid AND completed_at IS NULL AND NOT midpoint_notified
+                    """),
+                    {"cid": ch.id},
+                ).fetchall()
+                for p in midpoint_rows:
+                    asyncio.create_task(send_notification(
+                        p.user_id, "challenge_midpoint", category="SYSTEM",
+                        meta={
+                            "challenge_id": str(ch.id), "title": ch.title,
+                            "progress_value": p.progress_value, "target_value": ch.target_value,
+                            "days_left": days_left,
+                        },
+                    ))
+                db.execute(
+                    text("UPDATE challenge_participants SET midpoint_notified = TRUE WHERE challenge_id = :cid AND completed_at IS NULL"),
+                    {"cid": ch.id},
+                )
+                db.commit()
+                results["midpoint_notified"] += len(midpoint_rows)
 
-        if days_left <= 2:
-            min_progress = round(ch.target_value * 0.25)
-            final_rows = db.execute(
-                text("""
-                    SELECT user_id, progress_value FROM challenge_participants
-                    WHERE challenge_id = :cid AND completed_at IS NULL AND NOT final_stretch_notified
-                      AND progress_value >= :min_progress
-                """),
-                {"cid": ch.id, "min_progress": min_progress},
-            ).fetchall()
-            for p in final_rows:
-                asyncio.create_task(send_notification(
-                    p.user_id, "challenge_final_stretch", category="SYSTEM",
-                    meta={
-                        "challenge_id": str(ch.id), "title": ch.title,
-                        "progress_value": p.progress_value, "target_value": ch.target_value,
-                        "days_left": days_left,
-                    },
-                ))
-            db.execute(
-                text("""
-                    UPDATE challenge_participants SET final_stretch_notified = TRUE
-                    WHERE challenge_id = :cid AND completed_at IS NULL AND progress_value >= :min_progress
-                """),
-                {"cid": ch.id, "min_progress": min_progress},
-            )
-            db.commit()
-            results["final_stretch_notified"] += len(final_rows)
+            if days_left <= 2:
+                min_progress = round((ch.target_value or 0) * 0.25)
+                final_rows = db.execute(
+                    text("""
+                        SELECT user_id, progress_value FROM challenge_participants
+                        WHERE challenge_id = :cid AND completed_at IS NULL AND NOT final_stretch_notified
+                          AND progress_value >= :min_progress
+                    """),
+                    {"cid": ch.id, "min_progress": min_progress},
+                ).fetchall()
+                for p in final_rows:
+                    asyncio.create_task(send_notification(
+                        p.user_id, "challenge_final_stretch", category="SYSTEM",
+                        meta={
+                            "challenge_id": str(ch.id), "title": ch.title,
+                            "progress_value": p.progress_value, "target_value": ch.target_value,
+                            "days_left": days_left,
+                        },
+                    ))
+                db.execute(
+                    text("""
+                        UPDATE challenge_participants SET final_stretch_notified = TRUE
+                        WHERE challenge_id = :cid AND completed_at IS NULL AND progress_value >= :min_progress
+                    """),
+                    {"cid": ch.id, "min_progress": min_progress},
+                )
+                db.commit()
+                results["final_stretch_notified"] += len(final_rows)
+
+        elif ch.challenge_type == "sprint":
+            # Mid-window rank update — plain rank number, framed by the
+            # mobile client as percentile, never "you're losing" (step-25
+            # Part 7). Final-day nudge only to those plausibly in contention
+            # (top 3x winner_count) — never nag someone with no realistic shot.
+            if pct_elapsed >= 0.5:
+                ranked = db.execute(
+                    text("""
+                        SELECT user_id, RANK() OVER (ORDER BY progress_value DESC, joined_at ASC) AS rank
+                        FROM challenge_participants WHERE challenge_id = :cid AND completed_at IS NULL AND NOT midpoint_notified
+                    """),
+                    {"cid": ch.id},
+                ).fetchall()
+                for p in ranked:
+                    asyncio.create_task(send_notification(
+                        p.user_id, "challenge_sprint_rank", category="SYSTEM",
+                        meta={"challenge_id": str(ch.id), "title": ch.title, "rank": p.rank, "days_left": days_left},
+                    ))
+                db.execute(
+                    text("UPDATE challenge_participants SET midpoint_notified = TRUE WHERE challenge_id = :cid AND completed_at IS NULL"),
+                    {"cid": ch.id},
+                )
+                db.commit()
+                results["midpoint_notified"] += len(ranked)
+
+            if days_left <= 1 and ch.winner_count:
+                contention_cutoff = ch.winner_count * 3
+                final_rows = db.execute(
+                    text("""
+                        SELECT user_id, rank FROM (
+                            SELECT id, user_id, completed_at, final_stretch_notified,
+                                   RANK() OVER (ORDER BY progress_value DESC, joined_at ASC) AS rank
+                            FROM challenge_participants WHERE challenge_id = :cid
+                        ) ranked
+                        WHERE completed_at IS NULL AND NOT final_stretch_notified AND rank <= :cutoff
+                    """),
+                    {"cid": ch.id, "cutoff": contention_cutoff},
+                ).fetchall()
+                for p in final_rows:
+                    asyncio.create_task(send_notification(
+                        p.user_id, "challenge_sprint_rank", category="SYSTEM",
+                        meta={"challenge_id": str(ch.id), "title": ch.title, "rank": p.rank, "days_left": days_left, "final": True},
+                    ))
+                db.execute(
+                    text("""
+                        UPDATE challenge_participants SET final_stretch_notified = TRUE
+                        WHERE challenge_id = :cid AND completed_at IS NULL AND id IN (
+                            SELECT id FROM (
+                                SELECT id, RANK() OVER (ORDER BY progress_value DESC, joined_at ASC) AS rank
+                                FROM challenge_participants WHERE challenge_id = :cid
+                            ) r WHERE r.rank <= :cutoff
+                        )
+                    """),
+                    {"cid": ch.id, "cutoff": contention_cutoff},
+                )
+                db.commit()
+                results["final_stretch_notified"] += len(final_rows)
+
+        elif ch.challenge_type == "team":
+            # One standing update at the midpoint — capped, invitation-framed,
+            # never guilt (step-25 Part 7): "your team needs you", not "you
+            # let them down".
+            if pct_elapsed >= 0.5:
+                totals = db.execute(
+                    text("""
+                        SELECT team, COALESCE(SUM(progress_value), 0) AS total
+                        FROM challenge_participants WHERE challenge_id = :cid AND team IS NOT NULL
+                        GROUP BY team
+                    """),
+                    {"cid": ch.id},
+                ).fetchall()
+                total_map = {t.team: t.total for t in totals}
+                members = db.execute(
+                    text("""
+                        SELECT user_id, team FROM challenge_participants
+                        WHERE challenge_id = :cid AND completed_at IS NULL AND NOT midpoint_notified
+                    """),
+                    {"cid": ch.id},
+                ).fetchall()
+                for p in members:
+                    my_total    = total_map.get(p.team, 0)
+                    other_total = total_map.get("B" if p.team == "A" else "A", 0)
+                    asyncio.create_task(send_notification(
+                        p.user_id, "challenge_team_standing", category="SYSTEM",
+                        meta={
+                            "challenge_id": str(ch.id), "title": ch.title,
+                            "team": p.team, "my_total": my_total, "other_total": other_total,
+                            "ahead": my_total >= other_total, "days_left": days_left,
+                        },
+                    ))
+                db.execute(
+                    text("UPDATE challenge_participants SET midpoint_notified = TRUE WHERE challenge_id = :cid AND completed_at IS NULL"),
+                    {"cid": ch.id},
+                )
+                db.commit()
+                results["midpoint_notified"] += len(members)
+
+        # 'consistency' midpoint/final-stretch nudges don't apply here — see
+        # POST /cron/challenges-consistency-daily for the evening reminder
+        # and the daily run evaluation, which is the only cadence that makes
+        # sense for a "daily minimum" goal shape.
 
     logger.info("challenges_tick: %s", results)
     return {"ok": True, **results}
+
+
+@router.post("/challenges-consistency-daily")
+async def challenges_consistency_daily(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    step-25 — 'consistency' challenges: (1) evaluate yesterday's qualifying
+    day for every participant (advance the run, apply a grace day, or fail
+    the run — never any XP/streak loss either way), then (2) send today's
+    evening reminder to anyone whose run is still alive but hasn't hit
+    today's minimum yet.
+
+    Schedule: 5 19 * * *  (~00:05 Tashkent — evaluates "yesterday" right
+    after the day boundary; also serves as today's ~19:05 UTC evening
+    reminder pass, matching streak-reminder's existing UTC-evening cadence).
+    """
+    today     = datetime.now(UTC).date()
+    yesterday = today - timedelta(days=1)
+
+    eval_results = evaluate_consistency_day(db, yesterday)
+
+    # Evening reminder — today's minimum not yet met, run still alive.
+    reminder_rows = db.execute(
+        text("""
+            SELECT cp.user_id, c.id AS challenge_id, c.title, c.daily_minimum,
+                   COALESCE(dp.value, 0) AS today_value
+            FROM challenge_participants cp
+            JOIN challenges c ON c.id = cp.challenge_id
+            LEFT JOIN challenge_daily_progress dp
+                   ON dp.challenge_id = cp.challenge_id AND dp.user_id = cp.user_id AND dp.day = :today
+            WHERE c.challenge_type = 'consistency' AND c.status = 'active'
+              AND cp.completed_at IS NULL AND cp.failed_at IS NULL
+              AND cp.joined_at::date <= :today
+        """),
+        {"today": today},
+    ).fetchall()
+
+    reminded = 0
+    for r in reminder_rows:
+        if r.today_value >= (r.daily_minimum or 0):
+            continue
+        asyncio.create_task(send_notification(
+            r.user_id, "consistency_reminder", category="SYSTEM",
+            meta={
+                "challenge_id": str(r.challenge_id), "title": r.title,
+                "remaining": max(0, (r.daily_minimum or 0) - r.today_value),
+            },
+        ))
+        reminded += 1
+
+    logger.info("challenges_consistency_daily: eval=%s reminded=%d", eval_results, reminded)
+    return {"ok": True, "evaluation": eval_results, "reminded": reminded}

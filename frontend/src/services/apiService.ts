@@ -872,11 +872,16 @@ class ApiService {
 
   async createChallenge(data: {
     slug: string; title: string; description?: string | null
-    metric?: string; target_hours: number
+    metric?: string; challenge_type?: string
     starts_at: string; ends_at: string; join_deadline?: string | null
     reward_xp?: number; badge_key?: string | null
     color?: string; icon?: string; cover_image_url?: string | null; is_featured?: boolean
     max_participants?: number | null
+    target_amount?: number | null
+    daily_minimum?: number | null; required_days?: number | null; allowed_misses?: number
+    winner_count?: number | null
+    team_a_name?: string | null; team_a_color?: string | null; team_a_icon?: string | null
+    team_b_name?: string | null; team_b_color?: string | null; team_b_icon?: string | null
   }) {
     return this.axiosInstance.post('/api/admin/challenges', data)
   }
@@ -885,13 +890,24 @@ class ApiService {
     title: string; description: string | null
     color: string; icon: string; cover_image_url: string | null; is_featured: boolean
     max_participants: number | null; badge_key: string | null; reward_xp: number
-    target_hours: number; starts_at: string; ends_at: string; join_deadline: string | null; metric: string
+    target_amount: number; starts_at: string; ends_at: string; join_deadline: string | null; metric: string
+    challenge_type: string
+    daily_minimum: number; required_days: number; allowed_misses: number
+    winner_count: number
+    team_a_name: string; team_a_color: string; team_a_icon: string
+    team_b_name: string; team_b_color: string; team_b_icon: string
   }>) {
     return this.axiosInstance.patch(`/api/admin/challenges/${id}`, data)
   }
 
   async cancelChallenge(id: string) {
     return this.axiosInstance.post(`/api/admin/challenges/${id}/cancel`)
+  }
+
+  async checkChallengeOverlap(metric: string, startsAt: string, endsAt: string, excludeId?: string) {
+    return this.axiosInstance.get('/api/admin/challenges/check-overlap', {
+      params: { metric, starts_at: startsAt, ends_at: endsAt, exclude_id: excludeId },
+    })
   }
 
   async getLeaderboard(scope: 'global' | 'friends', period: 'week' | 'month' | 'all') {

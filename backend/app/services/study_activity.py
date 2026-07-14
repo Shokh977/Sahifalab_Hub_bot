@@ -41,14 +41,6 @@ logger = logging.getLogger(__name__)
 
 ActivitySource = Literal["focus_timer", "flashcards"]
 
-# Which activity sources count toward which challenge metric. Only
-# 'focus_timer' counts toward 'focus_minutes' challenges — flashcard study
-# still maintains the streak (unchanged) but is honestly excluded from a
-# challenge that's named and marketed as a focus-timer marathon.
-_CHALLENGE_METRIC_SOURCES: dict[str, set[str]] = {
-    "focus_minutes": {"focus_timer"},
-}
-
 
 @dataclass
 class StudyActivityResult:
@@ -79,6 +71,7 @@ def record_study_activity(
     source: ActivitySource,
     xp_awarded: int,
     local_date: Optional[str] = None,
+    challenge_value: Optional[int] = None,
 ) -> StudyActivityResult:
     """
     Single write path for "the user did some studying". Must be called inside
@@ -171,12 +164,21 @@ def record_study_activity(
             user_id, streak_days, exc_info=True,
         )
 
-    # ── 5. Challenge progress (step-21) — never touches streak_days/stages ──
+    # ── 5. Challenge progress (step-21, extended step-25) — never touches
+    #    streak_days/stages. `challenge_value` lets the caller report a unit
+    #    other than minutes (e.g. flashcards.py passes cards-reviewed count
+    #    for the flashcard_reviews metric); defaults to `minutes` for the
+    #    focus timer, which counts toward focus_minutes 1:1.
     challenges_completed:  list[dict] = []
     challenges_progressed: list[dict] = []
     try:
-        from app.services.challenge_service import update_challenge_progress
-        challenges_completed, challenges_progressed = update_challenge_progress(db, user_id, minutes, source)
+        from app.services.challenge_service import record_challenge_progress, METRIC_FOR_SOURCE
+        metric = METRIC_FOR_SOURCE.get(source)
+        if metric:
+            value = challenge_value if challenge_value is not None else minutes
+            challenges_completed, challenges_progressed = record_challenge_progress(
+                db, user_id, metric, value, occurred_at=datetime.now(UTC), day=today,
+            )
         db.commit()
     except Exception:
         db.rollback()

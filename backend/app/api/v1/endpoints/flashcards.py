@@ -857,7 +857,7 @@ async def complete_session(
     activity = record_study_activity(
         db, user_id=caller_id, minutes=flash_minutes,
         source="flashcards", xp_awarded=xp_result.get("xp_added", 0),
-        local_date=body.local_date,
+        local_date=body.local_date, challenge_value=reviewed,
     )
 
     for stage in activity.stages_completed:
