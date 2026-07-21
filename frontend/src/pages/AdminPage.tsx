@@ -47,6 +47,12 @@ interface AdminBook {
   created_at: string
 }
 
+interface RegistrationSource {
+  source: 'mobile' | 'web' | 'telegram_miniapp' | 'unknown'
+  count: number
+  percent: number
+}
+
 interface AdminStats {
   total_users: number
   total_quizzes: number
@@ -56,6 +62,7 @@ interface AdminStats {
   recent_uploads: string[]
   active_users_1h: number
   active_users_24h: number
+  registration_sources: RegistrationSource[]
 }
 
 interface AdminProfile {
@@ -336,6 +343,48 @@ const StatCard: React.FC<{ emoji: string; label: string; value: number | string 
     </div>
   </div>
 )
+
+const SOURCE_META: Record<RegistrationSource['source'], { label: string; color: string; bar: string }> = {
+  mobile:           { label: "📱 Mobil ilova",       color: 'text-blue-700 dark:text-blue-300',     bar: 'bg-blue-500' },
+  web:              { label: "🌐 Veb-sayt",          color: 'text-emerald-700 dark:text-emerald-300', bar: 'bg-emerald-500' },
+  telegram_miniapp: { label: "✈️ Telegram Mini App", color: 'text-sky-700 dark:text-sky-300',       bar: 'bg-sky-500' },
+  unknown:          { label: "❔ Noma'lum",           color: 'text-gray-600 dark:text-gray-400',      bar: 'bg-gray-400' },
+}
+
+/** Where new users are actually finding the app — mobile app vs. plain web
+ * browser vs. Telegram Mini App. Each account is stamped with exactly one
+ * source at signup (never rewritten by later logins), so these are exact
+ * counts, not estimates. */
+const RegistrationSourceCard: React.FC<{ sources: RegistrationSource[] }> = ({ sources }) => {
+  if (!sources || sources.length === 0) return null
+  const total = sources.reduce((sum, s) => sum + s.count, 0)
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+      <h3 className="font-semibold text-gray-700 dark:text-gray-300">📊 Ro'yxatdan o'tish manbai</h3>
+      <div className="space-y-2.5">
+        {sources.map(s => {
+          const meta = SOURCE_META[s.source] ?? SOURCE_META.unknown
+          return (
+            <div key={s.source}>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className={`font-semibold ${meta.color}`}>{meta.label}</span>
+                <span className="text-gray-500 dark:text-gray-400">
+                  {s.count.toLocaleString()} · {s.percent}%
+                </span>
+              </div>
+              <div className="h-2 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                <div className={`h-full rounded-full ${meta.bar}`} style={{ width: `${s.percent}%` }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">
+        Jami {total.toLocaleString()} ta hisob · ro'yxatdan o'tgan paytda belgilanadi, keyingi kirishlarda o'zgarmaydi
+      </p>
+    </div>
+  )
+}
 
 const formatFocusTime = (seconds: number): string => {
   const h = Math.floor(seconds / 3600)
@@ -1921,6 +1970,9 @@ const AdminPage: React.FC = () => {
                     Faollik: <code className="font-mono">app_online_at</code> maydoni bo'yicha hisoblanadi
                   </p>
                 </div>
+
+                {/* ── Registration Source Section ── */}
+                <RegistrationSourceCard sources={stats.registration_sources} />
 
                 {/* ── Users List ── */}
                 <div className="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">

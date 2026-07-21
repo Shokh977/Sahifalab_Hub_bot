@@ -222,6 +222,61 @@ async def get_course(
     return course
 
 
+@router.post("/{course_id}/view")
+async def record_course_view(
+    course_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Student: record that the caller opened this course's detail page.
+    One row per (course_id, viewer_id) — repeat opens increment view_count
+    instead of creating duplicates, so this is exact "how many distinct
+    students clicked into this course" data for the teacher's dashboard.
+    The course owner's own views (previewing their own course) don't count.
+    """
+    caller_id = await _resolve_teacher_id(authorization)
+
+    course = await _get_course_teacher_row(course_id)
+    if course is None:
+        raise HTTPException(status_code=404, detail="Course not found")
+    if caller_id == course["teacher_id"]:
+        return {"ok": True, "recorded": False}
+
+    from sqlalchemy.dialects.postgresql import insert as pg_insert
+    from sqlalchemy.sql import func as sa_func
+    from app.models.course_models import CourseView
+
+    stmt = pg_insert(CourseView).values(
+        course_id=course_id, viewer_id=caller_id, view_count=1,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["course_id", "viewer_id"],
+        set_={
+            "view_count": CourseView.view_count + 1,
+            "last_viewed_at": sa_func.now(),
+        },
+    )
+    db.execute(stmt)
+    db.commit()
+    return {"ok": True, "recorded": True}
+
+
+async def _get_course_teacher_row(course_id: int) -> Optional[dict]:
+    """Return {"teacher_id": ...} for a course, or None if not found."""
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/courses",
+            params={"id": f"eq.{course_id}", "select": "teacher_id"},
+            headers=_supabase_headers(),
+        )
+    if res.status_code != 200:
+        raise HTTPException(status_code=502, detail=f"Supabase error: {res.text}")
+    rows = res.json()
+    return rows[0] if rows else None
+
+
 _ALLOWED_ORDER_COLS = {"enrolled_count", "created_at", "rating", "price"}
 
 @router.get("")

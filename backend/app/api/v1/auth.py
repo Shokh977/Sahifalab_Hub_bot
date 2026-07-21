@@ -196,15 +196,30 @@ def _gen_site_username(db: Session, first_name: Optional[str], telegram_id: int)
     return f"{base}_{abs(telegram_id)}"
 
 
+_VALID_PLATFORMS = {"mobile", "web", "telegram_miniapp"}
+
+
+def _normalize_platform(raw: Optional[str]) -> str:
+    """Map the client-supplied X-Client-Platform header to one of the fixed
+    values the admin dashboard's registration-source breakdown expects.
+    Anything missing or unrecognized becomes 'unknown' rather than polluting
+    the breakdown with arbitrary strings."""
+    value = (raw or "").strip().lower()
+    return value if value in _VALID_PLATFORMS else "unknown"
+
+
 def _upsert_profile(db: Session, telegram_id: int, **kwargs) -> Profile:
     """Create or update a profile row via ORM (no Supabase REST involved)."""
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
+    # Only ever set on first creation — a returning user's later logins must
+    # never rewrite how they originally found the app.
+    registered_via = kwargs.pop("registered_via", None)
     if profile is None:
         if "app_created_at" not in kwargs:
             kwargs["app_created_at"] = datetime.now(UTC)
         if "site_username" not in kwargs or not kwargs.get("site_username"):
             kwargs["site_username"] = _gen_site_username(db, kwargs.get("first_name"), telegram_id)
-        profile = Profile(telegram_id=telegram_id, **kwargs)
+        profile = Profile(telegram_id=telegram_id, registered_via=registered_via, **kwargs)
         db.add(profile)
     else:
         for key, value in kwargs.items():
@@ -336,7 +351,11 @@ async def telegram_widget_page(redirect: str = ""):
 
 
 @router.post("/telegram")
-async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
+async def telegram_login(
+    data: TelegramAuthData,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
+):
     """Authenticate with Telegram Login Widget data."""
     if not verify_telegram_auth(data, BOT_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid Telegram authentication")
@@ -351,6 +370,7 @@ async def telegram_login(data: TelegramAuthData, db: Session = Depends(get_db)):
     profile = _upsert_profile(
         db, data.id,
         app_last_login=datetime.now(UTC),
+        registered_via=_normalize_platform(x_client_platform),
         **({"first_name": data.first_name} if not has_first_name else {}),
         **({"username":   data.username}   if not has_username   else {}),
         **({"photo_url":  data.photo_url}  if not has_any_photo  else {}),
@@ -401,6 +421,9 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
     profile = _upsert_profile(
         db, telegram_id,
         app_last_login=datetime.now(UTC),
+        # Unambiguous — this endpoint is only ever reachable from inside a
+        # Telegram Mini App, so no client header is needed to know the source.
+        registered_via="telegram_miniapp",
         **({"first_name": first_name} if not has_first_name else {}),
         **({"username":   username}   if not has_username   else {}),
         **({"photo_url":  photo_url}  if not has_any_photo  else {}),
@@ -454,7 +477,11 @@ async def get_current_user(
 
 
 @router.post("/google")
-async def google_sign_in(body: GoogleSignInRequest, db: Session = Depends(get_db)):
+async def google_sign_in(
+    body: GoogleSignInRequest,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
+):
     if not _GOOGLE_AVAILABLE:
         raise HTTPException(status_code=503, detail="Google auth library not installed")
     if not GOOGLE_CLIENT_ID:
@@ -481,6 +508,7 @@ async def google_sign_in(body: GoogleSignInRequest, db: Session = Depends(get_db
     profile = _upsert_profile(
         db, telegram_id, first_name=first_name, username=username,
         photo_url=photo_url, email=email, app_last_login=datetime.now(UTC),
+        registered_via=_normalize_platform(x_client_platform),
     )
     if is_new:
         _send_welcome(telegram_id, first_name or "", db)
@@ -751,7 +779,11 @@ async def bot_claim_code(body: BotClaimCodeRequest, db: Session = Depends(get_db
 
 
 @router.get("/verify-code/{code}")
-async def verify_code(code: str, db: Session = Depends(get_db)):
+async def verify_code(
+    code: str,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
+):
     """Poll until the bot claims the code, then return a JWT."""
     auth_code = db.query(AuthCode).filter(AuthCode.code == code).first()
     if not auth_code:
@@ -778,6 +810,7 @@ async def verify_code(code: str, db: Session = Depends(get_db)):
     profile = _upsert_profile(
         db, telegram_id,
         app_last_login=datetime.now(UTC),
+        registered_via=_normalize_platform(x_client_platform),
         **({"first_name": first_name} if not has_first_name else {}),
         **({"username":   username}   if not has_username   else {}),
         **({"photo_url":  photo_url}  if not has_any_photo  else {}),
@@ -1099,7 +1132,11 @@ async def set_user_role(
 # ── Email auth ────────────────────────────────────────────────────────────────
 
 @router.post("/email-register")
-async def email_register(body: EmailRegisterRequest, db: Session = Depends(get_db)):
+async def email_register(
+    body: EmailRegisterRequest,
+    db: Session = Depends(get_db),
+    x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
+):
     # Validate password complexity
     pw_errors = _validate_password(body.password)
     if pw_errors:
@@ -1117,6 +1154,7 @@ async def email_register(body: EmailRegisterRequest, db: Session = Depends(get_d
         password_hash=password_hash, role="student", status="active",
         email_verified=False,
         app_last_login=datetime.now(UTC),
+        registered_via=_normalize_platform(x_client_platform),
     )
 
     # Create verification token and send email

@@ -5,12 +5,12 @@ import httpx
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Header
 from pydantic import BaseModel
-from sqlalchemy import text
+from sqlalchemy import text, func
 from sqlalchemy.orm import Session
 from typing import Optional
 from app.db.session import get_db
 from app.core.config import settings
-from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating, User
+from app.models.models import Quiz, QuizQuestion, Book, BookPurchase, BookRating, User, Profile
 from app.models.admin_models import AdminUser, HeroContent, PaymentConfig, BookAuditLog, QuizAuditLog, EnrollmentAuditLog
 from app.schemas.admin_schemas import (
     HeroContentCreate, HeroContentUpdate, HeroContentResponse,
@@ -39,6 +39,31 @@ def _supabase_headers() -> dict:
         "Content-Type": "application/json",
         "Prefer": "return=representation",
     }
+
+
+def _registration_source_breakdown(db: Session) -> list[dict]:
+    """How people are finding the app — mobile app, plain web browser, or
+    Telegram Mini App — stamped once per account at signup (see auth.py's
+    _upsert_profile). Queried directly via SQLAlchemy since Profile already
+    maps the same underlying profiles table Supabase REST would hit."""
+    raw_counts = dict(
+        db.query(Profile.registered_via, func.count(Profile.telegram_id))
+        .group_by(Profile.registered_via)
+        .all()
+    )
+    # Rows created before this column existed have registered_via = NULL —
+    # fold those into "unknown" alongside any unrecognized value.
+    counts: dict[str, int] = {}
+    for key, count in raw_counts.items():
+        bucket = key if key in ("mobile", "web", "telegram_miniapp") else "unknown"
+        counts[bucket] = counts.get(bucket, 0) + count
+
+    total = sum(counts.values()) or 1
+    return [
+        {"source": bucket, "count": counts.get(bucket, 0), "percent": round(counts.get(bucket, 0) / total * 100, 1)}
+        for bucket in ["mobile", "web", "telegram_miniapp", "unknown"]
+        if counts.get(bucket, 0) > 0
+    ]
 
 
 def _ensure_supabase():
@@ -554,6 +579,7 @@ async def get_admin_stats(
         recent_uploads=recent_uploads,
         active_users_1h=active_1h,
         active_users_24h=active_24h,
+        registration_sources=_registration_source_breakdown(db),
     )
 
 # Audit Logs
@@ -1416,6 +1442,7 @@ async def admin_stats_overview(
         "monthly_revenue":    monthly_revenue,
         "total_users":        _count(total_users_res),
         "total_courses":      _count(total_courses_res),
+        "registration_sources": _registration_source_breakdown(db),
     }
 
 

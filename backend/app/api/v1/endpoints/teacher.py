@@ -6,7 +6,7 @@ Routes (all require Bearer JWT):
   PATCH /api/teacher/profile         — update bio, specialization, etc.
   GET  /api/teacher/profile/{id}     — public read of any teacher's profile (no auth)
 """
-from fastapi import APIRouter, HTTPException, Header
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, HttpUrl
 from typing import Optional
 import asyncio
@@ -14,8 +14,12 @@ import os
 import logging
 import httpx
 from datetime import datetime, UTC
+from sqlalchemy.orm import Session
+from sqlalchemy import func as sa_func
 
 from app.services.auth_service import decode_token_payload
+from app.db.session import get_db
+from app.models.course_models import CourseView
 
 logger = logging.getLogger(__name__)
 
@@ -256,7 +260,10 @@ async def get_teacher_profile_by_id(telegram_id: int):
 
 
 @router.get("/analytics")
-async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
+async def get_teacher_analytics(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """
     Return aggregate analytics for the calling teacher:
       - courses/enrollments totals
@@ -348,6 +355,24 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
             if sid:
                 student_completed_total[sid] = student_completed_total.get(sid, 0) + 1
 
+        # Course view stats — exact unique-student click count + total opens,
+        # so "enrolled_students / unique_viewers" gives a real click-to-buy
+        # conversion rate rather than just a raw enrollment total.
+        view_rows = (
+            db.query(
+                CourseView.course_id,
+                sa_func.count(CourseView.viewer_id).label("unique_viewers"),
+                sa_func.sum(CourseView.view_count).label("total_views"),
+            )
+            .filter(CourseView.course_id.in_(course_ids))
+            .group_by(CourseView.course_id)
+            .all()
+        )
+        views_by_course: dict[int, dict] = {
+            row.course_id: {"unique_viewers": row.unique_viewers, "total_views": int(row.total_views or 0)}
+            for row in view_rows
+        }
+
         # Build course performance rows
         for c in courses:
             cid = int(c.get("id") or 0)
@@ -358,6 +383,9 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
             completed_lessons = int(completed_count_by_course.get(cid, 0))
             total_expected = lesson_count * enrolled_students
             completion_rate = round((completed_lessons / total_expected) * 100, 1) if total_expected > 0 else 0.0
+            view_stats = views_by_course.get(cid, {"unique_viewers": 0, "total_views": 0})
+            unique_viewers = view_stats["unique_viewers"]
+            conversion_pct = round((enrolled_students / unique_viewers) * 100, 1) if unique_viewers > 0 else 0.0
             course_performance.append({
                 "course_id": cid,
                 "title": c.get("title", f"Course {cid}"),
@@ -365,6 +393,9 @@ async def get_teacher_analytics(authorization: Optional[str] = Header(None)):
                 "enrolled_students": enrolled_students,
                 "completed_lessons": completed_lessons,
                 "completion_rate": completion_rate,
+                "unique_viewers": unique_viewers,
+                "total_views": view_stats["total_views"],
+                "conversion_pct": conversion_pct,
             })
 
         course_performance.sort(key=lambda x: x["completion_rate"], reverse=True)

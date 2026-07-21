@@ -30,6 +30,11 @@ class Profile(Base):
     password_hash     = Column(Text, nullable=True)
     email             = Column(String(255), nullable=True, index=True)
     app_created_at    = Column(DateTime(timezone=True), nullable=True)
+    # How this account first signed up — stamped once at creation and never
+    # overwritten by later logins. One of 'mobile' | 'web' | 'telegram_miniapp'
+    # | 'unknown' (rows created before this column existed). Feeds the admin
+    # dashboard's registration-source breakdown.
+    registered_via    = Column(String(30), nullable=True)
     app_last_login    = Column(DateTime(timezone=True), nullable=True)
     app_online_at     = Column(DateTime(timezone=True), nullable=True)
     # Social ecosystem columns

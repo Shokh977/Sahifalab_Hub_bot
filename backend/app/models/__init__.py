@@ -7,5 +7,8 @@ from app.models.social_models import (  # noqa: F401
     Skill, SkillEndorsement, Connection,
     # 045: activity & profile views
     ActivityLog, ProfileViewLog,
+    # 079: block / report
+    UserBlock, ContentReport,
 )
 from app.models.job_models import Job, JobApplication  # noqa: F401  (045)
+from app.models.course_models import CourseView  # noqa: F401  (080)

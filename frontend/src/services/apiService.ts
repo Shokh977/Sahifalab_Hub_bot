@@ -5,6 +5,19 @@ import { API_BASE } from '../lib/apiUrl'
 
 const API_BASE_URL = API_BASE
 
+/**
+ * Lets the backend attribute a new signup to the right surface — the same
+ * frontend bundle runs both as a plain website and as a Telegram Mini App,
+ * so this is the only way the two are distinguishable server-side. Mirrors
+ * the check in hooks/usePlatform.ts (kept independent since this file isn't
+ * a React hook and runs before any component mounts).
+ */
+function clientPlatform(): 'web' | 'telegram_miniapp' {
+  const tg = (window as any).Telegram?.WebApp
+  const isTelegram = !!(tg && (tg.initData?.length > 0 || tg.initDataUnsafe?.user))
+  return isTelegram ? 'telegram_miniapp' : 'web'
+}
+
 class ApiService {
   private axiosInstance: AxiosInstance
 
@@ -22,6 +35,7 @@ class ApiService {
       if (token) {
         config.headers.Authorization = `Bearer ${token}`
       }
+      config.headers['X-Client-Platform'] = clientPlatform()
       if (import.meta.env.DEV) console.debug(`[API] → ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, config.params || '')
       return config
     })

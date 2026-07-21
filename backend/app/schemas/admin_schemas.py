@@ -195,6 +195,9 @@ class AdminStats(BaseModel):
     # Real user activity counts sourced from Supabase profiles
     active_users_1h: int = 0
     active_users_24h: int = 0
+    # How people are finding the app — mobile app / plain web / Telegram Mini
+    # App — each item shaped {"source": str, "count": int, "percent": float}
+    registration_sources: List[Dict[str, Any]] = []
 
 class AdminPanelAuthRequest(BaseModel):
     telegram_id: int
