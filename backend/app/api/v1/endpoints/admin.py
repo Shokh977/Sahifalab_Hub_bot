@@ -20,6 +20,7 @@ from app.schemas.admin_schemas import (
     AdminStats, AuditLogResponse, EnrollmentAuditLogResponse
 )
 from app.services.auth_service import decode_token_payload
+from app.core.admin_check import is_role_admin
 
 router = APIRouter()
 
@@ -92,8 +93,10 @@ async def verify_admin(
 
     telegram_id = payload["telegram_id"]
 
-    # 1. Check the hardcoded env-var list first (works even with an empty DB)
-    if telegram_id in settings.ADMIN_TELEGRAM_IDS:
+    # 1. Check the hardcoded env-var list, or Profile.role="admin" (e.g. an
+    #    admin promoted via POST /auth/admin/users/{id}/role) -- either is
+    #    sufficient, so a role promotion doesn't get silently locked out here.
+    if telegram_id in settings.ADMIN_TELEGRAM_IDS or is_role_admin(db, telegram_id):
         # Return or upsert a real AdminUser row so FK references work
         admin = db.query(AdminUser).filter(AdminUser.telegram_id == telegram_id).first()
         if not admin:

@@ -96,26 +96,14 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
-    # CORS — override via CORS_ORIGINS env var (comma-separated)
-    CORS_ORIGINS: List[str] = [
-        "http://localhost:3000",
-        "http://localhost:5173",
-        "http://localhost:8000",
-        "https://sahifalab-hub-bot.vercel.app",
-        # Allow any Vercel preview/production URL for this project
-        "https://sahifalab-hub-bot-*.vercel.app",
-        # Railway backend talking to itself (health checks etc.)
-        "https://*.up.railway.app",
-    ]
+    # NOTE: there is deliberately no CORS_ORIGINS setting here. main.py hardcodes
+    # allow_origins=["*"] with allow_credentials=False — this API is Bearer-token
+    # only (no cookies), so a wildcard origin can't be used to steal a session,
+    # and it avoids CORS-blocked errors on uploads from Telegram's in-app
+    # browser / Vercel preview URLs. A previous CORS_ORIGINS setting existed here
+    # but was never actually read by main.py — changing it silently did nothing.
+    # If origins ever need restricting, change main.py's CORSMiddleware directly.
 
-    @field_validator('CORS_ORIGINS', mode='before')
-    @classmethod
-    def parse_cors_origins(cls, v):
-        """Also accept CORS_ORIGINS as a comma-separated env var string."""
-        if isinstance(v, str):
-            return [o.strip() for o in v.split(',') if o.strip()]
-        return v
-    
     # Security — '*' allows Railway's internal hostnames
     ALLOWED_HOSTS: List[str] = ["*"]
     

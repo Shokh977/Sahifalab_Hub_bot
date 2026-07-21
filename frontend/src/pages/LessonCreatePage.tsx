@@ -23,17 +23,19 @@ import {
   LockClosedIcon,
   LockOpenIcon,
   PlayCircleIcon,
+  QuestionMarkCircleIcon,
   SparklesIcon,
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 import PageWrapper from '../components/PageWrapper'
 import VideoSourcePicker from '../components/VideoSourcePicker'
 import FileUploadWidget from '../components/FileUploadWidget'
+import QuizBuilder, { createQuestion, type QuizQuestion } from '../components/QuizBuilder'
 import apiService from '../services/apiService'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 type VideoSource = 'youtube' | 'bunny' | 'none'
-type LessonType = 'video' | 'material'
+type LessonType = 'video' | 'material' | 'quiz'
 
 type FormState = {
   title: string
@@ -47,6 +49,7 @@ type FormState = {
   duration_minutes: number
   order_index: number
   is_free: boolean
+  quiz_questions: QuizQuestion[]
 }
 
 const EMPTY: FormState = {
@@ -61,6 +64,7 @@ const EMPTY: FormState = {
   duration_minutes: 0,
   order_index: 1,
   is_free: false,
+  quiz_questions: [],
 }
 
 // ── shared styles ─────────────────────────────────────────────────────────────
@@ -107,14 +111,25 @@ const LessonCreatePage: React.FC = () => {
   useEffect(() => {
     if (!isEdit || !lessonId) return
     setStatus('loading')
+    const id = parseInt(lessonId, 10)
     apiService
-      .getLesson(parseInt(lessonId, 10))
-      .then((r) => {
+      .getLesson(id)
+      .then(async (r) => {
         const l = r.data
+        const type: LessonType = l.lesson_type === 'quiz' ? 'quiz' : (l.material_url ? 'material' : 'video')
+        let quiz_questions: QuizQuestion[] = []
+        if (type === 'quiz') {
+          try {
+            const qr = await apiService.getLessonQuiz(id)
+            quiz_questions = qr.data?.questions ?? []
+          } catch {
+            // No quiz saved yet for this lesson — start with a blank question below.
+          }
+        }
         setForm({
           title: l.title ?? '',
           description: l.description ?? '',
-          type: l.material_url ? 'material' : 'video',
+          type,
           video_url: l.video_url ?? '',
           video_source: (l.video_source ?? 'bunny') as VideoSource,
           bunny_video_id: l.bunny_video_id ?? '',
@@ -123,6 +138,7 @@ const LessonCreatePage: React.FC = () => {
           duration_minutes: l.duration_minutes ?? 0,
           order_index: l.order_index ?? 1,
           is_free: !!l.is_free,
+          quiz_questions: quiz_questions.length > 0 ? quiz_questions : (type === 'quiz' ? [createQuestion()] : []),
         })
         setStatus('idle')
       })
@@ -152,10 +168,17 @@ const LessonCreatePage: React.FC = () => {
     setStatus('saving')
     setError('')
 
+    if (form.type === 'quiz' && !form.quiz_questions.some(q => q.text.trim() && q.options.filter(o => o.text.trim()).length >= 2 && q.options.some(o => o.is_correct && o.text.trim()))) {
+      setError("Kamida bitta to'liq savol qo'shing (2+ variant, 1 ta to'g'ri javob belgilangan)")
+      setStatus('error')
+      return
+    }
+
     const payload = {
       course_id: cId,
       title: form.title.trim(),
       description: form.description.trim(),
+      lesson_type: form.type,
       video_url: form.type === 'video' ? form.video_url : '',
       video_source: form.type === 'video' ? form.video_source : ('none' as VideoSource),
       bunny_video_id: form.type === 'video' ? form.bunny_video_id : '',
@@ -167,11 +190,25 @@ const LessonCreatePage: React.FC = () => {
     }
 
     try {
+      let savedLessonId: number
       if (isEdit && lessonId) {
-        await apiService.updateLesson(parseInt(lessonId, 10), payload)
+        savedLessonId = parseInt(lessonId, 10)
+        await apiService.updateLesson(savedLessonId, payload)
       } else {
-        await apiService.createLesson(payload)
+        const res = await apiService.createLesson(payload)
+        savedLessonId = res.data?.id
       }
+
+      if (form.type === 'quiz' && savedLessonId) {
+        await apiService.saveLessonQuiz(savedLessonId, {
+          title: form.title.trim() || 'Test',
+          questions: form.quiz_questions,
+          time_limit_min: null,
+          passing_score: 70,
+          is_final: false,
+        })
+      }
+
       setStatus('saved')
       setTimeout(() => navigate(`/courses/${cId}`), 700)
     } catch (err: any) {
@@ -201,7 +238,7 @@ const LessonCreatePage: React.FC = () => {
                 {isEdit ? 'Darsni tahrirlash' : 'Yangi dars'}
               </h1>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Kurs #{cId} · {form.type === 'video' ? 'Video dars' : 'Material'}
+                Kurs #{cId} · {form.type === 'video' ? 'Video dars' : form.type === 'quiz' ? 'Test' : 'Material'}
               </p>
             </div>
             <button
@@ -273,17 +310,22 @@ const LessonCreatePage: React.FC = () => {
                 </p>
               </div>
               <div className="p-4">
-                <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
+                <div className="grid grid-cols-3 gap-2 rounded-xl bg-slate-100 p-1 dark:bg-slate-800/60">
                   {([
                     { type: 'video' as LessonType, icon: PlayCircleIcon, label: 'Video dars' },
                     { type: 'material' as LessonType, icon: DocumentTextIcon, label: 'Material' },
+                    { type: 'quiz' as LessonType, icon: QuestionMarkCircleIcon, label: 'Test' },
                   ]).map((item) => {
                     const active = form.type === item.type
                     return (
                       <button
                         key={item.type}
                         type="button"
-                        onClick={() => setForm((p) => ({ ...p, type: item.type }))}
+                        onClick={() => setForm((p) => ({
+                          ...p,
+                          type: item.type,
+                          quiz_questions: item.type === 'quiz' && p.quiz_questions.length === 0 ? [createQuestion()] : p.quiz_questions,
+                        }))}
                         className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-xs font-semibold transition ${
                           active
                             ? 'bg-white text-[#F26722] shadow-sm dark:bg-slate-900'
@@ -472,6 +514,42 @@ const LessonCreatePage: React.FC = () => {
                         className={inputCls}
                       />
                     </Field>
+                    <Field label="Tartib raqami">
+                      <input
+                        type="number"
+                        value={form.order_index}
+                        onChange={(e) =>
+                          setForm((p) => ({
+                            ...p,
+                            order_index: parseInt(e.target.value) || 1,
+                          }))
+                        }
+                        min={1}
+                        className={inputCls}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+
+            {form.type === 'quiz' && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className={`${cardCls} overflow-hidden`}
+              >
+                <div className="bg-gradient-to-r from-violet-500/5 to-transparent px-5 py-3.5 dark:from-violet-500/10">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-600 dark:text-violet-400">
+                    Test savollari
+                  </p>
+                </div>
+                <div className="space-y-4 p-5">
+                  <QuizBuilder
+                    questions={form.quiz_questions}
+                    onChange={(quiz_questions) => setForm((p) => ({ ...p, quiz_questions }))}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
                     <Field label="Tartib raqami">
                       <input
                         type="number"

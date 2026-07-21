@@ -14,6 +14,7 @@ interface Props {
   title?: string
   description?: string
   confirmLabel?: string
+  loadingLabel?: string
   loading?: boolean
   onConfirm: () => void
   onCancel: () => void
@@ -24,6 +25,7 @@ const DeleteConfirmModal: React.FC<Props> = ({
   title = "O'chirishni tasdiqlang",
   description = "Bu amalni ortga qaytarib bo'lmaydi.",
   confirmLabel = "O'chirish",
+  loadingLabel,
   loading = false,
   onConfirm,
   onCancel,
@@ -80,7 +82,7 @@ const DeleteConfirmModal: React.FC<Props> = ({
                 disabled={loading}
                 className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white bg-red-500 hover:bg-red-600 transition-colors active:scale-95 disabled:opacity-50"
               >
-                {loading ? "O'chirilmoqda..." : confirmLabel}
+                {loading ? (loadingLabel ?? "O'chirilmoqda...") : confirmLabel}
               </button>
             </div>
           </motion.div>

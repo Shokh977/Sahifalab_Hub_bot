@@ -224,7 +224,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [])
 
   // ── Listen for apiService token-expiry signal ──────────────────────────────
-  // When the interceptor detects a 401 on /api/auth/me, it dispatches 'auth:expired'.
+  // When the interceptor sees a 401 from any endpoint, it dispatches 'auth:expired'.
   // We clear the in-memory state here so the next AuthGuard check redirects to login.
   useEffect(() => {
     const handler = () => { setToken(null); setWebUser(null) }

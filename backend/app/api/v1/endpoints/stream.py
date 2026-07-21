@@ -24,10 +24,13 @@ import httpx
 from fastapi import APIRouter, HTTPException, Depends, Header, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.db.session import get_db
 from app.services.auth_service import decode_token_payload
 from app.services import bunny_stream_service as bss
+from app.core.admin_check import is_role_admin
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +91,7 @@ def _ensure_stream():
         )
 
 
-async def _check_video_access(video_id: str, caller_id: int):
+async def _check_video_access(video_id: str, caller_id: int, db: Session):
     """Verify the caller can access the lesson that owns this Bunny video."""
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.get(
@@ -120,7 +123,7 @@ async def _check_video_access(video_id: str, caller_id: int):
     crows = res.json() if res.status_code == 200 else []
     teacher_id = crows[0]["teacher_id"] if crows else None
 
-    if caller_id == teacher_id or caller_id in ADMIN_IDS:
+    if caller_id == teacher_id or caller_id in ADMIN_IDS or is_role_admin(db, caller_id):
         return lesson
 
     # Check active enrollment
@@ -281,6 +284,7 @@ async def get_video_status(
 async def get_embed_url(
     video_id: str,
     authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     """
     Get a time-limited signed embed URL for the Bunny Stream player.
@@ -304,7 +308,7 @@ async def get_embed_url(
     _ensure_stream()
 
     # Enrollment / ownership check — raises 403 if not authorized
-    await _check_video_access(video_id, tid)
+    await _check_video_access(video_id, tid, db)
 
     embed = bss.signed_embed_url(video_id, expires_seconds=14400)
     hls = bss.signed_hls_url(video_id, expires_seconds=14400)

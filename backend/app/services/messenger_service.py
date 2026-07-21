@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.models.social_models import Conversation, DirectMessage, MessageReaction
 from app.models.models import Profile
+from app.services.social_service import is_blocked
 
 
 def _profile_brief(p: Profile) -> dict:
@@ -173,6 +174,10 @@ def send_message(
         raise ValueError("Conversation not found")
     if sender_id not in (conv.participant_a, conv.participant_b):
         raise ValueError("Not a participant")
+
+    other_id = conv.participant_b if sender_id == conv.participant_a else conv.participant_a
+    if is_blocked(db, sender_id, other_id):
+        raise ValueError("Xabar yuborib bo'lmaydi")
 
     msg = DirectMessage(
         conversation_id=conversation_id,

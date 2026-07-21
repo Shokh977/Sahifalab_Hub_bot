@@ -12,13 +12,16 @@ Endpoints:
 
 All reads use targeted column selection (never SELECT *).
 """
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional, List
 import os, logging, httpx, json, asyncio
 from functools import partial
+from sqlalchemy.orm import Session
 
 from app.services.auth_service import decode_token
+from app.db.session import get_db
+from app.core.admin_check import is_role_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/notifications", tags=["notifications"])
@@ -203,6 +206,7 @@ class CreateNotificationRequest(BaseModel):
 async def create_notification(
     body: CreateNotificationRequest,
     authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     """
     Create a notification for a user.
@@ -211,7 +215,7 @@ async def create_notification(
     tid = await _get_tid(authorization)
     # Restrict: users can only notify themselves; admins can target anyone
     admin_ids = [int(x) for x in os.getenv("ADMIN_TELEGRAM_IDS", "").split(",") if x.strip().isdigit()]
-    if body.user_id != tid and tid not in admin_ids:
+    if body.user_id != tid and tid not in admin_ids and not is_role_admin(db, tid):
         raise HTTPException(403, "Siz faqat o'zingizga bildirishnoma yaratishingiz mumkin")
     try:
         async with httpx.AsyncClient(timeout=10) as client:

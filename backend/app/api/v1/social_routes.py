@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
+from pydantic import BaseModel
 from app.schemas.social_schemas import PostCreate, PostUpdate, CommentCreate, CommentUpdate, BulkViewRequest
 from app.services import social_service as svc
 from app.api.v1.endpoints.notifications import send_notification
@@ -447,6 +448,59 @@ def unfollow_user(
     user_id: int = Depends(get_current_user_id),
 ):
     svc.unfollow_user(db, user_id, target_id)
+    return {"ok": True}
+
+
+@router.post("/users/{target_id}/block")
+def block_user(
+    target_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    if not svc.block_user(db, user_id, target_id):
+        raise HTTPException(400, "Cannot block (already blocked or self)")
+    return {"ok": True}
+
+
+@router.delete("/users/{target_id}/block")
+def unblock_user(
+    target_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    svc.unblock_user(db, user_id, target_id)
+    return {"ok": True}
+
+
+@router.get("/users/blocked")
+def list_blocked_users(
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    return {"blocked_ids": svc.get_blocked_user_ids(db, user_id)}
+
+
+REPORT_REASONS = {"spam", "harassment", "inappropriate_content", "impersonation", "other"}
+
+
+class ReportCreate(BaseModel):
+    target_type: str
+    target_id: int
+    reason: str
+    details: Optional[str] = None
+
+
+@router.post("/reports")
+def report_content(
+    body: ReportCreate,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+):
+    if body.target_type not in ("post", "user"):
+        raise HTTPException(422, "target_type must be 'post' or 'user'")
+    if body.reason not in REPORT_REASONS:
+        raise HTTPException(422, f"reason must be one of {sorted(REPORT_REASONS)}")
+    svc.create_report(db, user_id, body.target_type, body.target_id, body.reason, body.details)
     return {"ok": True}
 
 

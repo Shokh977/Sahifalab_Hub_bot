@@ -7,6 +7,7 @@ from app.schemas.schemas import ResourceResponse, ResourceCreate
 from app.services.auth_service import decode_token_payload
 from app.core.config import settings
 from app.models.admin_models import AdminUser
+from app.core.admin_check import is_role_admin
 
 router = APIRouter()
 
@@ -25,7 +26,7 @@ async def _require_admin(
     if not payload:
         raise HTTPException(401, "Token muddati tugagan")
     telegram_id = payload["telegram_id"]
-    if telegram_id in settings.ADMIN_TELEGRAM_IDS:
+    if telegram_id in settings.ADMIN_TELEGRAM_IDS or is_role_admin(db, telegram_id):
         return telegram_id
     admin = db.query(AdminUser).filter(
         AdminUser.telegram_id == telegram_id,

@@ -13,7 +13,7 @@
 
 import React, { useState, useEffect, useRef } from 'react'
 import {
-  Star, MessageCircle, Trash2, Pencil, MoreHorizontal,
+  Star, MessageCircle, Trash2, Pencil, MoreHorizontal, Flag,
   Loader2, X, Check, Repeat2, Eye, Bookmark, CheckCircle2,
   Award, BadgeCheck, Share2,
   Heart, CornerDownRight, ChevronDown, ChevronUp,
@@ -23,6 +23,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import type { UserIdentityUser } from './UserIdentity'
 import DeleteConfirmModal from './DeleteConfirmModal'
+import ReportModal from './ReportModal'
 import { linkify } from '../../utils/linkify'
 import api from '../../services/apiService'
 
@@ -294,6 +295,7 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
   const [savingEdit, setSavingEdit] = useState(false)
   const [displayContent, setDisplayContent] = useState(post.content)
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'post' | 'comment'; id: number } | null>(null)
+  const [showReport, setShowReport] = useState(false)
   const [deleting,     setDeleting]     = useState(false)
   const [pollMeta, setPollMeta] = useState(post.post_metadata)
 
@@ -546,32 +548,42 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
 
           <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
             <span className="text-[11px] text-white/30">{timeAgo(post.created_at)}</span>
-            {isOwner && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowMenu(!showMenu)}
-                  className="p-1 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
-                >
-                  <MoreHorizontal className="w-4 h-4" />
-                </button>
-                {showMenu && (
-                  <div className="absolute right-0 top-7 z-20 w-36 rounded-xl border border-white/[0.08] bg-[#1c1d27] shadow-2xl py-1">
+            <div className="relative">
+              <button
+                onClick={() => setShowMenu(!showMenu)}
+                aria-label="Ko'proq"
+                className="p-1 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/[0.06] transition-colors"
+              >
+                <MoreHorizontal className="w-4 h-4" />
+              </button>
+              {showMenu && (
+                <div className="absolute right-0 top-7 z-20 w-36 rounded-xl border border-white/[0.08] bg-[#1c1d27] shadow-2xl py-1">
+                  {isOwner ? (
+                    <>
+                      <button
+                        onClick={() => { setEditText(displayContent); setEditing(true); setShowMenu(false) }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-white/70 hover:bg-white/[0.06] transition-colors"
+                      >
+                        <Pencil className="w-3.5 h-3.5" /> Tahrirlash
+                      </button>
+                      <button
+                        onClick={() => { setShowMenu(false); setDeleteTarget({ type: 'post', id: post.id }) }}
+                        className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> O'chirish
+                      </button>
+                    </>
+                  ) : (
                     <button
-                      onClick={() => { setEditText(displayContent); setEditing(true); setShowMenu(false) }}
+                      onClick={() => { setShowMenu(false); setShowReport(true) }}
                       className="flex items-center gap-2 w-full px-3 py-2 text-sm text-white/70 hover:bg-white/[0.06] transition-colors"
                     >
-                      <Pencil className="w-3.5 h-3.5" /> Tahrirlash
+                      <Flag className="w-3.5 h-3.5" /> Shikoyat qilish
                     </button>
-                    <button
-                      onClick={() => { setShowMenu(false); setDeleteTarget({ type: 'post', id: post.id }) }}
-                      className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> O'chirish
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -957,6 +969,13 @@ const PostCard: React.FC<Props> = ({ post, currentUserId, onLike, onUnlike, onDe
           loading={deleting}
         />
       )}
+
+      <ReportModal
+        open={showReport}
+        targetType="post"
+        targetId={post.id}
+        onClose={() => setShowReport(false)}
+      />
     </>
   )
 }

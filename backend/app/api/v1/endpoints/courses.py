@@ -27,6 +27,7 @@ import re
 
 from app.services.auth_service import decode_token
 from app.db.session import get_db
+from app.core.admin_check import is_role_admin
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from starlette.concurrency import run_in_threadpool
@@ -179,7 +180,11 @@ async def list_my_courses(authorization: Optional[str] = Header(None)):
 
 
 @router.get("/{course_id}")
-async def get_course(course_id: int, authorization: Optional[str] = Header(None)):
+async def get_course(
+    course_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     """Public: get a published course. Owner/admin can also see unpublished."""
     _ensure_supabase()
 
@@ -211,7 +216,7 @@ async def get_course(course_id: int, authorization: Optional[str] = Header(None)
     if not course["is_published"]:
         if caller_id is None:
             raise HTTPException(status_code=404, detail="Course not found")
-        if caller_id != course["teacher_id"] and caller_id not in ADMIN_IDS:
+        if caller_id != course["teacher_id"] and caller_id not in ADMIN_IDS and not is_role_admin(db, caller_id):
             raise HTTPException(status_code=404, detail="Course not found")
 
     return course
@@ -370,7 +375,7 @@ async def update_course(
     if not rows:
         raise HTTPException(status_code=404, detail="Course not found")
     existing_course = rows[0]
-    if existing_course["teacher_id"] != caller_id and caller_id not in ADMIN_IDS:
+    if existing_course["teacher_id"] != caller_id and caller_id not in ADMIN_IDS and not is_role_admin(db, caller_id):
         raise HTTPException(status_code=403, detail="Not your course")
 
     patch = {k: v for k, v in body.model_dump().items() if v is not None}
@@ -536,6 +541,7 @@ async def rate_course(
 async def delete_course(
     course_id: int,
     authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     """Teacher: delete own course. Admin: delete any course."""
     caller_id = await _resolve_teacher_id(authorization)
@@ -550,7 +556,7 @@ async def delete_course(
     rows = chk.json() if chk.status_code == 200 else []
     if not rows:
         raise HTTPException(status_code=404, detail="Course not found")
-    if rows[0]["teacher_id"] != caller_id and caller_id not in ADMIN_IDS:
+    if rows[0]["teacher_id"] != caller_id and caller_id not in ADMIN_IDS and not is_role_admin(db, caller_id):
         raise HTTPException(status_code=403, detail="Not your course")
 
     async with httpx.AsyncClient(timeout=10) as client:

@@ -26,6 +26,7 @@ import {
   Users, Video, Zap, Award, ChevronRight, Flame,
 } from 'lucide-react'
 import VideoPlayer from '../components/VideoPlayer'
+import LessonQuizPlayer from '../components/LessonQuizPlayer'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import UnifiedComment from '../components/social/UnifiedComment'
 import type { UnifiedCommentData } from '../components/social/UnifiedComment'
@@ -803,7 +804,13 @@ const CourseDetailPage: React.FC = () => {
 
             {/* Video player — rounded-[24px] */}
             <div className="rounded-[24px] overflow-hidden bg-black shadow-bento dark:shadow-glass-lg">
-              {(activeLesson?.video_url || activeLesson?.embed_url) ? (
+              {activeLesson?.lesson_type === 'quiz' ? (
+                <LessonQuizPlayer
+                  key={activeLesson.id}
+                  lessonId={activeLesson.id}
+                  onPassed={() => handleMarkLessonCompleted(activeLesson.id)}
+                />
+              ) : (activeLesson?.video_url || activeLesson?.embed_url) ? (
                 <div className="aspect-video">
                   <VideoPlayer
                     videoSource={activeLesson.video_source ?? 'bunny'}

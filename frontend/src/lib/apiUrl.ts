@@ -8,9 +8,16 @@
  *  • Strips trailing slash
  *  • Auto-upgrades http → https on non-localhost URLs (prevents mixed-content)
  */
-const raw = (
-  (import.meta.env.VITE_API_URL as string | undefined) || 'http://localhost:8000'
-)
+const envUrl = import.meta.env.VITE_API_URL as string | undefined
+
+// A production build missing VITE_API_URL must fail loudly at load time —
+// silently falling back to localhost:8000 would point every real user's API
+// traffic at their own machine, producing total, unexplained API failures.
+if (!envUrl && import.meta.env.PROD) {
+  throw new Error('VITE_API_URL is not set — refusing to fall back to localhost in a production build.')
+}
+
+const raw = (envUrl || 'http://localhost:8000')
   .replace(/\/+$/, '')                                              // strip trailing /
   .replace(/^http:\/\/(?!localhost|127\.0\.0\.1)/, 'https://')      // force HTTPS in production
 

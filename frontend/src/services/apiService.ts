@@ -39,10 +39,15 @@ class ApiService {
         // Only log details to console (developer eyes only)
         console.error(`[API] ❌ ${status} ${url}`, detail, error?.response?.data)
 
-        // 401 on /api/auth/me means the stored JWT is definitively invalid — clear it.
-        // We do NOT clear on other 401s (e.g. a single endpoint requiring extra perms)
-        // because that would silently log the user out mid-session.
-        if (status === 401 && url.includes('/api/auth/me')) {
+        // A 401 (Unauthorized) means the Bearer token itself is missing/invalid/
+        // expired — that's true regardless of which endpoint returned it; a
+        // "you're logged in but lack permission for this" case is a 403, not a
+        // 401 (see the 403 branch below). Previously this only cleared the
+        // token when the 401 came from /api/auth/me specifically, so an
+        // expired session on any other endpoint left isAuthenticated stuck
+        // "true" forever — the user saw a login-again toast on every action
+        // with no way to actually recover short of clearing browser storage.
+        if (status === 401) {
           localStorage.removeItem('auth_token')
           localStorage.removeItem('tma_auth_token')
           window.dispatchEvent(new CustomEvent('auth:expired'))
@@ -753,6 +758,43 @@ class ApiService {
     is_final:       boolean
   }) {
     return this.axiosInstance.put(`/api/tests/${lessonId}/questions`, data)
+  }
+
+  /** Block a user — stops messaging in both directions and hides their posts from your feed */
+  async blockUser(targetId: number) {
+    return this.axiosInstance.post(`/api/v1/social/users/${targetId}/block`)
+  }
+
+  async unblockUser(targetId: number) {
+    return this.axiosInstance.delete(`/api/v1/social/users/${targetId}/block`)
+  }
+
+  async getBlockedUsers() {
+    return this.axiosInstance.get(`/api/v1/social/users/blocked`)
+  }
+
+  /** Report a post or user for moderator review */
+  async reportContent(targetType: 'post' | 'user', targetId: number, reason: string, details?: string) {
+    return this.axiosInstance.post('/api/v1/social/reports', { target_type: targetType, target_id: targetId, reason, details })
+  }
+
+  /** Teacher: get existing quiz questions (with correct answers) for a lesson being edited */
+  async getLessonQuiz(lessonId: number) {
+    return this.axiosInstance.get(`/api/tests/${lessonId}`)
+  }
+
+  /** Start (or restart) a lesson-quiz attempt. Returns shuffled questions with no answers. */
+  async startLessonQuizAttempt(lessonId: number) {
+    return this.axiosInstance.post(`/api/tests/${lessonId}/attempts`)
+  }
+
+  /** Submit answers for a lesson-quiz attempt and get the scored result. */
+  async submitLessonQuizAttempt(
+    testId: number,
+    attemptId: number,
+    answers: { question_id: number; selected_option_id?: number | null; text?: string | null }[],
+  ) {
+    return this.axiosInstance.post(`/api/tests/${testId}/attempts/${attemptId}/submit`, { answers })
   }
 
   // ─── Bunny Stream ─────────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.models.admin_models import AmbientSound, AdminUser
 from app.schemas.admin_schemas import AmbientSoundResponse
 from app.services.auth_service import decode_token_payload
+from app.core.admin_check import is_role_admin
 from fastapi import Header
 from typing import Optional
 
@@ -42,7 +43,7 @@ async def _verify_admin_jwt(authorization: Optional[str], db: Session) -> AdminU
 
 
 async def _verify_admin(telegram_id: int, db: Session):
-    if telegram_id in settings.ADMIN_TELEGRAM_IDS:
+    if telegram_id in settings.ADMIN_TELEGRAM_IDS or is_role_admin(db, telegram_id):
         admin = db.query(AdminUser).filter(AdminUser.telegram_id == telegram_id).first()
         if not admin:
             admin = AdminUser(telegram_id=telegram_id, role="admin", is_active=True)

@@ -8,7 +8,7 @@ from sqlalchemy import desc, func, and_, or_, exists, text
 from sqlalchemy.orm import Session
 
 from datetime import datetime, timezone
-from app.models.social_models import Post, PostLike, PostComment, CommentLike, Follow, Repost, PostSave, PollVote
+from app.models.social_models import Post, PostLike, PostComment, CommentLike, Follow, Repost, PostSave, PollVote, UserBlock, ContentReport
 from app.models.models import Profile
 
 
@@ -239,10 +239,23 @@ def get_feed(
     except Exception:
         pass
 
-    visible_ids = set(following_ids) | set(connection_ids) | {user_id}
+    blocked_ids = set(get_blocked_user_ids(db, user_id))
+    visible_ids = (set(following_ids) | set(connection_ids) | {user_id}) - blocked_ids
 
     # 1. Regular posts
-    regular_posts: List[Post] = db.query(Post).filter(Post.author_id.in_(visible_ids)).all()
+    # Fetch a bounded, most-recent candidate pool to score, then paginate --
+    # not the full history of every followed/connected author. Without this
+    # cap, the query (and the in-Python scoring/sort below) grows unbounded
+    # as a user follows more people and those people post more, which will
+    # visibly slow the feed down for exactly the most active users.
+    feed_pool_limit = min(500, page_size * 10)
+    regular_posts: List[Post] = (
+        db.query(Post)
+        .filter(Post.author_id.in_(visible_ids))
+        .order_by(desc(Post.created_at))
+        .limit(feed_pool_limit)
+        .all()
+    )
     regular_post_ids = {p.id for p in regular_posts}
 
     # 2. Reposts by followed/connected users
@@ -254,6 +267,8 @@ def get_feed(
             .join(Post, Post.id == Repost.original_post_id)
             .filter(Repost.user_id.in_(repost_user_ids))
             .filter(Post.id.notin_(regular_post_ids) if regular_post_ids else True)
+            .order_by(desc(Repost.created_at))
+            .limit(feed_pool_limit)
             .all()
         )
 
@@ -276,7 +291,19 @@ def get_feed(
 
     # Sort by score DESC, then recency as tiebreaker
     candidates.sort(key=lambda x: (x[0], x[1]), reverse=True)
-    total = len(candidates)
+
+    # True counts via COUNT queries (not len(candidates)) -- candidates is
+    # capped to feed_pool_limit above, so len() would under-report `total`
+    # and make has_more go false prematurely once a feed exceeds the pool.
+    total = db.query(Post).filter(Post.author_id.in_(visible_ids)).count()
+    if following_ids or connection_ids:
+        total += (
+            db.query(Repost)
+            .join(Post, Post.id == Repost.original_post_id)
+            .filter(Repost.user_id.in_(repost_user_ids))
+            .filter(Post.id.notin_(regular_post_ids) if regular_post_ids else True)
+            .count()
+        )
 
     paginated = candidates[(page - 1) * page_size : page * page_size]
     if not paginated:
@@ -334,15 +361,21 @@ def get_explore(
     page_size: int = 20,
 ) -> dict:
     """Kashfiyot feed: all posts, scored by engagement + author reputation + recency."""
+    blocked_ids = get_blocked_user_ids(db, user_id)
     # Fetch a larger pool to score, then paginate (efficient for ~900 users)
     pool_limit = min(200, page_size * 10)
+    posts_query = db.query(Post)
+    total_query = db.query(Post)
+    if blocked_ids:
+        posts_query = posts_query.filter(Post.author_id.notin_(blocked_ids))
+        total_query = total_query.filter(Post.author_id.notin_(blocked_ids))
     posts: List[Post] = (
-        db.query(Post)
+        posts_query
         .order_by(desc(Post.created_at))
         .limit(pool_limit)
         .all()
     )
-    total = db.query(Post).count()
+    total = total_query.count()
 
     # Batch-load authors for reputation scoring
     author_ids = list({p.author_id for p in posts})
@@ -829,6 +862,59 @@ def is_following(db: Session, follower_id: int, following_id: int) -> bool:
             Follow.following_id == following_id,
         ))
     ).scalar()
+
+
+def block_user(db: Session, blocker_id: int, blocked_id: int) -> bool:
+    if blocker_id == blocked_id:
+        return False
+    existing = db.query(UserBlock).filter(
+        UserBlock.blocker_id == blocker_id, UserBlock.blocked_id == blocked_id
+    ).first()
+    if existing:
+        return False
+    db.add(UserBlock(blocker_id=blocker_id, blocked_id=blocked_id))
+    db.commit()
+    return True
+
+
+def unblock_user(db: Session, blocker_id: int, blocked_id: int) -> bool:
+    block = db.query(UserBlock).filter(
+        UserBlock.blocker_id == blocker_id, UserBlock.blocked_id == blocked_id
+    ).first()
+    if not block:
+        return False
+    db.delete(block)
+    db.commit()
+    return True
+
+
+def is_blocked(db: Session, user_a: int, user_b: int) -> bool:
+    """True if either user has blocked the other (blocking is symmetric for enforcement)."""
+    return db.query(
+        exists().where(or_(
+            and_(UserBlock.blocker_id == user_a, UserBlock.blocked_id == user_b),
+            and_(UserBlock.blocker_id == user_b, UserBlock.blocked_id == user_a),
+        ))
+    ).scalar()
+
+
+def get_blocked_user_ids(db: Session, user_id: int) -> List[int]:
+    """IDs the given user has personally blocked (one-directional — for feed filtering)."""
+    return [r[0] for r in db.query(UserBlock.blocked_id).filter(UserBlock.blocker_id == user_id).all()]
+
+
+def create_report(db: Session, reporter_id: int, target_type: str, target_id: int, reason: str, details: Optional[str] = None) -> ContentReport:
+    report = ContentReport(
+        reporter_id=reporter_id,
+        target_type=target_type,
+        target_id=target_id,
+        reason=reason,
+        details=details,
+    )
+    db.add(report)
+    db.commit()
+    db.refresh(report)
+    return report
 
 
 def get_followers(db: Session, user_id: int, page: int = 1, page_size: int = 50) -> List[dict]:

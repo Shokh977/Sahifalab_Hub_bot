@@ -22,6 +22,7 @@ from app.models.admin_models import AdminUser
 from app.services.integration_service import hook_quiz_passed
 from app.services.xp_service import add_xp, DEFAULT_QUIZ_XP
 from app.services.challenge_service import record_challenge_progress
+from app.core.admin_check import is_role_admin
 
 router = APIRouter()
 
@@ -55,7 +56,7 @@ async def _require_admin(
     if not payload:
         raise HTTPException(401, "Token muddati tugagan")
     telegram_id = payload["telegram_id"]
-    if telegram_id in settings.ADMIN_TELEGRAM_IDS:
+    if telegram_id in settings.ADMIN_TELEGRAM_IDS or is_role_admin(db, telegram_id):
         return telegram_id
     admin = db.query(AdminUser).filter(
         AdminUser.telegram_id == telegram_id,
@@ -224,6 +225,8 @@ async def verify_quiz(
         )
 
     # ── Award XP + fire hook on first pass ───────────────────────────────────
+    challenges_completed:  list = []
+    challenges_progressed: list = []
     if xp_awarded:
         try:
             add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
@@ -234,7 +237,9 @@ async def verify_quiz(
                 telegram_id, DEFAULT_QUIZ_XP, exc_info=True,
             )
         try:
-            record_challenge_progress(db, telegram_id, "tests_passed", 1, occurred_at=datetime.now(UTC))
+            challenges_completed, challenges_progressed = record_challenge_progress(
+                db, telegram_id, "tests_passed", 1, occurred_at=datetime.now(UTC),
+            )
             db.commit()
         except Exception:
             db.rollback()
@@ -263,6 +268,8 @@ async def verify_quiz(
         result_token=f"{ts}:{token}",
         is_first_attempt=xp_awarded,
         already_passed=already_passed,
+        challenges_completed=challenges_completed,
+        challenges_progressed=challenges_progressed,
     )
 
 

@@ -200,8 +200,12 @@ const TaskCard: React.FC<TaskCardProps> = ({ task, overlay, onPlay, onDelete, on
         </span>
 
         <div className="flex items-center gap-1">
-          {/* Mobile: move dropdown */}
-          <div className="relative md:hidden">
+          {/* Move dropdown — the non-drag way to change a task's status. Kept
+              visible at every viewport width (not just mobile): drag-and-drop
+              here only wires a PointerSensor, so on desktop/tablet widths this
+              dropdown is the only way a keyboard-only or assistive-tech user
+              can change a task's column at all. */}
+          <div className="relative">
             <button
               onClick={() => setShowMoveMenu(!showMoveMenu)}
               className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"

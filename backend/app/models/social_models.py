@@ -121,6 +121,45 @@ class CommentLike(Base):
     )
 
 
+class UserBlock(Base):
+    """One user blocking another — blocks messaging in both directions and
+    hides the blocked user's posts/reposts from the blocker's feed."""
+    __tablename__ = "user_blocks"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    blocker_id  = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    blocked_id  = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("blocker_id", "blocked_id", name="uq_user_block"),
+        CheckConstraint("blocker_id != blocked_id", name="chk_no_self_block"),
+        Index("ix_user_blocks_blocker", "blocker_id"),
+        Index("ix_user_blocks_blocked", "blocked_id"),
+    )
+
+
+class ContentReport(Base):
+    """A user report against a post or another user, for moderator review."""
+    __tablename__ = "content_reports"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    reporter_id = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    target_type = Column(String(20), nullable=False)   # 'post' | 'user'
+    target_id   = Column(BigInteger, nullable=False)    # posts.id or profiles.telegram_id, depending on target_type
+    reason      = Column(String(50), nullable=False)    # short reason code, e.g. 'spam' | 'harassment' | 'other'
+    details     = Column(Text, nullable=True)           # optional free-text from the reporter
+    status      = Column(String(20), nullable=False, server_default="pending")  # 'pending' | 'reviewed' | 'dismissed'
+    created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("target_type IN ('post', 'user')", name="chk_report_target_type"),
+        Index("ix_content_reports_reporter", "reporter_id"),
+        Index("ix_content_reports_target", "target_type", "target_id"),
+        Index("ix_content_reports_status", "status"),
+    )
+
+
 class Follow(Base):
     __tablename__ = "follows"
 

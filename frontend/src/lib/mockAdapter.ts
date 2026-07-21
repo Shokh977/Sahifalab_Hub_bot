@@ -26,6 +26,20 @@ import { MOCK_NOTIFICATIONS, computeUniqueSenderCount } from './mock_notificatio
 
 export const DEV_MOCK = import.meta.env.VITE_DEV_MOCK === 'true'
 
+// Hard stop: a production build must never serve mock data to a real user.
+// VITE_DEV_MOCK is a build-time flag with no runtime/hostname check behind
+// it — .env.local (loaded in every Vite mode, production included, unless
+// a .env.production.local overrides it) is the one place this can leak in
+// silently. main.ts also silences console.* in prod, so without this throw
+// there would be no warning of any kind if this ever ships.
+if (DEV_MOCK && import.meta.env.PROD) {
+  throw new Error(
+    'VITE_DEV_MOCK=true in a production build — refusing to start. ' +
+    'This would serve 100% fake mock data to real users. Check .env.local ' +
+    'and the hosting provider\'s production environment variables.'
+  )
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Build a fake AxiosResponse */

@@ -643,7 +643,9 @@ const AdminPage: React.FC = () => {
       setAuthError('To\'g\'ri Telegram ID kiriting')
       return
     }
-    // Verify by fetching stats — if 403, not an admin
+    // Only grant access on an explicit successful (200) response from the
+    // server. Any failure — 403, network error, timeout, 500 — must deny
+    // access; it must never fall through to setAdminId.
     try {
       await apiService.getAdminStats(id)
       setAdminId(id)
@@ -652,8 +654,7 @@ const AdminPage: React.FC = () => {
       if (err?.response?.status === 403) {
         setAuthError('❌ Sizda admin huquqi yo\'q')
       } else {
-        // Connection error but still proceed (offline dev)
-        setAdminId(id)
+        setAuthError('❌ Serverga ulanib bo\'lmadi. Qayta urinib ko\'ring')
       }
     }
   }

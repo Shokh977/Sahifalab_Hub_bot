@@ -235,6 +235,8 @@ class QuizVerifyResponse(BaseModel):
     result_token: str          # HMAC-signed — prevents forged certificates
     is_first_attempt: bool     # True if first passing completion (XP awarded)
     already_passed: bool = False  # True if user already passed this quiz before
+    challenges_completed: List[dict] = []
+    challenges_progressed: List[dict] = []
 
 # AI Schemas
 class BookSummarizerRequest(BaseModel):

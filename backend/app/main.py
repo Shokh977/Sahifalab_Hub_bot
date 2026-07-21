@@ -243,10 +243,17 @@ async def startup_event():
     # ── SECRET_KEY guard ─────────────────────────────────────────────────────
     _DEFAULT_SECRET = "CHANGE-ME-IN-PRODUCTION-SET-SECRET_KEY-ENV"
     if settings.SECRET_KEY == _DEFAULT_SECRET:
-        logger.critical(
-            "SECURITY WARNING: SECRET_KEY is still the default placeholder! "
-            "JWT tokens can be forged. Set a secure SECRET_KEY env var on Railway."
-        )
+        if settings.DEBUG:
+            logger.critical(
+                "SECURITY WARNING: SECRET_KEY is still the default placeholder! "
+                "JWT tokens can be forged. Set a secure SECRET_KEY env var on Railway. "
+                "Continuing because DEBUG=True."
+            )
+        else:
+            raise RuntimeError(
+                "SECRET_KEY is still the default placeholder. Refusing to start "
+                "outside DEBUG mode — set a secure SECRET_KEY env var on Railway."
+            )
 
     from app.db.session import engine
     from sqlalchemy import text as _sa_text

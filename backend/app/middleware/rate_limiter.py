@@ -1,4 +1,5 @@
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
+from fastapi.responses import JSONResponse
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Dict, Tuple
@@ -36,16 +37,20 @@ class RateLimiter:
     def get_client_id(self, request: Request) -> str:
         """
         Extract client identifier from request.
-        Uses X-Forwarded-For header (set by Railway/proxy) with
-        fallback to request.client.host.
-        Takes the leftmost (original client) IP from X-Forwarded-For.
+
+        X-Forwarded-For is client-suppliable: proxies APPEND to it, they don't
+        replace it, so a request that reaches Railway with a hand-crafted
+        "X-Forwarded-For: 1.2.3.4" already on it arrives at this app as
+        "1.2.3.4, <real-client-ip-as-seen-by-railway>" — the leftmost entry is
+        never trustworthy. Railway sits directly in front of this app as the
+        only hop, so the RIGHTMOST entry is the one Railway itself appended
+        from the actual TCP connection, which the client cannot forge.
         """
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
-            # X-Forwarded-For: client, proxy1, proxy2 — take the leftmost
-            client_ip = forwarded.split(",")[0].strip()
-            if client_ip:
-                return client_ip
+            parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+            if parts:
+                return parts[-1]
         return request.client.host if request.client else "unknown"
     
     async def _evict_stale_entries(self):
@@ -163,12 +168,19 @@ async def rate_limit_middleware(request: Request, call_next):
         # Get remaining requests info
         remaining = await rate_limiter.get_remaining_requests(request)
 
-        raise HTTPException(
+        # `detail` is a plain string here to match every other endpoint's error
+        # shape (see app/utils/error_handler.py's removal — the rest of the API
+        # already relies on `detail` being a displayable string, e.g. via
+        # apiService.ts's `error?.response?.data?.detail` on the frontend).
+        # The quota numbers still ride along as headers instead of being
+        # buried in a nested detail object.
+        return JSONResponse(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={
-                "code": "RATE_LIMIT_EXCEEDED",
-                "message": "Too many requests. Please try again later.",
-                "remaining": remaining,
+            content={"detail": "Too many requests. Please try again later."},
+            headers={
+                "X-RateLimit-Remaining-Minute": str(remaining["remaining_per_minute"]),
+                "X-RateLimit-Remaining-Hour": str(remaining["remaining_per_hour"]),
+                "X-RateLimit-Remaining-Day": str(remaining["remaining_per_day"]),
             },
         )
 

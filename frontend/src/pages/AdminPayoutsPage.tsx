@@ -8,11 +8,12 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   Wallet, CheckCircle2, XCircle, Clock, RefreshCw,
   CreditCard, ArrowLeft, AlertTriangle, MessageSquare,
-  Filter,
+  Filter, Eye, EyeOff,
 } from 'lucide-react'
 import apiService from '../services/apiService'
 import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
+import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Payout {
@@ -31,6 +32,17 @@ interface Payout {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function fmtMoney(n: number): string {
   return new Intl.NumberFormat('uz-UZ').format(Math.round(n))
+}
+
+/** Mask all but the last 4 digits, e.g. "•••• •••• •••• 4242" — the admin can
+ * still reveal the full number when they actually need to send the transfer,
+ * but it isn't sitting in plain text where a screenshot or shoulder-surf can
+ * grab it. */
+function maskCard(card: string): string {
+  const digits = card.replace(/\s+/g, '')
+  if (digits.length <= 4) return card
+  const last4 = digits.slice(-4)
+  return '•••• '.repeat(Math.max(0, Math.ceil((digits.length - 4) / 4))).trim() + ' ' + last4
 }
 
 function fmtDate(iso: string): string {
@@ -54,6 +66,9 @@ export default function AdminPayoutsPage() {
   const [processing, setProcessing] = useState<number | null>(null)
   const [noteInput, setNoteInput] = useState<Record<number, string>>({})
   const [showNoteFor, setShowNoteFor] = useState<number | null>(null)
+  const [revealedCards, setRevealedCards] = useState<Record<number, boolean>>({})
+  const [confirmAction, setConfirmAction] = useState<{ payoutId: number; kind: 'approve' | 'reject' } | null>(null)
+  const [actionError, setActionError] = useState<string>('')
 
   const telegramId = user?.telegram_id || 0
   const isAdmin = ADMIN_TELEGRAM_IDS.includes(telegramId) || user?.role === 'admin'
@@ -94,29 +109,30 @@ export default function AdminPayoutsPage() {
   }, [loadData])
 
   // ── Actions ────────────────────────────────────────────────────────────
-  const handleApprove = async (payoutId: number) => {
-    if (!confirm("Bu so'rovni TO'LANGAN deb belgilamoqchimisiz?")) return
-    setProcessing(payoutId)
-    try {
-      await apiService.approvePayout(payoutId, telegramId, noteInput[payoutId] || '')
-      await loadData()
-    } catch (err: any) {
-      console.error('[AdminPayouts] Approve error:', err?.response?.data?.detail || err?.message)
-      alert('Xatolik yuz berdi')
-    } finally {
-      setProcessing(null)
-    }
-  }
+  // Approve/reject move real money, so they go through an in-app confirmation
+  // modal rather than the native confirm()/alert() — those are known to
+  // render inconsistently (or get silently suppressed) inside Telegram's
+  // in-app WebView, especially on iOS, which could let an admin believe a
+  // confirmation appeared when it didn't.
+  const requestApprove = (payoutId: number) => setConfirmAction({ payoutId, kind: 'approve' })
+  const requestReject = (payoutId: number) => setConfirmAction({ payoutId, kind: 'reject' })
 
-  const handleReject = async (payoutId: number) => {
-    if (!confirm("Bu so'rovni RAD ETMOQCHIMISIZ? Mablag' o'qituvchiga qaytariladi.")) return
+  const runConfirmedAction = async () => {
+    if (!confirmAction) return
+    const { payoutId, kind } = confirmAction
     setProcessing(payoutId)
+    setActionError('')
     try {
-      await apiService.rejectPayout(payoutId, telegramId, noteInput[payoutId] || '')
+      if (kind === 'approve') {
+        await apiService.approvePayout(payoutId, telegramId, noteInput[payoutId] || '')
+      } else {
+        await apiService.rejectPayout(payoutId, telegramId, noteInput[payoutId] || '')
+      }
       await loadData()
+      setConfirmAction(null)
     } catch (err: any) {
-      console.error('[AdminPayouts] Reject error:', err?.response?.data?.detail || err?.message)
-      alert('Xatolik yuz berdi')
+      console.error(`[AdminPayouts] ${kind} error:`, err?.response?.data?.detail || err?.message)
+      setActionError('Xatolik yuz berdi. Qayta urinib ko\'ring.')
     } finally {
       setProcessing(null)
     }
@@ -261,8 +277,16 @@ export default function AdminPayoutsPage() {
                       <p className="flex items-center gap-1">
                         <CreditCard className="w-3 h-3" />
                         <code className="bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded text-[11px]">
-                          {payout.card_number}
+                          {revealedCards[payout.id] ? payout.card_number : maskCard(payout.card_number)}
                         </code>
+                        <button
+                          type="button"
+                          onClick={() => setRevealedCards(prev => ({ ...prev, [payout.id]: !prev[payout.id] }))}
+                          aria-label={revealedCards[payout.id] ? 'Karta raqamini yashirish' : 'Karta raqamini ko\'rsatish'}
+                          className="p-0.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                        >
+                          {revealedCards[payout.id] ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                        </button>
                       </p>
                       <p>📅 {fmtDate(payout.created_at)}</p>
                       {payout.processed_at && (
@@ -305,7 +329,7 @@ export default function AdminPayoutsPage() {
                     {/* Approve / Reject */}
                     <div className="flex gap-2">
                       <button
-                        onClick={() => handleApprove(payout.id)}
+                        onClick={() => requestApprove(payout.id)}
                         disabled={processing === payout.id}
                         className="flex-1 py-2 rounded-xl text-xs font-semibold text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
                       >
@@ -317,7 +341,7 @@ export default function AdminPayoutsPage() {
                         To'landi deb belgilash
                       </button>
                       <button
-                        onClick={() => handleReject(payout.id)}
+                        onClick={() => requestReject(payout.id)}
                         disabled={processing === payout.id}
                         className="flex-1 py-2 rounded-xl text-xs font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-colors flex items-center justify-center gap-1.5"
                       >
@@ -336,7 +360,32 @@ export default function AdminPayoutsPage() {
           </div>
         )}
 
+        {actionError && (
+          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-red-500 text-white text-sm font-medium px-4 py-2.5 rounded-xl shadow-lg">
+            {actionError}
+          </div>
+        )}
+
       </div>
+
+      <DeleteConfirmModal
+        open={!!confirmAction}
+        title={
+          confirmAction?.kind === 'approve'
+            ? "To'lovni tasdiqlaysizmi?"
+            : "So'rovni rad etasizmi?"
+        }
+        description={
+          confirmAction?.kind === 'approve'
+            ? "Bu so'rov TO'LANGAN deb belgilanadi. Bu amalni ortga qaytarib bo'lmaydi."
+            : "Mablag' o'qituvchining balansiga qaytariladi. Bu amalni ortga qaytarib bo'lmaydi."
+        }
+        confirmLabel={confirmAction?.kind === 'approve' ? 'Tasdiqlash' : 'Rad etish'}
+        loadingLabel="Yuborilmoqda..."
+        loading={processing === confirmAction?.payoutId}
+        onConfirm={runConfirmedAction}
+        onCancel={() => setConfirmAction(null)}
+      />
     </div>
   )
 }

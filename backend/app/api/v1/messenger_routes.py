@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.schemas.social_schemas import MessageCreate, ReactionCreate
 from app.services import messenger_service as msvc
+from app.services.social_service import is_blocked
 from app.models.social_models import Connection
 from app.models.models import Profile
 
@@ -77,6 +78,8 @@ def get_or_create_conversation(
 ):
     if user_id == other_user_id:
         raise HTTPException(400, "Cannot message yourself")
+    if is_blocked(db, user_id, other_user_id):
+        raise HTTPException(403, detail="Xabar yuborib bo'lmaydi")
     if not _can_message(db, user_id, other_user_id):
         raise HTTPException(
             403,

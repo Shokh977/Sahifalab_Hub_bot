@@ -23,6 +23,7 @@ from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, DEFAULT_COURSE_XP
 from app.services.challenge_service import record_challenge_progress
+from app.core.admin_check import is_role_admin
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +83,12 @@ async def _get_course_teacher(course_id: int) -> Optional[int]:
     return rows[0]["teacher_id"] if rows else None
 
 
-async def _assert_course_owner(course_id: int, caller_id: int):
+async def _assert_course_owner(course_id: int, caller_id: int, db: Session):
     """Raise 403 unless caller is the course teacher or an admin."""
     teacher_id = await _get_course_teacher(course_id)
     if teacher_id is None:
         raise HTTPException(status_code=404, detail="Course not found")
-    if caller_id != teacher_id and caller_id not in ADMIN_IDS:
+    if caller_id != teacher_id and caller_id not in ADMIN_IDS and not is_role_admin(db, caller_id):
         raise HTTPException(status_code=403, detail="Not your course")
 
 
@@ -110,10 +111,10 @@ async def _is_enrolled(course_id: int, student_id: int) -> bool:
     return len(rows) > 0
 
 
-async def _can_access_lesson(lesson: dict, caller_id: int) -> bool:
+async def _can_access_lesson(lesson: dict, caller_id: int, db: Session) -> bool:
     """Return True when caller can access the lesson content."""
     teacher_id = await _get_course_teacher(lesson["course_id"])
-    if caller_id == teacher_id or caller_id in ADMIN_IDS:
+    if caller_id == teacher_id or caller_id in ADMIN_IDS or is_role_admin(db, caller_id):
         return True
     if lesson.get("is_free"):
         return True
@@ -231,7 +232,7 @@ async def my_course_certificates(authorization: Optional[str] = Header(None)):
 
 
 @router.get("/{lesson_id}")
-async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
+async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """
     Get a single lesson.
     - is_free lessons: video visible to all
@@ -266,7 +267,7 @@ async def get_lesson(lesson_id: int, authorization: Optional[str] = Header(None)
 
     if caller_id is not None and not has_access:
         teacher_id = await _get_course_teacher(lesson["course_id"])
-        is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
+        is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS or is_role_admin(db, caller_id)
         if is_owner_or_admin:
             has_access = True
         else:
@@ -314,6 +315,7 @@ async def get_lesson_download_url(
     lesson_id: int,
     quality: str = Query("480p", description="Preferred rendition: 360p | 480p | 720p"),
     authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     """
     Return a short-lived signed MP4 download URL for offline use.
@@ -361,7 +363,7 @@ async def get_lesson_download_url(
 
     # Verify access
     teacher_id      = await _get_course_teacher(course_id)
-    is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS
+    is_owner_or_admin = caller_id == teacher_id or caller_id in ADMIN_IDS or is_role_admin(db, caller_id)
     if not is_owner_or_admin:
         enrolled = await _is_enrolled(course_id, caller_id)
         if not enrolled:
@@ -462,10 +464,10 @@ async def verify_downloads(
 
 
 @router.post("")
-async def create_lesson(body: LessonCreate, authorization: Optional[str] = Header(None)):
+async def create_lesson(body: LessonCreate, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """Teacher: create a new lesson in own course."""
     caller_id = await _resolve_caller(authorization)
-    await _assert_course_owner(body.course_id, caller_id)
+    await _assert_course_owner(body.course_id, caller_id, db)
     _ensure_supabase()
 
     payload = {
@@ -504,7 +506,7 @@ async def create_lesson(body: LessonCreate, authorization: Optional[str] = Heade
 
 
 @router.patch("/reorder")
-async def reorder_lessons(body: ReorderRequest, authorization: Optional[str] = Header(None)):
+async def reorder_lessons(body: ReorderRequest, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """Teacher: bulk update order_index for a list of lessons."""
     caller_id = await _resolve_caller(authorization)
     if not body.lessons:
@@ -522,7 +524,7 @@ async def reorder_lessons(body: ReorderRequest, authorization: Optional[str] = H
     rows = chk.json() if chk.status_code == 200 else []
     if not rows:
         raise HTTPException(status_code=404, detail="Lesson not found")
-    await _assert_course_owner(rows[0]["course_id"], caller_id)
+    await _assert_course_owner(rows[0]["course_id"], caller_id, db)
 
     # Patch each lesson's order_index
     async with httpx.AsyncClient(timeout=10) as client:
@@ -542,6 +544,7 @@ async def update_lesson(
     lesson_id: int,
     body: LessonUpdate,
     authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
 ):
     """Teacher: update own lesson."""
     caller_id = await _resolve_caller(authorization)
@@ -558,7 +561,7 @@ async def update_lesson(
     if not rows:
         raise HTTPException(status_code=404, detail="Lesson not found")
     course_id = rows[0]["course_id"]
-    await _assert_course_owner(course_id, caller_id)
+    await _assert_course_owner(course_id, caller_id, db)
 
     patch = body.model_dump(exclude_none=True)
     if not patch:
@@ -667,7 +670,7 @@ async def complete_lesson(
         raise HTTPException(status_code=404, detail="Lesson not found")
     lesson = rows[0]
 
-    if not await _can_access_lesson(lesson, caller_id):
+    if not await _can_access_lesson(lesson, caller_id, db):
         raise HTTPException(status_code=403, detail="Lesson is locked")
 
     # Checked BEFORE the upsert below — this is what makes the
@@ -702,9 +705,14 @@ async def complete_lesson(
     if res.status_code not in (200, 201):
         raise HTTPException(status_code=502, detail=f"Failed to save progress: {res.text}")
 
+    challenges_completed:  list = []
+    challenges_progressed: list = []
+
     if not was_already_completed:
         try:
-            record_challenge_progress(db, caller_id, "lessons_completed", 1, occurred_at=datetime.now(UTC))
+            completed, progressed = record_challenge_progress(db, caller_id, "lessons_completed", 1, occurred_at=datetime.now(UTC))
+            challenges_completed.extend(completed)
+            challenges_progressed.extend(progressed)
             db.commit()
         except Exception:
             db.rollback()
@@ -763,7 +771,9 @@ async def complete_lesson(
 
             if certificate_issued and cert_was_new:
                 try:
-                    record_challenge_progress(db, caller_id, "courses_completed", 1, occurred_at=datetime.now(UTC))
+                    completed, progressed = record_challenge_progress(db, caller_id, "courses_completed", 1, occurred_at=datetime.now(UTC))
+                    challenges_completed.extend(completed)
+                    challenges_progressed.extend(progressed)
                     db.commit()
                 except Exception:
                     db.rollback()
@@ -785,11 +795,13 @@ async def complete_lesson(
         "lesson_id": lesson_id,
         "completed": True,
         "certificate_issued": certificate_issued,
+        "challenges_completed":  challenges_completed,
+        "challenges_progressed": challenges_progressed,
     }
 
 
 @router.delete("/{lesson_id}")
-async def delete_lesson(lesson_id: int, authorization: Optional[str] = Header(None)):
+async def delete_lesson(lesson_id: int, authorization: Optional[str] = Header(None), db: Session = Depends(get_db)):
     """Teacher: delete own lesson."""
     caller_id = await _resolve_caller(authorization)
     _ensure_supabase()
@@ -804,7 +816,7 @@ async def delete_lesson(lesson_id: int, authorization: Optional[str] = Header(No
     if not rows:
         raise HTTPException(status_code=404, detail="Lesson not found")
     course_id = rows[0]["course_id"]
-    await _assert_course_owner(course_id, caller_id)
+    await _assert_course_owner(course_id, caller_id, db)
 
     async with httpx.AsyncClient(timeout=10) as client:
         res = await client.delete(

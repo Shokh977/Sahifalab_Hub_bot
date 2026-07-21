@@ -11,7 +11,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, Send, Loader2, MessageSquare,
-  Check, CheckCheck, Search, Trash2, Clock, X,
+  Check, CheckCheck, Search, Trash2, Clock, X, MoreVertical, Ban, Flag,
 } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useAuth } from '../context/AuthContext'
@@ -19,6 +19,7 @@ import { useMessagingSafe } from '../context/MessagingContext'
 import api from '../services/apiService'
 import LinkPreview, { extractUrls } from '../components/social/LinkPreview'
 import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
+import ReportModal from '../components/social/ReportModal'
 import { linkify } from '../utils/linkify'
 import type { UserIdentityUser } from '../components/social/UserIdentity'
 import { supabase } from '../lib/supabase'
@@ -289,17 +290,20 @@ const ConversationList: React.FC<{
                         </div>
                       </div>
 
-                      {/* Delete button — visible on hover */}
-                      {isHovered && (
-                        <button
-                          onClick={e => { e.stopPropagation(); setDeleteConfirmId(conv.id) }}
-                          className="flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors"
-                          style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
-                          title="O'chirish"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      {/* Delete button — always rendered (not hover-only: Telegram's
+                          in-app mobile browser is touch-only and has no hover state,
+                          so a hover-reveal button would be permanently unreachable
+                          there). Dimmed until hovered/focused on pointer devices via
+                          the opacity classes; always fully visible on touch. */}
+                      <button
+                        onClick={e => { e.stopPropagation(); setDeleteConfirmId(conv.id) }}
+                        className={`flex-shrink-0 w-7 h-7 rounded-lg flex items-center justify-center transition-colors opacity-100 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 ${isHovered ? 'md:opacity-100' : ''}`}
+                        style={{ background: 'var(--bg-secondary)', color: 'var(--text-muted)' }}
+                        aria-label="Suhbatni o'chirish"
+                        title="O'chirish"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </button>
                   )}
                 </div>
@@ -358,6 +362,10 @@ const ChatView: React.FC<{
   const [sending,   setSending]   = useState(false)
   const [deleteMessageId, setDeleteMessageId] = useState<number | null>(null)
   const [deletingMessage, setDeletingMessage] = useState(false)
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false)
+  const [showReportUser, setShowReportUser] = useState(false)
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false)
+  const [blocked, setBlocked] = useState(false)
   const bottomRef   = useRef<HTMLDivElement>(null)
   const inputRef    = useRef<HTMLInputElement>(null)
 
@@ -462,6 +470,14 @@ const ChatView: React.FC<{
     setDeleteMessageId(null)
   }
 
+  const handleBlock = async () => {
+    try {
+      await api.blockUser(otherUser.telegram_id)
+      setBlocked(true)
+    } catch {}
+    setShowBlockConfirm(false)
+  }
+
   return (
     <div className="flex flex-col h-full">
 
@@ -503,7 +519,45 @@ const ChatView: React.FC<{
             )}
           </div>
         </button>
+
+        {/* Overflow menu — block / report */}
+        <div className="relative flex-shrink-0">
+          <button
+            onClick={() => setShowHeaderMenu(v => !v)}
+            aria-label="Ko'proq"
+            className="p-1.5 rounded-xl transition-colors"
+            style={{ color: 'var(--text-tertiary)' }}
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
+          {showHeaderMenu && (
+            <div
+              className="absolute right-0 top-9 z-20 w-48 rounded-xl border shadow-2xl py-1"
+              style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-default)' }}
+            >
+              <button
+                onClick={() => { setShowHeaderMenu(false); setShowReportUser(true) }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm transition-colors"
+                style={{ color: 'var(--text-secondary)' }}
+              >
+                <Flag className="w-3.5 h-3.5" /> Shikoyat qilish
+              </button>
+              <button
+                onClick={() => { setShowHeaderMenu(false); setShowBlockConfirm(true) }}
+                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                <Ban className="w-3.5 h-3.5" /> Bloklash
+              </button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {blocked && (
+        <div className="px-4 py-2 text-xs text-center" style={{ color: 'var(--text-muted)', background: 'var(--bg-tertiary)' }}>
+          Siz bu foydalanuvchini bloklagansiz — endi xabar yubora olmaysiz.
+        </div>
+      )}
 
       {/* ── Messages area ─────────────────────────────────────────────────── */}
       <div
@@ -668,8 +722,9 @@ const ChatView: React.FC<{
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Xabar yozing..."
-            className="messenger-input flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none transition-colors"
+            placeholder={blocked ? 'Bloklangan' : 'Xabar yozing...'}
+            disabled={blocked}
+            className="messenger-input flex-1 px-4 py-2.5 rounded-2xl text-sm outline-none transition-colors disabled:opacity-50"
             style={{
               background: 'var(--bg-tertiary)',
               border: '1px solid var(--border-default)',
@@ -680,7 +735,7 @@ const ChatView: React.FC<{
           />
           <motion.button
             onClick={handleSend}
-            disabled={!input.trim() || sending}
+            disabled={!input.trim() || sending || blocked}
             whileTap={{ scale: 0.88 }}
             className="flex-shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             style={{ background: 'var(--brand-primary)' }}
@@ -701,6 +756,24 @@ const ChatView: React.FC<{
         loading={deletingMessage}
         onConfirm={handleDeleteMessage}
         onCancel={() => setDeleteMessageId(null)}
+      />
+
+      {/* Block confirm */}
+      <DeleteConfirmModal
+        open={showBlockConfirm}
+        title="Foydalanuvchini bloklaysizmi?"
+        description="Bloklangandan so'ng bir-biringizga xabar yubora olmaysiz."
+        confirmLabel="Bloklash"
+        loadingLabel="Bloklanmoqda..."
+        onConfirm={handleBlock}
+        onCancel={() => setShowBlockConfirm(false)}
+      />
+
+      <ReportModal
+        open={showReportUser}
+        targetType="user"
+        targetId={otherUser.telegram_id}
+        onClose={() => setShowReportUser(false)}
       />
     </div>
   )

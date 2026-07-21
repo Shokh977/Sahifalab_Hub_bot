@@ -14,6 +14,7 @@ import PageWrapper from '../components/PageWrapper'
 import CertificateGenerator, { CertificateData } from '../components/CertificateGenerator'
 import { useProgressStore } from '../context/progressStore'
 import { useAuth } from '../context/AuthContext'
+import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 
 // â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -214,10 +215,18 @@ const QuizStep: React.FC<{
   const [selected, setSelected] = useState<number | null>(null)
   const [phase, setPhase] = useState<Phase>('answering')
   const [feedback, setFeedback] = useState('')
+  const [showExitConfirm, setShowExitConfirm] = useState(false)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const q = quiz.questions[idx]
   const progress = ((idx) / quiz.questions.length) * 100
+
+  // Once the user has answered at least one question, exiting would discard
+  // real progress — confirm first instead of discarding it on a single tap.
+  const requestExit = useCallback(() => {
+    if (idx > 0) setShowExitConfirm(true)
+    else onExit()
+  }, [idx, onExit])
 
   const handleSelect = useCallback((optIdx: number) => {
     if (phase !== 'answering') return
@@ -249,8 +258,9 @@ const QuizStep: React.FC<{
       {/* Top bar */}
       <div className="flex items-center gap-3">
         <button
-          onClick={onExit}
+          onClick={requestExit}
           className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors p-1"
+          aria-label="Viktorinadan chiqish"
         >
           <XMarkIcon className="w-5 h-5" />
         </button>
@@ -319,6 +329,15 @@ const QuizStep: React.FC<{
           )}
         </div>
       )}
+
+      <DeleteConfirmModal
+        open={showExitConfirm}
+        title="Viktorinadan chiqasizmi?"
+        description={`Javob bergan ${idx} ta savolingiz saqlanmaydi.`}
+        confirmLabel="Chiqish"
+        onConfirm={onExit}
+        onCancel={() => setShowExitConfirm(false)}
+      />
     </div>
   )
 }

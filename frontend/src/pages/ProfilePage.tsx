@@ -140,10 +140,6 @@ const ProfilePage: React.FC = () => {
 
   const myId = (authUser as any)?.telegram_id ?? (authUser as any)?.id
 
-  if (rawParam === 'me' && !authLoading && !isAuthenticated) {
-    return <Navigate to="/login" replace />
-  }
-
   // ── Fetch profile ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (!rawParam) return
@@ -249,6 +245,12 @@ const ProfilePage: React.FC = () => {
     if (navigator.share) navigator.share({ title: profile.first_name, url }).catch(() => {})
     else navigator.clipboard.writeText(url).catch(() => {})
   }, [profile])
+
+  // ── Redirect unauthenticated /profile/me (after all hooks above have run,
+  // so hook order/count stays identical across every render) ────────────────
+  if (rawParam === 'me' && !authLoading && !isAuthenticated) {
+    return <Navigate to="/login" replace />
+  }
 
   // ── Loading / Error ────────────────────────────────────────────────────────
   if (loading) return (

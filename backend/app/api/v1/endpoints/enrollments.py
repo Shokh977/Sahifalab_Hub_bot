@@ -9,7 +9,7 @@ Routes (Bearer JWT required):
   POST   /api/enrollments/request-code              — generate/return payment reference code for paid course
   GET    /api/enrollments/pending-status?course_id= — check if caller has a pending payment request
 """
-from fastapi import APIRouter, HTTPException, Header, Query
+from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
 from typing import Optional
 import os
@@ -17,8 +17,11 @@ import httpx
 import secrets
 import string
 from datetime import datetime, timezone, timedelta
+from sqlalchemy.orm import Session
 
 from app.services.auth_service import decode_token
+from app.db.session import get_db
+from app.core.admin_check import is_role_admin
 
 router = APIRouter()
 
@@ -124,11 +127,15 @@ class EnrollRequest(BaseModel):
 
 
 @router.get("/check")
-async def check_enrollment(course_id: int = Query(...), authorization: Optional[str] = Header(None)):
+async def check_enrollment(
+    course_id: int = Query(...),
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     caller_id = await _resolve_caller(authorization)
     course = await _get_course(course_id)
 
-    if caller_id == course["teacher_id"] or caller_id in ADMIN_IDS:
+    if caller_id == course["teacher_id"] or caller_id in ADMIN_IDS or is_role_admin(db, caller_id):
         return {"enrolled": True, "owner": True}
 
     enrolled = await _is_enrolled(course_id, caller_id)
@@ -136,11 +143,15 @@ async def check_enrollment(course_id: int = Query(...), authorization: Optional[
 
 
 @router.post("/enroll")
-async def enroll_course(body: EnrollRequest, authorization: Optional[str] = Header(None)):
+async def enroll_course(
+    body: EnrollRequest,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
     caller_id = await _resolve_caller(authorization)
     course = await _get_course(body.course_id)
 
-    if caller_id == course["teacher_id"] or caller_id in ADMIN_IDS:
+    if caller_id == course["teacher_id"] or caller_id in ADMIN_IDS or is_role_admin(db, caller_id):
         return {"ok": True, "already_enrolled": True, "owner": True}
 
     if not course.get("is_published"):
