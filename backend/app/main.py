@@ -714,10 +714,13 @@ async def startup_event():
 
 
 def _start_cron_scheduler():
-    """Start APScheduler for streak reminders and weekly reports."""
+    """Start APScheduler for streak reminders, weekly reports, and Musobaqalar (challenges) ticks."""
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.triggers.cron  import CronTrigger
-    from app.api.v1.endpoints.cron  import send_streak_reminders, send_weekly_reports
+    from app.api.v1.endpoints.cron  import (
+        send_streak_reminders, send_weekly_reports,
+        challenges_tick, challenges_consistency_daily,
+    )
     from app.db.session             import get_db
 
     cron_secret = os.getenv("CRON_SECRET", "")
@@ -749,13 +752,45 @@ def _start_cron_scheduler():
         finally:
             db.close()
 
+    async def _run_challenges_tick():
+        db = _db()
+        try:
+            result = await challenges_tick(db=db, _=None)
+            logger.info("[SCHEDULER] challenges-tick: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] challenges-tick failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_challenges_consistency_daily():
+        db = _db()
+        try:
+            result = await challenges_consistency_daily(db=db, _=None)
+            logger.info("[SCHEDULER] challenges-consistency-daily: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] challenges-consistency-daily failed: %s", exc)
+        finally:
+            db.close()
+
     scheduler = AsyncIOScheduler(timezone="UTC")
     # Daily 15:00 UTC ≈ 20:00 Tashkent
     scheduler.add_job(_run_streak_reminder, CronTrigger(hour=15, minute=0))
     # Every Monday 08:00 UTC
     scheduler.add_job(_run_weekly_report,   CronTrigger(day_of_week="mon", hour=8, minute=0))
+    # Every hour — Musobaqalar status transitions (upcoming -> active -> ended) + notifications
+    scheduler.add_job(_run_challenges_tick, CronTrigger(minute=0))
+    # Daily 19:05 UTC (~00:05 Tashkent) — consistency-challenge day evaluation + evening reminder
+    scheduler.add_job(_run_challenges_consistency_daily, CronTrigger(hour=19, minute=5))
     scheduler.start()
-    logger.info("[SCHEDULER] APScheduler started — streak @15:00 UTC daily, report @08:00 UTC Monday")
+    logger.info(
+        "[SCHEDULER] APScheduler started — streak @15:00 UTC daily, report @08:00 UTC Monday, "
+        "challenges-tick hourly, challenges-consistency-daily @19:05 UTC"
+    )
+
+    # Run once immediately on startup so any challenge whose starts_at/ends_at
+    # already passed (e.g. while this job was unscheduled) flips right away,
+    # instead of waiting up to an hour for the next :00 tick.
+    asyncio.create_task(_run_challenges_tick())
 
 
 if __name__ == "__main__":
