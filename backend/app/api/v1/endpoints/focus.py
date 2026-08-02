@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.services.auth_service import decode_token
-from app.services.xp_service import add_xp, focus_minutes_to_xp
+from app.services.xp_service import add_xp
 from app.services.study_activity import (
     record_study_activity,
     parse_local_date as _parse_local_date,
@@ -69,19 +69,24 @@ async def complete_focus_session(
     local_date = _parse_local_date(body.local_date)
     surface = _normalize_platform(x_client_platform)
 
-    # ── Server-side wall-clock cap ───────────────────────────────────────────
+    # ── Server-side wall-clock cap + tapered timer-XP ────────────────────────
     # The client's `minutes` is a bare self-counted integer — nothing ties it
     # to a specific real-world interval, so a user running the timer on the
     # mobile app, sahifalab.uz, and the Telegram mini app at once used to get
     # credited 3x for one real hour studied. credit_focus_time() (migration
     # 082) clamps credited seconds to the real elapsed time since this user's
     # last credited completion, under a row lock, so the SUM across every
-    # surface can never exceed real elapsed time. It also enforces the daily
-    # timer-XP cap (~4h) and flags days that stay anomalous even after the cap.
+    # surface can never exceed real elapsed time.
+    #
+    # XP for those credited seconds is then tapered (migration 083, step-27):
+    # full rate for the first 3h/day, half for 3-6h, a quarter beyond that —
+    # never zero. The taper only affects XP; credited_seconds below (what
+    # streak/stats/daily-goal count) is exactly the wall-clock-capped value,
+    # unreduced by the taper.
     try:
         credit_row = db.execute(
             text("""
-                SELECT credited_seconds, xp_eligible_seconds, daily_total_seconds, anomaly_flag
+                SELECT credited_seconds, xp_awarded, daily_total_seconds, anomaly_flag
                 FROM   credit_focus_time(:uid, :claimed_seconds, :local_date, :surface)
             """),
             {
@@ -101,8 +106,8 @@ async def complete_focus_session(
         )
         raise HTTPException(status_code=500, detail="Session credit failed")
 
-    credited_minutes    = int(credit_row.credited_seconds) // 60
-    xp_eligible_minutes = int(credit_row.xp_eligible_seconds) // 60
+    credited_minutes = int(credit_row.credited_seconds) // 60
+    xp_amount        = int(credit_row.xp_awarded)
 
     if credit_row.anomaly_flag:
         try:
@@ -123,7 +128,6 @@ async def complete_focus_session(
                 caller_id, local_date, credit_row.daily_total_seconds, exc_info=True,
             )
 
-    xp_amount = focus_minutes_to_xp(xp_eligible_minutes) if xp_eligible_minutes > 0 else 0
     result = {"xp_added": 0, "new_xp": None, "new_level": old_level}
     if xp_amount > 0:
         try:
