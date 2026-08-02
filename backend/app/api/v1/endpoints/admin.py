@@ -2125,3 +2125,69 @@ async def admin_mark_enrollment_paid(
     if res.status_code not in (200, 204):
         raise HTTPException(status_code=502, detail="Supabase error")
     return {"ok": True}
+
+
+# ── Focus-timer anomaly review (step-26) ─────────────────────────────────────
+# Report-only list of users whose credited (post wall-clock-cap) focus time on
+# a single local day exceeded 8h — see credit_focus_time() in migration 082.
+# These are surfaced for a human to judge (genuine grinder vs. still-abusive
+# pattern); nothing here ever auto-punishes an account.
+
+@router.get("/focus-anomalies")
+async def list_focus_anomalies(
+    reviewed: Optional[bool] = Query(None, description="Filter by reviewed status; omit for all"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    where = "WHERE (:reviewed IS NULL OR f.reviewed = :reviewed)"
+    rows = db.execute(
+        text(f"""
+            SELECT f.id, f.user_id, f.flagged_date, f.daily_seconds, f.reviewed, f.created_at,
+                   p.first_name, p.username
+            FROM   focus_anomaly_flags f
+            JOIN   profiles p ON p.telegram_id = f.user_id
+            {where}
+            ORDER BY f.flagged_date DESC, f.daily_seconds DESC
+            LIMIT :limit
+        """),
+        {"reviewed": reviewed, "limit": limit},
+    ).fetchall()
+
+    return [
+        {
+            "id":            r.id,
+            "user_id":       r.user_id,
+            "first_name":    r.first_name,
+            "username":      r.username,
+            "flagged_date":  r.flagged_date.isoformat(),
+            "daily_hours":   round(r.daily_seconds / 3600, 1),
+            "reviewed":      r.reviewed,
+            "created_at":    r.created_at.isoformat(),
+        }
+        for r in rows
+    ]
+
+
+@router.post("/focus-anomalies/{flag_id}/review")
+async def mark_focus_anomaly_reviewed(
+    flag_id: int,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Mark a flagged day as reviewed — record-keeping only, does not touch
+    the user's XP/minutes/level. Use the separate historical-cleanup process
+    (step-26 Phase 5) if a reviewed account's past XP needs correcting."""
+    result = db.execute(
+        text("""
+            UPDATE focus_anomaly_flags
+            SET    reviewed = TRUE, updated_at = NOW()
+            WHERE  id = :id
+            RETURNING id
+        """),
+        {"id": flag_id},
+    ).fetchone()
+    db.commit()
+    if not result:
+        raise HTTPException(status_code=404, detail="Flag not found")
+    return {"ok": True}

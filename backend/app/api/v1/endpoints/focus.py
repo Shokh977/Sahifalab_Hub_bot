@@ -23,8 +23,13 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, focus_minutes_to_xp
-from app.services.study_activity import record_study_activity, parse_local_date as _parse_local_date
+from app.services.study_activity import (
+    record_study_activity,
+    parse_local_date as _parse_local_date,
+    StudyActivityResult,
+)
 from app.api.v1.endpoints.notifications import send_notification
+from app.api.v1.auth import _normalize_platform
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +58,7 @@ async def complete_focus_session(
     body: CompleteSessionRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
+    x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
 ):
     pre = db.execute(
         text("SELECT level FROM profiles WHERE telegram_id = :uid"),
@@ -60,27 +66,96 @@ async def complete_focus_session(
     ).fetchone()
     old_level = int(pre.level or 1) if pre else 1
 
-    xp_amount = focus_minutes_to_xp(body.minutes)
+    local_date = _parse_local_date(body.local_date)
+    surface = _normalize_platform(x_client_platform)
+
+    # ── Server-side wall-clock cap ───────────────────────────────────────────
+    # The client's `minutes` is a bare self-counted integer — nothing ties it
+    # to a specific real-world interval, so a user running the timer on the
+    # mobile app, sahifalab.uz, and the Telegram mini app at once used to get
+    # credited 3x for one real hour studied. credit_focus_time() (migration
+    # 082) clamps credited seconds to the real elapsed time since this user's
+    # last credited completion, under a row lock, so the SUM across every
+    # surface can never exceed real elapsed time. It also enforces the daily
+    # timer-XP cap (~4h) and flags days that stay anomalous even after the cap.
     try:
-        result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=xp_amount)
+        credit_row = db.execute(
+            text("""
+                SELECT credited_seconds, xp_eligible_seconds, daily_total_seconds, anomaly_flag
+                FROM   credit_focus_time(:uid, :claimed_seconds, :local_date, :surface)
+            """),
+            {
+                "uid": caller_id,
+                "claimed_seconds": body.minutes * 60,
+                "local_date": local_date,
+                "surface": surface,
+            },
+        ).fetchone()
+        db.commit()
     except Exception:
+        db.rollback()
         logger.error(
-            "Focus-session XP award failed for user_id=%s amount=%s source=DEEP_WORK",
-            caller_id, xp_amount, exc_info=True,
+            "Focus wall-clock credit computation failed for user_id=%s claimed_minutes=%s "
+            "local_date=%s surface=%s",
+            caller_id, body.minutes, local_date, surface, exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="XP award failed")
+        raise HTTPException(status_code=500, detail="Session credit failed")
+
+    credited_minutes    = int(credit_row.credited_seconds) // 60
+    xp_eligible_minutes = int(credit_row.xp_eligible_seconds) // 60
+
+    if credit_row.anomaly_flag:
+        try:
+            db.execute(
+                text("""
+                    INSERT INTO focus_anomaly_flags (user_id, flagged_date, daily_seconds)
+                    VALUES (:uid, :d, :secs)
+                    ON CONFLICT (user_id, flagged_date) DO UPDATE
+                        SET daily_seconds = EXCLUDED.daily_seconds, updated_at = NOW()
+                """),
+                {"uid": caller_id, "d": local_date, "secs": int(credit_row.daily_total_seconds)},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.error(
+                "Failed to record focus anomaly flag for user_id=%s local_date=%s daily_seconds=%s",
+                caller_id, local_date, credit_row.daily_total_seconds, exc_info=True,
+            )
+
+    xp_amount = focus_minutes_to_xp(xp_eligible_minutes) if xp_eligible_minutes > 0 else 0
+    result = {"xp_added": 0, "new_xp": None, "new_level": old_level}
+    if xp_amount > 0:
+        try:
+            result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=xp_amount)
+        except Exception:
+            logger.error(
+                "Focus-session XP award failed for user_id=%s amount=%s source=DEEP_WORK "
+                "claimed_minutes=%s credited_minutes=%s",
+                caller_id, xp_amount, body.minutes, credited_minutes, exc_info=True,
+            )
+            raise HTTPException(status_code=500, detail="XP award failed")
 
     # Single write path for "the user did some studying" — see
     # app/services/study_activity.py. source='focus_timer' is what makes this
     # session eligible to count toward a focus_minutes cohort challenge
     # (step-21); flashcards.py passes 'flashcards' instead, which never does.
-    activity = record_study_activity(
-        db, user_id=caller_id, minutes=body.minutes,
-        source="focus_timer", xp_awarded=result["xp_added"],
-        local_date=body.local_date,
-    )
+    # Only the wall-clock-capped minutes are recorded — never the raw client
+    # claim — so streak/total_focus_minutes can't be inflated either.
+    if credited_minutes > 0:
+        activity = record_study_activity(
+            db, user_id=caller_id, minutes=credited_minutes,
+            source="focus_timer", xp_awarded=result["xp_added"],
+            local_date=body.local_date,
+        )
+    else:
+        activity = StudyActivityResult(
+            streak_days=0, streak_advanced=False, today_minutes=0,
+            goal_met=False, xp_awarded=0,
+        )
 
-    # Append focus session to activity_log (best-effort)
+    # Append focus session to activity_log (best-effort, non-critical — logged
+    # rather than silently swallowed per the step-26 no-silent-failures rule)
     try:
         db.execute(
             text("""
@@ -89,12 +164,20 @@ async def complete_focus_session(
             """),
             {
                 "uid":  caller_id,
-                "meta": json.dumps({"minutes": body.minutes, "xp": result["xp_added"]}),
+                "meta": json.dumps({
+                    "claimed_minutes":  body.minutes,
+                    "credited_minutes": credited_minutes,
+                    "xp":               result["xp_added"],
+                    "surface":          surface,
+                }),
             },
         )
         db.commit()
     except Exception:
         db.rollback()
+        logger.error(
+            "Failed to append activity_log row for focus_session user_id=%s", caller_id, exc_info=True,
+        )
 
     row = db.execute(
         text("SELECT total_xp, level, streak_days FROM profiles WHERE telegram_id = :uid"),
@@ -133,6 +216,8 @@ async def complete_focus_session(
         "stages_completed":      activity.stages_completed,
         "challenges_completed":  activity.challenges_completed,
         "challenges_progressed": activity.challenges_progressed,
+        "claimed_minutes":       body.minutes,
+        "credited_minutes":      credited_minutes,
     }
 
 
@@ -150,6 +235,7 @@ async def study_heartbeat(
         db.commit()
     except Exception:
         db.rollback()
+        logger.error("Focus heartbeat write failed for user_id=%s", caller_id, exc_info=True)
     return {"ok": True}
 
 
