@@ -289,6 +289,7 @@ interface AdminUserProfile {
   telegram_id: number
   first_name: string | null
   username: string | null
+  email: string | null
   photo_url: string | null
   role: 'student' | 'teacher' | 'admin'
   status: 'active' | 'pending' | 'suspended'
@@ -1355,6 +1356,7 @@ const AdminPage: React.FC = () => {
       await apiService.adminDeleteUser(telegramId)
       setUserMsg(`✅ Foydalanuvchi o'chirildi: ${telegramId}`)
       setUserSearchResults(prev => prev.filter(u => u.telegram_id !== telegramId))
+      setOpenUserDetail(prev => (prev && prev.telegram_id === telegramId) ? null : prev)
     } catch (err: any) {
       console.error('[Admin] deleteUser error:', err?.response?.data?.detail || err?.message)
       setUserMsg('❌ O\'chirishda xatolik')
@@ -1447,6 +1449,18 @@ const AdminPage: React.FC = () => {
         reason: drawerSuspendText || null,
       })
       setDrawerSuspendOpen(false); setDrawerSuspendText('')
+      setOpenUserDetail(prev => prev ? { ...prev, status: 'suspended' } : prev)
+    } catch (err: any) {
+      alert(err?.response?.data?.detail || err?.message)
+    } finally { setDrawerSuspending(false) }
+  }
+
+  const handleDrawerUnsuspend = async () => {
+    if (!openUserDetail) return
+    setDrawerSuspending(true)
+    try {
+      await apiService.client.post(`/api/admin/users/${openUserDetail.telegram_id}/unsuspend`)
+      setOpenUserDetail(prev => prev ? { ...prev, status: 'active' } : prev)
     } catch (err: any) {
       alert(err?.response?.data?.detail || err?.message)
     } finally { setDrawerSuspending(false) }
@@ -3560,7 +3574,7 @@ const AdminPage: React.FC = () => {
                 value={userSearchQ}
                 onChange={(e) => setUserSearchQ(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && searchUsers(userSearchQ)}
-                placeholder="Ism, username yoki Telegram ID..."
+                placeholder="Ism, username, email yoki ID..."
                 className="flex-1 px-4 py-3 text-sm border border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-500"
               />
               <button
@@ -3612,7 +3626,7 @@ const AdminPage: React.FC = () => {
                         {u.first_name || "Noma'lum"}
                         {u.username && <span className="text-gray-400 ml-1 font-normal">@{u.username}</span>}
                       </p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">ID: {u.telegram_id} · Lv {u.level} · {u.total_xp} XP{u.email ? ` · ${u.email}` : ''}</p>
                     </div>
                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${roleBadge}`}>{u.role}</span>
                     <span className="text-gray-400 dark:text-gray-500 text-sm">›</span>
@@ -5152,6 +5166,7 @@ const AdminPage: React.FC = () => {
                               ['Telegram ID', u.telegram_id],
                               ['Ism',         u.first_name ?? '—'],
                               ['Username',    u.username ? `@${u.username}` : '—'],
+                              ['Email',       userDetailData?.email ?? '—'],
                               ['Rol',         u.role],
                               ['Holat',       u.status],
                               ['Daraja',      `Lv ${u.level}`],
@@ -5280,38 +5295,92 @@ const AdminPage: React.FC = () => {
                       {/* ── ADMIN ── */}
                       {userDetailTab === 'admin' && (
                         <div className="space-y-3">
+                          {/* Admin authority: message any user directly in-app,
+                              regardless of connection status or blocks — see
+                              _can_message/_is_admin in messenger_routes.py. */}
+                          <button
+                            onClick={() => handleMessageTeacher(u.telegram_id)}
+                            className="w-full py-2.5 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/20 hover:bg-sahifa-100 dark:hover:bg-sahifa-900/40 border border-sahifa-200 dark:border-sahifa-800/60 text-sahifa-700 dark:text-sahifa-400 text-sm font-medium transition-colors"
+                          >
+                            💬 Ilova ichida xabar yuborish
+                          </button>
+
                           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
                             <h4 className="text-red-600 dark:text-red-400 font-semibold text-sm mb-3">Xavfli amallar</h4>
-                            {!drawerSuspendOpen
-                              ? (
-                                <button onClick={() => setDrawerSuspendOpen(true)}
-                                  className="w-full py-2.5 rounded-xl bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 border border-red-300 dark:border-red-800/50 text-red-600 dark:text-red-400 text-sm font-medium transition-colors">
-                                  🚫 Hisobni bloklash
-                                </button>
-                              ) : (
-                                <div className="space-y-2">
-                                  <input value={drawerSuspendText} onChange={e => setDrawerSuspendText(e.target.value)}
-                                    placeholder="Sabab (ixtiyoriy)…"
-                                    className="w-full px-3 py-2 text-sm rounded-xl border border-red-200 dark:border-red-800/60 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-red-500" />
-                                  <div className="flex gap-2">
-                                    <button onClick={() => setDrawerSuspendOpen(false)}
-                                      className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">Bekor</button>
-                                    <button onClick={handleDrawerSuspend} disabled={drawerSuspending}
-                                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold">
-                                      {drawerSuspending ? '…' : 'Tasdiqlash'}
-                                    </button>
-                                  </div>
+                            {u.status === 'suspended' ? (
+                              <button onClick={handleDrawerUnsuspend} disabled={drawerSuspending}
+                                className="w-full py-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 hover:bg-emerald-200 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-800/50 text-emerald-700 dark:text-emerald-400 text-sm font-medium transition-colors disabled:opacity-50">
+                                {drawerSuspending ? '…' : '✅ Blokdan chiqarish'}
+                              </button>
+                            ) : !drawerSuspendOpen ? (
+                              <button onClick={() => setDrawerSuspendOpen(true)}
+                                className="w-full py-2.5 rounded-xl bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-900/60 border border-red-300 dark:border-red-800/50 text-red-600 dark:text-red-400 text-sm font-medium transition-colors">
+                                🚫 Hisobni bloklash
+                              </button>
+                            ) : (
+                              <div className="space-y-2">
+                                <input value={drawerSuspendText} onChange={e => setDrawerSuspendText(e.target.value)}
+                                  placeholder="Sabab (ixtiyoriy)…"
+                                  className="w-full px-3 py-2 text-sm rounded-xl border border-red-200 dark:border-red-800/60 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:border-red-500" />
+                                <div className="flex gap-2">
+                                  <button onClick={() => setDrawerSuspendOpen(false)}
+                                    className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">Bekor</button>
+                                  <button onClick={handleDrawerSuspend} disabled={drawerSuspending}
+                                    className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold">
+                                    {drawerSuspending ? '…' : 'Tasdiqlash'}
+                                  </button>
                                 </div>
-                              )
-                            }
+                              </div>
+                            )}
                           </div>
-                          <a
-                            href={u.username ? `https://t.me/${u.username}` : `tg://user?id=${u.telegram_id}`}
-                            target="_blank" rel="noreferrer"
-                            className="block text-center py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/40 text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
-                          >
-                            ✈ Telegramda yozing
-                          </a>
+
+                          {u.telegram_id > 0 ? (
+                            <a
+                              href={u.username ? `https://t.me/${u.username}` : `tg://user?id=${u.telegram_id}`}
+                              target="_blank" rel="noreferrer"
+                              className="block text-center py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/40 text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
+                            >
+                              ✈ Telegramda yozing
+                            </a>
+                          ) : userDetailData?.email ? (
+                            // Negative telegram_id = synthetic id from Google/email
+                            // signup (see _google_sub_to_internal_id/_email_to_internal_id
+                            // in auth.py) — not a real Telegram account, so a tg://
+                            // deep link would just error. Email is the only real
+                            // contact channel for these accounts.
+                            <a
+                              href={`mailto:${userDetailData.email}`}
+                              className="block text-center py-2.5 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/40 text-blue-600 dark:text-blue-400 text-sm font-medium transition-colors"
+                            >
+                              ✉ Email orqali yozing
+                            </a>
+                          ) : (
+                            <p className="text-center py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 text-xs">
+                              Bog'lanish uchun Telegram yoki email mavjud emas
+                            </p>
+                          )}
+
+                          <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
+                            <h4 className="text-red-600 dark:text-red-400 font-semibold text-sm mb-1">Hisobni butunlay o'chirish</h4>
+                            <p className="text-red-500/80 dark:text-red-400/70 text-xs mb-3">
+                              Orqaga qaytarib bo'lmaydi — profil, kurslar, to'lovlar va barcha faollik tarixi butunlay o'chiriladi.
+                            </p>
+                            {userDeleteConfirmId !== u.telegram_id ? (
+                              <button onClick={() => setUserDeleteConfirmId(u.telegram_id)}
+                                className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-sm font-semibold transition-colors">
+                                🗑 Hisobni butunlay o'chirish
+                              </button>
+                            ) : (
+                              <div className="flex gap-2">
+                                <button onClick={() => setUserDeleteConfirmId(null)}
+                                  className="flex-1 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-500 text-sm">Bekor</button>
+                                <button onClick={() => handleAdminDeleteUser(u.telegram_id)} disabled={userDeleteLoading}
+                                  className="flex-1 py-2 rounded-xl bg-red-700 hover:bg-red-800 disabled:opacity-50 text-white text-sm font-semibold">
+                                  {userDeleteLoading ? '…' : "Tasdiqlayman, o'chir"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </>

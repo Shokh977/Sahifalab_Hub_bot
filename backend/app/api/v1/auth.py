@@ -1068,6 +1068,10 @@ async def list_users(
     q: Optional[str] = None, limit: int = 50,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
+    """Admin user search. `q` matches, in order: an exact telegram_id (accepts
+    negative synthetic ids from Google/email signups — see
+    _google_sub_to_internal_id/_email_to_internal_id), or a substring match
+    against name, Telegram username, public site_username, or email."""
     _require_admin(db, authorization)
     query = db.query(Profile)
     if q and q.strip():
@@ -1075,14 +1079,20 @@ async def list_users(
         try:
             query = query.filter(Profile.telegram_id == int(q))
         except ValueError:
+            like = f"%{q.lstrip('@')}%"
             query = query.filter(
-                or_(Profile.first_name.ilike(f"%{q}%"), Profile.username.ilike(f"%{q}%"))
+                or_(
+                    Profile.first_name.ilike(like),
+                    Profile.username.ilike(like),
+                    Profile.site_username.ilike(like),
+                    Profile.email.ilike(like),
+                )
             )
     profiles = query.order_by(Profile.app_created_at.desc()).limit(min(limit, 200)).all()
     return [
         {
             "telegram_id": p.telegram_id, "first_name": p.first_name,
-            "username": p.site_username, "photo_url": p.photo_url,
+            "username": p.site_username, "email": p.email, "photo_url": p.photo_url,
             "role": p.role, "status": p.status,
             "total_xp": p.total_xp, "level": p.level,
             "app_created_at": p.app_created_at.isoformat() if p.app_created_at else None,
@@ -1096,14 +1106,38 @@ async def admin_delete_user(
     target_telegram_id: int,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
+    """Permanently delete a user account (Admin only). Most related tables
+    have a real FK with ON DELETE CASCADE to profiles.telegram_id and clean up
+    automatically. course_enrollments, course_payment_orders, lesson_progress,
+    payments, and pending_enrollments reference telegram_id by convention only
+    (no FK — see migrations 010/011/012/019 and the untracked
+    pending_enrollments table), so they're deleted explicitly here first or
+    they'd be left as orphaned rows after the profile is gone."""
     admin_id = _require_admin(db, authorization)
     if admin_id == target_telegram_id:
         raise HTTPException(status_code=400, detail="Cannot delete your own account")
     profile = _get_profile(db, target_telegram_id)
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    db.delete(profile)
-    db.commit()
+
+    try:
+        for table, column in (
+            ("course_enrollments",    "student_id"),
+            ("course_payment_orders", "student_id"),
+            ("lesson_progress",       "student_id"),
+            ("payments",              "user_id"),
+            ("pending_enrollments",   "user_id"),
+        ):
+            db.execute(text(f"DELETE FROM {table} WHERE {column} = :uid"), {"uid": target_telegram_id})
+        db.delete(profile)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error(
+            "Admin permanent-delete failed for target_telegram_id=%s (admin_id=%s)",
+            target_telegram_id, admin_id, exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Delete failed")
     return {"success": True, "deleted_id": target_telegram_id}
 
 

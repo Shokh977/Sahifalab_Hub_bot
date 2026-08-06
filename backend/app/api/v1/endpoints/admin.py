@@ -1,5 +1,6 @@
 ﻿import asyncio
 import json
+import logging
 import os
 import httpx
 from datetime import datetime, timezone, timedelta
@@ -21,6 +22,8 @@ from app.schemas.admin_schemas import (
 )
 from app.services.auth_service import decode_token_payload
 from app.core.admin_check import is_role_admin
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -2017,19 +2020,53 @@ async def admin_suspend_user(
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
-    """Suspend a user account — Admin only."""
-    await verify_admin(authorization=authorization, db=db)
-    _ensure_supabase()
+    """Suspend a user account — Admin only.
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        res = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/profiles",
-            params={"telegram_id": f"eq.{telegram_id}"},
-            json={"is_active": False, "suspension_reason": body.reason},
-            headers=_pending_supabase_headers(),
-        )
-    if res.status_code not in (200, 204):
-        raise HTTPException(status_code=502, detail="Supabase error")
+    Writes profiles.status='suspended', the column email_login() and every
+    other login gate actually check. This previously wrote is_active/
+    suspension_reason via Supabase REST, columns that don't exist on the real
+    profiles table (only `status` does — see 004_roles_status.sql), so the
+    suspend action was a silent no-op: nothing ever blocked the user."""
+    admin = await verify_admin(authorization=authorization, db=db)
+    if admin.telegram_id == telegram_id:
+        raise HTTPException(status_code=400, detail="Cannot suspend your own account")
+
+    profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile.status = "suspended"
+    profile.suspension_reason = body.reason
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("Failed to suspend telegram_id=%s", telegram_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Suspend failed")
+    return {"ok": True}
+
+
+@router.post("/users/{telegram_id}/unsuspend")
+async def admin_unsuspend_user(
+    telegram_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Reverse admin_suspend_user — Admin only."""
+    await verify_admin(authorization=authorization, db=db)
+
+    profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile.status = "active"
+    profile.suspension_reason = None
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error("Failed to unsuspend telegram_id=%s", telegram_id, exc_info=True)
+        raise HTTPException(status_code=500, detail="Unsuspend failed")
     return {"ok": True}
 
 

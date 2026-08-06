@@ -23,6 +23,7 @@ class Profile(Base):
     photo_url         = Column(String(1000), nullable=True)
     role              = Column(String(50), default='student')   # student | teacher | admin
     status            = Column(String(50), default='active')    # active | pending | suspended
+    suspension_reason = Column(Text, nullable=True)  # set by admin.py's suspend action (084_admin_suspension_reason)
     total_xp          = Column(Integer, default=0)
     focus_seconds     = Column(Integer, default=0)
     level             = Column(Integer, default=1)

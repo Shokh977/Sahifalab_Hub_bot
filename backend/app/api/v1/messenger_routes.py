@@ -7,6 +7,8 @@ from sqlalchemy import or_, and_, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.core.config import settings
+from app.core.admin_check import is_role_admin
 from app.services.auth_service import decode_token
 from app.schemas.social_schemas import MessageCreate, ReactionCreate
 from app.services import messenger_service as msvc
@@ -36,6 +38,13 @@ def list_conversations(
     return msvc.list_conversations(db, user_id)
 
 
+def _is_admin(db: Session, telegram_id: int) -> bool:
+    """Single source of truth for "is this telegram_id an admin?" (matches
+    verify_admin in admin.py) — covers both env-var-listed admins and
+    admins promoted via Profile.role."""
+    return telegram_id in settings.ADMIN_TELEGRAM_IDS or is_role_admin(db, telegram_id)
+
+
 def _can_message(db: Session, sender_id: int, receiver_id: int) -> bool:
     """
     Returns True when sender_id may open a DM with receiver_id:
@@ -43,11 +52,7 @@ def _can_message(db: Session, sender_id: int, receiver_id: int) -> bool:
       2. They have an accepted connection, OR
       3. One is enrolled in a course the other teaches.
     """
-    admin = db.query(Profile).filter(
-        Profile.telegram_id.in_([sender_id, receiver_id]),
-        Profile.role == "admin",
-    ).first()
-    if admin:
+    if _is_admin(db, sender_id) or _is_admin(db, receiver_id):
         return True
 
     connected = db.query(Connection).filter(
@@ -78,7 +83,10 @@ def get_or_create_conversation(
 ):
     if user_id == other_user_id:
         raise HTTPException(400, "Cannot message yourself")
-    if is_blocked(db, user_id, other_user_id):
+    # Admin authority: reach any user for moderation/support even if that
+    # user blocked the admin (or vice versa). Regular users stay fully
+    # subject to blocks — this bypass only applies when the caller is admin.
+    if not _is_admin(db, user_id) and is_blocked(db, user_id, other_user_id):
         raise HTTPException(403, detail="Xabar yuborib bo'lmaydi")
     if not _can_message(db, user_id, other_user_id):
         raise HTTPException(

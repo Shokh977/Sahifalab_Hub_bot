@@ -10,6 +10,15 @@ from sqlalchemy.orm import Session
 from app.models.social_models import Conversation, DirectMessage, MessageReaction
 from app.models.models import Profile
 from app.services.social_service import is_blocked
+from app.core.config import settings
+from app.core.admin_check import is_role_admin
+
+
+def _is_admin(db: Session, telegram_id: int) -> bool:
+    """Mirrors messenger_routes._is_admin — admin authority to keep
+    messaging a user even across a block must hold for every message in
+    the conversation, not just the one that opens it."""
+    return telegram_id in settings.ADMIN_TELEGRAM_IDS or is_role_admin(db, telegram_id)
 
 
 def _profile_brief(p: Profile) -> dict:
@@ -176,7 +185,7 @@ def send_message(
         raise ValueError("Not a participant")
 
     other_id = conv.participant_b if sender_id == conv.participant_a else conv.participant_a
-    if is_blocked(db, sender_id, other_id):
+    if not _is_admin(db, sender_id) and is_blocked(db, sender_id, other_id):
         raise ValueError("Xabar yuborib bo'lmaydi")
 
     msg = DirectMessage(
