@@ -50,6 +50,7 @@ from app.services.auth_service import (
     decode_token,
     decode_token_payload,
 )
+from app.services.user_time import validate_timezone, user_local_date
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ class ProfileUpdateRequest(BaseModel):
     daily_goal_minutes:  Optional[int] = None
     experience_level:    Optional[str] = None   # beginner | intermediate | advanced
     learning_motivation: Optional[str] = None   # career | skill | self | exam
+    timezone:            Optional[str] = None   # IANA zone, e.g. 'Asia/Tashkent' | 'Asia/Seoul'
 
 class ApplyTeacherRequest(BaseModel):
     specialization:   str
@@ -547,6 +549,11 @@ async def update_my_profile(
         payload["about_me"] = body.about_me.strip() or None
     if body.daily_goal_minutes is not None:
         payload["daily_goal_minutes"] = max(5, min(480, body.daily_goal_minutes))
+    if body.timezone is not None:
+        try:
+            payload["timezone"] = validate_timezone(body.timezone)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Invalid timezone")
 
     settings_update: dict = {}
     if body.experience_level is not None:
@@ -561,13 +568,27 @@ async def update_my_profile(
     if not payload and not settings_update:
         return {"ok": True}
 
-    if settings_update:
+    if settings_update or "timezone" in payload:
         profile = _get_profile(db, telegram_id)
         if not profile:
             raise HTTPException(status_code=404, detail="User not found")
-        current = dict(profile.user_settings or {})
-        current.update(settings_update)
-        payload["user_settings"] = current
+        if settings_update:
+            current = dict(profile.user_settings or {})
+            current.update(settings_update)
+            payload["user_settings"] = current
+        if "timezone" in payload and payload["timezone"] != profile.timezone:
+            # Charitable timezone-change handling (plan doc A.4): moving to a
+            # zone where "today" is already further along must not retroactively
+            # put an otherwise-current streak at risk. Only ever nudges
+            # streak_last_date forward, never backward.
+            old_local = user_local_date(profile.timezone)
+            new_local = user_local_date(payload["timezone"])
+            if (
+                new_local > old_local
+                and profile.streak_last_date is not None
+                and profile.streak_last_date >= old_local - timedelta(days=1)
+            ):
+                payload["streak_last_date"] = new_local - timedelta(days=1)
 
     _upsert_profile(db, telegram_id, **payload)
     return {"ok": True, **{k: v for k, v in payload.items() if k != "user_settings"}, **settings_update}

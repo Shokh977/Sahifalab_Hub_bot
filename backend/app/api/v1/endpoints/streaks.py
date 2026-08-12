@@ -22,18 +22,28 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
+from app.services.user_time import user_local_date, local_midnight_utc
+from app.services.freeze_service import (
+    MAX_CONSECUTIVE_FREEZES,
+    check_freeze_eligibility,
+    compute_streak_state,
+    consecutive_freeze_run_ending_before,
+    apply_freeze,
+)
 
 router = APIRouter()
 
 
-def _parse_local_date(local_date: Optional[str]) -> date:
-    """Return the client's local calendar date, or UTC today as fallback."""
+def _parse_local_date(local_date: Optional[str], tz: Optional[str] = None) -> date:
+    """Return the client's local calendar date. Falls back to the user's
+    stored IANA timezone (not bare UTC) when local_date is absent/unparseable —
+    the client-supplied path is unchanged and remains authoritative when present."""
     if local_date:
         try:
             return date.fromisoformat(local_date)
         except ValueError:
             pass
-    return datetime.now(UTC).date()
+    return user_local_date(tz)
 
 
 async def _require_token(authorization: Optional[str] = Header(None)) -> int:
@@ -109,14 +119,12 @@ async def get_streak_detail(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    today = _parse_local_date(local_date)
-
     profile = db.execute(
         text("""
             SELECT streak_days, streak_last_date,
                    COALESCE(freeze_count, 0)      AS freeze_count,
                    COALESCE(freeze_used_dates, '{}') AS freeze_used_dates,
-                   daily_goal_minutes, total_xp
+                   daily_goal_minutes, total_xp, timezone
             FROM profiles WHERE telegram_id = :uid
         """),
         {"uid": caller_id},
@@ -124,19 +132,23 @@ async def get_streak_detail(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
+    today = _parse_local_date(local_date, profile.timezone)
+
     streak_days  = int(profile.streak_days or 0)
     freeze_count = int(profile.freeze_count or 0)
     last_date    = profile.streak_last_date
     daily_goal   = int(profile.daily_goal_minutes or 20)
+    freeze_dates_all: set = set(profile.freeze_used_dates or [])
 
-    # Determine if streak is active (studied today or yesterday)
+    # Determine if streak is active (studied today or yesterday) — kept as its
+    # own untouched computation for backward compatibility with any client
+    # still reading only this field (see plan doc, section B).
     is_active = last_date is not None and last_date >= today - timedelta(days=1)
 
     # Freeze is only valid when exactly one day was missed:
     # last study must be exactly 2 days ago, yesterday must not already be frozen,
     # and the user must have freeze charges.
     missed_date = today - timedelta(days=1)
-    freeze_dates_all: set = set(profile.freeze_used_dates or [])
     # can_freeze: user has freezes AND the 1-day window is open
     can_freeze = (
         streak_days > 0
@@ -154,6 +166,23 @@ async def get_streak_detail(
         and last_date == today - timedelta(days=2)
         and missed_date not in freeze_dates_all
     )
+
+    # ── Explicit state machine (replaces is_active for new clients) ─────────
+    today_row = db.execute(
+        text("""
+            SELECT COALESCE(SUM(minutes), 0) >= :goal AS goal_met
+            FROM focus_sessions WHERE user_id = :uid AND session_date = :today
+        """),
+        {"uid": caller_id, "goal": daily_goal, "today": today},
+    ).fetchone()
+    today_goal_met = bool(today_row.goal_met) if today_row else False
+
+    streak_state = compute_streak_state(today, last_date, freeze_dates_all, today_goal_met)
+    window_closes_at = (
+        local_midnight_utc(profile.timezone, today).isoformat()
+        if streak_state == "at_risk" else None
+    )
+    consecutive_freezes_used = consecutive_freeze_run_ending_before(freeze_dates_all, missed_date)
 
     # Study days this week (Mon–Sun) — studied days + frozen days
     week_start = today - timedelta(days=today.weekday())
@@ -215,6 +244,10 @@ async def get_streak_detail(
         "is_active":               is_active,
         "can_freeze":              can_freeze,
         "can_freeze_if_purchased": can_freeze_if_purchased,
+        "streak_state":             streak_state,
+        "window_closes_at":         window_closes_at,
+        "max_consecutive_freezes":  MAX_CONSECUTIVE_FREEZES,
+        "consecutive_freezes_used": consecutive_freezes_used,
         "longest_streak": longest_streak,
         "week_days":      week_days,
         "freeze_count":   freeze_count,
@@ -306,14 +339,12 @@ async def use_freeze(
     The freeze is always applied to yesterday (today - 1), the missed day.
     After this call the user must still study today to advance the streak.
     """
-    today = _parse_local_date(local_date)           # actual today (device local)
-    missed_date = today - timedelta(days=1)         # the day that was missed
-
     profile = db.execute(
         text("""
             SELECT streak_days, streak_last_date,
                    COALESCE(freeze_count, 0) AS freeze_count,
-                   COALESCE(freeze_used_dates, '{}') AS freeze_used_dates
+                   COALESCE(freeze_used_dates, '{}') AS freeze_used_dates,
+                   timezone
             FROM profiles WHERE telegram_id = :uid
         """),
         {"uid": caller_id},
@@ -321,39 +352,28 @@ async def use_freeze(
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    freeze_count = int(profile.freeze_count or 0)
-    if freeze_count <= 0:
-        raise HTTPException(status_code=400, detail="No freezes available")
+    today = _parse_local_date(local_date, profile.timezone)  # actual today (device local)
+    missed_date = today - timedelta(days=1)                  # the day that was missed
 
-    freeze_used: list = list(profile.freeze_used_dates or [])
+    freeze_count = int(profile.freeze_count or 0)
+    freeze_used_dates: set = set(profile.freeze_used_dates or [])
     last_date = profile.streak_last_date
 
-    # Streak is still active — no freeze needed
-    if last_date is not None and last_date >= missed_date:
-        raise HTTPException(status_code=400, detail="Streak is still active, no freeze needed")
+    elig = check_freeze_eligibility(today, last_date, freeze_count, freeze_used_dates)
+    if not elig.eligible:
+        _REASON_MESSAGES = {
+            "no_freezes":     "No freezes available",
+            "not_missed":     "Streak is still active, no freeze needed",
+            "already_frozen": "Freeze already applied to the missed date",
+            "gap_too_large":  "More than one day was missed — freeze can only cover a single missed day",
+            "consecutive_cap": "Ketma-ket ko'pi bilan 2 kun muzlatish mumkin — bugun o'qib seriyani jonlantiring.",
+        }
+        raise HTTPException(status_code=400, detail=_REASON_MESSAGES.get(elig.reason, "Freeze not eligible"))
 
-    # Missed date already covered by a freeze
-    if missed_date in freeze_used:
+    rowcount = apply_freeze(db, caller_id, missed_date, last_date)
+    if rowcount == 0:
+        # Raced with a concurrent request/cron tick that already applied it.
         raise HTTPException(status_code=400, detail="Freeze already applied to the missed date")
-
-    # More than one day was missed — freeze can only bridge a single gap
-    if last_date is None or last_date < missed_date - timedelta(days=1):
-        raise HTTPException(
-            status_code=400,
-            detail="More than one day was missed — freeze can only cover a single missed day",
-        )
-
-    db.execute(
-        text("""
-            UPDATE profiles SET
-                freeze_count      = freeze_count - 1,
-                freeze_used_dates = array_append(COALESCE(freeze_used_dates, '{}'), :missed),
-                streak_last_date  = :missed
-            WHERE telegram_id = :uid
-        """),
-        {"missed": missed_date, "uid": caller_id},
-    )
-    db.commit()
 
     return {
         "ok":           True,

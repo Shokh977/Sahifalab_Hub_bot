@@ -222,6 +222,8 @@ async def complete_focus_session(
         "challenges_progressed": activity.challenges_progressed,
         "claimed_minutes":       body.minutes,
         "credited_minutes":      credited_minutes,
+        "freeze_count":              activity.freeze_count,
+        "milestone_freeze_granted":  activity.milestone_freeze_granted,
     }
 
 

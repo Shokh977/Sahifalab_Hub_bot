@@ -4,16 +4,30 @@ cron.py — Scheduled / internal maintenance endpoints.
 Routes (secret-key protected, NOT JWT):
   POST /api/cron/weekly-reset                — reset profile_views_week for all users
   POST /api/cron/weekly-report               — send weekly study report push notifications
-  POST /api/cron/streak-reminder             — send daily streak reminder to users who haven't studied today
+  POST /api/cron/streak-reminder             — 20:00-local reminder to users who haven't studied today
+  POST /api/cron/streak-freeze-auto-apply    — 00:00-local: auto-consume a freeze for yesterday's miss
+  POST /api/cron/streak-at-risk-push         — 09:00-local: urgent push for zero-freeze at-risk users
   POST /api/cron/expire-pending-enrollments  — mark stale awaiting_payment/paid rows as expired
   POST /api/cron/challenges-tick             — Musobaqalar: status transitions + notification cadence
   POST /api/cron/challenges-consistency-daily — step-25: daily 'consistency' run evaluation
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
-Configure Railway cron jobs:
+
+streak-reminder, streak-freeze-auto-apply and streak-at-risk-push are all now
+HOURLY jobs that self-select which users are due based on each user's own
+`profiles.timezone` (see app/services/user_time.py) — there is no single UTC
+hour that means "8pm" or "midnight" for every user, so the schedule below
+fires every hour and the SQL WHERE clause does the per-user local-hour
+filtering (EXTRACT(HOUR FROM (NOW() AT TIME ZONE profiles.timezone))).
+
+Configure Railway cron jobs (if run externally — see main.py's
+_start_cron_scheduler for the in-process APScheduler equivalent, which is
+what actually drives these today; running both means double-sends):
     POST /api/cron/weekly-reset                 — schedule: 0 0 * * 1   (Monday 00:00 UTC)
     POST /api/cron/weekly-report                — schedule: 0 8 * * 1   (Monday 08:00 UTC)
-    POST /api/cron/streak-reminder               — schedule: 0 15 * * *  (Daily 15:00 UTC = ~20:00 Tashkent)
+    POST /api/cron/streak-reminder               — schedule: 0 * * * *   (every hour, local-hour-20 filter)
+    POST /api/cron/streak-freeze-auto-apply      — schedule: 10 * * * *  (every hour, local-hour-0 filter)
+    POST /api/cron/streak-at-risk-push           — schedule: 20 * * * *  (every hour, local-hour-9 filter)
     POST /api/cron/expire-pending-enrollments    — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-tick                — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-consistency-daily  — schedule: 5 19 * * *  (~00:05 Tashkent — evaluates "yesterday")
@@ -37,6 +51,8 @@ from app.api.v1.endpoints.notifications import send_notification
 from app.services.challenge_service import (
     evaluate_consistency_day, resolve_sprint_challenge, resolve_team_challenge,
 )
+from app.services.user_time import user_local_date
+from app.services.freeze_service import check_freeze_eligibility, compute_streak_state, apply_freeze
 
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -280,19 +296,24 @@ async def send_streak_reminders(
     """
     Send a streak reminder to users who:
       - Have an active streak (streak_days > 0)
-      - Have NOT completed a focus session today
+      - Have NOT completed a focus session today (in THEIR local day)
       - Have streak notifications enabled (or preference not set)
       - Have an Expo push token registered
+      - Haven't already been reminded today (last_reminder_date dedup —
+        needed now that this fires hourly instead of once daily, so a
+        timezone change or an hour-repeat around a DST transition can't
+        double-send)
 
-    Schedule: 0 15 * * *  (daily 15:00 UTC ≈ 20:00 Tashkent time)
+    Runs hourly; the local-hour-20 filter below (not the schedule) is what
+    makes this "8pm for each user" rather than "8pm UTC" — see cron.py's
+    module docstring.
     """
-    today = datetime.now(UTC).date()
-
     rows = db.execute(text("""
         SELECT
             p.telegram_id,
             p.first_name,
             p.streak_days,
+            p.timezone,
             p.user_settings->>'expo_push_token' AS token,
             p.user_settings->>'learning_motivation' AS motivation
         FROM profiles p
@@ -304,15 +325,31 @@ async def send_streak_reminders(
                 p.user_settings->'notification_prefs'->>'streak' IS NULL
                 OR p.user_settings->'notification_prefs'->>'streak' = 'true'
             )
+            AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE COALESCE(p.timezone, 'Asia/Tashkent'))) = 20
+            AND (
+                p.last_reminder_date IS NULL
+                OR p.last_reminder_date < (NOW() AT TIME ZONE COALESCE(p.timezone, 'Asia/Tashkent'))::date
+            )
             AND p.telegram_id NOT IN (
                 SELECT DISTINCT user_id
                 FROM focus_sessions
-                WHERE session_date = :today
+                WHERE session_date = (NOW() AT TIME ZONE COALESCE(p.timezone, 'Asia/Tashkent'))::date
             )
-    """), {"today": today}).fetchall()
+    """)).fetchall()
 
     if not rows:
         return {"ok": True, "sent": 0, "eligible": 0}
+
+    # Dedup stamp — set for every eligible user regardless of push transport
+    # success, since "eligible for today's reminder" is what must not be
+    # reconsidered again today, not "the push actually delivered".
+    for row in rows:
+        local_today = user_local_date(row.timezone)
+        db.execute(
+            text("UPDATE profiles SET last_reminder_date = :d WHERE telegram_id = :uid"),
+            {"d": local_today, "uid": row.telegram_id},
+        )
+    db.commit()
 
     # Short closing nudge tailored to the user's onboarding motivation — appended to
     # the base streak message so copy stays relevant to why they're learning.
@@ -383,6 +420,139 @@ async def send_streak_reminders(
 
     logger.info("streak_reminder: sent=%d failed=%d eligible=%d", sent, failed, len(rows))
     return {"ok": True, "sent": sent, "failed": failed, "eligible": len(rows)}
+
+
+@router.post("/streak-freeze-auto-apply")
+async def streak_freeze_auto_apply(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Auto-consume one freeze for any user whose local day has just crossed
+    midnight and who missed exactly one day — freezes that only apply when a
+    user is present to tap a button aren't insurance (plan doc P1/P3).
+
+    Runs hourly; the local-hour-0 filter below (not the schedule) is what
+    makes this "midnight for each user" rather than a single UTC cutoff.
+
+    Reuses check_freeze_eligibility()/apply_freeze() from freeze_service —
+    the exact same validation POST /api/streaks/freeze/use runs, including
+    the consecutive-freeze cap (D), so a freeze is never applied under
+    different rules depending on who/what triggered it.
+    """
+    rows = db.execute(text("""
+        SELECT telegram_id, streak_days, streak_last_date,
+               COALESCE(freeze_count, 0) AS freeze_count,
+               COALESCE(freeze_used_dates, '{}') AS freeze_used_dates,
+               timezone
+        FROM profiles
+        WHERE streak_days > 0
+          AND freeze_count > 0
+          AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE COALESCE(timezone, 'Asia/Tashkent'))) = 0
+    """)).fetchall()
+
+    applied = skipped = 0
+    for row in rows:
+        local_today = user_local_date(row.timezone)
+        missed_date = local_today - timedelta(days=1)
+        freeze_used_dates = set(row.freeze_used_dates or [])
+
+        elig = check_freeze_eligibility(local_today, row.streak_last_date, row.freeze_count, freeze_used_dates)
+        if not elig.eligible:
+            skipped += 1
+            logger.info("streak_freeze_auto_apply: skip user_id=%s reason=%s", row.telegram_id, elig.reason)
+            continue
+
+        rowcount = apply_freeze(db, row.telegram_id, missed_date, row.streak_last_date)
+        if rowcount == 0:
+            # Raced with a concurrent manual /freeze/use call or an overlapping tick.
+            skipped += 1
+            logger.info("streak_freeze_auto_apply: skip user_id=%s reason=raced_or_already_applied", row.telegram_id)
+            continue
+
+        applied += 1
+        remaining = int(row.freeze_count) - 1
+        logger.info(
+            "streak_freeze_auto_apply: applied user_id=%s missed=%s streak_days=%s remaining=%s",
+            row.telegram_id, missed_date, row.streak_days, remaining,
+        )
+        asyncio.create_task(send_notification(
+            row.telegram_id, "streak_freeze_applied", category="SYSTEM",
+            meta={
+                "streak_days":  int(row.streak_days or 0),
+                "freeze_count": remaining,
+                "frozen_date":  missed_date.isoformat(),
+            },
+        ))
+
+    logger.info("streak_freeze_auto_apply: applied=%d skipped=%d candidates=%d", applied, skipped, len(rows))
+    return {"ok": True, "applied": applied, "skipped": skipped, "candidates": len(rows)}
+
+
+@router.post("/streak-at-risk-push")
+async def streak_at_risk_push(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Urgent push for users whose streak is 'at_risk' (missed exactly one day,
+    window still open) AND who hold zero freezes — users who still have a
+    freeze got auto-applied at local midnight by streak-freeze-auto-apply and
+    are 'frozen_today' by 09:00, not 'at_risk', so they're naturally excluded
+    here (plan doc section F).
+
+    Runs hourly; the local-hour-9 filter below is what makes this "9am for
+    each user". Dedup via last_at_risk_push_date, same pattern as
+    streak-reminder's last_reminder_date.
+    """
+    rows = db.execute(text("""
+        SELECT telegram_id, streak_days, streak_last_date, daily_goal_minutes, timezone,
+               COALESCE(freeze_used_dates, '{}') AS freeze_used_dates,
+               user_settings->>'expo_push_token' AS token
+        FROM profiles
+        WHERE streak_days > 0
+          AND COALESCE(freeze_count, 0) = 0
+          AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE COALESCE(timezone, 'Asia/Tashkent'))) = 9
+          AND (
+              last_at_risk_push_date IS NULL
+              OR last_at_risk_push_date < (NOW() AT TIME ZONE COALESCE(timezone, 'Asia/Tashkent'))::date
+          )
+          AND user_settings->>'expo_push_token' IS NOT NULL
+          AND user_settings->>'expo_push_token' != ''
+    """)).fetchall()
+
+    sent = skipped = 0
+    for row in rows:
+        local_today = user_local_date(row.timezone)
+        daily_goal = int(row.daily_goal_minutes or 20)
+
+        today_row = db.execute(
+            text("SELECT COALESCE(SUM(minutes), 0) >= :goal AS goal_met FROM focus_sessions WHERE user_id = :uid AND session_date = :today"),
+            {"uid": row.telegram_id, "goal": daily_goal, "today": local_today},
+        ).fetchone()
+        today_goal_met = bool(today_row.goal_met) if today_row else False
+
+        state = compute_streak_state(local_today, row.streak_last_date, set(row.freeze_used_dates or []), today_goal_met)
+        # Dedup stamp regardless of state — a user who isn't at_risk today
+        # (e.g. state flipped to lost overnight, or they already studied)
+        # must not be reconsidered again today either.
+        db.execute(
+            text("UPDATE profiles SET last_at_risk_push_date = :d WHERE telegram_id = :uid"),
+            {"d": local_today, "uid": row.telegram_id},
+        )
+        if state != "at_risk":
+            skipped += 1
+            continue
+
+        asyncio.create_task(send_notification(
+            row.telegram_id, "streak_at_risk", category="SYSTEM",
+            meta={"streak_days": int(row.streak_days or 0)},
+        ))
+        sent += 1
+    db.commit()
+
+    logger.info("streak_at_risk_push: sent=%d skipped=%d candidates=%d", sent, skipped, len(rows))
+    return {"ok": True, "sent": sent, "skipped": skipped, "candidates": len(rows)}
 
 
 @router.post("/expire-pending-enrollments")

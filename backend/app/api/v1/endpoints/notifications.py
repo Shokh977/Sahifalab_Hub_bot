@@ -312,6 +312,8 @@ _PUSH_TITLES: dict[str, str] = {
     "deck_content_flagged":       "To'plam tekshiruvda",
     "deck_child_safety_flagged":  "⚠️ Bolalar xavfsizligi",
     "deck_auto_hidden_reports":   "To'plam yashirildi",
+    "streak_freeze_applied":      "🧊 Seriya muzlatildi",
+    "streak_at_risk":             "🔥 Seriyangiz xavf ostida!",
 }
 
 # Body templates — {actor} is replaced with the actor's name at send time
@@ -343,6 +345,8 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "deck_content_flagged":        "Bitta to'plam tekshiruv uchun belgilandi. Admin panelda ko'rib chiqing.",
     "deck_child_safety_flagged":   "⚠️ Bolalar xavfsizligi bo'yicha to'plam belgilandi — zudlik bilan ko'rib chiqing!",
     "deck_auto_hidden_reports":    "Ko'p shikoyat tufayli to'plam avtomatik yashirildi — ko'rib chiqing.",
+    "streak_freeze_applied":       "{streak_days} kunlik seriyangiz freeze bilan saqlandi. Bugun o'qib davom eting! {freeze_count} ta freeze qoldi.",
+    "streak_at_risk":              "{streak_days} kunlik seriyangiz bugun kechqurun tugaydi. Saqlab qolish uchun hozir o'qing!",
 }
 
 # Keep _PUSH_BODIES as fallback alias
@@ -357,6 +361,7 @@ async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: ob
     body  = tpl.format(
         actor=actor, course_title=meta.get("course_title", "Kurs"),
         deck=meta.get("deck_title", ""), n=meta.get("clone_count", ""),
+        streak_days=meta.get("streak_days", ""), freeze_count=meta.get("freeze_count", ""),
     )
 
     await asyncio.gather(
@@ -484,6 +489,7 @@ _EXPO_PREF_MAP: dict[str, str] = {
     "level_up": "achieve", "achievement": "achieve", "xp_reward": "achieve",
     "course_complete": "course", "certificate": "course",
     "quiz_pass": "course", "new_student": "course", "new_content": "course",
+    "streak_freeze_applied": "streak", "streak_at_risk": "streak",
 }
 
 

@@ -714,12 +714,13 @@ async def startup_event():
 
 
 def _start_cron_scheduler():
-    """Start APScheduler for streak reminders, weekly reports, and Musobaqalar (challenges) ticks."""
+    """Start APScheduler for streak reminders/freezes/at-risk pushes, weekly reports, and Musobaqalar (challenges) ticks."""
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from apscheduler.triggers.cron  import CronTrigger
     from app.api.v1.endpoints.cron  import (
         send_streak_reminders, send_weekly_reports,
         challenges_tick, challenges_consistency_daily,
+        streak_freeze_auto_apply, streak_at_risk_push,
     )
     from app.db.session             import get_db
 
@@ -739,6 +740,26 @@ def _start_cron_scheduler():
             logger.info("[SCHEDULER] streak-reminder: %s", result)
         except Exception as exc:
             logger.error("[SCHEDULER] streak-reminder failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_streak_freeze_auto_apply():
+        db = _db()
+        try:
+            result = await streak_freeze_auto_apply(db=db, _=None)
+            logger.info("[SCHEDULER] streak-freeze-auto-apply: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] streak-freeze-auto-apply failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_streak_at_risk_push():
+        db = _db()
+        try:
+            result = await streak_at_risk_push(db=db, _=None)
+            logger.info("[SCHEDULER] streak-at-risk-push: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] streak-at-risk-push failed: %s", exc)
         finally:
             db.close()
 
@@ -773,18 +794,26 @@ def _start_cron_scheduler():
             db.close()
 
     scheduler = AsyncIOScheduler(timezone="UTC")
-    # Daily 15:00 UTC ≈ 20:00 Tashkent
-    scheduler.add_job(_run_streak_reminder, CronTrigger(hour=15, minute=0))
+    # Hourly — the local-hour-20 filter inside send_streak_reminders (not this
+    # trigger) is what makes this "8pm for each user"; see plan doc section F.
+    scheduler.add_job(_run_streak_reminder, CronTrigger(minute=0))
     # Every Monday 08:00 UTC
     scheduler.add_job(_run_weekly_report,   CronTrigger(day_of_week="mon", hour=8, minute=0))
     # Every hour — Musobaqalar status transitions (upcoming -> active -> ended) + notifications
     scheduler.add_job(_run_challenges_tick, CronTrigger(minute=0))
     # Daily 19:05 UTC (~00:05 Tashkent) — consistency-challenge day evaluation + evening reminder
     scheduler.add_job(_run_challenges_consistency_daily, CronTrigger(hour=19, minute=5))
+    # Hourly, offset from the :00 jobs above — local-hour-0 filter inside
+    # streak_freeze_auto_apply makes this "midnight for each user" (plan doc C).
+    scheduler.add_job(_run_streak_freeze_auto_apply, CronTrigger(minute=10))
+    # Hourly, local-hour-9 filter inside streak_at_risk_push (plan doc F).
+    scheduler.add_job(_run_streak_at_risk_push, CronTrigger(minute=20))
     scheduler.start()
     logger.info(
-        "[SCHEDULER] APScheduler started — streak @15:00 UTC daily, report @08:00 UTC Monday, "
-        "challenges-tick hourly, challenges-consistency-daily @19:05 UTC"
+        "[SCHEDULER] APScheduler started — streak-reminder hourly (local 20:00), "
+        "report @08:00 UTC Monday, challenges-tick hourly, "
+        "challenges-consistency-daily @19:05 UTC, streak-freeze-auto-apply hourly "
+        "(local 00:00), streak-at-risk-push hourly (local 09:00)"
     )
 
     # Run once immediately on startup so any challenge whose starts_at/ends_at

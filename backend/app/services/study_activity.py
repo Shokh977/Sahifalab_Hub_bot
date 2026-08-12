@@ -36,6 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.xp_service import add_xp
+from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
 
@@ -44,24 +45,60 @@ ActivitySource = Literal["focus_timer", "flashcards"]
 
 @dataclass
 class StudyActivityResult:
-    streak_days:           int
-    streak_advanced:        bool
-    today_minutes:          int
-    goal_met:               bool
-    xp_awarded:             int
+    streak_days:              int
+    streak_advanced:          bool
+    today_minutes:            int
+    goal_met:                 bool
+    xp_awarded:                int
+    freeze_count:              int  = 0
+    milestone_freeze_granted:  bool = False
     stages_completed:       list[dict] = field(default_factory=list)
     challenges_completed:   list[dict] = field(default_factory=list)
     challenges_progressed:  list[dict] = field(default_factory=list)
 
 
-def parse_local_date(local_date: Optional[str]) -> Date:
-    """Return the client's local calendar date, or UTC today as fallback."""
+def parse_local_date(local_date: Optional[str], tz: Optional[str] = None) -> Date:
+    """Return the client's local calendar date. Falls back to the user's
+    stored IANA timezone (not bare UTC) when local_date is absent/unparseable —
+    see app/services/user_time.py."""
     if local_date:
         try:
             return Date.fromisoformat(local_date)
         except ValueError:
             pass
-    return datetime.now(UTC).date()
+    return user_local_date(tz)
+
+
+# ── Shared SQL fragments for the streak UPDATE below ─────────────────────────
+# _NEW_STREAK_DAYS is inlined multiple times in the UPDATE (once to compute
+# streak_days itself, twice more to decide the milestone-freeze grant) because
+# Postgres can't reference a sibling SET column mid-statement. Kept as one
+# Python constant so there's a single source of truth for the expression text
+# even though the final SQL repeats it — see plan doc section E.
+_GOAL_MET_TODAY = """(
+                        SELECT COALESCE(SUM(minutes), 0)
+                        FROM focus_sessions
+                        WHERE user_id = :uid AND session_date = :today
+                    ) >= COALESCE(daily_goal_minutes, 20)"""
+
+_NEW_STREAK_DAYS = f"""CASE
+                    WHEN {_GOAL_MET_TODAY}
+                    THEN
+                        CASE
+                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
+                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
+                            ELSE 1
+                        END
+                    ELSE COALESCE(streak_days, 0)
+                END"""
+
+# A milestone freeze is granted when the just-computed streak_days is a
+# positive multiple of 7 AND differs from last_freeze_milestone_days (the
+# guard that makes this idempotent across same-day repeat calls and correct
+# across a reset-then-rebuild to the same multiple of 7).
+_MILESTONE_HIT = f"""(({_NEW_STREAK_DAYS}) > 0
+                    AND ({_NEW_STREAK_DAYS}) % 7 = 0
+                    AND ({_NEW_STREAK_DAYS}) != COALESCE(last_freeze_milestone_days, 0))"""
 
 
 def record_study_activity(
@@ -79,7 +116,16 @@ def record_study_activity(
     db.commit() internally at the points the original two call sites did, to
     keep behavior identical).
     """
-    today     = parse_local_date(local_date)
+    # Pre-fetch timezone (for the local_date fallback) and the current
+    # milestone-freeze guard value (to detect, after the UPDATE, whether THIS
+    # call is the one that just crossed a 7-day multiple — see step 3b).
+    pre_row = db.execute(
+        text("SELECT timezone, COALESCE(last_freeze_milestone_days, 0) AS last_freeze_milestone_days FROM profiles WHERE telegram_id = :uid"),
+        {"uid": user_id},
+    ).fetchone()
+    pre_milestone_days = int(pre_row.last_freeze_milestone_days) if pre_row else 0
+
+    today     = parse_local_date(local_date, pre_row.timezone if pre_row else None)
     yesterday = today - timedelta(days=1)
 
     # ── 1. Record the session ────────────────────────────────────────────────
@@ -95,33 +141,25 @@ def record_study_activity(
     #    goal. The subquery runs after the INSERT above so it includes the
     #    just-added session. Idempotent per day: studying again today after
     #    the goal is already met leaves streak_days unchanged (streak_last_date
-    #    == today branch below).
+    #    == today branch below). Also grants a free freeze on every positive
+    #    multiple-of-7 streak_days crossing (step-27 / plan doc section E),
+    #    capped at MAX_FREEZE_COUNT=5 — same cap streaks.py's purchase flow
+    #    enforces, kept in sync manually since it's a plain literal here.
     db.execute(
-        text("""
+        text(f"""
             UPDATE profiles SET
                 total_focus_minutes = COALESCE(total_focus_minutes, 0) + :min,
-                streak_days = CASE
-                    WHEN (
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)
-                    THEN
-                        CASE
-                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
-                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
-                            ELSE 1
-                        END
-                    ELSE COALESCE(streak_days, 0)
-                END,
+                streak_days = {_NEW_STREAK_DAYS},
                 streak_last_date = CASE
-                    WHEN (
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)
+                    WHEN {_GOAL_MET_TODAY}
                     THEN :today
                     ELSE streak_last_date
+                END,
+                freeze_count = LEAST(5, COALESCE(freeze_count, 0) + CASE WHEN {_MILESTONE_HIT} THEN 1 ELSE 0 END),
+                last_freeze_milestone_days = CASE
+                    WHEN {_MILESTONE_HIT}
+                    THEN ({_NEW_STREAK_DAYS})
+                    ELSE last_freeze_milestone_days
                 END,
                 study_pulse_at = NULL
             WHERE telegram_id = :uid
@@ -137,11 +175,13 @@ def record_study_activity(
                 COALESCE(SUM(minutes) FILTER (WHERE session_date = :today), 0) AS today_minutes,
                 COALESCE(streak_days, 0) AS streak_days,
                 COALESCE(daily_goal_minutes, 20) AS daily_goal,
-                streak_last_date
+                streak_last_date,
+                COALESCE(freeze_count, 0) AS freeze_count,
+                COALESCE(last_freeze_milestone_days, 0) AS last_freeze_milestone_days
             FROM focus_sessions fs
             JOIN profiles p ON p.telegram_id = :uid
             WHERE fs.user_id = :uid
-            GROUP BY streak_days, daily_goal_minutes, streak_last_date
+            GROUP BY streak_days, daily_goal_minutes, streak_last_date, freeze_count, last_freeze_milestone_days
         """),
         {"uid": user_id, "today": today},
     ).fetchone()
@@ -151,6 +191,13 @@ def record_study_activity(
     daily_goal    = int(stats_row.daily_goal)     if stats_row else 20
     goal_met      = today_minutes >= daily_goal
     streak_advanced = goal_met and stats_row is not None and stats_row.streak_last_date == today
+
+    # ── 3b. Milestone freeze grant flag — true iff THIS call is the one that
+    #    moved the guard column (not merely "streak_days is a multiple of 7",
+    #    which would also be true on later same-day/same-streak repeat calls).
+    freeze_count_after   = int(stats_row.freeze_count) if stats_row else 0
+    milestone_days_after = int(stats_row.last_freeze_milestone_days) if stats_row else pre_milestone_days
+    milestone_freeze_granted = milestone_days_after != pre_milestone_days
 
     # ── 4. Stage milestones (step-20) ────────────────────────────────────────
     from app.services.stage_service import check_and_award_stages
@@ -193,6 +240,8 @@ def record_study_activity(
         today_minutes=today_minutes,
         goal_met=goal_met,
         xp_awarded=xp_awarded,
+        freeze_count=freeze_count_after,
+        milestone_freeze_granted=milestone_freeze_granted,
         stages_completed=stages_completed,
         challenges_completed=challenges_completed,
         challenges_progressed=challenges_progressed,

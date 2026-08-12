@@ -74,6 +74,13 @@ class Profile(Base):
     freeze_used_dates   = Column(ARRAY(Date), default=list, nullable=False)
     # Active-study heartbeat (059_streak_challenges_heartbeat)
     study_pulse_at      = Column(DateTime(timezone=True), nullable=True)
+    # Per-user IANA timezone + cron dedup/guard columns (061->085 streak-freeze
+    # rework) — see app/services/user_time.py and app/services/freeze_service.py.
+    # timezone is validated in the endpoint (zoneinfo.ZoneInfo), not by a DB CHECK.
+    timezone                  = Column(String(64), default='Asia/Tashkent', nullable=False)
+    last_reminder_date        = Column(Date, nullable=True)
+    last_at_risk_push_date    = Column(Date, nullable=True)
+    last_freeze_milestone_days = Column(Integer, default=0, nullable=False)
 
 
 class AuthCode(Base):

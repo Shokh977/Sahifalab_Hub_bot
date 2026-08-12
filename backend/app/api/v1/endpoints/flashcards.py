@@ -880,6 +880,8 @@ async def complete_session(
         "stages_completed":      activity.stages_completed,
         "challenges_completed":  activity.challenges_completed,
         "challenges_progressed": activity.challenges_progressed,
+        "freeze_count":              activity.freeze_count,
+        "milestone_freeze_granted":  activity.milestone_freeze_granted,
     }
 
 
