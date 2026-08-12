@@ -151,6 +151,9 @@ class ContentReport(Base):
     details     = Column(Text, nullable=True)           # optional free-text from the reporter
     status      = Column(String(20), nullable=False, server_default="pending")  # 'pending' | 'reviewed' | 'dismissed'
     created_at  = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    # 086_content_report_review_columns — set by GET/POST /api/admin/reports
+    reviewed_by = Column(BigInteger, ForeignKey("profiles.telegram_id"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (
         CheckConstraint("target_type IN ('post', 'user')", name="chk_report_target_type"),

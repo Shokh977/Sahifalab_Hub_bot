@@ -86,7 +86,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports'
 
 type AdminChallengeType = 'cumulative' | 'consistency' | 'sprint' | 'team'
 type AdminChallengeMetric = 'focus_minutes' | 'flashcard_reviews' | 'lessons_completed' | 'courses_completed' | 'tests_passed'
@@ -296,6 +296,24 @@ interface AdminUserProfile {
   total_xp: number
   level: number
   app_created_at: string | null
+}
+
+// Post/user reports (content_reports) — GET /api/admin/reports
+interface AdminReport {
+  id: number
+  target_type: 'post' | 'user'
+  target_id: number
+  reason: string
+  details: string | null
+  status: 'pending' | 'reviewed' | 'dismissed'
+  created_at: string
+  reviewed_by: number | null
+  reviewed_at: string | null
+  reporter: { id: number; name: string } | null
+  target:
+    | { id: number; content: string | null; author: { id: number; name: string } | null; deleted?: boolean }
+    | { id: number; name: string | null; photo_url: string | null; deleted?: boolean }
+    | null
 }
 
 // ─── Quiz form types ──────────────────────────────────────────────────────────
@@ -602,6 +620,15 @@ const AdminPage: React.FC = () => {
   const [deckNewCards, setDeckNewCards] = useState('')
   const [deckCreating, setDeckCreating] = useState(false)
 
+  // ── Post/user reports moderation state ────────────────────────────────────
+  const [reportsStatus, setReportsStatus] = useState<'pending' | 'reviewed' | 'dismissed'>('pending')
+  const [reports, setReports] = useState<AdminReport[]>([])
+  const [reportsTotal, setReportsTotal] = useState(0)
+  const [reportsPage, setReportsPage] = useState(1)
+  const [reportsLoading, setReportsLoading] = useState(false)
+  const [reportsError, setReportsError] = useState('')
+  const [reportsBusyId, setReportsBusyId] = useState<number | null>(null)
+
   // ── Feature usage stats ───────────────────────────────────────────────────
   const [featurePeriod, setFeaturePeriod] = useState<'7d' | '30d' | 'all'>('7d')
   const [featureStats, setFeatureStats] = useState<any>(null)
@@ -644,6 +671,40 @@ const AdminPage: React.FC = () => {
       setDeckReviewLoading(false)
     }
   }, [])
+
+  // ── Reports moderation loaders ────────────────────────────────────────────
+  const loadReports = useCallback(async (status: 'pending' | 'reviewed' | 'dismissed' = 'pending', page = 1) => {
+    setReportsLoading(true); setReportsError('')
+    try {
+      const res = await apiService.client.get(`/api/admin/reports?status=${status}&page=${page}&limit=20`)
+      const newRows: AdminReport[] = res.data?.reports ?? []
+      if (page === 1) {
+        setReports(newRows)
+      } else {
+        setReports(prev => [...prev, ...newRows])
+      }
+      setReportsTotal(res.data?.total ?? 0)
+      setReportsPage(page)
+    } catch (err: any) {
+      console.error('[Admin] loadReports:', err?.response?.data?.detail || err?.message)
+      setReportsError(err?.response?.data?.detail || err?.message || 'Xatolik')
+    } finally {
+      setReportsLoading(false)
+    }
+  }, [])
+
+  async function reportAct(id: number, action: 'resolve' | 'dismiss') {
+    setReportsBusyId(id); setReportsError('')
+    try {
+      await apiService.client.post(`/api/admin/reports/${id}/${action}`)
+      setReports(prev => prev.filter(r => r.id !== id))
+      setReportsTotal(prev => Math.max(0, prev - 1))
+    } catch (err: any) {
+      setReportsError(err?.response?.data?.detail || err?.message || 'Xatolik')
+    } finally {
+      setReportsBusyId(null)
+    }
+  }
 
   const loadFeatureStats = useCallback(async (period: string) => {
     setFeatureLoading(true)
@@ -1492,7 +1553,8 @@ const AdminPage: React.FC = () => {
     if (activeTab === 'decks') loadDeckData(deckSubTab)
     if (activeTab === 'feature_usage') loadFeatureStats(featurePeriod)
     if (activeTab === 'challenges') loadChallenges()
-  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab, loadFeatureStats, featurePeriod, loadChallenges])
+    if (activeTab === 'reports') loadReports(reportsStatus, 1)
+  }, [adminId, activeTab, loadStats, loadProfiles, loadHero, loadAdminQuizzes, loadBooks, loadSounds, loadTeacherRequests, loadPlatformAnalytics, searchUsers, loadAdminCourses, loadAnnouncements, loadDeckData, deckSubTab, loadFeatureStats, featurePeriod, loadChallenges, loadReports, reportsStatus])
 
   // "Tasdiqlangan" filter tab has its own real data source (active teachers,
   // not applications) — load it lazily only when that filter is selected.
@@ -1899,6 +1961,7 @@ const AdminPage: React.FC = () => {
             { id: 'courses', label: '🎬 Kurslar' },
             { id: 'announcements', label: '📢 Xabarlar' },
             { id: 'decks', label: '🎴 To\'plamlar' },
+            { id: 'reports', label: '🚨 Shikoyatlar' },
             { id: 'challenges', label: '🏆 Bellashuv' },
             { id: 'feature_usage', label: '📊 Xususiyatlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
@@ -5391,6 +5454,120 @@ const AdminPage: React.FC = () => {
           </div>
         )
       })()}
+
+        {/* ── Post/user reports (shikoyat qilish) ────────────────────────── */}
+        {activeTab === 'reports' && (() => {
+          const REPORT_REASON_LABELS: Record<string, string> = {
+            spam: 'Spam', harassment: 'Bezovtalik', inappropriate_content: 'Nomaqbul kontent',
+            impersonation: 'Soxta profil', other: 'Boshqa',
+          }
+
+          return (
+            <div className="space-y-3">
+              {/* Status sub-tabs */}
+              <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-xl">
+                {(['pending', 'reviewed', 'dismissed'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setReportsStatus(s)}
+                    className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                      reportsStatus === s
+                        ? 'bg-white dark:bg-gray-700 text-sahifa-600 dark:text-sahifa-400 shadow-sm'
+                        : 'text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {s === 'pending' ? 'Kutilmoqda' : s === 'reviewed' ? 'Ko\'rib chiqildi' : 'Rad etildi'}
+                  </button>
+                ))}
+              </div>
+
+              {reportsError && (
+                <div className="text-red-500 text-sm bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800/40 rounded-xl px-3 py-2">
+                  {reportsError}
+                </div>
+              )}
+
+              {reportsLoading && reports.length === 0 && (
+                <div className="text-center py-10 text-gray-400 text-sm">Yuklanmoqda…</div>
+              )}
+
+              {!reportsLoading && reports.length === 0 && (
+                <div className="flex flex-col items-center gap-2 py-12 text-gray-400 dark:text-gray-500">
+                  <span className="text-4xl">🚨</span>
+                  <p className="text-sm">Shikoyat yo'q</p>
+                </div>
+              )}
+
+              {reports.map(r => (
+                <div key={r.id} className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 space-y-2 shadow-sm">
+                  <div className="flex items-start gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-600 dark:text-sahifa-400 font-medium">
+                          {r.target_type === 'post' ? 'Post' : 'Foydalanuvchi'}
+                        </span>
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 dark:bg-red-900/20 text-red-500">
+                          {REPORT_REASON_LABELS[r.reason] ?? r.reason}
+                        </span>
+                      </div>
+                      {r.target && !('deleted' in r.target && r.target.deleted) ? (
+                        r.target_type === 'post' ? (
+                          <p className="text-gray-900 dark:text-white text-sm mt-1.5 line-clamp-3">
+                            {(r.target as any).content || <span className="italic text-gray-400">Matn yo'q</span>}
+                            {(r.target as any).author && (
+                              <span className="text-gray-400 text-xs block mt-0.5">— {(r.target as any).author.name}</span>
+                            )}
+                          </p>
+                        ) : (
+                          <p className="text-gray-900 dark:text-white text-sm mt-1.5">
+                            {(r.target as any).name || `#${r.target_id}`}
+                          </p>
+                        )
+                      ) : (
+                        <p className="text-gray-400 text-xs italic mt-1.5">O'chirilgan yoki topilmadi</p>
+                      )}
+                      {r.details && (
+                        <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">"{r.details}"</p>
+                      )}
+                      <p className="text-gray-400 dark:text-gray-500 text-xs mt-1">
+                        Shikoyatchi: {r.reporter?.name || `#${r.reporter?.id ?? '—'}`} · {new Date(r.created_at).toLocaleString('uz-UZ')}
+                      </p>
+                    </div>
+                  </div>
+
+                  {reportsStatus === 'pending' && (
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        onClick={() => reportAct(r.id, 'resolve')}
+                        disabled={reportsBusyId === r.id}
+                        className="flex-1 py-1.5 text-xs font-semibold rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800/40 text-green-600 dark:text-green-400 disabled:opacity-50 transition-colors"
+                      >
+                        ✓ Ko'rib chiqildi
+                      </button>
+                      <button
+                        onClick={() => reportAct(r.id, 'dismiss')}
+                        disabled={reportsBusyId === r.id}
+                        className="flex-1 py-1.5 text-xs font-semibold rounded-xl bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 disabled:opacity-50 transition-colors"
+                      >
+                        ✕ Rad etish
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {reports.length < reportsTotal && (
+                <button
+                  onClick={() => loadReports(reportsStatus, reportsPage + 1)}
+                  disabled={reportsLoading}
+                  className="w-full py-2.5 text-sm font-semibold rounded-xl bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 disabled:opacity-50 transition-colors"
+                >
+                  {reportsLoading ? 'Yuklanmoqda…' : `Ko'proq yuklash (${reports.length}/${reportsTotal})`}
+                </button>
+              )}
+            </div>
+          )
+        })()}
 
         {activeTab === 'feature_usage' && (() => {
           const features: any[] = featureStats?.features ?? []
