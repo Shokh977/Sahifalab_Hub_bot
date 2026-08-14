@@ -168,14 +168,15 @@ async def get_streak_detail(
     )
 
     # ── Explicit state machine (replaces is_active for new clients) ─────────
-    today_row = db.execute(
-        text("""
-            SELECT COALESCE(SUM(minutes), 0) >= :goal AS goal_met
-            FROM focus_sessions WHERE user_id = :uid AND session_date = :today
-        """),
-        {"uid": caller_id, "goal": daily_goal, "today": today},
-    ).fetchone()
-    today_goal_met = bool(today_row.goal_met) if today_row else False
+    # today_goal_met is derived from `calendar` (moved up from the bottom of
+    # this function) instead of a separate query — _build_calendar's own
+    # study_dates query already covers today (its window always runs through
+    # today, i.e. calendar[-1] is always today's entry), so re-querying
+    # focus_sessions here would just duplicate work this endpoint already
+    # does on every call. See incident review: this endpoint is hit on nearly
+    # every dashboard load, so an avoidable extra query here matters at scale.
+    calendar = _build_calendar(db, caller_id, today, days=days, daily_goal=daily_goal)
+    today_goal_met = calendar[-1]["status"] == "studied"
 
     streak_state = compute_streak_state(today, last_date, freeze_dates_all, today_goal_met)
     window_closes_at = (
@@ -237,7 +238,7 @@ async def get_streak_detail(
     # canonical stage-progress endpoint — see migration 072 + focus.py). This
     # response no longer duplicates it; the old `milestones` field was
     # fetched by the mobile client but never rendered anywhere (dead data).
-    calendar = _build_calendar(db, caller_id, today, days=days, daily_goal=daily_goal)
+    # (`calendar` itself is computed above now, alongside today_goal_met.)
 
     return {
         "streak_days":             streak_days,

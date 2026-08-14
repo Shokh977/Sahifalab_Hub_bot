@@ -69,36 +69,15 @@ def parse_local_date(local_date: Optional[str], tz: Optional[str] = None) -> Dat
     return user_local_date(tz)
 
 
-# ── Shared SQL fragments for the streak UPDATE below ─────────────────────────
-# _NEW_STREAK_DAYS is inlined multiple times in the UPDATE (once to compute
-# streak_days itself, twice more to decide the milestone-freeze grant) because
-# Postgres can't reference a sibling SET column mid-statement. Kept as one
-# Python constant so there's a single source of truth for the expression text
-# even though the final SQL repeats it — see plan doc section E.
-_GOAL_MET_TODAY = """(
-                        SELECT COALESCE(SUM(minutes), 0)
-                        FROM focus_sessions
-                        WHERE user_id = :uid AND session_date = :today
-                    ) >= COALESCE(daily_goal_minutes, 20)"""
-
-_NEW_STREAK_DAYS = f"""CASE
-                    WHEN {_GOAL_MET_TODAY}
-                    THEN
-                        CASE
-                            WHEN streak_last_date = :today     THEN COALESCE(streak_days, 0)
-                            WHEN streak_last_date = :yesterday THEN COALESCE(streak_days, 0) + 1
-                            ELSE 1
-                        END
-                    ELSE COALESCE(streak_days, 0)
-                END"""
-
-# A milestone freeze is granted when the just-computed streak_days is a
-# positive multiple of 7 AND differs from last_freeze_milestone_days (the
-# guard that makes this idempotent across same-day repeat calls and correct
-# across a reset-then-rebuild to the same multiple of 7).
-_MILESTONE_HIT = f"""(({_NEW_STREAK_DAYS}) > 0
-                    AND ({_NEW_STREAK_DAYS}) % 7 = 0
-                    AND ({_NEW_STREAK_DAYS}) != COALESCE(last_freeze_milestone_days, 0))"""
+# Note: an earlier version of the UPDATE below built this query by
+# string-substituting repeated CASE fragments (Postgres can't reference a
+# sibling SET column mid-statement), which meant the goal-met subquery and
+# the streak_days CASE were each re-evaluated 3-4 times per call — real,
+# avoidable extra cost on the single busiest write path in the app. The
+# UPDATE...FROM (subquery) below computes each value (today's total,
+# goal_met, new_streak_days, milestone_hit) exactly once, in dependency
+# order, and every SET clause just references the precomputed column —
+# see incident review, section E.
 
 
 def record_study_activity(
@@ -146,23 +125,50 @@ def record_study_activity(
     #    capped at MAX_FREEZE_COUNT=5 — same cap streaks.py's purchase flow
     #    enforces, kept in sync manually since it's a plain literal here.
     db.execute(
-        text(f"""
-            UPDATE profiles SET
-                total_focus_minutes = COALESCE(total_focus_minutes, 0) + :min,
-                streak_days = {_NEW_STREAK_DAYS},
-                streak_last_date = CASE
-                    WHEN {_GOAL_MET_TODAY}
-                    THEN :today
-                    ELSE streak_last_date
-                END,
-                freeze_count = LEAST(5, COALESCE(freeze_count, 0) + CASE WHEN {_MILESTONE_HIT} THEN 1 ELSE 0 END),
+        text("""
+            UPDATE profiles p SET
+                total_focus_minutes = COALESCE(p.total_focus_minutes, 0) + :min,
+                streak_days = calc.new_streak_days,
+                streak_last_date = CASE WHEN calc.goal_met THEN :today ELSE p.streak_last_date END,
+                freeze_count = LEAST(5, COALESCE(p.freeze_count, 0) + CASE WHEN calc.milestone_hit THEN 1 ELSE 0 END),
                 last_freeze_milestone_days = CASE
-                    WHEN {_MILESTONE_HIT}
-                    THEN ({_NEW_STREAK_DAYS})
-                    ELSE last_freeze_milestone_days
+                    WHEN calc.milestone_hit THEN calc.new_streak_days
+                    ELSE p.last_freeze_milestone_days
                 END,
                 study_pulse_at = NULL
-            WHERE telegram_id = :uid
+            FROM (
+                SELECT uid, goal_met, new_streak_days, prev_milestone_days,
+                       (new_streak_days > 0 AND new_streak_days % 7 = 0
+                        AND new_streak_days != prev_milestone_days) AS milestone_hit
+                FROM (
+                    SELECT uid, goal_met, prev_milestone_days,
+                           CASE
+                               WHEN goal_met THEN
+                                   CASE
+                                       WHEN prev_last_date = :today     THEN prev_streak_days
+                                       WHEN prev_last_date = :yesterday THEN prev_streak_days + 1
+                                       ELSE 1
+                                   END
+                               ELSE prev_streak_days
+                           END AS new_streak_days
+                    FROM (
+                        SELECT
+                            p2.telegram_id                              AS uid,
+                            COALESCE(p2.streak_days, 0)                 AS prev_streak_days,
+                            p2.streak_last_date                         AS prev_last_date,
+                            COALESCE(p2.last_freeze_milestone_days, 0)  AS prev_milestone_days,
+                            fs.today_total >= COALESCE(p2.daily_goal_minutes, 20) AS goal_met
+                        FROM profiles p2
+                        CROSS JOIN LATERAL (
+                            SELECT COALESCE(SUM(minutes), 0) AS today_total
+                            FROM focus_sessions
+                            WHERE user_id = p2.telegram_id AND session_date = :today
+                        ) fs
+                        WHERE p2.telegram_id = :uid
+                    ) base
+                ) with_streak
+            ) calc
+            WHERE p.telegram_id = :uid AND calc.uid = p.telegram_id
         """),
         {"min": minutes, "uid": user_id, "today": today, "yesterday": yesterday},
     )
