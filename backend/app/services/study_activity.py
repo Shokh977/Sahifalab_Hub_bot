@@ -138,7 +138,7 @@ def record_study_activity(
                 study_pulse_at = NULL
             FROM (
                 SELECT uid, goal_met, new_streak_days, prev_milestone_days,
-                       (new_streak_days > 0 AND new_streak_days % 7 = 0
+                       (new_streak_days > 0 AND MOD(new_streak_days, 7) = 0
                         AND new_streak_days != prev_milestone_days) AS milestone_hit
                 FROM (
                     SELECT uid, goal_met, prev_milestone_days,
