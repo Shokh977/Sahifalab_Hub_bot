@@ -312,7 +312,7 @@ class User(Base):
     __tablename__ = "user"
     
     id = Column(Integer, primary_key=True, index=True)
-    telegram_id = Column(Integer, unique=True, index=True)
+    telegram_id = Column(BigInteger, unique=True, index=True)  # 087_fix_telegram_id_integer_overflow
     username = Column(String(255), unique=True, index=True, nullable=True)
     first_name = Column(String(255), nullable=True)
     last_name = Column(String(255), nullable=True)
@@ -489,7 +489,7 @@ class BookPurchase(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     book_id = Column(Integer, ForeignKey("book.id"), index=True)
-    telegram_id = Column(Integer, index=True)                   # buyer
+    telegram_id = Column(BigInteger, index=True)                # buyer — 087_fix_telegram_id_integer_overflow
     provider = Column(String(30), index=True)                   # click | payme
     provider_transaction_id = Column(String(255), nullable=True) # external tx id
     order_id = Column(String(100), unique=True, index=True)     # our internal ref
@@ -506,7 +506,7 @@ class BookRating(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     book_id = Column(Integer, ForeignKey("book.id"), index=True)
-    telegram_id = Column(Integer, index=True)
+    telegram_id = Column(BigInteger, index=True)  # 087_fix_telegram_id_integer_overflow
     rating = Column(Integer)  # 1-5
     review = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -547,7 +547,7 @@ class UserQuizCompletion(Base):
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("user.id"), index=True, nullable=True)
     quiz_id = Column(Integer, ForeignKey("quiz.id"), index=True)
-    telegram_id = Column(Integer, index=True)  # denormalize for speed
+    telegram_id = Column(BigInteger, index=True)  # denormalize for speed — 087_fix_telegram_id_integer_overflow
     score = Column(Integer)
     total = Column(Integer)
     percentage = Column(Float)
