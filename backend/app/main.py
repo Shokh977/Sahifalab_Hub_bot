@@ -794,26 +794,35 @@ def _start_cron_scheduler():
             db.close()
 
     scheduler = AsyncIOScheduler(timezone="UTC")
-    # Hourly — the local-hour-20 filter inside send_streak_reminders (not this
-    # trigger) is what makes this "8pm for each user"; see plan doc section F.
-    scheduler.add_job(_run_streak_reminder, CronTrigger(minute=0))
+    # INCIDENT (2026-08-12 onward): focus_sessions writes stopped entirely for
+    # every user right after this deploy, and have not resumed despite ruling
+    # out every contract/logic/schema hypothesis and cutting the query cost on
+    # both the write and read hot paths (neither changed the outcome). The one
+    # remaining suspect under our control is these three jobs going from 1
+    # scheduled DB session/day (streak-reminder only) to 3 jobs x 24/day = 72,
+    # possibly exhausting/contending for a limited Supabase connection pool
+    # and starving real user writes. Reverting streak-reminder to its original
+    # once-daily schedule and pausing the two new hourly jobs entirely as a
+    # direct test of that theory — re-enable once root cause is confirmed one
+    # way or the other. Nothing user-facing (the freeze/streak_state API,
+    # manual freeze use/purchase) is affected by this — only the *automatic*
+    # freeze-apply and at-risk-push are paused.
+    scheduler.add_job(_run_streak_reminder, CronTrigger(hour=15, minute=0))
     # Every Monday 08:00 UTC
     scheduler.add_job(_run_weekly_report,   CronTrigger(day_of_week="mon", hour=8, minute=0))
     # Every hour — Musobaqalar status transitions (upcoming -> active -> ended) + notifications
     scheduler.add_job(_run_challenges_tick, CronTrigger(minute=0))
     # Daily 19:05 UTC (~00:05 Tashkent) — consistency-challenge day evaluation + evening reminder
     scheduler.add_job(_run_challenges_consistency_daily, CronTrigger(hour=19, minute=5))
-    # Hourly, offset from the :00 jobs above — local-hour-0 filter inside
-    # streak_freeze_auto_apply makes this "midnight for each user" (plan doc C).
-    scheduler.add_job(_run_streak_freeze_auto_apply, CronTrigger(minute=10))
-    # Hourly, local-hour-9 filter inside streak_at_risk_push (plan doc F).
-    scheduler.add_job(_run_streak_at_risk_push, CronTrigger(minute=20))
+    # PAUSED for the incident above — see comment on `scheduler = AsyncIOScheduler(...)`.
+    # scheduler.add_job(_run_streak_freeze_auto_apply, CronTrigger(minute=10))
+    # scheduler.add_job(_run_streak_at_risk_push, CronTrigger(minute=20))
     scheduler.start()
     logger.info(
-        "[SCHEDULER] APScheduler started — streak-reminder hourly (local 20:00), "
+        "[SCHEDULER] APScheduler started — streak-reminder @15:00 UTC daily, "
         "report @08:00 UTC Monday, challenges-tick hourly, "
-        "challenges-consistency-daily @19:05 UTC, streak-freeze-auto-apply hourly "
-        "(local 00:00), streak-at-risk-push hourly (local 09:00)"
+        "challenges-consistency-daily @19:05 UTC. streak-freeze-auto-apply and "
+        "streak-at-risk-push are PAUSED pending incident investigation."
     )
 
     # Run once immediately on startup so any challenge whose starts_at/ends_at
