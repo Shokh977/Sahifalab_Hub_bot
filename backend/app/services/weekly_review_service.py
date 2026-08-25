@@ -88,6 +88,15 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
         {"uid": user_id},
     ).fetchone()
 
+    # Same source as the now-retired /api/focus/weekly-report screen's
+    # week_xp — kept here so that card's one genuinely unique number
+    # (XP earned this week, as opposed to lifetime total_xp) isn't lost.
+    xp_row = db.execute(
+        text("SELECT COALESCE(SUM(amount), 0) AS xp FROM xp_logs WHERE user_id = :uid AND created_at >= :week_start_ts"),
+        {"uid": user_id, "week_start_ts": week_start_ts},
+    ).fetchone()
+    week_xp = int(xp_row.xp) if xp_row else 0
+
     review_row = db.execute(
         text("""
             SELECT
@@ -155,6 +164,7 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
         "this_week_minutes":     int(focus_row.this_week_minutes) if focus_row else 0,
         "prev_week_minutes":     int(focus_row.prev_week_minutes) if focus_row else 0,
         "days_active":           int(focus_row.days_active) if focus_row else 0,
+        "week_xp":               week_xp,
         "days":                  days,
         "streak_days":           int(profile_row.streak_days or 0) if profile_row else 0,
         "daily_goal_minutes":    int(profile_row.daily_goal_minutes or 20) if profile_row else 20,
