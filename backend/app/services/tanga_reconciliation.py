@@ -28,12 +28,28 @@ logger = logging.getLogger(__name__)
 
 
 def find_unreconciled_sessions(db: Session, grace_minutes: int = 5, limit: int = 500) -> list:
+    """
+    focus_sessions predates Tanga by a long history — years of rows that were
+    never meant to have a matching tanga_transactions entry, because the
+    ledger didn't exist yet when they were created. Those rows are already
+    accounted for exactly once, via migration 088's one-time
+    `tanga_balance = total_xp` backfill snapshot.
+
+    Only a session created AFTER that backfill moment could have had a live
+    grant_tanga_for_xp() call attempted (and possibly failed) — so the
+    cutoff below anchors to app_config.tanga_mirror_mode's row, written by
+    088 at the exact moment the backfill ran. Without this cutoff, this job
+    treats a user's ENTIRE historical study record as "missing a grant" and
+    credits it a second time on top of the backfill — a real incident this
+    fixes (found via a live tanga_balance >> total_xp report).
+    """
     rows = db.execute(
         text("""
             SELECT fs.id, fs.user_id, fs.xp_awarded
             FROM focus_sessions fs
             WHERE fs.xp_awarded > 0
               AND fs.created_at < NOW() - make_interval(mins => :grace)
+              AND fs.created_at > (SELECT updated_at FROM app_config WHERE key = 'tanga_mirror_mode')
               AND NOT EXISTS (
                   SELECT 1 FROM tanga_transactions tt
                   WHERE tt.idempotency_key = 'study_activity:' || fs.id
