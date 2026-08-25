@@ -23,6 +23,7 @@ from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp, DEFAULT_COURSE_XP
 from app.services.challenge_service import record_challenge_progress
+from app.services.tanga_service import grant_tanga_for_xp
 from app.core.admin_check import is_role_admin
 
 logger = logging.getLogger(__name__)
@@ -781,7 +782,11 @@ async def complete_lesson(
 
             # Award course completion XP (deduplicated by course_id — one-time only)
             try:
-                add_xp(db, user_id=caller_id, source="COURSE", amount=DEFAULT_COURSE_XP, reference_id=course_id)
+                xp_result = add_xp(db, user_id=caller_id, source="COURSE", amount=DEFAULT_COURSE_XP, reference_id=course_id)
+                grant_tanga_for_xp(
+                    db, caller_id, xp_result, reason="course_complete", reference_id=course_id,
+                    idempotency_key=f"course:{caller_id}:{course_id}",
+                )
             except Exception:
                 logger.error(
                     "Course-completion XP award failed for user_id=%s course_id=%s amount=%s source=COURSE",

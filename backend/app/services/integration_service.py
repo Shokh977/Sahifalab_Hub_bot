@@ -124,7 +124,7 @@ def log_activity(
                  metadata, created_at)
             VALUES
                 (:uid, :atype, :ref_id, :ref_type,
-                 :meta::jsonb, NOW())
+                 CAST(:meta AS jsonb), NOW())
             ON CONFLICT (user_id, activity_type, reference_id, reference_type)
             DO NOTHING
         """), {

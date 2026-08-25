@@ -156,7 +156,7 @@ def list_jobs(
         filters.append("j.job_type = :jtype")
         params["jtype"] = job_type
     if skill:
-        filters.append("j.required_skills @> :skill_json::jsonb")
+        filters.append("j.required_skills @> CAST(:skill_json AS jsonb)")
         params["skill_json"] = json.dumps([skill])
 
     where = " AND ".join(filters)
@@ -332,7 +332,7 @@ def create_job(
              salary_min, salary_max, required_skills, expires_at)
         VALUES
             (:uid, :title, :company, :desc, :loc, :jtype,
-             :smin, :smax, :skills::jsonb, :exp)
+             :smin, :smax, CAST(:skills AS jsonb), :exp)
         RETURNING id, title, company_name, location, job_type,
                   salary_min, salary_max, required_skills, created_at
     """), {
@@ -386,7 +386,7 @@ def update_job(
 
     for key, val in fields.items():
         if key == "required_skills":
-            set_clauses.append("required_skills = :skills::jsonb")
+            set_clauses.append("required_skills = CAST(:skills AS jsonb)")
             params["skills"] = json.dumps(val)
         elif key == "expires_at" and val:
             set_clauses.append("expires_at = :exp")

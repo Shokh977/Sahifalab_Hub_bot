@@ -19,6 +19,7 @@ from app.db.session import get_db
 from app.models.models import LessonQuiz, LessonQuizAttempt
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
+from app.services.tanga_service import grant_tanga_for_xp
 
 logger = logging.getLogger(__name__)
 
@@ -271,6 +272,10 @@ async def submit_attempt(
         try:
             xp_result = add_xp(db, telegram_id, "QUIZ", LESSON_QUIZ_XP)
             xp = xp_result.get("xp_added", 0)
+            grant_tanga_for_xp(
+                db, telegram_id, xp_result, reason="quiz_complete", reference_id=attempt_id,
+                idempotency_key=f"lesson_quiz:{attempt_id}",
+            )
         except Exception:
             logger.error(
                 "Lesson-quiz XP award failed for user_id=%s amount=%s source=QUIZ",

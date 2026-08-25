@@ -28,6 +28,7 @@ from sqlalchemy import text
 from app.db.session import get_db
 from app.models.models import PlannerTask, PlannerNote
 from app.services.auth_service import decode_token
+from app.services.tanga_service import grant_tanga
 
 logger = logging.getLogger(__name__)
 
@@ -197,6 +198,12 @@ async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_
                 xp_awarded = int(row.xp_added)
             task.xp_claimed = True
             db.commit()
+            if xp_awarded > 0:
+                grant_tanga(
+                    db, user_id=task.user_id, amount=xp_awarded, reason="planner_task",
+                    reference_type="planner_task", reference_id=task.id,
+                    idempotency_key=f"planner:{task.id}",
+                )
         except Exception:
             db.rollback()
             logger.error(
@@ -244,8 +251,13 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db), cal
                         text("SELECT xp_added FROM add_xp(:uid, 'DEEP_WORK', 20, NULL)"),
                         {"uid": caller_id},
                     ).fetchone()
-                    if row:
+                    if row and int(row.xp_added) > 0:
                         xp_awarded += int(row.xp_added)
+                        grant_tanga(
+                            db, user_id=caller_id, amount=int(row.xp_added), reason="planner_task",
+                            reference_type="planner_task", reference_id=task.id,
+                            idempotency_key=f"planner:{task.id}",
+                        )
                     task.xp_claimed = True
                 except Exception:
                     logger.error(

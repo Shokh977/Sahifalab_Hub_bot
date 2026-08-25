@@ -28,6 +28,7 @@ from app.services.study_activity import (
     parse_local_date as _parse_local_date,
     StudyActivityResult,
 )
+from app.services.tanga_service import grant_tanga_for_xp
 from app.api.v1.endpoints.notifications import send_notification
 from app.api.v1.auth import _normalize_platform
 
@@ -158,13 +159,28 @@ async def complete_focus_session(
             goal_met=False, xp_awarded=0,
         )
 
+    # Grant Tanga AFTER record_study_activity() has already committed the
+    # focus_sessions row + streak update above — never before/inside it. This
+    # is the transaction-boundary rule from the incident review: a
+    # gamification side-effect (Tanga) must never be able to roll back or
+    # block the fact that the user studied. grant_tanga_for_xp() swallows and
+    # logs its own failures (never raises), left for a reconciliation job to
+    # retry (keyed idempotently on the session id) — the study record itself
+    # is already safe regardless.
+    if activity.session_id is not None:
+        grant_tanga_for_xp(
+            db, caller_id, result, reason="focus_timer",
+            reference_type="focus_session", reference_id=activity.session_id,
+            idempotency_key=f"study_activity:{activity.session_id}",
+        )
+
     # Append focus session to activity_log (best-effort, non-critical — logged
     # rather than silently swallowed per the step-26 no-silent-failures rule)
     try:
         db.execute(
             text("""
                 INSERT INTO activity_log (user_id, activity_type, metadata)
-                VALUES (:uid, 'focus_session', :meta::jsonb)
+                VALUES (:uid, 'focus_session', CAST(:meta AS jsonb))
             """),
             {
                 "uid":  caller_id,
@@ -184,7 +200,7 @@ async def complete_focus_session(
         )
 
     row = db.execute(
-        text("SELECT total_xp, level, streak_days FROM profiles WHERE telegram_id = :uid"),
+        text("SELECT total_xp, level, streak_days, COALESCE(tanga_balance, 0) AS tanga_balance FROM profiles WHERE telegram_id = :uid"),
         {"uid": caller_id},
     ).fetchone()
 
@@ -224,6 +240,8 @@ async def complete_focus_session(
         "credited_minutes":      credited_minutes,
         "freeze_count":              activity.freeze_count,
         "milestone_freeze_granted":  activity.milestone_freeze_granted,
+        # Additive (088_tanga_currency):
+        "tanga_balance": int(row.tanga_balance) if row else 0,
     }
 
 

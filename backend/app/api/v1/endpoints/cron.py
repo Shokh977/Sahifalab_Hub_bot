@@ -10,6 +10,12 @@ Routes (secret-key protected, NOT JWT):
   POST /api/cron/expire-pending-enrollments  — mark stale awaiting_payment/paid rows as expired
   POST /api/cron/challenges-tick             — Musobaqalar: status transitions + notification cadence
   POST /api/cron/challenges-consistency-daily — step-25: daily 'consistency' run evaluation
+  POST /api/cron/weekly-review-batch          — 088/089 Tanga+AI: free weekly personal review,
+                                                 staggered by telegram_id % 7 across the week
+  POST /api/cron/tanga-reconciliation         — 088 Tanga: retry failed Tanga grants for study
+                                                 sessions whose focus_sessions row already committed
+  POST /api/cron/focus-sessions-volume-check  — standing alert: page admins if daily focus_sessions
+                                                 volume drops >50% day-over-day
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
 
@@ -31,6 +37,9 @@ what actually drives these today; running both means double-sends):
     POST /api/cron/expire-pending-enrollments    — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-tick                — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-consistency-daily  — schedule: 5 19 * * *  (~00:05 Tashkent — evaluates "yesterday")
+    POST /api/cron/weekly-review-batch           — schedule: 0 6 * * *   (06:00 UTC daily, staggered internally)
+    POST /api/cron/tanga-reconciliation          — schedule: */15 * * * * (every 15 minutes)
+    POST /api/cron/focus-sessions-volume-check   — schedule: 0 7 * * *   (07:00 UTC daily)
 """
 
 import os
@@ -965,3 +974,62 @@ async def challenges_consistency_daily(
 
     logger.info("challenges_consistency_daily: eval=%s reminded=%d", eval_results, reminded)
     return {"ok": True, "evaluation": eval_results, "reminded": reminded}
+
+
+@router.post("/weekly-review-batch")
+async def weekly_review_batch(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Spec Part 6, feature 2 — the free, cron-driven weekly personal review.
+    Run DAILY (not once a week): app/services/weekly_review_service.py
+    processes only the slice of users whose telegram_id lands on today's
+    weekday slot, spreading the batch across all 7 days instead of hitting
+    the AI provider and the DB for every active user at once. Idempotent per
+    (user_id, week_start) via weekly_reviews' UNIQUE constraint — a re-run
+    the same week is a no-op for anyone already reviewed.
+    """
+    from app.services.weekly_review_service import run_staggered_batch
+    today = datetime.now(UTC).date()
+    result = await run_staggered_batch(db, today)
+    logger.info("weekly_review_batch: %s", result)
+    return {"ok": True, **result}
+
+
+@router.post("/tanga-reconciliation")
+async def tanga_reconciliation(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    088_tanga_currency — retries Tanga grants for study sessions whose live
+    grant failed after their focus_sessions row already committed (the
+    transaction-boundary rule from the incident review: a gamification
+    side-effect must never roll back the fact that a user studied). Safe to
+    run as often as desired — grant_tanga() is idempotent on
+    'study_activity:{session_id}', so this can never double-grant, even if
+    it races with a live in-flight request.
+    """
+    from app.services.tanga_reconciliation import reconcile_missing_study_grants
+    result = reconcile_missing_study_grants(db)
+    if result["checked"]:
+        logger.info("tanga_reconciliation: %s", result)
+    return {"ok": True, **result}
+
+
+@router.post("/focus-sessions-volume-check")
+async def focus_sessions_volume_check(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Standing alert (deploy hardening, post-088): if daily focus_sessions
+    insert volume drops more than 50% day-over-day, page every configured
+    admin via Telegram immediately. The prior outage ran undetected for
+    three days because nothing was watching this number — see
+    app/services/volume_alert_service.py.
+    """
+    from app.services.volume_alert_service import run_daily_volume_check
+    result = await run_daily_volume_check(db)
+    return {"ok": True, **result}

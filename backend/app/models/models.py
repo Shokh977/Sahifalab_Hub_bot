@@ -81,6 +81,9 @@ class Profile(Base):
     last_reminder_date        = Column(Date, nullable=True)
     last_at_risk_push_date    = Column(Date, nullable=True)
     last_freeze_milestone_days = Column(Integer, default=0, nullable=False)
+    # Spendable currency (088_tanga_currency) — total_xp remains the lifetime
+    # score; tanga_balance is the wallet. See app/services/tanga_service.py.
+    tanga_balance              = Column(Integer, default=0, nullable=False)
 
 
 class AuthCode(Base):
@@ -121,6 +124,100 @@ class XpLog(Base):
     source       = Column(String(20), nullable=False)    # DEEP_WORK | QUIZ | COURSE
     reference_id = Column(BigInteger, nullable=True)     # course_id for COURSE
     created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class TangaTransaction(Base):
+    """
+    Tanga ledger — every spend_tanga()/grant_tanga() call writes exactly one
+    row here, in the same DB transaction as the profiles.tanga_balance UPDATE
+    (088_tanga_currency). `reason` is plain text, not a DB-level enum — see
+    the migration file docstring for why (xp_logs.source CHECK-constraint
+    incident precedent). Valid reasons live in app/services/tanga_service.py.
+    """
+    __tablename__ = "tanga_transactions"
+
+    id              = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id         = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    delta           = Column(Integer, nullable=False)
+    balance_after   = Column(Integer, nullable=False)
+    reason          = Column(Text, nullable=False)
+    reference_type  = Column(Text, nullable=True)
+    reference_id    = Column(Text, nullable=True)  # TEXT, not BIGINT — see 088_tanga_currency.sql
+    idempotency_key = Column(Text, unique=True, nullable=True)
+    created_at      = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class AppConfig(Base):
+    """Key/value runtime config (088_tanga_currency) — flags and limits that
+    must be changeable without a Railway redeploy (TANGA_MIRROR_MODE, the AI
+    dual-gate allowance/cap/prices). Read via app.services.config_service."""
+    __tablename__ = "app_config"
+
+    key         = Column(Text, primary_key=True)
+    value       = Column(JSONB, nullable=False)
+    description = Column(Text, nullable=True)
+    updated_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_by  = Column(BigInteger, ForeignKey("profiles.telegram_id"), nullable=True)
+
+
+class AiUsageLog(Base):
+    """One row per AI provider call or cache hit (089_ai_infrastructure) —
+    the source of truth for unit economics and eventual subscription pricing."""
+    __tablename__ = "ai_usage_log"
+
+    id             = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id        = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    feature        = Column(Text, nullable=False)
+    model          = Column(Text, nullable=False)
+    prompt_version = Column(Text, nullable=False)
+    input_tokens   = Column(Integer, nullable=True)
+    output_tokens  = Column(Integer, nullable=True)
+    cost_usd       = Column(Numeric(10, 6), nullable=True)
+    latency_ms     = Column(Integer, nullable=True)
+    cache_hit      = Column(Boolean, default=False, nullable=False)
+    outcome        = Column(Text, nullable=False)
+    error_detail   = Column(Text, nullable=True)
+    created_at     = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+
+class AiResponseCache(Base):
+    """Hash-normalised-input -> output cache (089_ai_infrastructure). No Redis
+    in this stack, so this is the cache — TTL via expires_at, checked lazily."""
+    __tablename__ = "ai_response_cache"
+
+    cache_key  = Column(Text, primary_key=True)
+    feature    = Column(Text, nullable=False)
+    input_hash = Column(Text, nullable=False)
+    output     = Column(JSONB, nullable=False)
+    hit_count  = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+
+
+class AiDailyUsage(Base):
+    """Per-user per-day AI action counters (089_ai_infrastructure) — the
+    actual cost control, enforced via a guarded UPDATE...WHERE, same idiom
+    as freeze purchase / streak freeze."""
+    __tablename__ = "ai_daily_usage"
+
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), primary_key=True)
+    usage_date = Column(Date, primary_key=True)
+    free_used  = Column(Integer, default=0, nullable=False)
+    paid_used  = Column(Integer, default=0, nullable=False)
+
+
+class WeeklyReview(Base):
+    """Free, cron-generated weekly personal review (089_ai_infrastructure,
+    spec Part 6 feature 2). One row per user per ISO week."""
+    __tablename__ = "weekly_reviews"
+
+    id         = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id    = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    week_start = Column(Date, nullable=False)
+    content    = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("user_id", "week_start", name="uq_weekly_review_user_week"),)
 
 
 class UserBadge(Base):

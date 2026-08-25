@@ -69,7 +69,9 @@ def _send_welcome(user_id: int, first_name: str = "", db: Session = None):
     if db is not None:
         try:
             from app.services.xp_service import add_xp
-            add_xp(db, user_id=user_id, source="WELCOME", amount=100)
+            xp_result = add_xp(db, user_id=user_id, source="WELCOME", amount=100)
+            from app.services.tanga_service import grant_tanga_for_xp
+            grant_tanga_for_xp(db, user_id, xp_result, reason="welcome_bonus", idempotency_key=f"welcome:{user_id}")
         except Exception:
             logger.error("Welcome XP award failed for user_id=%s amount=100 source=WELCOME", user_id, exc_info=True)
     # Push notification (fire-and-forget)
@@ -468,6 +470,7 @@ async def get_current_user(
         "status":        profile.status or "active",
         "level":         profile.level  or 1,
         "total_xp":      profile.total_xp or 0,
+        "tanga_balance": getattr(profile, "tanga_balance", 0) or 0,  # additive (088_tanga_currency)
         "bio":           getattr(profile, "bio",      None),
         "about_me":      getattr(profile, "about_me", None),
         "streak_days":   getattr(profile, "streak_days",        0) or 0,
@@ -1368,6 +1371,26 @@ def _merge_profiles(db: Session, primary_id: int, secondary_id: int) -> dict:
     # Keep the higher level
     if (secondary.level or 1) > (primary.level or 1):
         primary.level = secondary.level
+
+    # Tanga (088_tanga_currency) — a merge moves balance between two specific
+    # rows in one transaction, which doesn't fit spend_tanga/grant_tanga's
+    # single-row WHERE-guard shape, so it's handled directly here, staying in
+    # the same commit as everything else in this function (caller commits
+    # once, right after calling this). A ledger row is still written for
+    # auditability, matching the "no divergence between balance and ledger"
+    # rule everywhere else Tanga moves.
+    secondary_tanga = int(secondary.tanga_balance or 0)
+    if secondary_tanga > 0:
+        primary.tanga_balance = (primary.tanga_balance or 0) + secondary_tanga
+        db.flush()  # so the INSERT below sees primary's post-merge balance
+        db.execute(
+            text("""
+                INSERT INTO tanga_transactions
+                    (user_id, delta, balance_after, reason, reference_type, reference_id)
+                VALUES (:uid, :delta, :bal, 'account_merge', 'account_merge', :ref)
+            """),
+            {"uid": primary_id, "delta": secondary_tanga, "bal": primary.tanga_balance, "ref": str(secondary_id)},
+        )
 
     # Delete the secondary profile
     db.delete(secondary)

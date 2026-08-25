@@ -25,6 +25,13 @@ from app.services.xp_service import (
     QUIZ_DAILY_CAP,
 )
 from app.services.integration_service import hook_course_completed, hook_level_up
+from app.services.tanga_service import grant_tanga_for_xp
+
+_XP_SOURCE_TO_TANGA_REASON = {
+    "DEEP_WORK": "focus_timer",
+    "QUIZ":      "quiz_complete",
+    "COURSE":    "course_complete",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -134,6 +141,11 @@ async def award_xp(
         )
         raise HTTPException(status_code=500, detail="XP qo'shishda xatolik yuz berdi")
 
+    grant_tanga_for_xp(
+        db, telegram_id, result, reason=_XP_SOURCE_TO_TANGA_REASON[source],
+        reference_id=body.reference_id,
+    )
+
     # ── Integration hooks (fire-and-forget, never block) ──────────────────────
     new_level = result["new_level"]
     xp_added  = result["xp_added"]
@@ -177,6 +189,11 @@ async def award_xp(
     if new_level > old_level:
         hook_level_up(db, telegram_id, new_level)
 
+    tanga_row = db.execute(
+        text("SELECT COALESCE(tanga_balance, 0) AS tanga_balance FROM profiles WHERE telegram_id = :uid"),
+        {"uid": telegram_id},
+    ).fetchone()
+
     return {
         "ok":        True,
         "new_xp":    result["new_xp"],
@@ -184,6 +201,9 @@ async def award_xp(
         "xp_added":  xp_added,
         "capped":    xp_added < amount,   # True when daily/one-time limit hit
         "leveled_up": new_level > old_level,
+        # Additive (088_tanga_currency) — mobile client's response parsing is
+        # non-strict (bare res.json() + TS type assertion), safe to add.
+        "tanga_balance": int(tanga_row.tanga_balance) if tanga_row else 0,
     }
 
 

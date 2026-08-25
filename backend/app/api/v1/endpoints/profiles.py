@@ -383,6 +383,7 @@ async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     return {
         "telegram_id":          profile.telegram_id,
         "total_xp":             profile.total_xp          or 0,
+        "tanga_balance":        profile.tanga_balance     or 0,  # additive (088_tanga_currency)
         "focus_seconds":        profile.focus_seconds      or 0,
         "total_focus_minutes":  profile.total_focus_minutes or 0,
         "daily_quiz_xp":        profile.daily_quiz_xp      or 0,

@@ -45,6 +45,7 @@ from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 from app.services.study_activity import record_study_activity
 from app.services.badge_service import get_top_badges_map
+from app.services.tanga_service import grant_tanga_for_xp
 from app.api.v1.endpoints.notifications import send_notification
 
 router = APIRouter()
@@ -53,6 +54,14 @@ logger = logging.getLogger(__name__)
 MAX_NEW_PER_SESSION = 10
 
 XP_MASTERY_DECK = 50  # 100% deck mastery (all cards ever mastered)
+
+
+def _tanga_balance(db: Session, user_id: int) -> int:
+    row = db.execute(
+        text("SELECT COALESCE(tanga_balance, 0) AS tanga_balance FROM profiles WHERE telegram_id = :uid"),
+        {"uid": user_id},
+    ).fetchone()
+    return int(row.tanga_balance) if row else 0
 
 
 # ── Auth helper ───────────────────────────────────────────────────────────────
@@ -344,7 +353,11 @@ async def _check_clone_milestones(db: Session, deck_id: int) -> None:
 
     bonus = CLONE_MILESTONE_XP[milestone]
     try:
-        add_xp(db, user_id=int(row.user_id), source="DECK_MILESTONE", amount=bonus, reference_id=deck_id)
+        xp_result = add_xp(db, user_id=int(row.user_id), source="DECK_MILESTONE", amount=bonus, reference_id=deck_id)
+        grant_tanga_for_xp(
+            db, int(row.user_id), xp_result, reason="deck_milestone", reference_id=deck_id,
+            idempotency_key=f"deck_milestone:{deck_id}:{milestone}",
+        )
         db.execute(
             text("UPDATE flashcard_decks SET clone_milestones_awarded = array_append(clone_milestones_awarded, :m) WHERE id = :id"),
             {"m": milestone, "id": deck_id},
@@ -760,7 +773,11 @@ async def review_card(
         ).fetchone()
         if not already:
             try:
-                add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=XP_MASTERY_DECK)
+                xp_result = add_xp(db, user_id=caller_id, source="DEEP_WORK", amount=XP_MASTERY_DECK)
+                grant_tanga_for_xp(
+                    db, caller_id, xp_result, reason="deck_milestone", reference_id=deck_id,
+                    idempotency_key=f"deck_mastery:{caller_id}:{deck_id}",
+                )
                 deck_bonus_xp = XP_MASTERY_DECK
                 # Mark with a sentinel review row (rating=99)
                 db.execute(
@@ -860,6 +877,18 @@ async def complete_session(
         local_date=body.local_date, challenge_value=reviewed,
     )
 
+    # Grant Tanga AFTER record_study_activity() has already committed — same
+    # transaction-boundary rule as focus.py's /complete: a Tanga-grant
+    # failure must never be able to roll back or block the study record.
+    # grant_tanga_for_xp() swallows and logs its own failures (never raises),
+    # so the study record above is safe regardless of what happens here.
+    if activity.session_id is not None:
+        grant_tanga_for_xp(
+            db, caller_id, xp_result, reason="flashcards",
+            reference_type="focus_session", reference_id=activity.session_id,
+            idempotency_key=f"study_activity:{activity.session_id}",
+        )
+
     for stage in activity.stages_completed:
         asyncio.create_task(send_notification(
             caller_id, "achievement", category="SYSTEM",
@@ -882,6 +911,8 @@ async def complete_session(
         "challenges_progressed": activity.challenges_progressed,
         "freeze_count":              activity.freeze_count,
         "milestone_freeze_granted":  activity.milestone_freeze_granted,
+        # Additive (088_tanga_currency):
+        "tanga_balance": _tanga_balance(db, caller_id),
     }
 
 

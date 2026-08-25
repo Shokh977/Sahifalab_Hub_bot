@@ -21,6 +21,7 @@ from app.services.auth_service import decode_token, decode_token_payload
 from app.models.admin_models import AdminUser
 from app.services.integration_service import hook_quiz_passed
 from app.services.xp_service import add_xp, DEFAULT_QUIZ_XP
+from app.services.tanga_service import grant_tanga_for_xp
 from app.services.challenge_service import record_challenge_progress
 from app.core.admin_check import is_role_admin
 
@@ -229,7 +230,11 @@ async def verify_quiz(
     challenges_progressed: list = []
     if xp_awarded:
         try:
-            add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
+            xp_result = add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
+            grant_tanga_for_xp(
+                db, telegram_id, xp_result, reason="quiz_complete", reference_id=quiz_id,
+                idempotency_key=f"quiz:{telegram_id}:{quiz_id}",
+            )
         except Exception:
             # XP failure must not block the response, but must not be silent either
             logger.error(

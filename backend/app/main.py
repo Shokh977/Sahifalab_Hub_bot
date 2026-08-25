@@ -703,6 +703,43 @@ async def startup_event():
     except Exception as e:
         logger.exception("[STARTUP] auth_codes setup FAILED: %s", e)
 
+    # ── ai_dual_gate price-config guard ───────────────────────────────────────
+    # This exact bug (a `prices` dict keyed by the wrong strings, silently
+    # making every AI action free) has already happened twice during
+    # development, caught only by manual review. A boot-time assertion makes
+    # it impossible for a bad config to reach production a third time —
+    # same fail-fast pattern as the SECRET_KEY guard above.
+    try:
+        if engine.dialect.name != "sqlite":
+            from app.services.ai.limiter import validate_price_config
+            with engine.begin() as conn:
+                row = conn.execute(_sa_text(
+                    "SELECT value FROM app_config WHERE key = 'ai_dual_gate'"
+                )).fetchone()
+            if row is None:
+                logger.warning(
+                    "[STARTUP] ai_dual_gate not found in app_config — migration 088 not applied yet? "
+                    "Skipping price-config validation."
+                )
+            else:
+                value = row.value
+                if isinstance(value, str):
+                    import json as _json
+                    value = _json.loads(value)
+                problems = validate_price_config(value.get("prices", {}))
+                if problems:
+                    message = "ai_dual_gate.prices is misconfigured:\n  - " + "\n  - ".join(problems)
+                    if settings.DEBUG:
+                        logger.critical("%s\nContinuing because DEBUG=True.", message)
+                    else:
+                        raise RuntimeError(message)
+                else:
+                    logger.info("[STARTUP] ai_dual_gate.prices validated OK")
+    except RuntimeError:
+        raise  # the assertion itself — must actually stop startup outside DEBUG
+    except Exception as e:
+        logger.exception("[STARTUP] ai_dual_gate price-config check FAILED to run: %s", e)
+
     asyncio.create_task(_expire_stale_payments_loop())
     asyncio.create_task(_organic_growth_loop())
     asyncio.create_task(_sync_all_enrolled_counts())
@@ -721,6 +758,7 @@ def _start_cron_scheduler():
         send_streak_reminders, send_weekly_reports,
         challenges_tick, challenges_consistency_daily,
         streak_freeze_auto_apply, streak_at_risk_push,
+        weekly_review_batch, tanga_reconciliation, focus_sessions_volume_check,
     )
     from app.db.session             import get_db
 
@@ -793,6 +831,37 @@ def _start_cron_scheduler():
         finally:
             db.close()
 
+    async def _run_weekly_review_batch():
+        db = _db()
+        try:
+            result = await weekly_review_batch(db=db, _=None)
+            logger.info("[SCHEDULER] weekly-review-batch: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] weekly-review-batch failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_tanga_reconciliation():
+        db = _db()
+        try:
+            result = await tanga_reconciliation(db=db, _=None)
+            if result.get("checked"):
+                logger.info("[SCHEDULER] tanga-reconciliation: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] tanga-reconciliation failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_focus_sessions_volume_check():
+        db = _db()
+        try:
+            result = await focus_sessions_volume_check(db=db, _=None)
+            logger.info("[SCHEDULER] focus-sessions-volume-check: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] focus-sessions-volume-check failed: %s", exc)
+        finally:
+            db.close()
+
     scheduler = AsyncIOScheduler(timezone="UTC")
     # RE-ENABLED: the 2026-08-12 focus_sessions outage (3 days, every user,
     # every source) was root-caused to a `%` modulo operator in raw SQL text
@@ -815,6 +884,17 @@ def _start_cron_scheduler():
     scheduler.add_job(_run_streak_freeze_auto_apply, CronTrigger(minute=10))
     # Hourly, local-hour-9 filter inside streak_at_risk_push (plan doc F).
     scheduler.add_job(_run_streak_at_risk_push, CronTrigger(minute=20))
+    # Daily 06:00 UTC — free weekly personal review (spec Part 6, feature 2).
+    # Staggered internally by telegram_id % 7, not a once-a-week burst.
+    scheduler.add_job(_run_weekly_review_batch, CronTrigger(hour=6, minute=0))
+    # Every 15 minutes — retries Tanga grants for study sessions whose live
+    # grant failed after the focus_sessions row already committed. Cheap
+    # no-op query when there's nothing to reconcile.
+    scheduler.add_job(_run_tanga_reconciliation, CronTrigger(minute="*/15"))
+    # Daily 07:00 UTC — standing alert if focus_sessions volume drops >50%
+    # day-over-day. The prior outage ran undetected for three days because
+    # nothing was watching this number.
+    scheduler.add_job(_run_focus_sessions_volume_check, CronTrigger(hour=7, minute=0))
     scheduler.start()
     logger.info(
         "[SCHEDULER] APScheduler started — streak-reminder hourly (local 20:00), "

@@ -30,6 +30,7 @@ from app.services.freeze_service import (
     consecutive_freeze_run_ending_before,
     apply_freeze,
 )
+from app.services.tanga_service import spend_tanga
 
 router = APIRouter()
 
@@ -124,7 +125,8 @@ async def get_streak_detail(
             SELECT streak_days, streak_last_date,
                    COALESCE(freeze_count, 0)      AS freeze_count,
                    COALESCE(freeze_used_dates, '{}') AS freeze_used_dates,
-                   daily_goal_minutes, total_xp, timezone
+                   daily_goal_minutes, total_xp, timezone,
+                   COALESCE(tanga_balance, 0)     AS tanga_balance
             FROM profiles WHERE telegram_id = :uid
         """),
         {"uid": caller_id},
@@ -256,11 +258,19 @@ async def get_streak_detail(
         "freeze_packages": [
             {"count": k, "xp_cost": v} for k, v in _FREEZE_PACKAGES.items()
         ],
+        # Additive (088_tanga_currency) — old client's response parsing is a
+        # bare `res.json()` + TS type assertion (no zod/io-ts), confirmed
+        # lenient, so unknown fields are silently ignored. Safe to add.
+        "tanga_balance": int(profile.tanga_balance or 0),
     }
 
 
 class PurchaseFreezeRequest(BaseModel):
     count: int = Field(..., ge=1)
+    # Optional — lets the mobile client retry a purchase after a dropped
+    # response without risking a double-spend. Old clients that don't send
+    # this simply get no idempotency guard, i.e. today's behavior.
+    idempotency_key: Optional[str] = Field(None, max_length=128)
 
 
 @router.post("/freeze/purchase")
@@ -269,22 +279,22 @@ async def purchase_freeze(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    xp_cost = _FREEZE_PACKAGES.get(body.count)
-    if xp_cost is None:
+    tanga_cost = _FREEZE_PACKAGES.get(body.count)
+    if tanga_cost is None:
         raise HTTPException(status_code=400, detail=f"Invalid freeze count. Choose from: {list(_FREEZE_PACKAGES.keys())}")
 
     profile = db.execute(
-        text("SELECT total_xp, COALESCE(freeze_count, 0) AS freeze_count FROM profiles WHERE telegram_id = :uid"),
+        text("SELECT COALESCE(tanga_balance, 0) AS tanga_balance, COALESCE(freeze_count, 0) AS freeze_count FROM profiles WHERE telegram_id = :uid"),
         {"uid": caller_id},
     ).fetchone()
     if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
 
-    total_xp     = int(profile.total_xp or 0)
-    freeze_count = int(profile.freeze_count or 0)
+    tanga_balance = int(profile.tanga_balance or 0)
+    freeze_count  = int(profile.freeze_count or 0)
 
-    if total_xp < xp_cost:
-        raise HTTPException(status_code=400, detail=f"Not enough XP. Need {xp_cost}, have {total_xp}")
+    if tanga_balance < tanga_cost:
+        raise HTTPException(status_code=400, detail=f"Not enough Tanga. Need {tanga_cost}, have {tanga_balance}")
 
     if freeze_count + body.count > MAX_FREEZE_COUNT:
         raise HTTPException(
@@ -292,38 +302,39 @@ async def purchase_freeze(
             detail=f"Freeze limiti: {MAX_FREEZE_COUNT} tagacha. Sizda hozir {freeze_count} ta bor.",
         )
 
-    # Atomic deduction: WHERE total_xp >= :cost AND freeze_count + :n <= cap
-    # prevents both double-spend and cap-overrun under concurrent purchases.
-    result = db.execute(
-        text("""
-            UPDATE profiles
-            SET total_xp     = total_xp - :cost,
-                freeze_count = COALESCE(freeze_count, 0) + :n
-            WHERE telegram_id = :uid
-              AND total_xp >= :cost
-              AND COALESCE(freeze_count, 0) + :n <= :cap
-        """),
-        {"cost": xp_cost, "n": body.count, "uid": caller_id, "cap": MAX_FREEZE_COUNT},
+    # spend_tanga() does the atomic guarded deduction (same WHERE-clause idiom
+    # as before — see app/services/tanga_service.py); the freeze-count cap is
+    # folded into the SAME UPDATE via extra_set_sql/extra_guard_sql so a
+    # concurrent purchase can't pass its own balance check yet still push
+    # freeze_count over MAX_FREEZE_COUNT in a separate statement.
+    result = spend_tanga(
+        db, user_id=caller_id, amount=tanga_cost, reason="freeze_purchase",
+        reference_type="freeze_package", reference_id=body.count,
+        idempotency_key=body.idempotency_key,
+        extra_set_sql="freeze_count = COALESCE(freeze_count, 0) + :n",
+        extra_guard_sql="COALESCE(freeze_count, 0) + :n <= :cap",
+        extra_params={"n": body.count, "cap": MAX_FREEZE_COUNT},
     )
-    if result.rowcount == 0:
-        db.rollback()
+    if not result.ok:
         raise HTTPException(
             status_code=400,
-            detail=f"Freeze sotib olinmadi — XP yoki freeze limiti yetarli emas.",
+            detail="Freeze sotib olinmadi — Tanga yoki freeze limiti yetarli emas.",
         )
-    db.commit()
 
     new_row = db.execute(
-        text("SELECT total_xp, COALESCE(freeze_count, 0) AS freeze_count FROM profiles WHERE telegram_id = :uid"),
+        text("SELECT total_xp, COALESCE(freeze_count, 0) AS freeze_count, COALESCE(tanga_balance, 0) AS tanga_balance FROM profiles WHERE telegram_id = :uid"),
         {"uid": caller_id},
     ).fetchone()
 
     return {
-        "ok":           True,
-        "xp_spent":     xp_cost,
+        "ok":            True,
+        "xp_spent":      tanga_cost,   # legacy field name — see docstring above; equals tanga_cost while mirror phase is "A"
         "freezes_added": body.count,
-        "total_xp":     int(new_row.total_xp or 0),
-        "freeze_count": int(new_row.freeze_count or 0),
+        "total_xp":      int(new_row.total_xp or 0),
+        "freeze_count":  int(new_row.freeze_count or 0),
+        # Additive (088_tanga_currency):
+        "tanga_spent":   tanga_cost,
+        "tanga_balance": int(new_row.tanga_balance or 0),
     }
 
 

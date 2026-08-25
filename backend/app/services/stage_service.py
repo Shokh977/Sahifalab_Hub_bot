@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.xp_service import add_xp
+from app.services.tanga_service import grant_tanga_for_xp
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,11 @@ def check_and_award_stages(db: Session, caller_id: int, streak_days: int) -> lis
                 caller_id, key, bonus, exc_info=True,
             )
             continue  # do not record completion — retry on the next check
+
+        grant_tanga_for_xp(
+            db, caller_id, xp_result, reason="streak_stage", reference_id=stage.stage_number,
+            idempotency_key=f"stage:{caller_id}:{key}",
+        )
 
         try:
             db.execute(

@@ -50,6 +50,7 @@ class StudyActivityResult:
     today_minutes:            int
     goal_met:                 bool
     xp_awarded:                int
+    session_id:                Optional[int] = None
     freeze_count:              int  = 0
     milestone_freeze_granted:  bool = False
     stages_completed:       list[dict] = field(default_factory=list)
@@ -108,13 +109,20 @@ def record_study_activity(
     yesterday = today - timedelta(days=1)
 
     # ── 1. Record the session ────────────────────────────────────────────────
-    db.execute(
+    # RETURNING id so the caller can key a deferred Tanga grant off this exact
+    # session (idempotency_key=f"study_activity:{session_id}") without a
+    # second query — see spec Part 3's transaction-boundary rule: the Tanga
+    # grant must never be able to roll back this row, so callers grant Tanga
+    # AFTER this function returns, not before/inside it.
+    session_row = db.execute(
         text("""
             INSERT INTO focus_sessions (user_id, minutes, xp_awarded, session_date)
             VALUES (:uid, :min, :xp, :today)
+            RETURNING id
         """),
         {"uid": user_id, "min": minutes, "xp": xp_awarded, "today": today},
-    )
+    ).fetchone()
+    session_id = int(session_row.id) if session_row else None
 
     # ── 2. Streak update — only advances when today's total meets the daily
     #    goal. The subquery runs after the INSERT above so it includes the
@@ -246,6 +254,7 @@ def record_study_activity(
         today_minutes=today_minutes,
         goal_met=goal_met,
         xp_awarded=xp_awarded,
+        session_id=session_id,
         freeze_count=freeze_count_after,
         milestone_freeze_granted=milestone_freeze_granted,
         stages_completed=stages_completed,

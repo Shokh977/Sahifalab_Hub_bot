@@ -25,6 +25,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.xp_service import add_xp
+from app.services.tanga_service import grant_tanga_for_xp
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,11 @@ def _award_completion(db: Session, user_id: int, challenge_id, reward_xp: int, b
     """Shared XP + badge grant, used by every type's completion path. Never touches streak_days/stages."""
     if reward_xp and reward_xp > 0:
         try:
-            add_xp(db, user_id=user_id, source="CHALLENGE", amount=reward_xp)
+            xp_result = add_xp(db, user_id=user_id, source="CHALLENGE", amount=reward_xp)
+            grant_tanga_for_xp(
+                db, user_id, xp_result, reason="challenge_complete", reference_id=challenge_id,
+                idempotency_key=f"challenge:{user_id}:{challenge_id}",
+            )
         except Exception:
             logger.error(
                 "Challenge completion XP award failed for user_id=%s challenge_id=%s amount=%s",
