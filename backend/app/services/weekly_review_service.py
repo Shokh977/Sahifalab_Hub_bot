@@ -41,7 +41,7 @@ def _week_start(today: date) -> date:
     return today - timedelta(days=today.weekday())  # Monday
 
 
-def _gather_user_stats(db: Session, user_id: int, week_start: date, today: date) -> dict:
+def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) -> dict:
     week_ago = week_start
     prev_start = week_start - timedelta(days=7)
     week_start_ts = datetime.combine(week_start, datetime.min.time()).replace(tzinfo=UTC)
@@ -230,7 +230,7 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
     if existing:
         return False
 
-    stats = _gather_user_stats(db, user_id, week_start, today)
+    stats = gather_user_stats(db, user_id, week_start, today)
     if stats["this_week_minutes"] == 0 and stats["flashcard_reviews_this_week"] == 0:
         return False  # nothing to review — don't spend a call on silence
 

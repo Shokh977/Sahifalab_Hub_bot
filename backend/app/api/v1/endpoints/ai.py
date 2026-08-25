@@ -1,6 +1,6 @@
 import base64
 import logging
-from datetime import datetime, UTC
+from datetime import datetime, timedelta, UTC
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -290,8 +290,20 @@ async def confirm_generated_flashcards(
 @router.get("/weekly-review")
 async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     """Spec Part 6, feature 2 — always free. Returns the caller's most
-    recent cron-generated weekly review, or null if none exists yet
-    (new users, or this week's batch hasn't reached their slot yet)."""
+    recent cron-generated weekly review (possibly from a prior week, if
+    this week's batch hasn't reached their telegram_id%7 slot yet).
+
+    Also returns `live_stats`: the same deterministic, no-LLM stats this
+    week's review will eventually be built from, computed on demand
+    whenever the CURRENT week's review isn't ready yet. This lets the
+    client show real numbers (a live in-progress bar chart, streak, etc.)
+    instead of an empty state while waiting for the cron-staggered batch —
+    no AI call, no Tanga, no rate-limit exposure, since it's the same plain
+    aggregation query the batch job itself runs.
+    """
+    today = datetime.now(UTC).date()
+    this_week_start = today - timedelta(days=today.weekday())
+
     row = db.execute(
         text("""
             SELECT week_start, content, created_at FROM weekly_reviews
@@ -299,12 +311,18 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
         """),
         {"uid": caller_id},
     ).fetchone()
-    if not row:
-        return {"review": None}
-    return {
-        "review": {
+
+    review = None
+    if row:
+        review = {
             "week_start": row.week_start.isoformat(),
             "created_at": row.created_at.isoformat() if row.created_at else None,
             **(row.content or {}),
         }
-    }
+
+    live_stats = None
+    if not row or row.week_start < this_week_start:
+        from app.services.weekly_review_service import gather_user_stats
+        live_stats = gather_user_stats(db, caller_id, this_week_start, today)
+
+    return {"review": review, "live_stats": live_stats}
