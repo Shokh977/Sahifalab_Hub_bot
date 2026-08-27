@@ -1938,12 +1938,20 @@ const AdminPage: React.FC = () => {
           <span className="text-lg font-bold text-sahifa-700 dark:text-sahifa-300">SAHIFALAB</span>
           <span className="text-xs bg-sahifa-100 dark:bg-sahifa-900/30 text-sahifa-600 dark:text-sahifa-400 px-2 py-0.5 rounded-full">Admin</span>
         </div>
-        <button
-          onClick={() => setAdminId(null)}
-          className="text-sm text-gray-500 hover:text-red-500 transition-colors"
-        >
-          Chiqish
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/admin/daily-quiz')}
+            className="text-sm text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-800 transition-colors font-medium"
+          >
+            5 Savol
+          </button>
+          <button
+            onClick={() => setAdminId(null)}
+            className="text-sm text-gray-500 hover:text-red-500 transition-colors"
+          >
+            Chiqish
+          </button>
+        </div>
       </div>
 
       {/* Tab navigation */}

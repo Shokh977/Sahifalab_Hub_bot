@@ -65,8 +65,9 @@ jobs:
           psql "$DATABASE_URL" -f tests/schema_bootstrap.sql
           psql "$DATABASE_URL" -f migrations/088_tanga_currency.sql
           psql "$DATABASE_URL" -f migrations/089_ai_infrastructure.sql
+          psql "$DATABASE_URL" -f migrations/090_daily_quiz.sql
 
-      - name: Run Tanga / AI / freeze test suite
+      - name: Run Tanga / AI / freeze / daily-quiz test suite
         run: |
           pytest -v -rA \
             tests/test_tanga_service.py \
@@ -74,6 +75,7 @@ jobs:
             tests/test_tanga_reconciliation.py \
             tests/test_price_config_guard.py \
             tests/test_freeze_endpoint_idempotency.py \
+            tests/test_daily_quiz_service.py \
             tests/test_freeze_service.py \
             tests/test_streak_state.py \
             tests/test_user_time.py

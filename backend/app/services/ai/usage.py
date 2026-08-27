@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def log_usage(
     db: Session,
-    user_id: int,
+    user_id: int | None,
     feature: str,
     model: str,
     prompt_version: str,

@@ -62,6 +62,11 @@ TangaReason = Literal[
     # a live grant_tanga_for_xp() call failed after its focus_sessions row
     # already committed — see app/services/tanga_reconciliation.py
     "study_activity_reconciled",
+    # "5 Savol" daily quiz (090_daily_quiz) — Tanga only, NEVER XP (spec:
+    # XP represents minutes studied; a 60-second quiz must not compete with
+    # actual studying for level/leaderboard integrity). Distinct from
+    # "quiz_complete" above, which is the pre-existing lesson-quiz reason.
+    "daily_quiz", "daily_quiz_void_refund",
 ]
 
 

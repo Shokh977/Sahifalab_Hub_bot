@@ -40,6 +40,14 @@ def _seed_profile(db, tanga_balance: int = 0):
         VALUES (:uid, :bal, :bal, 'Asia/Tashkent')
         ON CONFLICT (telegram_id) DO UPDATE SET tanga_balance = :bal, total_xp = :bal
     """), {"uid": TEST_TELEGRAM_ID, "bal": tanga_balance})
+    # find_unreconciled_sessions() only considers sessions created AFTER
+    # tanga_mirror_mode's row was written (the incident fix — see
+    # daily_quiz reconciliation over-grant postmortem). In a real deploy
+    # that row is written once, long before any orphan session exists; in
+    # this test the migration just ran moments ago, so without backdating
+    # it here, every "old" session this suite backdates by a few minutes
+    # would land BEFORE that cutoff and be wrongly filtered out.
+    db.execute(text("UPDATE app_config SET updated_at = NOW() - INTERVAL '1 day' WHERE key = 'tanga_mirror_mode'"))
     db.commit()
 
 

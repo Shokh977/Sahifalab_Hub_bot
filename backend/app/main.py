@@ -759,6 +759,7 @@ def _start_cron_scheduler():
         challenges_tick, challenges_consistency_daily,
         streak_freeze_auto_apply, streak_at_risk_push,
         weekly_review_batch, tanga_reconciliation, focus_sessions_volume_check,
+        daily_quiz_generate_week, daily_quiz_rollover, daily_quiz_reminder,
     )
     from app.db.session             import get_db
 
@@ -862,6 +863,36 @@ def _start_cron_scheduler():
         finally:
             db.close()
 
+    async def _run_daily_quiz_generate_week():
+        db = _db()
+        try:
+            result = await daily_quiz_generate_week(db=db, _=None)
+            logger.info("[SCHEDULER] daily-quiz-generate-week: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] daily-quiz-generate-week failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_daily_quiz_rollover():
+        db = _db()
+        try:
+            result = await daily_quiz_rollover(db=db, _=None)
+            logger.info("[SCHEDULER] daily-quiz-rollover: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] daily-quiz-rollover failed: %s", exc)
+        finally:
+            db.close()
+
+    async def _run_daily_quiz_reminder():
+        db = _db()
+        try:
+            result = await daily_quiz_reminder(db=db, _=None)
+            logger.info("[SCHEDULER] daily-quiz-reminder: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] daily-quiz-reminder failed: %s", exc)
+        finally:
+            db.close()
+
     scheduler = AsyncIOScheduler(timezone="UTC")
     # RE-ENABLED: the 2026-08-12 focus_sessions outage (3 days, every user,
     # every source) was root-caused to a `%` modulo operator in raw SQL text
@@ -895,6 +926,15 @@ def _start_cron_scheduler():
     # day-over-day. The prior outage ran undetected for three days because
     # nothing was watching this number.
     scheduler.add_job(_run_focus_sessions_volume_check, CronTrigger(hour=7, minute=0))
+    # "5 Savol" (090_daily_quiz). Monday 05:00 UTC — ahead of weekly-report's
+    # Monday 08:00 so both never contend, and well clear of daily rollover.
+    scheduler.add_job(_run_daily_quiz_generate_week, CronTrigger(day_of_week="mon", hour=5, minute=0))
+    # Daily 00:00 UTC — close yesterday + publish today (combined; see
+    # daily_quiz_service.rollover()'s docstring for why this is one job).
+    scheduler.add_job(_run_daily_quiz_rollover, CronTrigger(hour=0, minute=0))
+    # Daily 12:00 UTC (17:00 Tashkent / 21:00 Seoul) — "where most of the
+    # retention comes from" (spec).
+    scheduler.add_job(_run_daily_quiz_reminder, CronTrigger(hour=12, minute=0))
     scheduler.start()
     logger.info(
         "[SCHEDULER] APScheduler started — streak-reminder hourly (local 20:00), "

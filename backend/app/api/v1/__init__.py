@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges, daily_quiz, admin_daily_quiz
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
@@ -84,6 +84,10 @@ api_router.include_router(announcements.router, prefix="/announcements", tags=["
 
 # Musobaqalar — cohort focus challenges (step-21)
 api_router.include_router(challenges.router, prefix="/challenges", tags=["challenges"])
+
+# "5 Savol" daily AI quiz (090_daily_quiz)
+api_router.include_router(daily_quiz.router, prefix="/quiz", tags=["daily-quiz"])
+api_router.include_router(admin_daily_quiz.router, prefix="/admin/daily-quiz", tags=["admin"])
 
 # Internal maintenance (secret-key protected)
 api_router.include_router(cron.router)

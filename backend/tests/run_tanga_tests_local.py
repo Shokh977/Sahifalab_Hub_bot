@@ -44,6 +44,7 @@ def main() -> int:
             TESTS_DIR / "schema_bootstrap.sql",
             MIGRATIONS_DIR / "088_tanga_currency.sql",
             MIGRATIONS_DIR / "089_ai_infrastructure.sql",
+            MIGRATIONS_DIR / "090_daily_quiz.sql",
         ]:
             print(f"[run_tanga_tests_local] applying {sql_file.name}")
             sql = sql_file.read_text(encoding="utf-8")
@@ -59,6 +60,7 @@ def main() -> int:
             "tests/test_tanga_reconciliation.py",
             "tests/test_price_config_guard.py",
             "tests/test_freeze_endpoint_idempotency.py",
+            "tests/test_daily_quiz_service.py",
             # Pre-existing, pure-unit (no DB needed) — folded in because this
             # is the repo's first CI workflow ever; free extra coverage.
             "tests/test_freeze_service.py",

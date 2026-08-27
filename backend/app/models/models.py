@@ -84,6 +84,11 @@ class Profile(Base):
     # Spendable currency (088_tanga_currency) — total_xp remains the lifetime
     # score; tanga_balance is the wallet. See app/services/tanga_service.py.
     tanga_balance              = Column(Integer, default=0, nullable=False)
+    # "5 Savol" daily quiz play streak (090_daily_quiz) — deliberately
+    # separate from streak_days (the study streak); a 60-second quiz must
+    # never be able to keep the study streak alive by proxy.
+    quiz_streak_days           = Column(Integer, default=0, nullable=False)
+    quiz_last_played_date      = Column(Date, nullable=True)
 
 
 class AuthCode(Base):
@@ -218,6 +223,79 @@ class WeeklyReview(Base):
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
     __table_args__ = (UniqueConstraint("user_id", "week_start", name="uq_weekly_review_user_week"),)
+
+
+class DailyQuiz(Base):
+    """"5 Savol" — one row per calendar day (090_daily_quiz). The same 5
+    questions for every user worldwide; see app/services/daily_quiz_service.py."""
+    __tablename__ = "daily_quizzes"
+
+    id           = Column(BigInteger, primary_key=True, autoincrement=True)
+    quiz_number  = Column(Integer, nullable=False, unique=True)
+    publish_date = Column(Date, nullable=False, unique=True)
+    theme        = Column(Text, nullable=False)
+    status       = Column(Text, nullable=False, default="draft")
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    closed_at    = Column(DateTime(timezone=True), nullable=True)
+    created_at   = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    approved_at  = Column(DateTime(timezone=True), nullable=True)
+    approved_by  = Column(BigInteger, ForeignKey("profiles.telegram_id"), nullable=True)
+
+    questions = relationship("DailyQuizQuestion", back_populates="quiz", cascade="all, delete-orphan")
+
+
+class DailyQuizQuestion(Base):
+    __tablename__ = "daily_quiz_questions"
+
+    id                  = Column(BigInteger, primary_key=True, autoincrement=True)
+    quiz_id             = Column(BigInteger, ForeignKey("daily_quizzes.id", ondelete="CASCADE"), nullable=False, index=True)
+    position            = Column(Integer, nullable=False)
+    question_text       = Column(Text, nullable=False)
+    options             = Column(JSONB, nullable=False)
+    correct_index       = Column(Integer, nullable=False)
+    explanation         = Column(Text, nullable=False)
+    source              = Column(Text, nullable=False)
+    difficulty          = Column(Text, nullable=False)
+    verified            = Column(Boolean, nullable=False, default=False)
+    verify_model_answer = Column(Integer, nullable=True)
+    report_count        = Column(Integer, nullable=False, default=0)
+    voided               = Column(Boolean, nullable=False, default=False)
+    created_at           = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    quiz = relationship("DailyQuiz", back_populates="questions")
+
+    __table_args__ = (UniqueConstraint("quiz_id", "position", name="uq_daily_quiz_question_position"),)
+
+
+class DailyQuizAttempt(Base):
+    """One per (user, quiz) — the UNIQUE constraint below IS the idempotency
+    mechanism (spec: a replay returns the original result, no separate key)."""
+    __tablename__ = "daily_quiz_attempts"
+
+    id            = Column(BigInteger, primary_key=True, autoincrement=True)
+    user_id       = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False, index=True)
+    quiz_id       = Column(BigInteger, ForeignKey("daily_quizzes.id", ondelete="CASCADE"), nullable=False, index=True)
+    delivered_at  = Column(DateTime(timezone=True), nullable=False)
+    submitted_at  = Column(DateTime(timezone=True), nullable=True)
+    elapsed_ms    = Column(Integer, nullable=True)
+    answers       = Column(JSONB, nullable=True)
+    correct_count = Column(Integer, nullable=True)
+    tanga_awarded = Column(Integer, nullable=False, default=0)
+    created_at    = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("user_id", "quiz_id", name="uq_daily_quiz_attempt_user_quiz"),)
+
+
+class DailyQuizReport(Base):
+    __tablename__ = "daily_quiz_reports"
+
+    id          = Column(BigInteger, primary_key=True, autoincrement=True)
+    question_id = Column(BigInteger, ForeignKey("daily_quiz_questions.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id     = Column(BigInteger, ForeignKey("profiles.telegram_id", ondelete="CASCADE"), nullable=False)
+    reason      = Column(Text, nullable=False)
+    created_at  = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+
+    __table_args__ = (UniqueConstraint("question_id", "user_id", name="uq_daily_quiz_report_question_user"),)
 
 
 class UserBadge(Base):

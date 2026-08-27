@@ -70,6 +70,13 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID:     str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
+    # Gemini API (088/089 Tanga+AI) — read directly via os.getenv in
+    # app/services/ai/gemini_provider.py, not through `settings`. Declared
+    # here anyway so Settings() (extra='forbid' by default in pydantic-
+    # settings) doesn't crash the instant a local .env contains this key —
+    # every other already-declared key above exists for the same reason.
+    GEMINI_API_KEY: str = ""
+
     # Email via Resend (resend.com) — free 100/day, no SDK needed
     # Get key from resend.com → API Keys → Create API Key
     SENDER_API_KEY: str = ""

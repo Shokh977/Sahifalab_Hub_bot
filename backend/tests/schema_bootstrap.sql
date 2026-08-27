@@ -26,7 +26,11 @@ CREATE TABLE profiles (
     daily_goal_minutes          INTEGER DEFAULT 20,
     total_focus_minutes         INTEGER DEFAULT 0,
     timezone                    TEXT DEFAULT 'Asia/Tashkent' NOT NULL,
-    status                      TEXT DEFAULT 'active'
+    status                      TEXT DEFAULT 'active',
+    first_name                  TEXT,
+    username                    TEXT,
+    photo_url                   TEXT,
+    user_settings               JSONB DEFAULT '{}'::jsonb
 );
 
 CREATE TABLE focus_sessions (

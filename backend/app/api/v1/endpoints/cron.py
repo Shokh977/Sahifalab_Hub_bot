@@ -16,6 +16,12 @@ Routes (secret-key protected, NOT JWT):
                                                  sessions whose focus_sessions row already committed
   POST /api/cron/focus-sessions-volume-check  — standing alert: page admins if daily focus_sessions
                                                  volume drops >50% day-over-day
+  POST /api/cron/daily-quiz-generate-week      — 090: weekly generate+verify next 7 days' "5 Savol"
+  POST /api/cron/daily-quiz-rollover           — 090: daily 00:00 UTC — close yesterday, publish
+                                                 today (if approved), push "tayyor" notification
+                                                 (spec's two separate 00:00 bullets, combined —
+                                                 same trigger time, one job, per "keep cron count minimal")
+  POST /api/cron/daily-quiz-reminder           — 090: daily 12:00 UTC — nudge users who haven't played
 
 Authentication: CRON_SECRET env var must be provided in X-Cron-Secret header.
 
@@ -40,6 +46,9 @@ what actually drives these today; running both means double-sends):
     POST /api/cron/weekly-review-batch           — schedule: 0 6 * * *   (06:00 UTC daily, staggered internally)
     POST /api/cron/tanga-reconciliation          — schedule: */15 * * * * (every 15 minutes)
     POST /api/cron/focus-sessions-volume-check   — schedule: 0 7 * * *   (07:00 UTC daily)
+    POST /api/cron/daily-quiz-generate-week      — schedule: 0 5 * * 1   (Monday 05:00 UTC)
+    POST /api/cron/daily-quiz-rollover           — schedule: 0 0 * * *   (00:00 UTC daily)
+    POST /api/cron/daily-quiz-reminder           — schedule: 0 12 * * *  (12:00 UTC daily)
 """
 
 import os
@@ -1032,4 +1041,50 @@ async def focus_sessions_volume_check(
     """
     from app.services.volume_alert_service import run_daily_volume_check
     result = await run_daily_volume_check(db)
+    return {"ok": True, **result}
+
+
+@router.post("/daily-quiz-generate-week")
+async def daily_quiz_generate_week(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    090_daily_quiz — weekly: generate + verify the next 7 days of "5 Savol"
+    into the admin approval queue. Never same-day (spec: "a live generation
+    failure must never become a live outage" — the week is always ready
+    well ahead of when it's needed).
+    """
+    from app.services.daily_quiz_service import generate_week
+    today = datetime.now(UTC).date()
+    result = await generate_week(db, today)
+    logger.info("daily_quiz_generate_week: %s", result)
+    return {"ok": True, **result}
+
+
+@router.post("/daily-quiz-rollover")
+async def daily_quiz_rollover(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """090_daily_quiz — daily 00:00 UTC: close yesterday's quiz, publish
+    today's (if approved), push "tayyor" notification. See
+    daily_quiz_service.rollover() for why this is one job, not two."""
+    from app.services.daily_quiz_service import rollover
+    today = datetime.now(UTC).date()
+    result = await rollover(db, today)
+    return {"ok": True, **result}
+
+
+@router.post("/daily-quiz-reminder")
+async def daily_quiz_reminder(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """090_daily_quiz — daily 12:00 UTC: reminder push to users who haven't
+    played today's quiz yet. Spec: "this reminder is where most of the
+    retention comes from.\""""
+    from app.services.daily_quiz_service import send_reminder_push
+    today = datetime.now(UTC).date()
+    result = await send_reminder_push(db, today)
     return {"ok": True, **result}
