@@ -55,10 +55,13 @@ async def generate_week_now(
 
 @router.get("/pending")
 async def list_pending(db: Session = Depends(get_db), admin: AdminUser = Depends(verify_admin)):
+    # 'approved' is included so an already-approved day doesn't just vanish
+    # from the dashboard with no way to publish it before the next 00:00
+    # UTC rollover — see publish_now() below.
     quizzes = db.execute(
         text("""
             SELECT id, quiz_number, publish_date, theme, status, created_at
-            FROM daily_quizzes WHERE status IN ('draft', 'verified')
+            FROM daily_quizzes WHERE status IN ('draft', 'verified', 'approved')
             ORDER BY publish_date
         """),
     ).fetchall()
@@ -115,6 +118,22 @@ async def approve_quiz(
     )
     db.commit()
     return {"ok": True, "status": "approved"}
+
+
+@router.post("/{quiz_id}/publish-now")
+async def publish_now_endpoint(
+    quiz_id: int,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Manual override so an approved quiz doesn't have to wait for the
+    00:00 UTC rollover cron — mainly for testing, or "we approved late
+    today." Requires 'approved' status; publishing an already-live quiz
+    or a not-yet-approved one is rejected."""
+    result = await svc.publish_now(db, quiz_id)
+    if not result.get("published"):
+        raise HTTPException(400, result.get("reason", "publish failed"))
+    return result
 
 
 @router.post("/{quiz_id}/reject")

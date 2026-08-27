@@ -11,7 +11,7 @@
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { ArrowLeft, RefreshCw, Sparkles, Check, X, Pencil, Save, RotateCcw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Sparkles, Check, X, Pencil, Save, RotateCcw, Send } from 'lucide-react'
 import apiService from '../services/apiService'
 import { useAuth } from '../context/AuthContext'
 
@@ -112,6 +112,19 @@ export default function AdminDailyQuizPage() {
     }
   }
 
+  async function publishNow(quizId: number) {
+    if (!confirm("Bu kunni HOZIR e'lon qilasizmi? Foydalanuvchilar darhol push xabar oladi.")) return
+    setBusyId(quizId)
+    try {
+      await apiService.client.post(`/api/admin/daily-quiz/${quizId}/publish-now`)
+      await load()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail ?? "E'lon qilib bo'lmadi")
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   async function reject(quizId: number) {
     if (!confirm("Bu kunni rad etasizmi? U hech qachon nashr etilmaydi.")) return
     setBusyId(quizId)
@@ -175,7 +188,8 @@ export default function AdminDailyQuizPage() {
             <QuizCard
               key={qz.id} quiz={qz} busy={busyId === qz.id}
               onApprove={() => approve(qz.id)} onReject={() => reject(qz.id)}
-              onRegenerate={() => regenerate(qz.id)} onQuestionSaved={load}
+              onRegenerate={() => regenerate(qz.id)} onPublishNow={() => publishNow(qz.id)}
+              onQuestionSaved={load}
             />
           ))
         )}
@@ -185,12 +199,14 @@ export default function AdminDailyQuizPage() {
 }
 
 function QuizCard({
-  quiz, busy, onApprove, onReject, onRegenerate, onQuestionSaved,
+  quiz, busy, onApprove, onReject, onRegenerate, onPublishNow, onQuestionSaved,
 }: {
   quiz: PendingQuiz; busy: boolean
-  onApprove: () => void; onReject: () => void; onRegenerate: () => void; onQuestionSaved: () => void
+  onApprove: () => void; onReject: () => void; onRegenerate: () => void
+  onPublishNow: () => void; onQuestionSaved: () => void
 }) {
   const canApprove = quiz.question_count === 5 && quiz.questions.every(q => q.verified)
+  const isApproved = quiz.status === 'approved'
 
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-2xl p-4 space-y-3 shadow-sm">
@@ -216,27 +232,41 @@ function QuizCard({
         ))}
       </div>
 
-      <div className="flex gap-2 pt-1">
-        <button
-          onClick={onApprove} disabled={busy || !canApprove}
-          title={!canApprove ? "Aynan 5 ta tasdiqlangan savol kerak" : undefined}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800/40 text-green-600 dark:text-green-400 disabled:opacity-40 transition-colors"
-        >
-          <Check size={13} /> Tasdiqlash
-        </button>
-        <button
-          onClick={onReject} disabled={busy}
-          className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 disabled:opacity-50 transition-colors"
-        >
-          <X size={13} /> Rad etish
-        </button>
-        <button
-          onClick={onRegenerate} disabled={busy}
-          className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-xl bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 disabled:opacity-50 transition-colors"
-        >
-          <RotateCcw size={13} /> Qayta yaratish
-        </button>
-      </div>
+      {isApproved ? (
+        <div className="flex items-center gap-2 pt-1">
+          <span className="text-xs text-gray-500 dark:text-gray-400 flex-1">
+            Tasdiqlangan — 00:00 UTC'da avtomatik e'lon qilinadi, yoki hozir qo'lda:
+          </span>
+          <button
+            onClick={onPublishNow} disabled={busy}
+            className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-xl bg-sahifa-600 hover:bg-sahifa-700 text-white disabled:opacity-50 transition-colors"
+          >
+            <Send size={13} /> Hozir e'lon qilish
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={onApprove} disabled={busy || !canApprove}
+            title={!canApprove ? "Aynan 5 ta tasdiqlangan savol kerak" : undefined}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-xl bg-green-50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/40 border border-green-200 dark:border-green-800/40 text-green-600 dark:text-green-400 disabled:opacity-40 transition-colors"
+          >
+            <Check size={13} /> Tasdiqlash
+          </button>
+          <button
+            onClick={onReject} disabled={busy}
+            className="flex-1 flex items-center justify-center gap-1.5 py-1.5 text-xs font-semibold rounded-xl bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 disabled:opacity-50 transition-colors"
+          >
+            <X size={13} /> Rad etish
+          </button>
+          <button
+            onClick={onRegenerate} disabled={busy}
+            className="flex items-center justify-center gap-1.5 py-1.5 px-3 text-xs font-semibold rounded-xl bg-gray-50 dark:bg-gray-700 hover:bg-gray-100 dark:hover:bg-gray-600 text-gray-600 dark:text-gray-300 disabled:opacity-50 transition-colors"
+          >
+            <RotateCcw size={13} /> Qayta yaratish
+          </button>
+        </div>
+      )}
     </div>
   )
 }

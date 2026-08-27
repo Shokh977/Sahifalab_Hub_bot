@@ -645,6 +645,54 @@ async def _push_batch(messages: list[dict]) -> tuple[int, int]:
     return sent, failed
 
 
+async def _publish_quiz(db: Session, quiz_id: int, quiz_number: int) -> dict:
+    """Flips one quiz to 'published' and fires the "tayyor" push batch.
+    Shared by rollover() (the daily cron) and publish_now() (an admin
+    manual override — for testing, or "we're running late today")."""
+    db.execute(
+        text("UPDATE daily_quizzes SET status = 'published', published_at = :now WHERE id = :id"),
+        {"now": datetime.now(UTC), "id": quiz_id},
+    )
+    db.commit()
+
+    rows = db.execute(text("""
+        SELECT user_settings FROM profiles
+        WHERE user_settings->>'expo_push_token' IS NOT NULL
+          AND user_settings->>'expo_push_token' != ''
+          AND (user_settings->'notification_prefs'->>'daily_quiz' IS NULL
+               OR user_settings->'notification_prefs'->>'daily_quiz' = 'true')
+    """)).fetchall()
+
+    messages = [{
+        "to": r.user_settings.get("expo_push_token"),
+        "title": f"5 SAVOL #{quiz_number} tayyor",
+        "body": "Bugungi 5 ta savolga javob bering va o'rningizni ko'ring!",
+        "data": {"screen": "daily_quiz", "quiz_id": quiz_id},
+        "sound": "default",
+    } for r in rows if r.user_settings and r.user_settings.get("expo_push_token")]
+
+    sent, failed = await _push_batch(messages)
+    return {"sent": sent, "failed": failed}
+
+
+async def publish_now(db: Session, quiz_id: int) -> dict:
+    """Admin-triggered manual publish (POST /api/admin/daily-quiz/{id}/publish-now)
+    — requires 'approved' status, same constraint as the cron path. Does
+    NOT touch yesterday's quiz (unlike rollover()) — this is a single-quiz
+    override, not a full daily rollover."""
+    quiz = db.execute(
+        text("SELECT id, quiz_number, publish_date, status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id},
+    ).fetchone()
+    if quiz is None:
+        return {"published": False, "reason": "not_found"}
+    if quiz.status != "approved":
+        return {"published": False, "reason": f"status is '{quiz.status}', must be 'approved'"}
+
+    push_result = await _publish_quiz(db, quiz.id, quiz.quiz_number)
+    logger.info("daily_quiz publish_now: quiz_number=%s (admin override) %s", quiz.quiz_number, push_result)
+    return {"published": True, "quiz_number": quiz.quiz_number, **push_result}
+
+
 async def rollover(db: Session, today: date) -> dict:
     """Daily 00:00 UTC (spec's two separate 00:00 bullets — 'close the
     previous window' and 'publish' — combined into one job: same trigger
@@ -667,29 +715,8 @@ async def rollover(db: Session, today: date) -> dict:
         )
         return {"published": False, "reason": "no_approved_quiz", "publish_date": today.isoformat()}
 
-    db.execute(
-        text("UPDATE daily_quizzes SET status = 'published', published_at = :now WHERE id = :id"),
-        {"now": datetime.now(UTC), "id": quiz.id},
-    )
-    db.commit()
-
-    rows = db.execute(text("""
-        SELECT user_settings FROM profiles
-        WHERE user_settings->>'expo_push_token' IS NOT NULL
-          AND user_settings->>'expo_push_token' != ''
-          AND (user_settings->'notification_prefs'->>'daily_quiz' IS NULL
-               OR user_settings->'notification_prefs'->>'daily_quiz' = 'true')
-    """)).fetchall()
-
-    messages = [{
-        "to": r.user_settings.get("expo_push_token"),
-        "title": f"5 SAVOL #{quiz.quiz_number} tayyor",
-        "body": "Bugungi 5 ta savolga javob bering va o'rningizni ko'ring!",
-        "data": {"screen": "daily_quiz", "quiz_id": quiz.id},
-        "sound": "default",
-    } for r in rows if r.user_settings and r.user_settings.get("expo_push_token")]
-
-    sent, failed = await _push_batch(messages)
+    push_result = await _publish_quiz(db, quiz.id, quiz.quiz_number)
+    sent, failed = push_result["sent"], push_result["failed"]
     logger.info("daily_quiz rollover: published quiz_number=%s sent=%d failed=%d", quiz.quiz_number, sent, failed)
     return {"published": True, "quiz_number": quiz.quiz_number, "sent": sent, "failed": failed}
 
