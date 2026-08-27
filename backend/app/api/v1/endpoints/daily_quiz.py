@@ -66,6 +66,12 @@ async def get_today(db: Session = Depends(get_db), caller_id: int = Depends(_req
             "correct_count": delivery["correct_count"],  # only meaningful once submitted
             "seconds_remaining": seconds_remaining,
             "questions": delivery["questions"] if not delivery["submitted"] else [],
+            # Only present once submitted — everything the share-ticket result
+            # view needs, so the client never has to re-call /submit just to
+            # re-fetch its own already-final result.
+            "per_question_correct": delivery.get("per_question_correct"),
+            "tanga_awarded": delivery.get("tanga_awarded"),
+            "quiz_streak_days": delivery.get("quiz_streak_days"),
         },
     }
 

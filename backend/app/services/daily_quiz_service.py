@@ -294,7 +294,7 @@ def deliver_today(db: Session, user_id: int, quiz_id: int) -> dict:
     quiz) returns the SAME delivered_at — the server clock, once started,
     never resets just because the client re-fetched."""
     existing = db.execute(
-        text("SELECT id, delivered_at, submitted_at, correct_count, elapsed_ms FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
+        text("SELECT id, delivered_at, submitted_at, correct_count, elapsed_ms, tanga_awarded, answers FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
         {"uid": user_id, "qid": quiz_id},
     ).fetchone()
 
@@ -325,13 +325,31 @@ def deliver_today(db: Session, user_id: int, quiz_id: int) -> dict:
             "question_text": q.question_text, "options": shuffled,
         })
 
-    return {
+    result = {
         "attempt_id": int(existing.id),
         "delivered_at": existing.delivered_at.isoformat(),
         "submitted": existing.submitted_at is not None,
         "correct_count": existing.correct_count,
         "questions": shuffled_questions,
     }
+
+    # Reopening the app after already playing today needs the FULL result
+    # (share ticket data, streak) — GET /today is the only call the client
+    # makes in that case, so it has to carry everything, not just
+    # correct_count. Previously the client tried to get this by re-calling
+    # POST /submit with an empty answers list, which 422'd outright
+    # (SubmitRequest.answers has min_length=1) and surfaced the raw Pydantic
+    # error array as on-screen text.
+    if existing.submitted_at is not None:
+        ordered_questions = sorted(
+            (q for q in questions if not q.voided), key=lambda q: q.position,
+        )
+        per_question = _score_from_stored_answers(user_id, ordered_questions, existing.answers or [])
+        result["per_question_correct"] = per_question
+        result["tanga_awarded"] = existing.tanga_awarded
+        result["quiz_streak_days"] = _current_play_streak(db, user_id)
+
+    return result
 
 
 def score_and_submit(db: Session, user_id: int, quiz_id: int, answers: list[dict]) -> dict:
