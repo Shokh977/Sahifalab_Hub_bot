@@ -369,6 +369,7 @@ def score_and_submit(db: Session, user_id: int, quiz_id: int, answers: list[dict
             "correct_count": attempt.correct_count,
             "tanga_awarded": attempt.tanga_awarded,
             "per_question_correct": per_question,
+            "quiz_streak_days": _current_play_streak(db, user_id),
         }
 
     now = datetime.now(UTC)
@@ -405,7 +406,15 @@ def score_and_submit(db: Session, user_id: int, quiz_id: int, answers: list[dict
         "elapsed_ms": elapsed_ms,
         "tanga_awarded": tanga,
         "per_question_correct": per_question,
+        "quiz_streak_days": _current_play_streak(db, user_id),
     }
+
+
+def _current_play_streak(db: Session, user_id: int) -> int:
+    row = db.execute(
+        text("SELECT quiz_streak_days FROM profiles WHERE telegram_id = :uid"), {"uid": user_id},
+    ).fetchone()
+    return int(row.quiz_streak_days or 0) if row else 0
 
 
 def _score_from_stored_answers(user_id: int, ordered_questions: list, answers: list[dict]) -> list[bool]:
