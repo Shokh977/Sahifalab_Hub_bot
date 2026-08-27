@@ -6,7 +6,10 @@ triggers live in cron.py.
 GET  /api/quiz/today            — today's published quiz, shuffled options,
                                    no correct answers. Starts the server clock.
 POST /api/quiz/submit           — answers; server scores, times, grants Tanga.
-GET  /api/quiz/results/{quiz_id} — only after window close.
+GET  /api/quiz/results/{quiz_id} — available as soon as the CALLER submits
+                                   their own attempt (not gated on window
+                                   close/other users — deliberate product
+                                   call, see get_results()'s docstring).
 POST /api/quiz/report           — report a question; auto-voids past threshold.
 """
 import logging
@@ -128,9 +131,18 @@ async def get_results(
     if quiz is None:
         raise HTTPException(404, "Viktorina topilmadi")
 
-    close_at = _window_close(quiz.publish_date)
-    if datetime.now(UTC) < close_at:
-        raise HTTPException(425, "Natijalar hali yopilmagan — oyna tugagach ko'rinadi")
+    # Gated on the CALLER's own submission, not the window-close time —
+    # results are available the moment you finish, not at 00:00 UTC.
+    # Deliberate product call (this is a quick practice test, not a
+    # competitive event where an early finisher leaking the answer key to
+    # others who haven't played yet is a real concern) — the original
+    # design's whole reason for the window-close gate.
+    own_attempt = db.execute(
+        text("SELECT 1 FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid AND submitted_at IS NOT NULL"),
+        {"uid": caller_id, "qid": quiz_id},
+    ).fetchone()
+    if own_attempt is None:
+        raise HTTPException(425, "Avval bugungi savollarga javob bering")
 
     questions = db.execute(
         text("""
