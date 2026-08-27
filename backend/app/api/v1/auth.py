@@ -69,11 +69,23 @@ def _send_welcome(user_id: int, first_name: str = "", db: Session = None):
     if db is not None:
         try:
             from app.services.xp_service import add_xp
-            xp_result = add_xp(db, user_id=user_id, source="WELCOME", amount=100)
-            from app.services.tanga_service import grant_tanga_for_xp
-            grant_tanga_for_xp(db, user_id, xp_result, reason="welcome_bonus", idempotency_key=f"welcome:{user_id}")
+            add_xp(db, user_id=user_id, source="WELCOME", amount=100)
         except Exception:
             logger.error("Welcome XP award failed for user_id=%s amount=100 source=WELCOME", user_id, exc_info=True)
+        try:
+            # tanga-economy-rework (092) Part 2: a flat opening balance, not a
+            # 1:1 mirror of the 100 WELCOME XP above. This is the forward-going
+            # equivalent, for every NEW signup after 092's deploy, of the
+            # migration's one-time reset for existing users — both use the
+            # same app_config value so day one is always the same flat number
+            # regardless of when an account was created.
+            from app.services.config_service import get_config
+            from app.services.tanga_service import grant_tanga
+            amount = int((get_config(db, "tanga_earning", default={}) or {}).get("opening_balance", 100))
+            if amount > 0:
+                grant_tanga(db, user_id=user_id, amount=amount, reason="opening_balance", idempotency_key=f"welcome:{user_id}")
+        except Exception:
+            logger.error("Opening-balance Tanga grant failed for user_id=%s", user_id, exc_info=True)
     # Push notification (fire-and-forget)
     try:
         from app.api.v1.endpoints.notifications import send_notification

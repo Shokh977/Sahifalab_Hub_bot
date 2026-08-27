@@ -219,6 +219,7 @@ def check_and_charge(db: Session, user_id: int, feature: str, action_id: str) ->
                 db, user_id=user_id, amount=price, reason="ai_refund",
                 reference_type="ai_action", reference_id=action_id,
                 idempotency_key=f"{idempotency_key}:cap_refund",
+                celebrate=False,  # reversing a charge is not a reward
             )
         return GateResult(allowed=False, charged_tanga=False, tanga_spent=0,
                            idempotency_key=idempotency_key, reason="daily_cap_reached")
@@ -238,4 +239,5 @@ def refund(db: Session, user_id: int, feature: str, action_id: str, tanga_spent:
         db, user_id=user_id, amount=tanga_spent, reason="ai_refund",
         reference_type="ai_action", reference_id=action_id,
         idempotency_key=f"ai:{feature}:{user_id}:{action_id}:refund",
+        celebrate=False,  # reversing a charge is not a reward
     )

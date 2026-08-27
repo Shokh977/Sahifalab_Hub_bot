@@ -28,7 +28,6 @@ from app.services.study_activity import (
     parse_local_date as _parse_local_date,
     StudyActivityResult,
 )
-from app.services.tanga_service import grant_tanga_for_xp
 from app.api.v1.endpoints.notifications import send_notification
 from app.api.v1.auth import _normalize_platform
 
@@ -159,20 +158,11 @@ async def complete_focus_session(
             goal_met=False, xp_awarded=0,
         )
 
-    # Grant Tanga AFTER record_study_activity() has already committed the
-    # focus_sessions row + streak update above — never before/inside it. This
-    # is the transaction-boundary rule from the incident review: a
-    # gamification side-effect (Tanga) must never be able to roll back or
-    # block the fact that the user studied. grant_tanga_for_xp() swallows and
-    # logs its own failures (never raises), left for a reconciliation job to
-    # retry (keyed idempotently on the session id) — the study record itself
-    # is already safe regardless.
-    if activity.session_id is not None:
-        grant_tanga_for_xp(
-            db, caller_id, result, reason="focus_timer",
-            reference_type="focus_session", reference_id=activity.session_id,
-            idempotency_key=f"study_activity:{activity.session_id}",
-        )
+    # tanga-economy-rework (092): Tanga is no longer minted 1:1 with focus-
+    # timer XP — record_study_activity() above already ran the new
+    # daily-capped goal/60min/120min earn checks (see
+    # tanga_service.check_and_award_daily_earn_events()) in its own
+    # transaction, after the study record committed. No separate grant here.
 
     # Append focus session to activity_log (best-effort, non-critical — logged
     # rather than silently swallowed per the step-26 no-silent-failures rule)
@@ -219,6 +209,7 @@ async def complete_focus_session(
                 "stage_key":    stage.get("key", ""),
                 "stage_number": stage.get("stage_number"),
                 "bonus_xp":     stage.get("bonus_xp", 0),
+                "bonus_tanga":  stage.get("bonus_tanga", 0),
             },
         ))
     for ch in activity.challenges_completed:
@@ -242,6 +233,12 @@ async def complete_focus_session(
         "milestone_freeze_granted":  activity.milestone_freeze_granted,
         # Additive (088_tanga_currency):
         "tanga_balance": int(row.tanga_balance) if row else 0,
+        # tanga-economy-rework (092): daily-capped earn events actually
+        # granted by THIS call (goal_met/60min/120min) — celebrate=False
+        # events (daily_goal_met) are included too so the client's own
+        # dedicated GoalCompleteModal can show the right Tanga amount
+        # without a second, redundant generic reward-modal popup for it.
+        "tanga_events": activity.tanga_events,
     }
 
 
@@ -303,10 +300,12 @@ async def get_stages(
     ).fetchall()
     done_map = {r.stage_key: {"completed_at": r.completed_at.isoformat(), "xp_awarded": r.xp_awarded} for r in done_rows}
 
-    # Load definitions — the ONLY place the 10 stage day-thresholds live
+    # Load definitions — the ONLY place the 10 stage day-thresholds live.
+    # bonus_tanga (092): most stages now pay Tanga, not XP — see
+    # stage_service.py's module docstring for which is which per stage.
     stage_rows = db.execute(
         text("""
-            SELECT key, stage_number, title, description, required_days, bonus_xp, icon
+            SELECT key, stage_number, title, description, required_days, bonus_xp, bonus_tanga, icon
             FROM   streak_stages
             WHERE  is_active = TRUE
             ORDER BY sort_order
@@ -323,6 +322,7 @@ async def get_stages(
             "description":   st.description,
             "required_days": st.required_days,
             "bonus_xp":      st.bonus_xp,
+            "bonus_tanga":   st.bonus_tanga,
             "icon":          st.icon,
             "earned":        earned,
             "completed_at":  done_map[st.key]["completed_at"] if earned else None,

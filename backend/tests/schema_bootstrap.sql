@@ -53,6 +53,7 @@ CREATE TABLE streak_stages (
     description    TEXT,
     required_days  INTEGER NOT NULL,
     bonus_xp       INTEGER DEFAULT 0,
+    bonus_tanga    INTEGER NOT NULL DEFAULT 0,
     icon           TEXT,
     is_active      BOOLEAN DEFAULT TRUE,
     sort_order     INTEGER DEFAULT 0
@@ -63,7 +64,21 @@ CREATE TABLE user_stage_completions (
     user_id       BIGINT NOT NULL,
     stage_key     TEXT NOT NULL,
     xp_awarded    INTEGER DEFAULT 0,
+    tanga_awarded INTEGER NOT NULL DEFAULT 0,
     completed_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- stage_service.py's check_and_award_stages() also grants the matching
+-- achievement badge in the same call — was previously only ever exercised
+-- indirectly through record_study_activity()'s try/except (which swallows a
+-- missing-table error as "best-effort"), so this gap was invisible until a
+-- test called check_and_award_stages() directly.
+CREATE TABLE user_badges (
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      BIGINT NOT NULL,
+    badge_key    TEXT NOT NULL,
+    granted_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, badge_key)
 );
 
 CREATE TABLE flashcard_reviews (

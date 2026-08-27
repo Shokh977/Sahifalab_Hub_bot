@@ -25,13 +25,6 @@ from app.services.xp_service import (
     QUIZ_DAILY_CAP,
 )
 from app.services.integration_service import hook_course_completed, hook_level_up
-from app.services.tanga_service import grant_tanga_for_xp
-
-_XP_SOURCE_TO_TANGA_REASON = {
-    "DEEP_WORK": "focus_timer",
-    "QUIZ":      "quiz_complete",
-    "COURSE":    "course_complete",
-}
 
 logger = logging.getLogger(__name__)
 
@@ -141,10 +134,9 @@ async def award_xp(
         )
         raise HTTPException(status_code=500, detail="XP qo'shishda xatolik yuz berdi")
 
-    grant_tanga_for_xp(
-        db, telegram_id, result, reason=_XP_SOURCE_TO_TANGA_REASON[source],
-        reference_id=body.reference_id,
-    )
+    # tanga-economy-rework (092): the Tanga mirror here is removed — this
+    # generic endpoint's sources (DEEP_WORK/QUIZ/COURSE) are not among the
+    # events in the new earning table. XP is unchanged.
 
     # ── Integration hooks (fire-and-forget, never block) ──────────────────────
     new_level = result["new_level"]

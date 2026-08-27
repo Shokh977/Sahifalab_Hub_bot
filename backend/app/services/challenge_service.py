@@ -25,7 +25,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.xp_service import add_xp
-from app.services.tanga_service import grant_tanga_for_xp
+from app.services.tanga_service import grant_tanga
+from app.services.config_service import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +52,39 @@ IMPLEMENTED_METRICS = {
 
 
 def _award_completion(db: Session, user_id: int, challenge_id, reward_xp: int, badge_key: Optional[str]) -> None:
-    """Shared XP + badge grant, used by every type's completion path. Never touches streak_days/stages."""
+    """Shared XP + badge grant, used by every type's completion path
+    (cumulative/consistency completion AND sprint/team winner resolution —
+    see resolve_sprint_challenge/resolve_team_challenge below, which also
+    call this). Never touches streak_days/stages.
+
+    tanga-economy-rework (092): Tanga here is now a FLAT amount from
+    app_config's tanga_earning.challenge_complete, not a 1:1 mirror of
+    reward_xp (which varies per challenge). Exempt from the daily_cap, once
+    per user per challenge (idempotency_key). This single choke point is used
+    for every challenge/"Bellashuv" completion path in this codebase — the
+    spec's separate "competition win" (200 Tanga) line item has no distinct
+    call site to attach to without restructuring Bellashuv itself, which is
+    explicitly out of scope for this rework; see the accompanying report.
+    """
     if reward_xp and reward_xp > 0:
         try:
-            xp_result = add_xp(db, user_id=user_id, source="CHALLENGE", amount=reward_xp)
-            grant_tanga_for_xp(
-                db, user_id, xp_result, reason="challenge_complete", reference_id=challenge_id,
-                idempotency_key=f"challenge:{user_id}:{challenge_id}",
-            )
+            add_xp(db, user_id=user_id, source="CHALLENGE", amount=reward_xp)
         except Exception:
             logger.error(
                 "Challenge completion XP award failed for user_id=%s challenge_id=%s amount=%s",
                 user_id, challenge_id, reward_xp, exc_info=True,
+            )
+        try:
+            tanga_amount = int((get_config(db, "tanga_earning", default={}) or {}).get("challenge_complete", 100))
+            if tanga_amount > 0:
+                grant_tanga(
+                    db, user_id=user_id, amount=tanga_amount, reason="challenge_complete",
+                    reference_id=challenge_id, idempotency_key=f"challenge:{user_id}:{challenge_id}",
+                )
+        except Exception:
+            logger.error(
+                "Challenge completion Tanga grant failed for user_id=%s challenge_id=%s",
+                user_id, challenge_id, exc_info=True,
             )
     if badge_key:
         try:

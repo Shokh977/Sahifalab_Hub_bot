@@ -31,6 +31,8 @@ from app.services.freeze_service import (
     apply_freeze,
 )
 from app.services.tanga_service import spend_tanga
+from app.services.config_service import get_config
+from app.services.client_version import is_tanga_client
 
 router = APIRouter()
 
@@ -67,7 +69,11 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 # package larger than MAX_FREEZE_COUNT.
 MAX_FREEZE_COUNT = 5
 
-_FREEZE_PACKAGES = {
+# LEGACY prices (total_xp), tanga-economy-rework Part 6 — frozen in code on
+# purpose, NOT app_config. The pre-Tanga Play Store build's behaviour must
+# never drift, so it cannot be reachable from an admin-tunable value that the
+# NEW pricing (below) is allowed to change independently of.
+_FREEZE_PACKAGES_LEGACY = {
     1: 200,   # 1 freeze  = 200 XP
     3: 500,   # 3 freezes = 500 XP
     5: 750,   # 5 freezes = 750 XP
@@ -119,6 +125,7 @@ async def get_streak_detail(
     days: int = Query(7, ge=7, le=30),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
 ):
     profile = db.execute(
         text("""
@@ -242,6 +249,9 @@ async def get_streak_detail(
     # fetched by the mobile client but never rendered anywhere (dead data).
     # (`calendar` itself is computed above now, alongside today_goal_met.)
 
+    is_new_client = is_tanga_client(db, x_client_version)
+    active_packages = _new_freeze_packages(db) if is_new_client else _FREEZE_PACKAGES_LEGACY
+
     return {
         "streak_days":             streak_days,
         "is_active":               is_active,
@@ -255,14 +265,22 @@ async def get_streak_detail(
         "week_days":      week_days,
         "freeze_count":   freeze_count,
         "calendar":       calendar,
+        # tanga-economy-rework (092) Part 6: version-gated. "xp_cost" is a
+        # legacy field name kept for the OLD client's TS type — its real unit
+        # is Tanga once is_new_client is true (same pattern as xp_spent below).
         "freeze_packages": [
-            {"count": k, "xp_cost": v} for k, v in _FREEZE_PACKAGES.items()
+            {"count": k, "xp_cost": v} for k, v in active_packages.items()
         ],
         # Additive (088_tanga_currency) — old client's response parsing is a
         # bare `res.json()` + TS type assertion (no zod/io-ts), confirmed
         # lenient, so unknown fields are silently ignored. Safe to add.
         "tanga_balance": int(profile.tanga_balance or 0),
     }
+
+
+def _new_freeze_packages(db: Session) -> dict:
+    raw = get_config(db, "tanga_freeze_packages_v2", default={"1": 100, "3": 250, "5": 375})
+    return {int(k): int(v) for k, v in (raw or {}).items()}
 
 
 class PurchaseFreezeRequest(BaseModel):
@@ -278,10 +296,27 @@ async def purchase_freeze(
     body: PurchaseFreezeRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
 ):
-    tanga_cost = _FREEZE_PACKAGES.get(body.count)
+    """
+    tanga-economy-rework (092) Part 6 — version gate replaces mirror mode.
+
+    Old client (no/low X-Client-Version): frozen legacy path, byte-for-byte
+    the pre-Tanga behaviour — spends total_xp directly at
+    _FREEZE_PACKAGES_LEGACY prices (200/500/750), never touches tanga_balance
+    or the ledger. "This backend has already broken a shipped client once."
+
+    New client: spends tanga_balance via spend_tanga() at
+    _new_freeze_packages() prices (100/250/375, app_config-tunable), never
+    touches total_xp (tanga_mirror_mode is "B" as of migration 092, so even
+    if it weren't gated here spend_tanga's mirror branch is already inert).
+    """
+    if not is_tanga_client(db, x_client_version):
+        return _purchase_freeze_legacy(db, caller_id, body)
+
+    tanga_cost = _new_freeze_packages(db).get(body.count)
     if tanga_cost is None:
-        raise HTTPException(status_code=400, detail=f"Invalid freeze count. Choose from: {list(_FREEZE_PACKAGES.keys())}")
+        raise HTTPException(status_code=400, detail=f"Invalid freeze count. Choose from: {list(_new_freeze_packages(db).keys())}")
 
     profile = db.execute(
         text("SELECT COALESCE(tanga_balance, 0) AS tanga_balance, COALESCE(freeze_count, 0) AS freeze_count FROM profiles WHERE telegram_id = :uid"),
@@ -328,13 +363,54 @@ async def purchase_freeze(
 
     return {
         "ok":            True,
-        "xp_spent":      tanga_cost,   # legacy field name — see docstring above; equals tanga_cost while mirror phase is "A"
+        "xp_spent":      0,  # this branch only runs for the new client (092) — total_xp is never touched
         "freezes_added": body.count,
         "total_xp":      int(new_row.total_xp or 0),
         "freeze_count":  int(new_row.freeze_count or 0),
         # Additive (088_tanga_currency):
         "tanga_spent":   tanga_cost,
         "tanga_balance": int(new_row.tanga_balance or 0),
+    }
+
+
+def _purchase_freeze_legacy(db: Session, caller_id: int, body: "PurchaseFreezeRequest") -> dict:
+    """The pre-Tanga (pre-088) freeze purchase, reproduced byte-for-byte:
+    spends total_xp directly at _FREEZE_PACKAGES_LEGACY prices, never touches
+    tanga_balance or writes a ledger row. This is the ENTIRE point of the
+    version gate (spec Part 6) — an old Play Store build must see zero
+    behavioural difference, not a migrated/mirrored one."""
+    xp_cost = _FREEZE_PACKAGES_LEGACY.get(body.count)
+    if xp_cost is None:
+        raise HTTPException(status_code=400, detail=f"Invalid freeze count. Choose from: {list(_FREEZE_PACKAGES_LEGACY.keys())}")
+
+    row = db.execute(
+        text("""
+            UPDATE profiles
+            SET total_xp = total_xp - :cost,
+                freeze_count = COALESCE(freeze_count, 0) + :n
+            WHERE telegram_id = :uid
+              AND total_xp >= :cost
+              AND COALESCE(freeze_count, 0) + :n <= :cap
+            RETURNING total_xp, COALESCE(freeze_count, 0) AS freeze_count, COALESCE(tanga_balance, 0) AS tanga_balance
+        """),
+        {"cost": xp_cost, "n": body.count, "cap": MAX_FREEZE_COUNT, "uid": caller_id},
+    ).fetchone()
+    if row is None:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Freeze sotib olinmadi — XP yoki freeze limiti yetarli emas.",
+        )
+    db.commit()
+
+    return {
+        "ok":            True,
+        "xp_spent":      xp_cost,
+        "freezes_added": body.count,
+        "total_xp":      int(row.total_xp or 0),
+        "freeze_count":  int(row.freeze_count or 0),
+        "tanga_spent":   0,  # legacy path never touches Tanga
+        "tanga_balance": int(row.tanga_balance or 0),
     }
 
 

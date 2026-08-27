@@ -41,15 +41,24 @@ from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
 from app.services.ai.prompts import daily_quiz_gen_v1, daily_quiz_verify_v1
-from app.services.tanga_service import grant_tanga
+from app.services.tanga_service import grant_tanga, daily_capped_grant
+from app.services.config_service import get_config
 
 logger = logging.getLogger(__name__)
 
-# ── Reward table (spec Part 4 — Tanga only, never XP) ───────────────────────
-PLAYED_REWARD = 5
-PER_CORRECT_REWARD = 1
-PERFECT_BONUS = 3
-MAX_DAILY_REWARD = 13  # = 5 + 5*1 + 3 — the mathematical ceiling, asserted not enforced separately
+# ── Reward table (tanga-economy-rework Part 1/4 — Tanga only, never XP) ─────
+# Defaults match the pre-rework hardcoded values exactly (nothing changes
+# unless an admin tunes tanga_earning in app_config). This grant is also
+# subject to the SHARED daily_cap (see grant_submission_reward below) —
+# it is no longer its own independent, uncapped mini-economy.
+def _reward_config(db: Session) -> dict:
+    cfg = get_config(db, "tanga_earning", default={}) or {}
+    return {
+        "played":         int(cfg.get("daily_quiz_played", 5)),
+        "per_correct":     int(cfg.get("daily_quiz_per_correct", 1)),
+        "perfect_bonus":   int(cfg.get("daily_quiz_perfect_bonus", 3)),
+        "max":             int(cfg.get("daily_quiz_max", 13)),
+    }
 
 QUESTIONS_PER_QUIZ = 5
 DIFFICULTY_TARGET = {"easy": 2, "medium": 2, "hard": 1}
@@ -396,11 +405,12 @@ def score_and_submit(db: Session, user_id: int, quiz_id: int, answers: list[dict
     per_question = _score_from_stored_answers(user_id, ordered_questions, answers)
     correct_count = sum(1 for c in per_question if c)
 
+    reward_cfg = _reward_config(db)
     total_valid = len(questions)
-    tanga = PLAYED_REWARD + correct_count * PER_CORRECT_REWARD
+    tanga = reward_cfg["played"] + correct_count * reward_cfg["per_correct"]
     if total_valid > 0 and correct_count == total_valid:
-        tanga += PERFECT_BONUS
-    tanga = min(tanga, MAX_DAILY_REWARD)  # defensive ceiling, see module docstring
+        tanga += reward_cfg["perfect_bonus"]
+    tanga = min(tanga, reward_cfg["max"])  # defensive ceiling, see module docstring
 
     db.execute(
         text("""
@@ -451,11 +461,20 @@ def _score_from_stored_answers(user_id: int, ordered_questions: list, answers: l
 def grant_submission_reward(db: Session, user_id: int, quiz_id: int, tanga: int) -> None:
     """Separate transaction from score_and_submit() by construction — the
     caller (endpoint) invokes this AFTER score_and_submit() has already
-    committed. Idempotent on (user, quiz) so a retry can never double-grant."""
+    committed. Idempotent on (user, quiz) so a retry can never double-grant.
+
+    tanga-economy-rework Part 1: this quiz reward (up to 13/day) now shares
+    the SAME daily_cap as the focus-timer earn events (goal/60min/120min) —
+    it is no longer its own independent, uncapped mini-economy. Bucketed by
+    the quiz's own UTC calendar day (datetime.now(UTC).date()), not the
+    user's local day like the timer events — a deliberate simplification
+    since the quiz itself is a single global UTC-day construct (same 5
+    questions for everyone, resets 00:00 UTC); see the accompanying report."""
     if tanga <= 0:
         return
-    grant_tanga(
+    daily_capped_grant(
         db, user_id=user_id, amount=tanga, reason="daily_quiz",
+        today=datetime.now(UTC).date(),
         reference_type="daily_quiz", reference_id=quiz_id,
         idempotency_key=f"daily_quiz:{user_id}:{quiz_id}",
     )
@@ -566,9 +585,10 @@ def void_question_and_refund(db: Session, question_id: int) -> dict:
         )
         db.commit()
         grant_tanga(
-            db, user_id=a.user_id, amount=PER_CORRECT_REWARD, reason="daily_quiz_void_refund",
+            db, user_id=a.user_id, amount=_reward_config(db)["per_correct"], reason="daily_quiz_void_refund",
             reference_type="daily_quiz_question", reference_id=question_id,
             idempotency_key=f"daily_quiz_void:{a.user_id}:{question_id}",
+            celebrate=False,  # reversing a voided question is not a reward
         )
         refunded += 1
 

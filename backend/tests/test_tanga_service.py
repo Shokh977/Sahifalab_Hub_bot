@@ -107,19 +107,35 @@ def test_spend_tanga_double_call_without_key_is_double_spend_by_design(db_sessio
 
 
 def test_spend_tanga_mirror_phase_a_decrements_total_xp(db_session):
-    """Phase A (default): old client reads total_xp as the spendable balance
-    — every spend must mirror a decrement there too, in the SAME UPDATE."""
+    """Phase A: old client reads total_xp as the spendable balance — every
+    spend must mirror a decrement there too, in the SAME UPDATE.
+
+    tanga-economy-rework (092) flips the steady-state default to Phase B
+    (see test_spend_tanga_mirror_phase_b_total_xp_never_decreases below,
+    superseded by the version gate in app/services/client_version.py for
+    the one caller — streaks.py's freeze purchase — that ever needed Phase
+    A). This test explicitly sets Phase A to prove the flag still behaves
+    correctly if read, then restores the real steady state (B) afterward."""
+    from app.services.config_service import invalidate_config_cache
     from app.services.tanga_service import spend_tanga
 
     _seed_profile(db_session, tanga_balance=300, total_xp=300)
-    result = spend_tanga(db_session, TEST_TELEGRAM_ID, amount=120, reason="freeze_purchase")
+    db_session.execute(text("UPDATE app_config SET value = '\"A\"'::jsonb WHERE key = 'tanga_mirror_mode'"))
+    db_session.commit()
+    invalidate_config_cache("tanga_mirror_mode")
+    try:
+        result = spend_tanga(db_session, TEST_TELEGRAM_ID, amount=120, reason="freeze_purchase")
 
-    assert result.ok is True
-    row = db_session.execute(
-        text("SELECT tanga_balance, total_xp FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
-    ).fetchone()
-    assert row.tanga_balance == 180
-    assert row.total_xp == 180, "Phase A must mirror the spend onto total_xp so the old client is unaffected"
+        assert result.ok is True
+        row = db_session.execute(
+            text("SELECT tanga_balance, total_xp FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
+        ).fetchone()
+        assert row.tanga_balance == 180
+        assert row.total_xp == 180, "Phase A must mirror the spend onto total_xp so the old client is unaffected"
+    finally:
+        db_session.execute(text("UPDATE app_config SET value = '\"B\"'::jsonb WHERE key = 'tanga_mirror_mode'"))
+        db_session.commit()
+        invalidate_config_cache("tanga_mirror_mode")
 
 
 def test_grant_tanga_for_xp_skips_zero_award(db_session):
@@ -226,8 +242,11 @@ def test_spend_tanga_mirror_phase_b_total_xp_never_decreases(db_session):
         assert row.tanga_balance == 180
         assert row.total_xp == 300, "Phase B: total_xp must never decrease, regardless of spend"
     finally:
+        # Restore to B, not A — tanga-economy-rework (092) makes B the real
+        # steady state now; leaving it at A here would break whichever test
+        # runs next depending on file order (see the Phase A test above).
         db_session.execute(text(
-            "UPDATE app_config SET value = '\"A\"'::jsonb WHERE key = 'tanga_mirror_mode'"
+            "UPDATE app_config SET value = '\"B\"'::jsonb WHERE key = 'tanga_mirror_mode'"
         ))
         db_session.commit()
         invalidate_config_cache("tanga_mirror_mode")

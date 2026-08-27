@@ -56,6 +56,7 @@ class StudyActivityResult:
     stages_completed:       list[dict] = field(default_factory=list)
     challenges_completed:   list[dict] = field(default_factory=list)
     challenges_progressed:  list[dict] = field(default_factory=list)
+    tanga_events:           list[dict] = field(default_factory=list)
 
 
 def parse_local_date(local_date: Optional[str], tz: Optional[str] = None) -> Date:
@@ -225,6 +226,24 @@ def record_study_activity(
             user_id, streak_days, exc_info=True,
         )
 
+    # ── 4b. Daily-capped recurring Tanga (tanga-economy-rework Part 1) ──────
+    # Goal-met / 60-minute / 120-minute thresholds — replaces the old 1:1
+    # XP-mirror grant that used to fire per-minute from focus.py/flashcards.py
+    # directly. Own try/commit, same rule as everywhere else in this
+    # function: a Tanga-grant failure must never affect the study record
+    # already committed above.
+    tanga_events: list[dict] = []
+    try:
+        from app.services.tanga_service import check_and_award_daily_earn_events
+        tanga_events = check_and_award_daily_earn_events(db, user_id, today, today_minutes, goal_met)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.error(
+            "Failed to award daily Tanga earn events for user_id=%s today_minutes=%s goal_met=%s",
+            user_id, today_minutes, goal_met, exc_info=True,
+        )
+
     # ── 5. Challenge progress (step-21, extended step-25) — never touches
     #    streak_days/stages. `challenge_value` lets the caller report a unit
     #    other than minutes (e.g. flashcards.py passes cards-reviewed count
@@ -260,4 +279,5 @@ def record_study_activity(
         stages_completed=stages_completed,
         challenges_completed=challenges_completed,
         challenges_progressed=challenges_progressed,
+        tanga_events=tanga_events,
     )

@@ -21,7 +21,6 @@ from app.services.auth_service import decode_token, decode_token_payload
 from app.models.admin_models import AdminUser
 from app.services.integration_service import hook_quiz_passed
 from app.services.xp_service import add_xp, DEFAULT_QUIZ_XP
-from app.services.tanga_service import grant_tanga_for_xp
 from app.services.challenge_service import record_challenge_progress
 from app.core.admin_check import is_role_admin
 
@@ -229,12 +228,12 @@ async def verify_quiz(
     challenges_completed:  list = []
     challenges_progressed: list = []
     if xp_awarded:
+        # tanga-economy-rework (092): the Tanga mirror here is removed — quiz
+        # completion is not one of the events in the new earning table
+        # (distinct from the "5 Savol" daily_quiz reason, which is separate
+        # and unaffected). XP is unchanged.
         try:
-            xp_result = add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
-            grant_tanga_for_xp(
-                db, telegram_id, xp_result, reason="quiz_complete", reference_id=quiz_id,
-                idempotency_key=f"quiz:{telegram_id}:{quiz_id}",
-            )
+            add_xp(db, user_id=telegram_id, source="QUIZ", amount=DEFAULT_QUIZ_XP)
         except Exception:
             # XP failure must not block the response, but must not be silent either
             logger.error(

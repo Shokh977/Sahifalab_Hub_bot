@@ -15,18 +15,35 @@ Both functions:
     client retries over an unreliable mobile network.
 
 grant_tanga() never touches total_xp. total_xp is owned exclusively by
-app.services.xp_service.add_xp() (unchanged by this task) — callers that earn
-XP call add_xp() and grant_tanga() as two separate, independent calls with
-the same amount ("every earn increments both", spec Part 1).
+app.services.xp_service.add_xp() (unchanged by this task).
+
+── tanga-economy-rework (092) ────────────────────────────────────────────────
+Tanga is no longer a 1:1 XP mirror — it is granted ONLY by the specific
+events in the spec's Part 1 ("scarce, achievement-based currency"):
+  - Daily-capped, recurring: daily_goal_met / threshold_60min /
+    threshold_120min (see study_activity.py) + daily_quiz (see
+    daily_quiz_service.py) — all keyed to the SAME per-user daily_cap via
+    remaining_daily_cap()/daily_capped_grant() below, bucketed by
+    tanga_transactions.earn_date (the user's LOCAL day, not created_at/UTC).
+  - Flat, one-off, exempt from the cap: streak-stage milestones
+    (stage_service.py, once per user ever via user_stage_completions),
+    challenge_complete (challenge_service.py), opening_balance (migration 092
+    + auth.py's welcome path for new signups).
+grant_tanga_for_xp() (the old 1:1-mirror wrapper) is no longer called by any
+production code path as of 092 — every former call site either stopped
+granting Tanga entirely (course_complete/quiz_complete/deck_milestone/
+planner_task/the generic xp.py endpoint — none of these are in the new
+earning table) or was rewired to a flat/capped amount instead. Left defined
+(not deleted) because it still has direct unit-test coverage of the
+transaction-boundary guarantee ("a gamification side-effect must never roll
+back the study record") that is otherwise only proven indirectly now.
 
 spend_tanga() is the only place TANGA_MIRROR_MODE (app_config key
-'tanga_mirror_mode') applies. While the flag is "A", every spend also
-decrements total_xp by the same amount in the SAME guarded UPDATE, so the
-shipped Play Store client — which still reads total_xp as the number that
-goes down when you buy a freeze — behaves exactly as before. Once flipped to
-"B", spend_tanga stops touching total_xp; it becomes a pure lifetime score
-from that point forward. Historical spends predating this ledger are not
-reconstructable — the current total_xp value is the accepted baseline.
+'tanga_mirror_mode') applies, and migration 092 flips it to "B" permanently
+— superseded by the version gate in app/services/client_version.py, which
+now decides old-vs-new client behaviour explicitly per request (streaks.py's
+purchase_freeze()) instead of this blanket flag. Kept only so a spend_tanga()
+call from before 092 in a hot process doesn't behave differently mid-deploy.
 
 Account merges (two profile rows collapsing into one) are handled directly
 in app/api/v1/auth.py's merge flow, not through spend_tanga/grant_tanga —
@@ -35,6 +52,7 @@ fit the single-row WHERE-guard shape these two functions assume.
 """
 import logging
 from dataclasses import dataclass
+from datetime import date as Date
 from typing import Literal, Optional, Union
 
 from sqlalchemy import text
@@ -51,16 +69,26 @@ ReferenceId = Union[int, str, None]
 # review, not a migration — see 088_tanga_currency.sql for why `reason` is
 # plain TEXT rather than a DB CHECK-constrained enum.
 TangaReason = Literal[
-    # earn — mirrors an XpSource / study_activity source 1:1
-    "welcome_bonus", "focus_timer", "flashcards", "quiz_complete",
-    "course_complete", "challenge_complete", "streak_stage", "deck_milestone",
-    "planner_task",
+    # earn — daily-capped, recurring (tanga-economy-rework Part 1)
+    "daily_goal_met", "threshold_60min", "threshold_120min",
+    # earn — flat, one-off, exempt from the daily cap
+    "welcome_bonus", "opening_balance", "streak_stage", "challenge_complete",
+    "competition_win",
+    # earn — legacy XP-mirror reasons. No longer GRANTED by any code path
+    # after 092 (see module docstring) — kept in this Literal only because
+    # historical tanga_transactions rows already carry them and nothing
+    # should have to special-case reading those back.
+    "focus_timer", "flashcards", "quiz_complete", "course_complete",
+    "deck_milestone", "planner_task",
     # spend
     "freeze_purchase", "ai_explanation", "ai_flashcard_gen", "ai_tutor_session",
     # AI call failed after a deduct-first charge — see ai/limiter.py
     "ai_refund",
     # a live grant_tanga_for_xp() call failed after its focus_sessions row
-    # already committed — see app/services/tanga_reconciliation.py
+    # already committed — see app/services/tanga_reconciliation.py. Dormant
+    # after 092 (nothing calls grant_tanga_for_xp() with reason="focus_timer"/
+    # "flashcards" anymore) but left wired in case any pre-092 session is
+    # still unreconciled at deploy time.
     "study_activity_reconciled",
     # "5 Savol" daily quiz (090_daily_quiz) — Tanga only, NEVER XP (spec:
     # XP represents minutes studied; a 60-second quiz must not compete with
@@ -68,6 +96,13 @@ TangaReason = Literal[
     # "quiz_complete" above, which is the pre-existing lesson-quiz reason.
     "daily_quiz", "daily_quiz_void_refund",
 ]
+
+# Reasons subject to the shared daily_cap (tanga-economy-rework Part 1) —
+# the ONLY thing that decides which grants count against the cap; nothing
+# else reads tanga_transactions.earn_date being non-NULL to mean this.
+DAILY_CAPPED_REASONS: frozenset[str] = frozenset({
+    "daily_goal_met", "threshold_60min", "threshold_120min", "daily_quiz",
+})
 
 
 @dataclass
@@ -98,18 +133,20 @@ def _write_ledger(
     reference_type: Optional[str],
     reference_id: ReferenceId,
     idempotency_key: Optional[str],
+    celebrate: bool = False,
+    earn_date: Optional[Date] = None,
 ) -> None:
     db.execute(
         text("""
             INSERT INTO tanga_transactions
-                (user_id, delta, balance_after, reason, reference_type, reference_id, idempotency_key)
-            VALUES (:uid, :delta, :bal, :reason, :rtype, :rid, :ikey)
+                (user_id, delta, balance_after, reason, reference_type, reference_id, idempotency_key, celebrate, earn_date)
+            VALUES (:uid, :delta, :bal, :reason, :rtype, :rid, :ikey, :celebrate, :earn_date)
         """),
         {
             "uid": user_id, "delta": delta, "bal": new_balance, "reason": reason,
             "rtype": reference_type,
             "rid": str(reference_id) if reference_id is not None else None,  # reference_id is TEXT — see models.py
-            "ikey": idempotency_key,
+            "ikey": idempotency_key, "celebrate": celebrate, "earn_date": earn_date,
         },
     )
 
@@ -161,9 +198,18 @@ def grant_tanga(
     reference_type: Optional[str] = None,
     reference_id: ReferenceId = None,
     idempotency_key: Optional[str] = None,
+    celebrate: bool = True,
+    earn_date: Optional[Date] = None,
 ) -> TangaResult:
     """Credit `amount` Tanga to user_id. Fails cleanly (ok=False) only if the
-    profile row doesn't exist — otherwise always succeeds (no upper bound)."""
+    profile row doesn't exist — otherwise always succeeds (no upper bound).
+
+    celebrate=True by default (every earn should surface a reward modal —
+    spec Part 5); refund-style grants (ai_refund, daily_quiz_void_refund) pass
+    celebrate=False explicitly since reversing a charge isn't a reward.
+    earn_date is set only by daily_capped_grant() below — every other caller
+    leaves it NULL, which is correct: only the 4 daily-capped reasons are
+    ever subject to the cap."""
     if amount <= 0:
         raise ValueError(f"grant_tanga amount must be positive, got {amount!r}")
 
@@ -187,7 +233,10 @@ def grant_tanga(
             return TangaResult(ok=False, balance=0, delta=0, error="profile_not_found")
 
         new_balance = int(row.tanga_balance)
-        _write_ledger(db, user_id, amount, new_balance, reason, reference_type, reference_id, idempotency_key)
+        _write_ledger(
+            db, user_id, amount, new_balance, reason, reference_type, reference_id, idempotency_key,
+            celebrate=celebrate, earn_date=earn_date,
+        )
         db.commit()
         return TangaResult(ok=True, balance=new_balance, delta=amount)
 
@@ -201,6 +250,108 @@ def grant_tanga(
             if existing is not None:
                 return existing
         raise
+
+
+def remaining_daily_cap(db: Session, user_id: int, today: Date) -> int:
+    """How much of today's shared daily_cap (tanga-economy-rework Part 1) this
+    user has left, across ALL of DAILY_CAPPED_REASONS combined — not per
+    reason. Bucketed by earn_date (the user's LOCAL day), never created_at,
+    so this is correct across a UTC-day boundary regardless of timezone."""
+    cap = int((get_config(db, "tanga_earning", default={}) or {}).get("daily_cap", 35))
+    earned = db.execute(
+        text("""
+            SELECT COALESCE(SUM(delta), 0) AS s FROM tanga_transactions
+            WHERE user_id = :uid AND earn_date = :today AND reason = ANY(:reasons)
+        """),
+        {"uid": user_id, "today": today, "reasons": list(DAILY_CAPPED_REASONS)},
+    ).fetchone()
+    return max(0, cap - int(earned.s if earned else 0))
+
+
+def daily_capped_grant(
+    db: Session,
+    user_id: int,
+    amount: int,
+    reason: TangaReason,
+    today: Date,
+    reference_type: Optional[str] = None,
+    reference_id: ReferenceId = None,
+    idempotency_key: Optional[str] = None,
+    celebrate: bool = True,
+) -> Optional[TangaResult]:
+    """grant_tanga(), but only if `amount` fits inside what's left of today's
+    shared daily_cap — enforced HERE, server-side, at grant time (spec Part
+    1/3), not just incidentally true because the current event amounts happen
+    to sum under the cap. Returns None (no-op, no ledger row) if the cap is
+    already exhausted; the caller's event is simply not paid out today rather
+    than partially credited. `reason` MUST be one of DAILY_CAPPED_REASONS —
+    this is not meant for the flat/exempt milestone grants."""
+    if reason not in DAILY_CAPPED_REASONS:
+        raise ValueError(f"daily_capped_grant reason must be one of {sorted(DAILY_CAPPED_REASONS)}, got {reason!r}")
+    if idempotency_key:
+        existing = _existing_transaction(db, idempotency_key)
+        if existing is not None:
+            return existing
+    if remaining_daily_cap(db, user_id, today) < amount:
+        logger.info(
+            "Tanga daily cap reached — skipping grant user_id=%s reason=%s amount=%s today=%s",
+            user_id, reason, amount, today,
+        )
+        return None
+    return grant_tanga(
+        db, user_id=user_id, amount=amount, reason=reason,
+        reference_type=reference_type, reference_id=reference_id,
+        idempotency_key=idempotency_key, celebrate=celebrate, earn_date=today,
+    )
+
+
+def check_and_award_daily_earn_events(
+    db: Session, user_id: int, today: Date, today_minutes: int, goal_met: bool,
+) -> list[dict]:
+    """Daily-capped, recurring Tanga (tanga-economy-rework Part 1): daily goal
+    met, 60-minute threshold, 120-minute threshold. Called from
+    study_activity.record_study_activity(), in the caller's transaction —
+    each grant is its own atomic UPDATE+INSERT via daily_capped_grant, so a
+    failure here can never block or roll back the study record already
+    written above it in the same function.
+
+    Idempotent per (user, day, event) via idempotency_key — NOT by detecting
+    "just crossed the threshold". record_study_activity() can run many times
+    a day as small sessions accumulate, so today_minutes >= threshold is
+    simply re-checked on every call; grant_tanga's own idempotency check
+    makes every call after the first a no-op. A user who studies 130 minutes
+    in one sitting therefore gets goal_met + threshold_60min +
+    threshold_120min all in the same call, exactly as three shorter sessions
+    crossing those lines one at a time would.
+    """
+    cfg = get_config(db, "tanga_earning", default={}) or {}
+    awarded: list[dict] = []
+
+    # celebrate=False on daily_goal_met: this exact moment already has its
+    # own dedicated celebration client-side (GoalCompleteModal, shown by
+    # study.tsx off the SAME goal_met transition) — queuing it in the
+    # generic reward-modal system too would pop a second, redundant modal.
+    # threshold_60min/threshold_120min/daily_quiz/etc. have no such
+    # pre-existing UI, so they keep celebrate's default of True.
+    candidates: list[tuple[str, int, bool]] = []
+    if goal_met:
+        candidates.append(("daily_goal_met", int(cfg.get("daily_goal_met", 10)), False))
+    if today_minutes >= 60:
+        candidates.append(("threshold_60min", int(cfg.get("threshold_60min", 5)), True))
+    if today_minutes >= 120:
+        candidates.append(("threshold_120min", int(cfg.get("threshold_120min", 5)), True))
+
+    for reason, amount, celebrate in candidates:
+        if amount <= 0:
+            continue
+        result = daily_capped_grant(
+            db, user_id=user_id, amount=amount, reason=reason, today=today,
+            reference_type="daily_earn", celebrate=celebrate,
+            idempotency_key=f"daily_earn:{user_id}:{today}:{reason}",
+        )
+        if result is not None and result.ok and not result.idempotent_replay:
+            awarded.append({"reason": reason, "amount": amount, "balance": result.balance})
+    return awarded
 
 
 def spend_tanga(
