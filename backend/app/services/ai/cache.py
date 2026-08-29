@@ -23,13 +23,17 @@ logger = logging.getLogger(__name__)
 DEFAULT_TTL_HOURS = 24 * 30  # 30 days — textbook pages don't change
 
 
-def make_cache_key(feature: str, normalized_input: str) -> str:
-    input_hash = hashlib.sha256(normalized_input.encode("utf-8")).hexdigest()
+def make_cache_key(feature: str, normalized_input: str, language: str = "") -> str:
+    # language is folded into the hashed content (not appended to the key
+    # string) so a caller that never passes it produces the exact same key
+    # as before — existing cache rows for language-less features stay valid.
+    composite = f"{language}\x1f{normalized_input}" if language else normalized_input
+    input_hash = hashlib.sha256(composite.encode("utf-8")).hexdigest()
     return f"{feature}:{input_hash}"
 
 
-def get_cached(db: Session, feature: str, normalized_input: str) -> Optional[dict]:
-    cache_key = make_cache_key(feature, normalized_input)
+def get_cached(db: Session, feature: str, normalized_input: str, language: str = "") -> Optional[dict]:
+    cache_key = make_cache_key(feature, normalized_input, language)
     row = db.execute(
         text("""
             SELECT output FROM ai_response_cache
@@ -48,9 +52,10 @@ def get_cached(db: Session, feature: str, normalized_input: str) -> Optional[dic
 
 
 def store_cached(
-    db: Session, feature: str, normalized_input: str, output: dict, ttl_hours: int = DEFAULT_TTL_HOURS,
+    db: Session, feature: str, normalized_input: str, output: dict,
+    ttl_hours: int = DEFAULT_TTL_HOURS, language: str = "",
 ) -> None:
-    cache_key = make_cache_key(feature, normalized_input)
+    cache_key = make_cache_key(feature, normalized_input, language)
     input_hash = cache_key.split(":", 1)[1]
     expires_at = datetime.now(UTC) + timedelta(hours=ttl_hours)
     try:

@@ -1,5 +1,6 @@
 import base64
 import logging
+import re
 from datetime import datetime, timedelta, UTC
 from typing import Optional
 
@@ -136,9 +137,27 @@ class FlashcardGenerateRequest(BaseModel):
     text: Optional[str] = Field(None, max_length=8000)
     image_base64: Optional[str] = None
     image_mime_type: Optional[str] = Field(None, max_length=64)
+    # Output language override, e.g. "en"/"uz"/"ru". None or "auto" (default)
+    # means "keep the source material's own language" — see
+    # flashcard_gen_v1.SYSTEM_PROMPT. Also the cache-key dimension that lets
+    # a regenerate-in-another-language request bypass a stale cached result.
+    language: Optional[str] = Field(None, max_length=32)
 
 
 _MAX_IMAGE_BYTES = 6 * 1024 * 1024  # 6MB decoded
+_LANGUAGE_RE = re.compile(r"^[a-z]{2,8}(-[a-z]{2,8})?$")
+
+
+def _normalize_language(raw: Optional[str]) -> str:
+    if not raw:
+        return "auto"
+    candidate = raw.strip().lower()
+    if candidate in ("", "auto"):
+        return "auto"
+    # Reject anything that isn't a plain language code — this string is
+    # interpolated straight into the model's user prompt, so it must not be
+    # able to smuggle extra instructions in.
+    return candidate if _LANGUAGE_RE.match(candidate) else "auto"
 
 
 @router.post("/flashcards/generate")
@@ -182,8 +201,9 @@ async def generate_flashcards(
         code, msg = status_map.get(gate_result.reason, (429, "So'rov rad etildi."))
         raise HTTPException(code, msg)
 
+    resolved_language = _normalize_language(body.language)
     normalized_input = (body.text or "").strip() if has_text else f"image:{gate_result.idempotency_key}"
-    cached = None if has_image else ai_cache.get_cached(db, "flashcard_gen", normalized_input)
+    cached = None if has_image else ai_cache.get_cached(db, "flashcard_gen", normalized_input, language=resolved_language)
 
     try:
         if cached is not None:
@@ -196,7 +216,7 @@ async def generate_flashcards(
             if has_image:
                 response = await provider.generate_json_multimodal(
                     system_prompt=flashcard_gen_v1.SYSTEM_PROMPT,
-                    user_prompt="Ushbu rasmdagi matndan flashcard to'plami yarat.",
+                    user_prompt=flashcard_gen_v1.build_image_prompt(resolved_language),
                     prompt_version=flashcard_gen_v1.VERSION,
                     image_bytes=image_bytes, image_mime_type=body.image_mime_type,
                     json_schema=flashcard_gen_v1.JSON_SCHEMA,
@@ -204,7 +224,7 @@ async def generate_flashcards(
             else:
                 response = await provider.generate_json(
                     system_prompt=flashcard_gen_v1.SYSTEM_PROMPT,
-                    user_prompt=flashcard_gen_v1.build_user_prompt(normalized_input),
+                    user_prompt=flashcard_gen_v1.build_user_prompt(normalized_input, resolved_language),
                     prompt_version=flashcard_gen_v1.VERSION,
                     json_schema=flashcard_gen_v1.JSON_SCHEMA,
                 )
@@ -216,7 +236,7 @@ async def generate_flashcards(
             if not data or not data.get("cards"):
                 raise AiProviderError("Model returned no cards", outcome="refused")
             if not has_image:
-                ai_cache.store_cached(db, "flashcard_gen", normalized_input, data)
+                ai_cache.store_cached(db, "flashcard_gen", normalized_input, data, language=resolved_language)
     except AiProviderError as e:
         ai_limiter.refund(db, caller_id, "flashcard_gen", body.action_id, gate_result.tanga_spent)
         logger.error("Flashcard generation failed for user_id=%s action_id=%s", caller_id, body.action_id, exc_info=True)
