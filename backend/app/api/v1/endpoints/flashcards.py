@@ -44,6 +44,7 @@ from app.db.session import get_db, SessionLocal
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 from app.services.study_activity import record_study_activity
+from app.services.day_bucket import resolve_day_bucket
 from app.services.badge_service import get_top_badges_map
 from app.api.v1.endpoints.notifications import send_notification
 
@@ -866,10 +867,16 @@ async def complete_session(
     # is deliberate: flashcard study still maintains the streak below, but by
     # product rule must NOT count toward a focus_minutes cohort challenge —
     # that challenge is named and marketed as a focus-timer marathon.
+    #
+    # today is resolved via day_bucket.py's resolve_day_bucket() — the same
+    # server-side authority focus.py's credit_focus_time() uses (migration
+    # 093) — never body.local_date trusted directly; see that migration's
+    # header for why.
+    resolved_date = resolve_day_bucket(db, caller_id, body.local_date, source="flashcards")
     activity = record_study_activity(
         db, user_id=caller_id, minutes=flash_minutes,
         source="flashcards", xp_awarded=xp_result.get("xp_added", 0),
-        local_date=body.local_date, challenge_value=reviewed,
+        today=resolved_date, challenge_value=reviewed,
     )
 
     # tanga-economy-rework (092): the per-session flashcards Tanga mirror is

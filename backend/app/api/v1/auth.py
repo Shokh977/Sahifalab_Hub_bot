@@ -51,6 +51,7 @@ from app.services.auth_service import (
     decode_token_payload,
 )
 from app.services.user_time import validate_timezone, user_local_date
+from app.services.day_bucket import timezone_change_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -583,6 +584,8 @@ async def update_my_profile(
     if not payload and not settings_update:
         return {"ok": True}
 
+    timezone_rate_limited = False
+
     if settings_update or "timezone" in payload:
         profile = _get_profile(db, telegram_id)
         if not profile:
@@ -592,21 +595,61 @@ async def update_my_profile(
             current.update(settings_update)
             payload["user_settings"] = current
         if "timezone" in payload and payload["timezone"] != profile.timezone:
-            # Charitable timezone-change handling (plan doc A.4): moving to a
-            # zone where "today" is already further along must not retroactively
-            # put an otherwise-current streak at risk. Only ever nudges
-            # streak_last_date forward, never backward.
-            old_local = user_local_date(profile.timezone)
-            new_local = user_local_date(payload["timezone"])
-            if (
-                new_local > old_local
-                and profile.streak_last_date is not None
-                and profile.streak_last_date >= old_local - timedelta(days=1)
-            ):
-                payload["streak_last_date"] = new_local - timedelta(days=1)
+            # tanga-economy-rework abuse review, §2: profiles.timezone is a
+            # plain user-editable field, and it feeds resolve_day_bucket()
+            # (migration 093) for any profile without a confirmed timezone
+            # yet — hopping zones repeatedly could roll a calendar day over
+            # in under 24 real hours. Rate-limited to one accepted change per
+            # 24h; the FIRST-ever set (timezone_confirmed_at IS NULL, i.e.
+            # still sitting on the migration default) always goes through,
+            # since there is no prior change to rate-limit against.
+            now = datetime.now(UTC)
+            if not timezone_change_allowed(profile.timezone_confirmed_at, now):
+                timezone_rate_limited = True
+                del payload["timezone"]
+            else:
+                # Charitable timezone-change handling (plan doc A.4): moving to a
+                # zone where "today" is already further along must not retroactively
+                # put an otherwise-current streak at risk. Only ever nudges
+                # streak_last_date forward, never backward.
+                old_local = user_local_date(profile.timezone)
+                new_local = user_local_date(payload["timezone"])
+                if (
+                    new_local > old_local
+                    and profile.streak_last_date is not None
+                    and profile.streak_last_date >= old_local - timedelta(days=1)
+                ):
+                    payload["streak_last_date"] = new_local - timedelta(days=1)
+
+                payload["timezone_confirmed_at"] = now
+                try:
+                    db.execute(
+                        text("""
+                            INSERT INTO timezone_change_log (user_id, old_timezone, new_timezone, changed_at)
+                            VALUES (:uid, :old, :new, :at)
+                        """),
+                        {"uid": telegram_id, "old": profile.timezone, "new": payload["timezone"], "at": now},
+                    )
+                    db.commit()
+                except Exception:
+                    db.rollback()
+                    logger.error(
+                        "Failed to log timezone change for user_id=%s old=%s new=%s",
+                        telegram_id, profile.timezone, payload["timezone"], exc_info=True,
+                    )
+
+    if not payload and not settings_update:
+        # Everything in the request was the rate-limited timezone change and
+        # nothing else — still a clean 200, just flagged, not an error.
+        return {"ok": True, "timezone_rate_limited": timezone_rate_limited}
 
     _upsert_profile(db, telegram_id, **payload)
-    return {"ok": True, **{k: v for k, v in payload.items() if k != "user_settings"}, **settings_update}
+    return {
+        "ok": True,
+        **{k: v for k, v in payload.items() if k not in ("user_settings", "timezone_confirmed_at")},
+        **settings_update,
+        "timezone_rate_limited": timezone_rate_limited,
+    }
 
 
 @router.delete("/me")

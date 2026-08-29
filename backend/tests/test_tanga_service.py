@@ -8,6 +8,7 @@ guard is the WHERE clause, not a lock this test pretends to simulate with
 threads.
 """
 import os
+from datetime import date
 
 import pytest
 from sqlalchemy import text
@@ -303,6 +304,7 @@ def test_transaction_boundary_study_record_survives_grant_failure(db_session, mo
 
     activity = study_activity.record_study_activity(
         db_session, user_id=TEST_TELEGRAM_ID, minutes=25, source="focus_timer", xp_awarded=42,
+        today=date.today(),
     )
     assert activity.session_id is not None
 

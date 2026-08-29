@@ -78,6 +78,10 @@ class Profile(Base):
     # rework) — see app/services/user_time.py and app/services/freeze_service.py.
     # timezone is validated in the endpoint (zoneinfo.ZoneInfo), not by a DB CHECK.
     timezone                  = Column(String(64), default='Asia/Tashkent', nullable=False)
+    # Set only when a real client explicitly PATCHes a timezone (migration
+    # 093) — NULL means still sitting on the column default above, which
+    # resolve_day_bucket() (day_bucket.py) treats as not-yet-trustworthy.
+    timezone_confirmed_at     = Column(DateTime(timezone=True), nullable=True)
     last_reminder_date        = Column(Date, nullable=True)
     last_at_risk_push_date    = Column(Date, nullable=True)
     last_freeze_milestone_days = Column(Integer, default=0, nullable=False)

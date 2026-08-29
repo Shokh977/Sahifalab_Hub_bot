@@ -23,11 +23,8 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
-from app.services.study_activity import (
-    record_study_activity,
-    parse_local_date as _parse_local_date,
-    StudyActivityResult,
-)
+from app.services.study_activity import record_study_activity, StudyActivityResult
+from app.services.day_bucket import try_parse_client_date
 from app.api.v1.endpoints.notifications import send_notification
 from app.api.v1.auth import _normalize_platform
 
@@ -66,7 +63,6 @@ async def complete_focus_session(
     ).fetchone()
     old_level = int(pre.level or 1) if pre else 1
 
-    local_date = _parse_local_date(body.local_date)
     surface = _normalize_platform(x_client_platform)
 
     # ── Server-side wall-clock cap + tapered timer-XP ────────────────────────
@@ -83,16 +79,27 @@ async def complete_focus_session(
     # never zero. The taper only affects XP; credited_seconds below (what
     # streak/stats/daily-goal count) is exactly the wall-clock-capped value,
     # unreduced by the taper.
+    #
+    # The DAY the taper/Tanga-cap counters roll over on used to be whatever
+    # date string the client sent, trusted verbatim — migration 093 closed
+    # that (a forged local_date could reopen an already-capped day for free,
+    # see the incident writeup there). credit_focus_time() now resolves its
+    # own bucket via resolve_day_bucket() and returns it as `resolved_date`;
+    # body.local_date is still sent by the client (parsed here only so it can
+    # be bound as a typed, possibly-NULL DATE param) and still used for the
+    # transitional unconfirmed-timezone fallback INSIDE that function, but is
+    # never itself the authority — see day_bucket.py.
+    client_date = try_parse_client_date(body.local_date)
     try:
         credit_row = db.execute(
             text("""
-                SELECT credited_seconds, xp_awarded, daily_total_seconds, anomaly_flag
-                FROM   credit_focus_time(:uid, :claimed_seconds, :local_date, :surface)
+                SELECT credited_seconds, xp_awarded, daily_total_seconds, anomaly_flag, resolved_date
+                FROM   credit_focus_time(:uid, :claimed_seconds, :client_date, :surface)
             """),
             {
                 "uid": caller_id,
                 "claimed_seconds": body.minutes * 60,
-                "local_date": local_date,
+                "client_date": client_date,
                 "surface": surface,
             },
         ).fetchone()
@@ -101,13 +108,14 @@ async def complete_focus_session(
         db.rollback()
         logger.error(
             "Focus wall-clock credit computation failed for user_id=%s claimed_minutes=%s "
-            "local_date=%s surface=%s",
-            caller_id, body.minutes, local_date, surface, exc_info=True,
+            "client_date=%s surface=%s",
+            caller_id, body.minutes, client_date, surface, exc_info=True,
         )
         raise HTTPException(status_code=500, detail="Session credit failed")
 
     credited_minutes = int(credit_row.credited_seconds) // 60
     xp_amount        = int(credit_row.xp_awarded)
+    resolved_date    = credit_row.resolved_date
 
     if credit_row.anomaly_flag:
         try:
@@ -118,14 +126,14 @@ async def complete_focus_session(
                     ON CONFLICT (user_id, flagged_date) DO UPDATE
                         SET daily_seconds = EXCLUDED.daily_seconds, updated_at = NOW()
                 """),
-                {"uid": caller_id, "d": local_date, "secs": int(credit_row.daily_total_seconds)},
+                {"uid": caller_id, "d": resolved_date, "secs": int(credit_row.daily_total_seconds)},
             )
             db.commit()
         except Exception:
             db.rollback()
             logger.error(
-                "Failed to record focus anomaly flag for user_id=%s local_date=%s daily_seconds=%s",
-                caller_id, local_date, credit_row.daily_total_seconds, exc_info=True,
+                "Failed to record focus anomaly flag for user_id=%s resolved_date=%s daily_seconds=%s",
+                caller_id, resolved_date, credit_row.daily_total_seconds, exc_info=True,
             )
 
     result = {"xp_added": 0, "new_xp": None, "new_level": old_level}
@@ -150,7 +158,7 @@ async def complete_focus_session(
         activity = record_study_activity(
             db, user_id=caller_id, minutes=credited_minutes,
             source="focus_timer", xp_awarded=result["xp_added"],
-            local_date=body.local_date,
+            today=resolved_date,
         )
     else:
         activity = StudyActivityResult(

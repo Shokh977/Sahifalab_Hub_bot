@@ -36,7 +36,6 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.xp_service import add_xp
-from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
 
@@ -59,18 +58,6 @@ class StudyActivityResult:
     tanga_events:           list[dict] = field(default_factory=list)
 
 
-def parse_local_date(local_date: Optional[str], tz: Optional[str] = None) -> Date:
-    """Return the client's local calendar date. Falls back to the user's
-    stored IANA timezone (not bare UTC) when local_date is absent/unparseable —
-    see app/services/user_time.py."""
-    if local_date:
-        try:
-            return Date.fromisoformat(local_date)
-        except ValueError:
-            pass
-    return user_local_date(tz)
-
-
 # Note: an earlier version of the UPDATE below built this query by
 # string-substituting repeated CASE fragments (Postgres can't reference a
 # sibling SET column mid-statement), which meant the goal-met subquery and
@@ -88,7 +75,7 @@ def record_study_activity(
     minutes: int,
     source: ActivitySource,
     xp_awarded: int,
-    local_date: Optional[str] = None,
+    today: Date,
     challenge_value: Optional[int] = None,
 ) -> StudyActivityResult:
     """
@@ -96,17 +83,23 @@ def record_study_activity(
     a request that will commit its own transaction (this function calls
     db.commit() internally at the points the original two call sites did, to
     keep behavior identical).
+
+    `today` is a resolved date, not a client-trusted string — the caller MUST
+    have already gone through app/services/day_bucket.py's
+    resolve_day_bucket() (or, for the focus-timer path, credit_focus_time()'s
+    own resolved_date output, which calls the same SQL function). This
+    function never parses or trusts a raw client date itself — see migration
+    093 / day_bucket.py's module docstring for why.
     """
-    # Pre-fetch timezone (for the local_date fallback) and the current
-    # milestone-freeze guard value (to detect, after the UPDATE, whether THIS
-    # call is the one that just crossed a 7-day multiple — see step 3b).
+    # Pre-fetch the current milestone-freeze guard value (to detect, after
+    # the UPDATE, whether THIS call is the one that just crossed a 7-day
+    # multiple — see step 3b).
     pre_row = db.execute(
-        text("SELECT timezone, COALESCE(last_freeze_milestone_days, 0) AS last_freeze_milestone_days FROM profiles WHERE telegram_id = :uid"),
+        text("SELECT COALESCE(last_freeze_milestone_days, 0) AS last_freeze_milestone_days FROM profiles WHERE telegram_id = :uid"),
         {"uid": user_id},
     ).fetchone()
     pre_milestone_days = int(pre_row.last_freeze_milestone_days) if pre_row else 0
 
-    today     = parse_local_date(local_date, pre_row.timezone if pre_row else None)
     yesterday = today - timedelta(days=1)
 
     # ── 1. Record the session ────────────────────────────────────────────────
