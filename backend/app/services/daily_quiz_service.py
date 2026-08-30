@@ -4,11 +4,15 @@ daily_quiz_service.py — "5 Savol", the daily AI quiz (5-savol-daily-quiz-spec.
 Five questions a day, the same five for every user worldwide, released
 00:00 UTC, hard-expiring at the next 00:00 UTC. This module owns:
 
-  - generate_week()      — weekly batch: 10 candidates/day -> cold
-                            verification -> best-5 selection -> draft rows
-                            for admin review. Never same-day (a live
-                            generation failure must never become a live
-                            outage — the week is always generated ahead).
+  - generate_week()      — DAILY top-up: 10 candidates/day -> cold
+                            verification -> best-5 selection, with
+                            in-day backfill retries (_generate_full_day) if
+                            attrition leaves a day short, AND top-up-in-place
+                            for a day previously stuck in 'draft' (never
+                            skipped forever just because a row exists). Never
+                            same-day (a live generation failure must never
+                            become a live outage — the week is always kept
+                            generated ahead).
   - deliver_today()       — GET /today's core: idempotently creates the
                             per-user attempt row that starts the server
                             clock (delivered_at).
@@ -19,8 +23,14 @@ Five questions a day, the same five for every user worldwide, released
                             record of the user's answers).
   - void_question()       — live void-after-reports: excludes the question
                             from scoring and refunds affected users.
-  - rollover()            — daily 00:00 UTC: close yesterday, publish today
-                            (if approved), push "tayyor" notification.
+  - rollover()            — daily 00:00 UTC: close yesterday, publish today.
+                            AUTO-publishes any 'verified' day (generation
+                            succeeded cleanly, nothing for an admin to do)
+                            as well as an explicitly 'approved' one — an
+                            admin only has to act on a day stuck in 'draft'.
+                            Pages admins (Telegram) if nothing publishable
+                            exists for today, instead of a log line nobody
+                            watches.
   - send_reminder_push()  — daily 12:00 UTC: nudge users who haven't played.
 
 Identity key: telegram_id (bigint) throughout — see profiles.telegram_id,
@@ -70,7 +80,7 @@ REPORT_VOID_THRESHOLD = 5  # reports on one question before it's auto-voided
 # PART 1 — Generation pipeline
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def _generate_candidates(db: Session, weekday: int) -> list[dict]:
+async def _generate_candidates(db: Session, weekday: int, avoid_questions: Optional[list[str]] = None) -> list[dict]:
     """One generation call -> up to 10 raw candidate questions for that
     weekday's theme. Returns [] on any failure (logged) — caller treats an
     empty candidate list as "this day needs attention," never as a crash."""
@@ -79,7 +89,7 @@ async def _generate_candidates(db: Session, weekday: int) -> list[dict]:
     try:
         response = await provider.generate_json(
             system_prompt=daily_quiz_gen_v1.SYSTEM_PROMPT,
-            user_prompt=daily_quiz_gen_v1.build_user_prompt(weekday),
+            user_prompt=daily_quiz_gen_v1.build_user_prompt(weekday, avoid_questions),
             prompt_version=daily_quiz_gen_v1.VERSION,
             json_schema=daily_quiz_gen_v1.JSON_SCHEMA,
             temperature=0.2,  # low temperature (spec) — consistency over creativity
@@ -195,42 +205,124 @@ def _next_quiz_number(db: Session) -> int:
     return int(row.n) + 1
 
 
+MAX_GENERATION_ROUNDS = 3  # bounds AI cost/latency — see _generate_full_day
+
+
+async def _generate_full_day(
+    db: Session, weekday: int, seed_pool: Optional[list[dict]] = None,
+) -> tuple[list[dict], list[str]]:
+    """
+    Generate (or top up) one day's worth of verified candidates. The old
+    version called _generate_candidates exactly once and accepted whatever
+    survived verification — the direct cause of "some days only 3
+    questions": verification attrition has no reason to stop exactly at 5.
+
+    This retries up to MAX_GENERATION_ROUNDS times, each round asking for a
+    fresh batch of 10 candidates (avoiding near-duplicates of what's already
+    in the pool, via the prompt's avoid_questions block) and merging the
+    newly-verified ones in, until select_five reports a clean 5 or the round
+    budget is exhausted. seed_pool lets a caller resume from questions a
+    PRIOR run already verified (used by generate_week's top-up-in-place path
+    for a day stuck in 'draft') instead of throwing away good work.
+    """
+    pool: list[dict] = list(seed_pool or [])
+    selected, warnings = select_five(pool)
+    if len(selected) >= QUESTIONS_PER_QUIZ:
+        return selected, []
+
+    for round_num in range(1, MAX_GENERATION_ROUNDS + 1):
+        avoid = [c["question_text"] for c in pool]
+        candidates = await _generate_candidates(db, weekday, avoid_questions=avoid)
+        for c in candidates:
+            c["verified"] = await _verify_candidate(db, c)
+        pool.extend(candidates)
+
+        selected, warnings = select_five(pool)
+        if len(selected) >= QUESTIONS_PER_QUIZ:
+            return selected, []
+        if round_num < MAX_GENERATION_ROUNDS:
+            logger.warning(
+                "daily_quiz weekday=%d generation round %d/%d short: %d/%d verified so far — retrying",
+                weekday, round_num, MAX_GENERATION_ROUNDS, len(selected), QUESTIONS_PER_QUIZ,
+            )
+    return selected, warnings
+
+
 async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> dict:
     """
-    Called weekly (spec: 'runs weekly, generating 7 days ahead'). Skips any
-    publish_date that already has a daily_quizzes row — safe to re-run.
+    Keeps a rolling `days_ahead`-day window generated. Safe to call as
+    often as needed — it's the body of BOTH the daily cron and the admin
+    "generate now" button:
+
+      - A day with no row yet: generated fresh (with in-day backfill retries
+        via _generate_full_day).
+      - A day already 'verified'/'approved'/'published'/'closed'/'voided':
+        left completely untouched.
+      - A day stuck in 'draft' (a past run came up short even after
+        retries): TOPPED UP IN PLACE — its already-verified questions are
+        reused as a seed pool rather than discarded, and only the shortfall
+        is regenerated. Previously such a day would be silently skipped
+        forever (a row already existed, so the old skip-if-exists check
+        never revisited it) — this is the other direct cause of "some days
+        stayed short."
+
+    Calling this daily (not just weekly) is what actually keeps the rolling
+    week full — see main.py's scheduler.
     """
     created = []
     skipped = []
     for i in range(days_ahead):
         publish_date = start_date + timedelta(days=i)
         existing = db.execute(
-            text("SELECT 1 FROM daily_quizzes WHERE publish_date = :d"), {"d": publish_date},
+            text("SELECT id, status, quiz_number FROM daily_quizzes WHERE publish_date = :d"), {"d": publish_date},
         ).fetchone()
-        if existing:
+
+        if existing and existing.status != "draft":
             skipped.append(publish_date.isoformat())
             continue
 
         weekday = publish_date.weekday()
         theme_key, theme_label, _ = daily_quiz_gen_v1.THEMES[weekday]
 
-        candidates = await _generate_candidates(db, weekday)
-        for c in candidates:
-            c["verified"] = await _verify_candidate(db, c)
+        if existing:
+            quiz_id = int(existing.id)
+            quiz_number = int(existing.quiz_number)
+            prior_rows = db.execute(
+                text("""
+                    SELECT question_text, options, correct_index, explanation, source,
+                           difficulty, verify_model_answer
+                    FROM daily_quiz_questions WHERE quiz_id = :qid
+                """),
+                {"qid": quiz_id},
+            ).fetchall()
+            seed_pool = [
+                {
+                    "question_text": r.question_text, "options": list(r.options), "correct_index": r.correct_index,
+                    "explanation": r.explanation, "source": r.source, "difficulty": r.difficulty,
+                    "verified": True, "verify_model_answer": r.verify_model_answer,
+                }
+                for r in prior_rows
+            ]
+            selected, warnings = await _generate_full_day(db, weekday, seed_pool=seed_pool)
+            db.execute(text("DELETE FROM daily_quiz_questions WHERE quiz_id = :qid"), {"qid": quiz_id})
+        else:
+            selected, warnings = await _generate_full_day(db, weekday)
+            quiz_number = _next_quiz_number(db)
+            quiz_row = db.execute(
+                text("""
+                    INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
+                    VALUES (:num, :d, :theme, 'draft')
+                    RETURNING id
+                """),
+                {"num": quiz_number, "d": publish_date, "theme": theme_key},
+            ).fetchone()
+            quiz_id = int(quiz_row.id)
 
-        selected, warnings = select_five(candidates)
         status = "verified" if len(selected) == QUESTIONS_PER_QUIZ and not warnings else "draft"
-
-        quiz_number = _next_quiz_number(db)
-        quiz_row = db.execute(
-            text("""
-                INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
-                VALUES (:num, :d, :theme, :status)
-                RETURNING id
-            """),
-            {"num": quiz_number, "d": publish_date, "theme": theme_key, "status": status},
-        ).fetchone()
-        quiz_id = int(quiz_row.id)
+        db.execute(
+            text("UPDATE daily_quizzes SET status = :status, notes = :notes WHERE id = :id"),
+            {"status": status, "notes": "; ".join(warnings) or None, "id": quiz_id},
+        )
 
         for position, q in enumerate(selected):
             db.execute(
@@ -253,8 +345,10 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
 
         if warnings:
             logger.error(
-                "daily_quiz %s (#%s, %s) generated SHORT — %s. Only %d/%d questions; status='draft', needs admin attention.",
-                publish_date, quiz_number, theme_label, "; ".join(warnings), len(selected), QUESTIONS_PER_QUIZ,
+                "daily_quiz %s (#%s, %s) generated SHORT even after %d retry round(s) — %s. "
+                "Only %d/%d questions; status='draft', needs admin attention.",
+                publish_date, quiz_number, theme_label, MAX_GENERATION_ROUNDS,
+                "; ".join(warnings), len(selected), QUESTIONS_PER_QUIZ,
             )
         created.append({"publish_date": publish_date.isoformat(), "quiz_number": quiz_number,
                          "theme": theme_key, "status": status, "question_count": len(selected)})
@@ -627,6 +721,36 @@ async def _page_admins_question_voided(question_id: int, report_count: int, void
             logger.error("Failed to page admin %s about auto-voided daily_quiz question", chat_id, exc_info=True)
 
 
+async def _page_admins_rollover_failed(publish_date: date, reason: str) -> None:
+    """Same direct-Telegram-message channel as _page_admins_question_voided
+    — a rollover that publishes nothing is exactly the "some days none at
+    all" failure mode this whole rework exists to close, so it must alert
+    somebody, not just log."""
+    from app.core.config import settings
+
+    admin_ids: list[int] = settings.ADMIN_TELEGRAM_IDS or []
+    bot_token: str = settings.TELEGRAM_BOT_TOKEN
+    message = (
+        "🚨 <b>5 Savol — bugun hech narsa e'lon qilinmadi</b>\n\n"
+        f"Sana: {publish_date.isoformat()}\n"
+        f"Sabab: {reason}\n\n"
+        "Admin panelida (/admin/daily-quiz) ko'rib chiqing — savol qo'shish, "
+        "qayta yaratish yoki qo'lda e'lon qilish mumkin."
+    )
+    if not bot_token or not admin_ids:
+        logger.critical("daily_quiz rollover failure (no admin channel configured, logging only): %s", message)
+        return
+    for chat_id in admin_ids:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+                )
+        except Exception:
+            logger.error("Failed to page admin %s about daily_quiz rollover failure", chat_id, exc_info=True)
+
+
 async def report_question(db: Session, question_id: int, user_id: int, reason: str) -> dict:
     """Idempotent per (question, user) via UNIQUE constraint — one report
     per user per question. Crossing REPORT_VOID_THRESHOLD auto-voids."""
@@ -724,16 +848,16 @@ async def _publish_quiz(db: Session, quiz_id: int, quiz_number: int) -> dict:
 
 async def publish_now(db: Session, quiz_id: int) -> dict:
     """Admin-triggered manual publish (POST /api/admin/daily-quiz/{id}/publish-now)
-    — requires 'approved' status, same constraint as the cron path. Does
-    NOT touch yesterday's quiz (unlike rollover()) — this is a single-quiz
-    override, not a full daily rollover."""
+    — requires 'verified' or 'approved' status, same as rollover()'s gate.
+    Does NOT touch yesterday's quiz (unlike rollover()) — this is a
+    single-quiz override, not a full daily rollover."""
     quiz = db.execute(
         text("SELECT id, quiz_number, publish_date, status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id},
     ).fetchone()
     if quiz is None:
         return {"published": False, "reason": "not_found"}
-    if quiz.status != "approved":
-        return {"published": False, "reason": f"status is '{quiz.status}', must be 'approved'"}
+    if quiz.status not in ("verified", "approved"):
+        return {"published": False, "reason": f"status is '{quiz.status}', must be 'verified' or 'approved'"}
 
     push_result = await _publish_quiz(db, quiz.id, quiz.quiz_number)
     logger.info("daily_quiz publish_now: quiz_number=%s (admin override) %s", quiz.quiz_number, push_result)
@@ -744,7 +868,13 @@ async def rollover(db: Session, today: date) -> dict:
     """Daily 00:00 UTC (spec's two separate 00:00 bullets — 'close the
     previous window' and 'publish' — combined into one job: same trigger
     time, no reason to spend a second cron slot on it; 'keep cron count
-    minimal' per spec)."""
+    minimal' per spec).
+
+    Auto-publishes a 'verified' day (generation succeeded cleanly, nothing
+    for an admin to do) exactly like an explicitly 'approved' one — approval
+    is now only ever REQUIRED for a day that generation left in 'draft'.
+    A day stuck in 'draft', or genuinely missing, pages the admins instead
+    of silently publishing nothing (see _page_admins_rollover_failed)."""
     yesterday = today - timedelta(days=1)
     db.execute(
         text("UPDATE daily_quizzes SET status = 'closed', closed_at = :now WHERE publish_date = :d AND status = 'published'"),
@@ -755,12 +885,27 @@ async def rollover(db: Session, today: date) -> dict:
     quiz = db.execute(
         text("SELECT id, quiz_number, status FROM daily_quizzes WHERE publish_date = :d"), {"d": today},
     ).fetchone()
-    if quiz is None or quiz.status != "approved":
-        logger.error(
-            "daily_quiz rollover: no APPROVED quiz for %s (found status=%s) — nothing published today",
-            today, quiz.status if quiz else None,
-        )
-        return {"published": False, "reason": "no_approved_quiz", "publish_date": today.isoformat()}
+    if quiz is None or quiz.status not in ("verified", "approved"):
+        reason = f"status is '{quiz.status}', needs 'verified' or 'approved'" if quiz else "no daily_quizzes row exists for today"
+        logger.error("daily_quiz rollover: %s — nothing published for %s", reason, today)
+        await _page_admins_rollover_failed(today, reason)
+        return {"published": False, "reason": "no_publishable_quiz", "publish_date": today.isoformat()}
+
+    # Defense in depth: a status of verified/approved reflects state at
+    # generation/approval time, not necessarily this exact moment (a
+    # pre-publish void could have dropped the count since). Re-check the
+    # live count right before actually publishing rather than trust it.
+    valid_count = db.execute(
+        text("SELECT COUNT(*) FROM daily_quiz_questions WHERE quiz_id = :qid AND NOT voided"),
+        {"qid": quiz.id},
+    ).scalar()
+    if int(valid_count or 0) != QUESTIONS_PER_QUIZ:
+        db.execute(text("UPDATE daily_quizzes SET status = 'draft' WHERE id = :id"), {"id": quiz.id})
+        db.commit()
+        reason = f"quiz_number={quiz.quiz_number} has {valid_count}/{QUESTIONS_PER_QUIZ} valid questions at publish time"
+        logger.error("daily_quiz rollover: %s — flipped back to 'draft', nothing published for %s", reason, today)
+        await _page_admins_rollover_failed(today, reason)
+        return {"published": False, "reason": "question_count_mismatch_at_publish", "publish_date": today.isoformat()}
 
     push_result = await _publish_quiz(db, quiz.id, quiz.quiz_number)
     sent, failed = push_result["sent"], push_result["failed"]

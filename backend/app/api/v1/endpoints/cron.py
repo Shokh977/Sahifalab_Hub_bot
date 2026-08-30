@@ -46,7 +46,7 @@ what actually drives these today; running both means double-sends):
     POST /api/cron/weekly-review-batch           — schedule: 0 6 * * *   (06:00 UTC daily, staggered internally)
     POST /api/cron/tanga-reconciliation          — schedule: */15 * * * * (every 15 minutes)
     POST /api/cron/focus-sessions-volume-check   — schedule: 0 7 * * *   (07:00 UTC daily)
-    POST /api/cron/daily-quiz-generate-week      — schedule: 0 5 * * 1   (Monday 05:00 UTC)
+    POST /api/cron/daily-quiz-generate-week      — schedule: 0 5 * * *   (05:00 UTC daily — was Monday-only)
     POST /api/cron/daily-quiz-rollover           — schedule: 0 0 * * *   (00:00 UTC daily)
     POST /api/cron/daily-quiz-reminder           — schedule: 0 12 * * *  (12:00 UTC daily)
 """
@@ -1050,10 +1050,13 @@ async def daily_quiz_generate_week(
     _: None = Depends(_require_cron_secret),
 ):
     """
-    090_daily_quiz — weekly: generate + verify the next 7 days of "5 Savol"
-    into the admin approval queue. Never same-day (spec: "a live generation
-    failure must never become a live outage" — the week is always ready
-    well ahead of when it's needed).
+    090_daily_quiz / 094_daily_quiz_auto_publish — DAILY (not weekly, since
+    the rework): keeps the next 7 days of "5 Savol" generated, topping up
+    any day still stuck in 'draft' rather than leaving it short forever.
+    Never same-day (spec: "a live generation failure must never become a
+    live outage" — the week is always ready well ahead of when it's needed).
+    Running this daily also means a missed fire (process restart) only ever
+    costs one day of lead time, not the whole week.
     """
     from app.services.daily_quiz_service import generate_week
     today = datetime.now(UTC).date()

@@ -289,6 +289,93 @@ def test_void_question_refunds_only_users_who_got_it_right(db_session):
     assert second["ok"] is False
 
 
+def test_rollover_auto_publishes_a_verified_quiz_without_approval(db_session):
+    """Direct regression test for the reported bug: a cleanly-generated
+    'verified' day must publish on its own via rollover() — it must NOT
+    require an admin to have clicked Approve first."""
+    import asyncio
+    from app.services.daily_quiz_service import rollover
+
+    today = date.today()
+    row = db_session.execute(text("""
+        INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
+        VALUES (900101, :d, 'test_theme', 'verified') RETURNING id
+    """), {"d": today}).fetchone()
+    quiz_id = int(row.id)
+    for pos in range(5):
+        db_session.execute(text("""
+            INSERT INTO daily_quiz_questions
+                (quiz_id, position, question_text, options, correct_index, explanation, source, difficulty, verified)
+            VALUES (:qid, :pos, :qt, CAST(:opts AS jsonb), 0, 'expl', 'src', 'easy', TRUE)
+        """), {"qid": quiz_id, "pos": pos, "qt": f"Q{pos}", "opts": '["A","B","C","D"]'})
+    db_session.commit()
+
+    result = asyncio.run(rollover(db_session, today))
+    assert result["published"] is True
+
+    status = db_session.execute(text("SELECT status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id}).scalar()
+    assert status == "published"
+
+
+def test_rollover_does_not_publish_a_draft_quiz(db_session):
+    """The other half of the same regression: a day that generation left
+    short ('draft') must NOT silently publish — it's the one case that
+    still needs a human, and rollover must page admins instead of
+    pretending nothing's wrong."""
+    import asyncio
+    from app.services.daily_quiz_service import rollover
+
+    today = date.today()
+    row = db_session.execute(text("""
+        INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
+        VALUES (900102, :d, 'test_theme', 'draft') RETURNING id
+    """), {"d": today}).fetchone()
+    quiz_id = int(row.id)
+    for pos in range(3):  # short — only 3/5
+        db_session.execute(text("""
+            INSERT INTO daily_quiz_questions
+                (quiz_id, position, question_text, options, correct_index, explanation, source, difficulty, verified)
+            VALUES (:qid, :pos, :qt, CAST(:opts AS jsonb), 0, 'expl', 'src', 'easy', TRUE)
+        """), {"qid": quiz_id, "pos": pos, "qt": f"Q{pos}", "opts": '["A","B","C","D"]'})
+    db_session.commit()
+
+    result = asyncio.run(rollover(db_session, today))
+    assert result["published"] is False
+
+    status = db_session.execute(text("SELECT status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id}).scalar()
+    assert status == "draft"
+
+
+def test_rollover_reverts_to_draft_if_valid_count_drops_below_5_at_publish_time(db_session):
+    """Defense-in-depth check: even a 'verified' quiz must be re-validated
+    at the actual publish instant, not trusted from generation time — if a
+    question got voided in between, rollover must catch it rather than
+    ship a 4-question quiz silently."""
+    import asyncio
+    from app.services.daily_quiz_service import rollover
+
+    today = date.today()
+    row = db_session.execute(text("""
+        INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
+        VALUES (900103, :d, 'test_theme', 'verified') RETURNING id
+    """), {"d": today}).fetchone()
+    quiz_id = int(row.id)
+    for pos in range(5):
+        db_session.execute(text("""
+            INSERT INTO daily_quiz_questions
+                (quiz_id, position, question_text, options, correct_index, explanation, source, difficulty, verified, voided)
+            VALUES (:qid, :pos, :qt, CAST(:opts AS jsonb), 0, 'expl', 'src', 'easy', TRUE, :voided)
+        """), {"qid": quiz_id, "pos": pos, "qt": f"Q{pos}", "opts": '["A","B","C","D"]', "voided": pos == 0})
+    db_session.commit()
+
+    result = asyncio.run(rollover(db_session, today))
+    assert result["published"] is False
+    assert result["reason"] == "question_count_mismatch_at_publish"
+
+    status = db_session.execute(text("SELECT status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id}).scalar()
+    assert status == "draft"
+
+
 def test_report_question_is_idempotent_per_user_and_auto_voids_at_threshold(db_session):
     import asyncio
     from app.services.daily_quiz_service import deliver_today, report_question, REPORT_VOID_THRESHOLD

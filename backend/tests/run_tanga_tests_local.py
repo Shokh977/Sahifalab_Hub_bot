@@ -49,6 +49,7 @@ def main() -> int:
             MIGRATIONS_DIR / "090_daily_quiz.sql",
             MIGRATIONS_DIR / "092_tanga_economy_rework.sql",
             MIGRATIONS_DIR / "093_server_derived_day_bucket.sql",
+            MIGRATIONS_DIR / "094_daily_quiz_auto_publish.sql",
         ]:
             print(f"[run_tanga_tests_local] applying {sql_file.name}")
             sql = sql_file.read_text(encoding="utf-8")

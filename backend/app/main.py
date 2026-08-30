@@ -926,9 +926,12 @@ def _start_cron_scheduler():
     # day-over-day. The prior outage ran undetected for three days because
     # nothing was watching this number.
     scheduler.add_job(_run_focus_sessions_volume_check, CronTrigger(hour=7, minute=0))
-    # "5 Savol" (090_daily_quiz). Monday 05:00 UTC — ahead of weekly-report's
-    # Monday 08:00 so both never contend, and well clear of daily rollover.
-    scheduler.add_job(_run_daily_quiz_generate_week, CronTrigger(day_of_week="mon", hour=5, minute=0))
+    # "5 Savol" (090_daily_quiz / 094_daily_quiz_auto_publish). DAILY (was
+    # Monday-only) 05:00 UTC — clear of weekly-report's Monday 08:00 and
+    # well clear of daily rollover. Running this every day, not once a week,
+    # is what keeps the rolling week continuously topped up AND means a
+    # missed fire (process restart) only ever costs one day of lead time.
+    scheduler.add_job(_run_daily_quiz_generate_week, CronTrigger(hour=5, minute=0))
     # Daily 00:00 UTC — close yesterday + publish today (combined; see
     # daily_quiz_service.rollover()'s docstring for why this is one job).
     scheduler.add_job(_run_daily_quiz_rollover, CronTrigger(hour=0, minute=0))

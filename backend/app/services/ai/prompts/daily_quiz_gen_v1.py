@@ -104,13 +104,26 @@ JSON_SCHEMA = {
 CANDIDATE_MIX = {"easy": 4, "medium": 4, "hard": 2}
 
 
-def build_user_prompt(weekday: int) -> str:
+def build_user_prompt(weekday: int, avoid_questions: list[str] | None = None) -> str:
     theme_key, theme_label, brief = THEMES[weekday]
     mix_lines = "\n".join(f"- {level}: {n} ta" for level, n in CANDIDATE_MIX.items())
+    avoid_block = ""
+    if avoid_questions:
+        # Retry rounds (daily_quiz_service._generate_full_day) re-call this
+        # same theme when verification attrition left the day short — without
+        # this, a second call at temperature=0.2 tends to resurface near-
+        # identical questions instead of genuinely new ones.
+        listed = "\n".join(f"- {q}" for q in avoid_questions[:20])
+        avoid_block = (
+            "\n\nQuyidagi savollar ALLAQACHON ishlatilgan (yoki nomzod sifatida "
+            f"ko'rib chiqilgan) — bularni yoki bunga juda o'xshash savollarni "
+            f"QAYTA YARATMA, boshqa jihat/fakt tanla:\n{listed}\n"
+        )
     return (
         f"Mavzu: {theme_label} — {brief}.\n\n"
         f"Jami {sum(CANDIDATE_MIX.values())} ta nomzod savol yarat, quyidagi "
-        f"qiyinchilik taqsimoti bo'yicha:\n{mix_lines}\n\n"
+        f"qiyinchilik taqsimoti bo'yicha:\n{mix_lines}\n"
+        f"{avoid_block}\n"
         "Bir xil faktni bir necha marta takrorlama — har bir savol boshqa "
         "jihatga oid bo'lsin."
     )

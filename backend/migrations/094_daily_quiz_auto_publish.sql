@@ -1,0 +1,21 @@
+-- 094_daily_quiz_auto_publish.sql — "5 Savol" reliability + auto-publish rework.
+--
+-- Root causes of "some days 3 questions, some days none at all":
+--   1. Generation was one-shot: 10 candidates -> cold verify -> select_five
+--      on whatever survived, with NO retry/backfill call if attrition left
+--      fewer than 5 verified. A short day just sat there.
+--   2. Generation only ran WEEKLY (Monday 05:00 UTC) via a single in-process,
+--      non-persistent APScheduler job — a missed fire (process restart,
+--      redeploy) silently skipped the entire week, no catch-up.
+--   3. Publishing required a human to explicitly click "Approve" on every
+--      single day before the next 00:00 UTC rollover, even when generation
+--      succeeded cleanly. No approval -> rollover published nothing, logged
+--      an error nobody was watching.
+--
+-- This migration only adds the one column the reworked service/admin-API
+-- layer needs to surface WHY a day is short directly in the dashboard
+-- (previously only in server logs). The publish-eligibility change itself
+-- (rollover() now auto-publishes 'verified' days, not just 'approved' ones)
+-- and the daily-not-weekly generation cadence are code-only changes reusing
+-- the existing status enum.
+ALTER TABLE daily_quizzes ADD COLUMN IF NOT EXISTS notes TEXT;
