@@ -49,7 +49,13 @@ async def _get_tid(authorization: Optional[str]) -> int:
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class AnalyticsEvent(BaseModel):
-    event_type: Literal["course_view", "course_impression", "profile_visit", "post_impression"]
+    event_type: Literal[
+        "course_view", "course_impression", "profile_visit", "post_impression",
+        # Qo'llab-quvvatlash (donation, 095) — target_id is always 0 here since
+        # payment_methods.id is a UUID, not an int; the method id/surface/etc.
+        # live in `meta` instead.
+        "donation_page_view", "donation_card_swiped", "donation_number_copied",
+    ]
     target_id: int
     teacher_id: int = 0
     source: Literal["lenta", "search", "external", "direct"] = "direct"

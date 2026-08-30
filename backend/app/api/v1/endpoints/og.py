@@ -128,6 +128,22 @@ async def og_course(course_id: int, db: Session = Depends(get_db)):
     return _og_html(title, desc, image, dest, f"{BACKEND}/api/og/course/{course_id}")
 
 
+# ── Donation (Qo'llab-quvvatlash, 095) ──────────────────────────────────────
+# Static page, no per-entity DB lookup — this is the link meant to be shared
+# in the Telegram channel/website so it gets a real preview card instead of
+# whatever the SPA's generic index.html meta tags say for this path.
+
+@router.get("/donation", response_class=HTMLResponse)
+async def og_donation():
+    return _og_html(
+        "Qo'llab-quvvatlash",
+        "Sahifalab har kuni minglab o'quvchi uchun bepul. Xohlagan miqdorda qo'shilishingiz — ilovani tirik saqlaydi.",
+        DEFAULT_IMAGE,
+        f"{FRONTEND}/qollab-quvvatlash",
+        f"{BACKEND}/api/og/donation",
+    )
+
+
 # ── Post (social feed) ───────────────────────────────────────────────────────
 
 @router.get("/post/{post_id}", response_class=HTMLResponse)

@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges, daily_quiz, admin_daily_quiz, rewards
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges, daily_quiz, admin_daily_quiz, rewards, payment_methods, admin_payment_methods
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
@@ -91,6 +91,10 @@ api_router.include_router(admin_daily_quiz.router, prefix="/admin/daily-quiz", t
 
 # Reward modal queue (tanga-economy-rework Part 5)
 api_router.include_router(rewards.router, prefix="/rewards", tags=["rewards"])
+
+# Qo'llab-quvvatlash (donation) — manual bank-transfer payment methods (095)
+api_router.include_router(payment_methods.router, tags=["payment-methods"])
+api_router.include_router(admin_payment_methods.router, prefix="/admin/payment-methods", tags=["admin"])
 
 # Internal maintenance (secret-key protected)
 api_router.include_router(cron.router)

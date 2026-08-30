@@ -58,6 +58,7 @@ const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
 const BookReaderPage = lazy(() => import('./pages/BookReaderPage'))
 const ResourcesPage = lazy(() => import('./pages/ResourcesPage'))
 const AboutPage = lazy(() => import('./pages/AboutPage'))
+const DonationPage = lazy(() => import('./pages/DonationPage'))
 const TermsPage          = lazy(() => import('./pages/TermsPage'))
 const PrivacyPage        = lazy(() => import('./pages/PrivacyPage'))
 const DeleteAccountPage  = lazy(() => import('./pages/DeleteAccountPage'))
@@ -289,6 +290,7 @@ const AppRoutes: React.FC = () => {
         <Route path="/profile/:userId" element={<AppLayout rightSidebar={<ProfileRightSidebar />} maxWidth="max-w-[760px]"><PublicProfile /></AppLayout>} />
         <Route path="/teachers"        element={<TeachersGalleryPage />} />
         <Route path="/about"           element={<AboutPage />} />
+        <Route path="/qollab-quvvatlash" element={<DonationPage />} />
         <Route path="/terms"           element={<TermsPage />} />
         <Route path="/privacy"         element={<PrivacyPage />} />
         <Route path="/delete-account"  element={<DeleteAccountPage />} />

@@ -16,6 +16,7 @@ import { supabase, isSupabaseConfigured, invalidateCache } from '../lib/supabase
 import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
+import AdminDonationsTab from '../components/donation/AdminDonationsTab'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
@@ -86,7 +87,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports' | 'donations'
 
 type AdminChallengeType = 'cumulative' | 'consistency' | 'sprint' | 'team'
 type AdminChallengeMetric = 'focus_minutes' | 'flashcard_reviews' | 'lessons_completed' | 'courses_completed' | 'tests_passed'
@@ -1971,6 +1972,7 @@ const AdminPage: React.FC = () => {
             { id: 'decks', label: '🎴 To\'plamlar' },
             { id: 'reports', label: '🚨 Shikoyatlar' },
             { id: 'challenges', label: '🏆 Bellashuv' },
+            { id: 'donations', label: "💳 Xayriya" },
             { id: 'feature_usage', label: '📊 Xususiyatlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
@@ -4795,6 +4797,9 @@ const AdminPage: React.FC = () => {
             )}
           </div>
         )}
+
+        {/* ── Xayriya (donation payment methods, 095) Tab ──────────────────── */}
+        {activeTab === 'donations' && <AdminDonationsTab />}
 
         {/* ── Decks Tab ──────────────────────────────────────────────────── */}
         {activeTab === 'decks' && (() => {
