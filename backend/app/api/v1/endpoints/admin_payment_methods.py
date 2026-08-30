@@ -224,6 +224,56 @@ async def list_all_payment_methods(db: Session = Depends(get_db), admin: AdminUs
     return {"methods": [_admin_dict(r) for r in rows]}
 
 
+@router.get("/stats")
+async def get_donation_stats(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Copy-rate per method — 'the metric that matters' per spec: it tells
+    the admin which payment methods are actually used vs. dead weight.
+    Reads analytics_events directly (034_analytics_events) — the same
+    table analytics.py's POST /track writes into, just via a plain SELECT
+    on the ORM session rather than the PostgREST round-trip that endpoint
+    uses for writes; there's no reason a read needs to leave this process."""
+    since = datetime.now(UTC) - timedelta(days=days)
+
+    page_views = db.execute(
+        text("""
+            SELECT COUNT(*) FROM analytics_events
+            WHERE event_type = 'donation_page_view' AND created_at > :since
+        """),
+        {"since": since},
+    ).scalar()
+
+    rows = db.execute(
+        text("""
+            SELECT
+                meta->>'methodId' AS method_id,
+                COALESCE(meta->>'surface', 'unknown') AS surface,
+                COUNT(*) FILTER (WHERE event_type = 'donation_number_copied') AS copies,
+                COUNT(*) FILTER (WHERE event_type = 'donation_card_swiped')   AS swipes
+            FROM analytics_events
+            WHERE event_type IN ('donation_number_copied', 'donation_card_swiped')
+              AND created_at > :since
+              AND meta->>'methodId' IS NOT NULL
+            GROUP BY meta->>'methodId', COALESCE(meta->>'surface', 'unknown')
+        """),
+        {"since": since},
+    ).fetchall()
+
+    per_method: dict = {}
+    for r in rows:
+        entry = per_method.setdefault(r.method_id, {
+            "methodId": r.method_id, "copies": 0, "swipes": 0, "bySurface": {},
+        })
+        entry["copies"] += int(r.copies or 0)
+        entry["swipes"] += int(r.swipes or 0)
+        entry["bySurface"][r.surface] = {"copies": int(r.copies or 0), "swipes": int(r.swipes or 0)}
+
+    return {"days": days, "pageViews": int(page_views or 0), "methods": list(per_method.values())}
+
+
 class PaymentMethodCreate(BaseModel):
     bank_name:      str = Field(..., min_length=1)
     account_number: str = Field(..., min_length=1)

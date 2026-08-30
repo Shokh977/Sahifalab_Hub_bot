@@ -42,6 +42,7 @@ def db_session():
     finally:
         session.execute(text("DELETE FROM payment_method_audit_log"))
         session.execute(text("DELETE FROM payment_methods"))
+        session.execute(text("DELETE FROM analytics_events WHERE event_type LIKE 'donation_%'"))
         session.execute(text("DELETE FROM tanga_transactions WHERE user_id = :uid"), {"uid": TEST_USER_ID})
         session.execute(text("DELETE FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_USER_ID})
         session.commit()
@@ -245,3 +246,40 @@ def test_no_donation_source_code_references_tanga_or_entitlement_writes():
         source = inspect.getsource(module)
         for term in forbidden:
             assert term not in source, f"{module.__name__} must never reference {term!r} — a donation unlocks nothing"
+
+
+def test_donation_stats_aggregates_copies_and_swipes_per_method(db_session):
+    """Regression for a real gap: the copy/swipe/view analytics events were
+    being written (see lib/api.ts's track() calls) but nothing ever read
+    them back — 'copy rate per method' (the metric the spec calls out as
+    the one that matters) had no surface at all until this endpoint."""
+    from app.api.v1.endpoints.admin_payment_methods import get_donation_stats
+
+    admin = _admin()
+    method_a = "11111111-1111-1111-1111-111111111111"
+    method_b = "22222222-2222-2222-2222-222222222222"
+
+    def _seed_event(event_type: str, method_id: str, surface: str):
+        db_session.execute(text("""
+            INSERT INTO analytics_events (event_type, target_id, meta)
+            VALUES (:et, 0, CAST(:meta AS jsonb))
+        """), {"et": event_type, "meta": f'{{"methodId": "{method_id}", "surface": "{surface}"}}'})
+
+    _seed_event("donation_page_view", method_a, "app")
+    _seed_event("donation_page_view", method_a, "web")
+    _seed_event("donation_number_copied", method_a, "app")
+    _seed_event("donation_number_copied", method_a, "app")
+    _seed_event("donation_number_copied", method_a, "web")
+    _seed_event("donation_card_swiped", method_a, "app")
+    _seed_event("donation_number_copied", method_b, "web")
+    db_session.commit()
+
+    result = asyncio.run(get_donation_stats(days=30, db=db_session, admin=admin))
+
+    assert result["pageViews"] == 2
+    by_id = {m["methodId"]: m for m in result["methods"]}
+    assert by_id[method_a]["copies"] == 3
+    assert by_id[method_a]["swipes"] == 1
+    assert by_id[method_a]["bySurface"]["app"] == {"copies": 2, "swipes": 1}
+    assert by_id[method_a]["bySurface"]["web"] == {"copies": 1, "swipes": 0}
+    assert by_id[method_b]["copies"] == 1

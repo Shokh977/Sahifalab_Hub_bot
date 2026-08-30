@@ -79,7 +79,7 @@ export default function DonationPage() {
             Qo'llab-quvvatlash
           </h1>
           <p className="mt-2 max-w-md text-[14px] leading-[1.6] font-medium" style={{ color: '#5A6774' }}>
-            Sahifalab har kuni minglab o'quvchi uchun bepul. Xohlagan miqdorda qo'shilishingiz — ilovani tirik saqlaydi.
+            Sahifalab minglab o'quvchilar uchun har kuni bepul. Ozgina hissangiz ham ilovamizni ishlab turishga yordam beradi.
           </p>
         </motion.div>
 

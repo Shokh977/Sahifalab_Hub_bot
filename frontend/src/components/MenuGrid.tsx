@@ -7,6 +7,7 @@ import {
   BookOpenIcon,
   ClockIcon,
   CpuChipIcon,
+  HeartIcon,
   LinkIcon,
   RectangleStackIcon,
   ShieldCheckIcon,
@@ -75,6 +76,14 @@ const MENU_ITEMS: MenuItem[] = [
     titleUz: 'Haqimizda',
     description: "Bizning hikoyamiz va missiyamiz",
     path: '/about',
+  },
+  {
+    id: 'donation',
+    icon: HeartIcon,
+    title: 'Qo\'llab-quvvatlash',
+    titleUz: 'Qo\'llab-quvvatlash',
+    description: 'Xohlagan miqdorda hissa qo\'shing',
+    path: '/qollab-quvvatlash',
   },
   {
     id: 'cabinet',

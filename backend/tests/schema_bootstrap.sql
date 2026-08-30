@@ -91,6 +91,23 @@ CREATE TABLE flashcard_reviews (
     time_spent_ms INTEGER
 );
 
+-- Real schema is migrations/034_analytics_events.sql — that file's own
+-- helper FUNCTIONS reference other tables (posts, course_enrollments) this
+-- minimal test schema doesn't have, and Postgres validates a LANGUAGE sql
+-- function body's relations at CREATE time, not just at call time. This
+-- stand-in supplies only the bare table admin_payment_methods.py's
+-- donation-stats endpoint actually reads.
+CREATE TABLE analytics_events (
+    id            BIGSERIAL PRIMARY KEY,
+    event_type    TEXT        NOT NULL,
+    actor_id      BIGINT      NOT NULL DEFAULT 0,
+    target_id     BIGINT      NOT NULL,
+    teacher_id    BIGINT      NOT NULL DEFAULT 0,
+    source        TEXT        NOT NULL DEFAULT 'direct',
+    meta          JSONB       NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Minimal add_xp() RPC stand-in — real function lives in migration
 -- 038_xp_gamification.sql and is considerably richer (QUIZ daily cap,
 -- COURSE dedup, row locking). This stub only supports what

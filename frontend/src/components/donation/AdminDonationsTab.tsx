@@ -15,12 +15,19 @@ import {
 } from '@dnd-kit/core'
 import { SortableContext, useSortable, verticalListSortingStrategy, arrayMove } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Plus, Pencil, Trash2, GripVertical, Eye, EyeOff, Sparkles } from 'lucide-react'
+import { Plus, Pencil, Trash2, GripVertical, Eye, EyeOff, Sparkles, Copy, TrendingUp } from 'lucide-react'
 import apiService from '../../services/apiService'
 import PaymentCard, { type PaymentMethod } from './PaymentCard'
 
 interface AdminMethod extends PaymentMethod {
   isActive: boolean
+}
+
+interface MethodStats {
+  methodId: string
+  copies: number
+  swipes: number
+  bySurface: Record<string, { copies: number; swipes: number }>
 }
 
 const EMPTY_FORM = {
@@ -30,6 +37,8 @@ const EMPTY_FORM = {
 
 export default function AdminDonationsTab() {
   const [methods, setMethods] = useState<AdminMethod[]>([])
+  const [stats, setStats] = useState<Record<string, MethodStats>>({})
+  const [pageViews, setPageViews] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<AdminMethod | null>(null)
@@ -38,8 +47,17 @@ export default function AdminDonationsTab() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const res = await apiService.client.get('/api/admin/payment-methods')
-      setMethods(res.data?.methods ?? [])
+      const [methodsRes, statsRes] = await Promise.all([
+        apiService.client.get('/api/admin/payment-methods'),
+        apiService.client.get('/api/admin/payment-methods/stats', { params: { days: 30 } }).catch(() => null),
+      ])
+      setMethods(methodsRes.data?.methods ?? [])
+      if (statsRes) {
+        setPageViews(statsRes.data?.pageViews ?? 0)
+        const byId: Record<string, MethodStats> = {}
+        for (const s of statsRes.data?.methods ?? []) byId[s.methodId] = s
+        setStats(byId)
+      }
     } catch (e: any) {
       setError(e?.response?.data?.detail ?? "Yuklab bo'lmadi")
     } finally {
@@ -103,6 +121,16 @@ export default function AdminDonationsTab() {
         </div>
       )}
 
+      {!loading && methods.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2">
+          <TrendingUp size={14} />
+          Oxirgi 30 kun: <span className="font-semibold text-gray-700 dark:text-gray-300">{pageViews}</span> marta sahifa ochilgan,{' '}
+          <span className="font-semibold text-gray-700 dark:text-gray-300">
+            {Object.values(stats).reduce((sum, s) => sum + s.copies, 0)}
+          </span> marta raqam nusxalangan
+        </div>
+      )}
+
       {creating && (
         <MethodForm
           initial={null}
@@ -128,7 +156,7 @@ export default function AdminDonationsTab() {
             <div className="space-y-3">
               {methods.map(m => (
                 <SortableRow
-                  key={m.id} method={m}
+                  key={m.id} method={m} stats={stats[m.id]}
                   onEdit={() => { setEditing(m); setCreating(false) }}
                   onToggle={() => toggleActive(m)}
                   onDelete={() => remove(m)}
@@ -142,8 +170,8 @@ export default function AdminDonationsTab() {
   )
 }
 
-function SortableRow({ method, onEdit, onToggle, onDelete }: {
-  method: AdminMethod; onEdit: () => void; onToggle: () => void; onDelete: () => void
+function SortableRow({ method, stats, onEdit, onToggle, onDelete }: {
+  method: AdminMethod; stats?: MethodStats; onEdit: () => void; onToggle: () => void; onDelete: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: method.id })
   const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 }
@@ -163,6 +191,10 @@ function SortableRow({ method, onEdit, onToggle, onDelete }: {
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {method.numberType.toUpperCase()} · {method.currency} · {method.region}
           {!method.isActive && <span className="ml-2 text-amber-500 font-semibold">Nofaol</span>}
+        </p>
+        <p className="mt-1 flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500">
+          <Copy size={11} />
+          {stats?.copies ? `${stats.copies} marta nusxalangan (oxirgi 30 kun)` : "Hali nusxalanmagan"}
         </p>
       </div>
 
