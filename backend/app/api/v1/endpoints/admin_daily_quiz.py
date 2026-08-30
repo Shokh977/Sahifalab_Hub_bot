@@ -154,6 +154,9 @@ async def approve_quiz(
         {"now": datetime.now(UTC), "uid": admin.telegram_id, "id": quiz_id},
     )
     db.commit()
+    # Approving TODAY's day after its 00:00 UTC rollover already passed
+    # must not silently wait until tomorrow's rollover to go live.
+    await svc.publish_if_ready_today(db, quiz_id)
     return {"ok": True, "status": "approved"}
 
 
@@ -270,6 +273,9 @@ async def add_question(
             {"id": quiz_id},
         )
     db.commit()
+    # Completing TODAY's day to 5 after its 00:00 UTC rollover already
+    # passed must not silently wait until tomorrow's rollover to go live.
+    await svc.publish_if_ready_today(db, quiz_id)
     return {"ok": True, "position": position, "question_count": new_count}
 
 

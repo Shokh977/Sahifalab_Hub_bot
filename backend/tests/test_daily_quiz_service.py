@@ -376,6 +376,64 @@ def test_rollover_reverts_to_draft_if_valid_count_drops_below_5_at_publish_time(
     assert status == "draft"
 
 
+def test_publish_if_ready_today_publishes_a_verified_day_fixed_after_rollover_window(db_session):
+    """Regression for a real production gap found live: an admin regenerating
+    or completing TODAY's day AFTER its 00:00 UTC rollover already passed
+    must see it go live immediately, not silently wait until tomorrow's
+    rollover (which only ever looks at publish_date = tomorrow, never today
+    again)."""
+    import asyncio
+    from app.services.daily_quiz_service import publish_if_ready_today
+
+    today = date.today()
+    row = db_session.execute(text("""
+        INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
+        VALUES (900110, :d, 'test_theme', 'verified') RETURNING id
+    """), {"d": today}).fetchone()
+    quiz_id = int(row.id)
+    for pos in range(5):
+        db_session.execute(text("""
+            INSERT INTO daily_quiz_questions
+                (quiz_id, position, question_text, options, correct_index, explanation, source, difficulty, verified)
+            VALUES (:qid, :pos, :qt, CAST(:opts AS jsonb), 0, 'expl', 'src', 'easy', TRUE)
+        """), {"qid": quiz_id, "pos": pos, "qt": f"Q{pos}", "opts": '["A","B","C","D"]'})
+    db_session.commit()
+
+    published = asyncio.run(publish_if_ready_today(db_session, quiz_id))
+    assert published is True
+
+    status = db_session.execute(text("SELECT status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id}).scalar()
+    assert status == "published"
+
+
+def test_publish_if_ready_today_ignores_a_future_day(db_session):
+    """The other half — a 'verified' day for a FUTURE date must not be
+    force-published early just because it's ready; it still waits for its
+    own scheduled rollover."""
+    import asyncio
+    from app.services.daily_quiz_service import publish_if_ready_today
+
+    tomorrow = date.today() + timedelta(days=1)
+    row = db_session.execute(text("""
+        INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
+        VALUES (900111, :d, 'test_theme', 'verified') RETURNING id
+    """), {"d": tomorrow}).fetchone()
+    quiz_id = int(row.id)
+    for pos in range(5):
+        db_session.execute(text("""
+            INSERT INTO daily_quiz_questions
+                (quiz_id, position, question_text, options, correct_index, explanation, source, difficulty, verified)
+            VALUES (:qid, :pos, :qt, CAST(:opts AS jsonb), 0, 'expl', 'src', 'easy', TRUE)
+        """), {"qid": quiz_id, "pos": pos, "qt": f"Q{pos}", "opts": '["A","B","C","D"]'})
+    db_session.commit()
+
+    published = asyncio.run(publish_if_ready_today(db_session, quiz_id))
+    assert published is False
+
+    status = db_session.execute(text("SELECT status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id}).scalar()
+    assert status == "verified"
+
+
 def test_report_question_is_idempotent_per_user_and_auto_voids_at_threshold(db_session):
     import asyncio
     from app.services.daily_quiz_service import deliver_today, report_question, REPORT_VOID_THRESHOLD

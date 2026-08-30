@@ -353,6 +353,13 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
         created.append({"publish_date": publish_date.isoformat(), "quiz_number": quiz_number,
                          "theme": theme_key, "status": status, "question_count": len(selected)})
 
+        # A day for TODAY that just became ready (this run finally reached
+        # 5, or a regenerate replaced a voided/short today) has already
+        # missed its normal 00:00 UTC rollover — publish it now rather than
+        # silently waiting until tomorrow's rollover.
+        if status == "verified":
+            await publish_if_ready_today(db, quiz_id)
+
     return {"created": created, "skipped": skipped}
 
 
@@ -844,6 +851,36 @@ async def _publish_quiz(db: Session, quiz_id: int, quiz_number: int) -> dict:
 
     sent, failed = await _push_batch(messages)
     return {"sent": sent, "failed": failed}
+
+
+async def publish_if_ready_today(db: Session, quiz_id: int) -> bool:
+    """A day that just BECAME ready — generation/top-up finally reached 5,
+    an admin approved a fixed-up 'draft', or a manually-authored question
+    completed it — should go live immediately if it's for TODAY. Without
+    this, fixing a day after its normal 00:00 UTC rollover window already
+    passed would silently wait until TOMORROW's rollover to actually
+    publish it (rollover only ever looks at publish_date = today, so a
+    day fixed at, say, 03:00 UTC today has already missed today's only
+    rollover run). Called from generate_week's per-day loop and from the
+    admin approve/add-question endpoints. No-op for any day that isn't
+    today, isn't in a publish-eligible status, or is already live."""
+    today = datetime.now(UTC).date()
+    quiz = db.execute(
+        text("SELECT id, quiz_number, publish_date, status FROM daily_quizzes WHERE id = :id"), {"id": quiz_id},
+    ).fetchone()
+    if quiz is None or quiz.publish_date != today or quiz.status not in ("verified", "approved"):
+        return False
+    valid_count = db.execute(
+        text("SELECT COUNT(*) FROM daily_quiz_questions WHERE quiz_id = :qid AND NOT voided"), {"qid": quiz_id},
+    ).scalar()
+    if int(valid_count or 0) != QUESTIONS_PER_QUIZ:
+        return False
+    await _publish_quiz(db, quiz.id, quiz.quiz_number)
+    logger.info(
+        "daily_quiz publish_if_ready_today: published quiz_number=%s for %s (fixed after its rollover window)",
+        quiz.quiz_number, today,
+    )
+    return True
 
 
 async def publish_now(db: Session, quiz_id: int) -> dict:
