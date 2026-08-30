@@ -21,6 +21,7 @@ import WorkspaceRightSidebar from './components/sidebars/WorkspaceRightSidebar'
 import AuthGuard from './components/AuthGuard'
 import NotificationToast from './components/NotificationToast'
 import EmailLinkPrompt from './components/EmailLinkPrompt'
+import AppDownloadModal from './components/AppDownloadModal'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { MessagingProvider } from './context/MessagingContext'
 import GlobalMessagingWatcher from './components/GlobalMessagingWatcher'
@@ -437,6 +438,7 @@ const App: React.FC = () => {
               <MessageToast />
               <NotificationToast />
               <EmailLinkPrompt />
+              <AppDownloadModal />
             </ProgressProvider>
           </MessagingProvider>
         </AuthProvider>
