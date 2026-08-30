@@ -24,7 +24,7 @@ from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.xp_service import add_xp
 from app.services.study_activity import record_study_activity, StudyActivityResult
-from app.services.day_bucket import try_parse_client_date
+from app.services.day_bucket import try_parse_client_date, resolve_day_bucket
 from app.api.v1.endpoints.notifications import send_notification
 from app.api.v1.auth import _normalize_platform
 
@@ -357,7 +357,14 @@ async def get_focus_stats(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    today    = _parse_local_date(local_date)
+    # migration 093 removed study_activity.parse_local_date (aliased here as
+    # _parse_local_date) when record_study_activity() switched to a required,
+    # server-resolved `today` — this read path was never updated to match,
+    # so every call here threw NameError (HTTP 500) since that deploy. Fixed
+    # by resolving "today" the same authoritative way the write path
+    # (POST /complete's credit_focus_time()) does, so the two can never
+    # disagree about which day is "today" for this user.
+    today    = resolve_day_bucket(db, caller_id, local_date, source="focus_stats")
     week_ago = today - timedelta(days=6)
 
     agg = db.execute(
@@ -439,7 +446,9 @@ async def get_weekly_focus(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    week_ago = _parse_local_date(local_date) - timedelta(days=6)
+    # Same fix as get_focus_stats above — _parse_local_date doesn't exist.
+    today    = resolve_day_bucket(db, caller_id, local_date, source="focus_weekly")
+    week_ago = today - timedelta(days=6)
 
     rows = db.execute(
         text("""
