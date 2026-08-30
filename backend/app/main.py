@@ -758,7 +758,7 @@ def _start_cron_scheduler():
         send_streak_reminders, send_weekly_reports,
         challenges_tick, challenges_consistency_daily,
         streak_freeze_auto_apply, streak_at_risk_push,
-        weekly_review_batch, tanga_reconciliation, focus_sessions_volume_check,
+        weekly_review_batch, focus_sessions_volume_check,
         daily_quiz_generate_week, daily_quiz_rollover, daily_quiz_reminder,
     )
     from app.db.session             import get_db
@@ -842,17 +842,6 @@ def _start_cron_scheduler():
         finally:
             db.close()
 
-    async def _run_tanga_reconciliation():
-        db = _db()
-        try:
-            result = await tanga_reconciliation(db=db, _=None)
-            if result.get("checked"):
-                logger.info("[SCHEDULER] tanga-reconciliation: %s", result)
-        except Exception as exc:
-            logger.error("[SCHEDULER] tanga-reconciliation failed: %s", exc)
-        finally:
-            db.close()
-
     async def _run_focus_sessions_volume_check():
         db = _db()
         try:
@@ -918,10 +907,13 @@ def _start_cron_scheduler():
     # Daily 06:00 UTC — free weekly personal review (spec Part 6, feature 2).
     # Staggered internally by telegram_id % 7, not a once-a-week burst.
     scheduler.add_job(_run_weekly_review_batch, CronTrigger(hour=6, minute=0))
-    # Every 15 minutes — retries Tanga grants for study sessions whose live
-    # grant failed after the focus_sessions row already committed. Cheap
-    # no-op query when there's nothing to reconcile.
-    scheduler.add_job(_run_tanga_reconciliation, CronTrigger(minute="*/15"))
+    # tanga-reconciliation job REMOVED (was every 15 min) — its premise
+    # predated migration 092 and was actively re-farming uncapped Tanga for
+    # every focus session; see app/services/tanga_reconciliation.py's module
+    # docstring for the full incident writeup. The underlying function is
+    # kept as a permanent no-op (POST /api/cron/tanga-reconciliation still
+    # resolves harmlessly if anything external still calls it) but nothing
+    # schedules it anymore.
     # Daily 07:00 UTC — standing alert if focus_sessions volume drops >50%
     # day-over-day. The prior outage ran undetected for three days because
     # nothing was watching this number.

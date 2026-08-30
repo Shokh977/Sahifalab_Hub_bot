@@ -1,8 +1,12 @@
 """
-test_tanga_reconciliation.py — proves the reconciliation job
-(app/services/tanga_reconciliation.py) finds a focus_sessions row whose live
-Tanga grant never happened, grants it exactly once, and never touches a
-session that's within its grace window or already reconciled.
+test_tanga_reconciliation.py — tanga_reconciliation.py is now DISABLED (see
+its module docstring): migration 092 removed the live 1:1 XP-mirror Tanga
+grant this job existed to retry, but nobody updated the job, and it was
+found live in production re-granting a full, uncapped xp_awarded-as-Tanga
+amount for every focus session every 15 minutes ("Tanga on every minute of
+study" farming report). These tests pin the fix — a no-op, unconditionally
+— so a future "helpful" resurrection of the old query can't reintroduce the
+same incident without failing a test first.
 """
 import os
 from datetime import date
@@ -40,14 +44,6 @@ def _seed_profile(db, tanga_balance: int = 0):
         VALUES (:uid, :bal, :bal, 'Asia/Tashkent')
         ON CONFLICT (telegram_id) DO UPDATE SET tanga_balance = :bal, total_xp = :bal
     """), {"uid": TEST_TELEGRAM_ID, "bal": tanga_balance})
-    # find_unreconciled_sessions() only considers sessions created AFTER
-    # tanga_mirror_mode's row was written (the incident fix — see
-    # daily_quiz reconciliation over-grant postmortem). In a real deploy
-    # that row is written once, long before any orphan session exists; in
-    # this test the migration just ran moments ago, so without backdating
-    # it here, every "old" session this suite backdates by a few minutes
-    # would land BEFORE that cutoff and be wrongly filtered out.
-    db.execute(text("UPDATE app_config SET updated_at = NOW() - INTERVAL '1 day' WHERE key = 'tanga_mirror_mode'"))
     db.commit()
 
 
@@ -61,63 +57,35 @@ def _seed_orphan_session(db, minutes: int, xp_awarded: int, age_minutes: int) ->
     return int(row.id)
 
 
-def test_reconciliation_grants_missing_tanga_for_old_orphan_session(db_session):
-    from app.services.tanga_reconciliation import reconcile_missing_study_grants
-
-    _seed_profile(db_session)
-    session_id = _seed_orphan_session(db_session, minutes=20, xp_awarded=33, age_minutes=10)
-
-    result = reconcile_missing_study_grants(db_session, grace_minutes=5)
-
-    assert result["checked"] == 1
-    assert result["granted"] == 1
-
-    row = db_session.execute(
-        text("SELECT tanga_balance FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
-    ).fetchone()
-    assert row.tanga_balance == 33
-
-    ledger = db_session.execute(
-        text("SELECT reason, idempotency_key FROM tanga_transactions WHERE user_id = :uid"),
-        {"uid": TEST_TELEGRAM_ID},
-    ).fetchone()
-    assert ledger.reason == "study_activity_reconciled"
-    assert ledger.idempotency_key == f"study_activity:{session_id}"
-
-
-def test_reconciliation_ignores_sessions_within_grace_window(db_session):
-    """A session that just committed (its live grant may still be running in
-    the original request) must not be double-processed by the job."""
-    from app.services.tanga_reconciliation import reconcile_missing_study_grants
-
-    _seed_profile(db_session)
-    _seed_orphan_session(db_session, minutes=20, xp_awarded=33, age_minutes=1)
-
-    result = reconcile_missing_study_grants(db_session, grace_minutes=5)
-
-    assert result["checked"] == 0
-    row = db_session.execute(
-        text("SELECT tanga_balance FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
-    ).fetchone()
-    assert row.tanga_balance == 0
-
-
-def test_reconciliation_is_idempotent_across_runs(db_session):
-    """Running the job twice over the same orphan must not double-grant —
-    the second run finds the session already reconciled (via the ledger
-    idempotency_key) and skips it."""
+def test_reconciliation_never_grants_anything_regardless_of_orphan_sessions(db_session):
+    """The core regression pin: even a focus_sessions row that looks exactly
+    like the old "orphaned live grant" case (old enough to clear the grace
+    window, no matching ledger row) must NOT be granted. This is precisely
+    the shape of the row that was being paid out uncapped every 15 minutes."""
     from app.services.tanga_reconciliation import reconcile_missing_study_grants
 
     _seed_profile(db_session)
     _seed_orphan_session(db_session, minutes=20, xp_awarded=33, age_minutes=10)
 
-    first = reconcile_missing_study_grants(db_session, grace_minutes=5)
-    second = reconcile_missing_study_grants(db_session, grace_minutes=5)
+    result = reconcile_missing_study_grants(db_session, grace_minutes=5)
 
-    assert first["granted"] == 1
-    assert second["checked"] == 0, "an already-reconciled session must not be found as a candidate again"
+    assert result == {"checked": 0, "granted": 0, "failed": 0, "disabled": True}
 
     row = db_session.execute(
         text("SELECT tanga_balance FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
     ).fetchone()
-    assert row.tanga_balance == 33, "balance must reflect exactly one grant across two job runs"
+    assert row.tanga_balance == 0, "disabled reconciliation must never move a balance"
+
+    ledger_count = db_session.execute(
+        text("SELECT COUNT(*) FROM tanga_transactions WHERE user_id = :uid"), {"uid": TEST_TELEGRAM_ID},
+    ).scalar()
+    assert ledger_count == 0
+
+
+def test_find_unreconciled_sessions_always_returns_empty(db_session):
+    from app.services.tanga_reconciliation import find_unreconciled_sessions
+
+    _seed_profile(db_session)
+    _seed_orphan_session(db_session, minutes=20, xp_awarded=33, age_minutes=10)
+
+    assert find_unreconciled_sessions(db_session, grace_minutes=5) == []

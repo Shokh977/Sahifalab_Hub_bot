@@ -12,8 +12,10 @@ Routes (secret-key protected, NOT JWT):
   POST /api/cron/challenges-consistency-daily — step-25: daily 'consistency' run evaluation
   POST /api/cron/weekly-review-batch          — 088/089 Tanga+AI: free weekly personal review,
                                                  staggered by telegram_id % 7 across the week
-  POST /api/cron/tanga-reconciliation         — 088 Tanga: retry failed Tanga grants for study
-                                                 sessions whose focus_sessions row already committed
+  POST /api/cron/tanga-reconciliation         — DISABLED (092 rework made its premise obsolete and
+                                                 it was actively re-farming Tanga — see
+                                                 app/services/tanga_reconciliation.py). No-op, kept
+                                                 only so an external caller doesn't 404/500.
   POST /api/cron/focus-sessions-volume-check  — standing alert: page admins if daily focus_sessions
                                                  volume drops >50% day-over-day
   POST /api/cron/daily-quiz-generate-week      — 090: weekly generate+verify next 7 days' "5 Savol"
@@ -44,7 +46,7 @@ what actually drives these today; running both means double-sends):
     POST /api/cron/challenges-tick                — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-consistency-daily  — schedule: 5 19 * * *  (~00:05 Tashkent — evaluates "yesterday")
     POST /api/cron/weekly-review-batch           — schedule: 0 6 * * *   (06:00 UTC daily, staggered internally)
-    POST /api/cron/tanga-reconciliation          — schedule: */15 * * * * (every 15 minutes)
+    POST /api/cron/tanga-reconciliation          — DISABLED, not scheduled anywhere anymore
     POST /api/cron/focus-sessions-volume-check   — schedule: 0 7 * * *   (07:00 UTC daily)
     POST /api/cron/daily-quiz-generate-week      — schedule: 0 5 * * *   (05:00 UTC daily — was Monday-only)
     POST /api/cron/daily-quiz-rollover           — schedule: 0 0 * * *   (00:00 UTC daily)
@@ -1012,13 +1014,12 @@ async def tanga_reconciliation(
     _: None = Depends(_require_cron_secret),
 ):
     """
-    088_tanga_currency — retries Tanga grants for study sessions whose live
-    grant failed after their focus_sessions row already committed (the
-    transaction-boundary rule from the incident review: a gamification
-    side-effect must never roll back the fact that a user studied). Safe to
-    run as often as desired — grant_tanga() is idempotent on
-    'study_activity:{session_id}', so this can never double-grant, even if
-    it races with a live in-flight request.
+    DISABLED — see app/services/tanga_reconciliation.py's module docstring.
+    This job's premise (retry a live Tanga grant that might have failed)
+    predates migration 092, which removed that live grant entirely; nobody
+    updated this job, and it was found actively re-farming a full, uncapped,
+    1:1 xp_awarded-as-Tanga grant for every focus session every 15 minutes.
+    Always a no-op now — kept only so an external caller doesn't 404/500.
     """
     from app.services.tanga_reconciliation import reconcile_missing_study_grants
     result = reconcile_missing_study_grants(db)

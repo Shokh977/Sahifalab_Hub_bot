@@ -1,102 +1,55 @@
 """
-tanga_reconciliation.py — retries Tanga grants for study sessions whose
-live grant_tanga_for_xp() call failed (spec: "a gamification side-effect
-must never roll back the fact that a user studied", and separately:
-"log loudly and let a reconciliation job retry it").
+tanga_reconciliation.py — DISABLED. This job's entire premise predates the
+tanga-economy-rework (migration 092) and is now actively wrong.
 
-focus.py and flashcards.py already grant Tanga AFTER record_study_activity()
-commits, using idempotency_key=f"study_activity:{session_id}" — so this job
-just needs to find focus_sessions rows with no matching tanga_transactions
-row and retry the same grant with the SAME idempotency key. Because
-grant_tanga() is idempotent on that key, this can run as often as needed
-without ever double-granting, even if it races with a live request that's
-mid-flight — grant_tanga's own idempotency check is the real safety net,
-not this job's SELECT.
+Original design: focus.py/flashcards.py used to grant Tanga 1:1 with XP via
+a live grant_tanga_for_xp() call right after record_study_activity()
+committed, using idempotency_key=f"study_activity:{session_id}". This job
+retried that SAME grant for any focus_sessions row missing a matching
+tanga_transactions row, on the theory that the live call might have failed.
 
-grace_minutes exists purely to avoid wasted work re-querying sessions whose
-live grant is still in flight (the request handler is still running); it is
-NOT a correctness requirement.
+Migration 092 removed that live grant entirely — focus/flashcard study
+Tanga now comes ONLY from check_and_award_daily_earn_events() (daily-capped,
+event-based: daily_goal_met/threshold_60min/threshold_120min), called
+synchronously inside record_study_activity() itself, not a separate
+fire-and-forget call this job needs to backstop.
+
+Nobody updated this job when 092 shipped. Its cutoff filter
+(`fs.created_at > (SELECT updated_at FROM app_config WHERE key =
+'tanga_mirror_mode')`) anchors to that config row's updated_at — which 092's
+own migration SQL bumped to "now" at the moment it ran (flipping
+tanga_mirror_mode to 'B'). Combined with the fact that NOTHING writes
+idempotency_key='study_activity:{id}' anymore, every focus_sessions row
+created after the 092 deploy has matched this job's "missing grant" query
+and been paid a FULL, UNCAPPED, 1:1 xp_awarded-as-Tanga grant under the
+'study_activity_reconciled' reason — which isn't in DAILY_CAPPED_REASONS —
+every 15 minutes, for every user with a recent focus session. Found live
+via a farming report: "Tanga for every minute of study." This is the exact
+scarce/capped/achievement-based design the 092 rework existed to establish,
+undone by a stale background job nobody looked at again.
+
+There is currently no live "Tanga grant that can silently fail and needs a
+retry" scenario for study sessions to reconcile against — record_study_activity()
+calls check_and_award_daily_earn_events() synchronously, in the same request.
+If a genuine need for a reconciliation job re-emerges (e.g. a new async grant
+path), it needs a NEW job built against the CURRENT idempotency scheme
+(daily_earn:{user_id}:{day}:{reason}) and DAILY_CAPPED_REASONS-aware cap
+logic — not a resurrection of this one. Kept as a no-op (rather than deleted
+outright) so the still-wired cron/scheduler call sites keep returning a
+well-formed response instead of a 404/500 during rollout.
 """
 import logging
 
-from sqlalchemy import text
 from sqlalchemy.orm import Session
-
-from app.services.tanga_service import grant_tanga
 
 logger = logging.getLogger(__name__)
 
 
 def find_unreconciled_sessions(db: Session, grace_minutes: int = 5, limit: int = 500) -> list:
-    """
-    focus_sessions predates Tanga by a long history — years of rows that were
-    never meant to have a matching tanga_transactions entry, because the
-    ledger didn't exist yet when they were created. Those rows are already
-    accounted for exactly once, via migration 088's one-time
-    `tanga_balance = total_xp` backfill snapshot.
-
-    Only a session created AFTER that backfill moment could have had a live
-    grant_tanga_for_xp() call attempted (and possibly failed) — so the
-    cutoff below anchors to app_config.tanga_mirror_mode's row, written by
-    088 at the exact moment the backfill ran. Without this cutoff, this job
-    treats a user's ENTIRE historical study record as "missing a grant" and
-    credits it a second time on top of the backfill — a real incident this
-    fixes (found via a live tanga_balance >> total_xp report).
-    """
-    rows = db.execute(
-        text("""
-            SELECT fs.id, fs.user_id, fs.xp_awarded
-            FROM focus_sessions fs
-            WHERE fs.xp_awarded > 0
-              AND fs.created_at < NOW() - make_interval(mins => :grace)
-              AND fs.created_at > (SELECT updated_at FROM app_config WHERE key = 'tanga_mirror_mode')
-              AND NOT EXISTS (
-                  SELECT 1 FROM tanga_transactions tt
-                  WHERE tt.idempotency_key = 'study_activity:' || fs.id
-              )
-            ORDER BY fs.id
-            LIMIT :limit
-        """),
-        {"grace": grace_minutes, "limit": limit},
-    ).fetchall()
-    return rows
+    """Disabled — see module docstring. Always returns no candidates."""
+    return []
 
 
 def reconcile_missing_study_grants(db: Session, grace_minutes: int = 5, limit: int = 500) -> dict:
-    """Called by the cron scheduler (see cron.py's /tanga-reconciliation).
-    Returns a summary dict: {checked, granted, failed}."""
-    candidates = find_unreconciled_sessions(db, grace_minutes=grace_minutes, limit=limit)
-
-    granted = 0
-    failed = 0
-    for row in candidates:
-        try:
-            result = grant_tanga(
-                db, user_id=int(row.user_id), amount=int(row.xp_awarded),
-                reason="study_activity_reconciled",
-                reference_type="focus_session", reference_id=int(row.id),
-                idempotency_key=f"study_activity:{row.id}",
-            )
-            if result.ok:
-                granted += 1
-            else:
-                failed += 1
-                logger.error(
-                    "Tanga reconciliation grant rejected for focus_session id=%s user_id=%s: %s",
-                    row.id, row.user_id, result.error,
-                )
-        except Exception:
-            failed += 1
-            db.rollback()
-            logger.error(
-                "Tanga reconciliation grant raised for focus_session id=%s user_id=%s",
-                row.id, row.user_id, exc_info=True,
-            )
-
-    if candidates:
-        logger.info(
-            "Tanga reconciliation: checked=%d granted=%d failed=%d",
-            len(candidates), granted, failed,
-        )
-
-    return {"checked": len(candidates), "granted": granted, "failed": failed}
+    """Disabled — see module docstring. Always a no-op; never grants Tanga."""
+    return {"checked": 0, "granted": 0, "failed": 0, "disabled": True}
