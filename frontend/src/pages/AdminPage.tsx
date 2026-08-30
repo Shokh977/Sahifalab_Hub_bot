@@ -4346,7 +4346,7 @@ const AdminPage: React.FC = () => {
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot XP</label>
+                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot Tanga</label>
                             <input
                               type="number" min="0"
                               value={chForm.reward_xp}
@@ -4393,7 +4393,7 @@ const AdminPage: React.FC = () => {
                               </p>
                             </div>
                             <div className="flex-1">
-                              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot XP</label>
+                              <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot Tanga</label>
                               <input
                                 type="number" min="0"
                                 value={chForm.reward_xp}
@@ -4417,7 +4417,7 @@ const AdminPage: React.FC = () => {
                             />
                           </div>
                           <div className="flex-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot XP (har bir g'olibga)</label>
+                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot Tanga (har bir g'olibga)</label>
                             <input
                               type="number" min="0"
                               value={chForm.reward_xp}
@@ -4477,7 +4477,7 @@ const AdminPage: React.FC = () => {
                             </div>
                           </div>
                           <div className="flex-1">
-                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot XP (g'olib jamoa a'zolariga)</label>
+                            <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Mukofot Tanga (g'olib jamoa a'zolariga)</label>
                             <input
                               type="number" min="0"
                               value={chForm.reward_xp}
@@ -4636,7 +4636,7 @@ const AdminPage: React.FC = () => {
                           {ch.challenge_type === 'consistency' && ` · ${ch.daily_minimum}/${METRIC_UNIT[ch.metric]} × ${ch.required_days}kun`}
                           {ch.challenge_type === 'sprint' && ` · top ${ch.winner_count}`}
                           {ch.challenge_type === 'team' && ` · ${ch.team_a_name} vs ${ch.team_b_name}`}
-                          {' · '}+{ch.reward_xp} XP
+                          {' · '}+{ch.reward_xp} Tanga
                         </span>
                       </div>
                     </div>
@@ -4703,7 +4703,7 @@ const AdminPage: React.FC = () => {
                         </div>
                         <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-2.5">
                           <p className="text-[10px] text-gray-400">Mukofot</p>
-                          <p className="text-sm font-semibold text-gray-900 dark:text-white">+{chDetail.reward_xp} XP</p>
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">+{chDetail.reward_xp} Tanga</p>
                         </div>
                       </div>
 
