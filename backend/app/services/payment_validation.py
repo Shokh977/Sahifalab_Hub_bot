@@ -85,8 +85,11 @@ def validate_card(raw: str) -> ValidationResult:
     warnings = []
     if not digits.isdigit():
         errors.append("Karta raqami faqat raqamlardan iborat bo'lishi kerak")
-    elif not (16 <= len(digits) <= 19):
-        errors.append("Karta raqami 16-19 ta raqamdan iborat bo'lishi kerak")
+    # ISO/IEC 7812 PANs are 13-19 digits, not universally 16 — Diners Club
+    # is 14, some Amex-family cards are 15. A hardcoded 16-19 floor rejected
+    # legitimate shorter cards (found live: a 14-digit Korean card).
+    elif not (13 <= len(digits) <= 19):
+        errors.append("Karta raqami 13-19 ta raqamdan iborat bo'lishi kerak")
     elif not _luhn_ok(digits):
         warnings.append(
             "Karta raqami odatiy tekshiruvdan (Luhn) o'tmadi — UZCARD/Humo uchun bu "

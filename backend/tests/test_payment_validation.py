@@ -75,8 +75,17 @@ def test_card_warns_but_does_not_block_on_luhn_failure():
     assert result.warnings, "a Luhn failure must still be surfaced as a warning"
 
 
+def test_card_accepts_14_digit_card():
+    """Regression: ISO/IEC 7812 PANs are 13-19 digits, not universally 16 —
+    a hardcoded 16-19 floor rejected legitimate shorter cards (found live:
+    a 14-digit Korean card)."""
+    result = validate_card("36700102000000")  # 14 digits, well-known Diners Club test number, Luhn-valid
+    assert result.ok, result.errors
+    assert result.warnings == []
+
+
 def test_card_rejects_wrong_length():
-    result = validate_card("123456789012")  # 12 digits, too short
+    result = validate_card("123456789012")  # 12 digits, below the 13-digit floor
     assert not result.ok
 
 
