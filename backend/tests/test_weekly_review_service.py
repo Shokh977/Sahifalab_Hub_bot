@@ -121,8 +121,9 @@ def test_generate_weekly_review_skips_users_with_zero_activity(db_session):
     )
     db_session.commit()
 
-    ok = asyncio.run(generate_weekly_review(db_session, uid, date.today()))
+    ok, reason = asyncio.run(generate_weekly_review(db_session, uid, date.today()))
     assert ok is False
+    assert reason == "no_activity"
 
     row = db_session.execute(text("SELECT 1 FROM weekly_reviews WHERE user_id = :uid"), {"uid": uid}).fetchone()
     assert row is None
@@ -150,8 +151,9 @@ def test_generate_weekly_review_is_idempotent_per_week(db_session):
     )
     db_session.commit()
 
-    ok = asyncio.run(generate_weekly_review(db_session, uid, today))
+    ok, reason = asyncio.run(generate_weekly_review(db_session, uid, today))
     assert ok is False
+    assert reason == "already_exists"
 
     count = db_session.execute(text("SELECT COUNT(*) FROM weekly_reviews WHERE user_id = :uid"), {"uid": uid}).scalar()
     assert count == 1

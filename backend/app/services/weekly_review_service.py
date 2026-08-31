@@ -350,10 +350,18 @@ def _pick_feature_spotlight(stats: dict) -> dict:
     }
 
 
-async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool:
-    """Generate and store one user's weekly review. Returns True if a review
-    was generated (False if skipped — already exists for this week, or the
-    user has no activity worth reviewing)."""
+async def generate_weekly_review(db: Session, user_id: int, today: date) -> tuple[bool, str]:
+    """Generate and store one user's weekly review.
+
+    Returns (generated, reason). reason is one of: "generated",
+    "already_exists", "no_activity", "ai_error", "empty_response",
+    "store_failed". Deliberately NOT a plain bool (what this returned
+    before) — a live debugging session found that "generated=False" alone
+    is genuinely ambiguous between "nothing to summarize" (expected,
+    common) and "the AI call itself failed" (a real error worth knowing
+    about) — there was no way to tell them apart without pulling server
+    logs. Callers that only care about the boolean can just unpack and
+    ignore the reason."""
     week_start = _week_start(today)
 
     existing = db.execute(
@@ -361,11 +369,11 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
         {"uid": user_id, "ws": week_start},
     ).fetchone()
     if existing:
-        return False
+        return False, "already_exists"
 
     stats = gather_user_stats(db, user_id, week_start, today)
     if stats["this_week_minutes"] == 0 and stats["flashcard_reviews_this_week"] == 0:
-        return False  # nothing to review — don't spend a call on silence
+        return False, "no_activity"  # nothing to review — don't spend a call on silence
 
     spotlight_hint = _pick_feature_spotlight(stats)
 
@@ -385,7 +393,7 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
             prompt_version=weekly_review_v3.VERSION, outcome=e.outcome, error_detail=str(e),
         )
         logger.error("Weekly review generation failed for user_id=%s", user_id, exc_info=True)
-        return False
+        return False, "ai_error"
 
     log_usage(
         db, user_id, feature="weekly_review", model=response.model,
@@ -395,7 +403,7 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
     )
 
     if not response.data:
-        return False
+        return False, "empty_response"
 
     try:
         import json
@@ -412,9 +420,9 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
     except Exception:
         db.rollback()
         logger.error("Failed to store weekly review for user_id=%s", user_id, exc_info=True)
-        return False
+        return False, "store_failed"
 
-    return True
+    return True, "generated"
 
 
 async def run_staggered_batch(db: Session, max_users: int = 500) -> dict:
@@ -440,17 +448,24 @@ async def run_staggered_batch(db: Session, max_users: int = 500) -> dict:
     ).fetchall()
 
     generated = 0
-    skipped = 0
+    skip_reasons: dict[str, int] = {}
     for row in candidates:
         try:
             local_today = user_local_date(row.timezone)
-            ok = await generate_weekly_review(db, int(row.telegram_id), local_today)
+            ok, reason = await generate_weekly_review(db, int(row.telegram_id), local_today)
             if ok:
                 generated += 1
             else:
-                skipped += 1
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
+                if reason in ("ai_error", "empty_response", "store_failed"):
+                    logger.warning(
+                        "Weekly review batch: real failure (not just no-activity) for user_id=%s reason=%s",
+                        row.telegram_id, reason,
+                    )
         except Exception:
             db.rollback()
+            skip_reasons["exception"] = skip_reasons.get("exception", 0) + 1
             logger.error("Weekly review batch item failed for user_id=%s", row.telegram_id, exc_info=True)
 
-    return {"candidates": len(candidates), "generated": generated, "skipped": skipped}
+    skipped = sum(skip_reasons.values())
+    return {"candidates": len(candidates), "generated": generated, "skipped": skipped, "skip_reasons": skip_reasons}

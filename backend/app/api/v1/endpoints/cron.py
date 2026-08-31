@@ -1057,12 +1057,15 @@ async def weekly_review_force(
         deleted = result.rowcount > 0
         db.commit()
 
-    generated = await generate_weekly_review(db, telegram_id, today)
+    generated, reason = await generate_weekly_review(db, telegram_id, today)
     logger.info(
-        "weekly_review_force: user_id=%s target_week=%s regenerate=%s deleted=%s generated=%s",
-        telegram_id, target_week_start, regenerate, deleted, generated,
+        "weekly_review_force: user_id=%s target_week=%s regenerate=%s deleted=%s generated=%s reason=%s",
+        telegram_id, target_week_start, regenerate, deleted, generated, reason,
     )
-    return {"ok": True, "regenerated": deleted, "generated": generated, "week_start": target_week_start.isoformat()}
+    return {
+        "ok": True, "regenerated": deleted, "generated": generated, "reason": reason,
+        "week_start": target_week_start.isoformat(),
+    }
 
 
 @router.post("/weekly-review-backfill-all")
@@ -1102,28 +1105,31 @@ async def weekly_review_backfill_all(
         {"after": after_telegram_id, "max_users": max_users},
     ).fetchall()
 
-    generated = skipped = 0
+    generated = 0
+    skip_reasons: dict[str, int] = {}
     for row in candidates:
         try:
             today = user_local_date(row.timezone)
-            ok = await generate_weekly_review(db, int(row.telegram_id), today)
+            ok, reason = await generate_weekly_review(db, int(row.telegram_id), today)
             if ok:
                 generated += 1
             else:
-                skipped += 1
+                skip_reasons[reason] = skip_reasons.get(reason, 0) + 1
         except Exception:
             db.rollback()
+            skip_reasons["exception"] = skip_reasons.get("exception", 0) + 1
             logger.error("weekly_review_backfill_all item failed for user_id=%s", row.telegram_id, exc_info=True)
 
+    skipped = sum(skip_reasons.values())
     next_after = int(candidates[-1].telegram_id) if candidates else after_telegram_id
     done = len(candidates) < max_users
     logger.info(
-        "weekly_review_backfill_all: candidates=%d generated=%d skipped=%d next_after=%d done=%s",
-        len(candidates), generated, skipped, next_after, done,
+        "weekly_review_backfill_all: candidates=%d generated=%d skipped=%d skip_reasons=%s next_after=%d done=%s",
+        len(candidates), generated, skipped, skip_reasons, next_after, done,
     )
     return {
         "ok": True, "candidates": len(candidates), "generated": generated, "skipped": skipped,
-        "next_after_telegram_id": next_after, "done": done,
+        "skip_reasons": skip_reasons, "next_after_telegram_id": next_after, "done": done,
     }
 
 
