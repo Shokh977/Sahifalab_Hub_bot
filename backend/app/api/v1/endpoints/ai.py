@@ -20,6 +20,7 @@ from app.services.ai import cache as ai_cache
 from app.services.ai.usage import log_usage
 from app.services.ai.prompts import flashcard_gen_v1
 from app.services.config_service import get_config
+from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
 
@@ -320,8 +321,16 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
     instead of an empty state while waiting for the cron-staggered batch —
     no AI call, no Tanga, no rate-limit exposure, since it's the same plain
     aggregation query the batch job itself runs.
+
+    "today"/"this week" are resolved in the CALLER's own local timezone
+    (profiles.timezone, default Asia/Tashkent) — weekly_review_service's
+    batch now writes week_start using each user's own local date too, so
+    this read side has to agree with it the same way, or a user well
+    ahead/behind UTC could see their already-generated review reported as
+    stale (or vice versa) purely from a UTC-vs-local week boundary mismatch.
     """
-    today = datetime.now(UTC).date()
+    tz_row = db.execute(text("SELECT timezone FROM profiles WHERE telegram_id = :uid"), {"uid": caller_id}).fetchone()
+    today = user_local_date(tz_row.timezone if tz_row else None)
     this_week_start = today - timedelta(days=today.weekday())
 
     row = db.execute(

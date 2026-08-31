@@ -72,6 +72,7 @@ def main() -> int:
             "tests/test_focus_endpoints.py",
             "tests/test_payment_validation.py",
             "tests/test_payment_methods.py",
+            "tests/test_weekly_review_service.py",
             # Pre-existing, pure-unit (no DB needed) — folded in because this
             # is the repo's first CI workflow ever; free extra coverage.
             "tests/test_freeze_service.py",

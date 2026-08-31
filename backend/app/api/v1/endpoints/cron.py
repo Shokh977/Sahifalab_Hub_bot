@@ -11,7 +11,8 @@ Routes (secret-key protected, NOT JWT):
   POST /api/cron/challenges-tick             — Musobaqalar: status transitions + notification cadence
   POST /api/cron/challenges-consistency-daily — step-25: daily 'consistency' run evaluation
   POST /api/cron/weekly-review-batch          — 088/089 Tanga+AI: free weekly personal review,
-                                                 staggered by telegram_id % 7 across the week
+                                                 every user's own local Monday 7am
+                                                 (profiles.timezone)
   POST /api/cron/tanga-reconciliation         — DISABLED (092 rework made its premise obsolete and
                                                  it was actively re-farming Tanga — see
                                                  app/services/tanga_reconciliation.py). No-op, kept
@@ -45,7 +46,7 @@ what actually drives these today; running both means double-sends):
     POST /api/cron/expire-pending-enrollments    — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-tick                — schedule: 0 * * * *   (Every hour)
     POST /api/cron/challenges-consistency-daily  — schedule: 5 19 * * *  (~00:05 Tashkent — evaluates "yesterday")
-    POST /api/cron/weekly-review-batch           — schedule: 0 6 * * *   (06:00 UTC daily, staggered internally)
+    POST /api/cron/weekly-review-batch           — schedule: 45 * * * *  (every hour, local-Monday-7am+ filter)
     POST /api/cron/tanga-reconciliation          — DISABLED, not scheduled anywhere anymore
     POST /api/cron/focus-sessions-volume-check   — schedule: 0 7 * * *   (07:00 UTC daily)
     POST /api/cron/daily-quiz-generate-week      — schedule: 0 5 * * *   (05:00 UTC daily — was Monday-only)
@@ -994,16 +995,20 @@ async def weekly_review_batch(
 ):
     """
     Spec Part 6, feature 2 — the free, cron-driven weekly personal review.
-    Run DAILY (not once a week): app/services/weekly_review_service.py
-    processes only the slice of users whose telegram_id lands on today's
-    weekday slot, spreading the batch across all 7 days instead of hitting
-    the AI provider and the DB for every active user at once. Idempotent per
-    (user_id, week_start) via weekly_reviews' UNIQUE constraint — a re-run
-    the same week is a no-op for anyone already reviewed.
+    User-visible behavior is WEEKLY (every Monday morning), but the trigger
+    itself ticks HOURLY: each user's own profiles.timezone decides when
+    "Monday" and "7am" actually are for them, and a single fixed UTC cron
+    time can't hit 7am local for every timezone at once (found via a live
+    report: a Korea-based user's Monday review wasn't ready mid-afternoon
+    their time because the batch was pinned to 06:00 UTC = 15:00 KST).
+    run_staggered_batch's own SQL WHERE clause does the per-user local-
+    Monday/local-hour-7+ filtering, same idiom as streak_freeze_auto_apply/
+    streak_at_risk_push above. Idempotent per (user_id, week_start) via
+    weekly_reviews' UNIQUE constraint — repeat hourly ticks the same Monday
+    are a no-op for anyone already reviewed.
     """
     from app.services.weekly_review_service import run_staggered_batch
-    today = datetime.now(UTC).date()
-    result = await run_staggered_batch(db, today)
+    result = await run_staggered_batch(db)
     logger.info("weekly_review_batch: %s", result)
     return {"ok": True, **result}
 

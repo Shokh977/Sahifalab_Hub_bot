@@ -91,6 +91,44 @@ CREATE TABLE flashcard_reviews (
     time_spent_ms INTEGER
 );
 
+-- Minimal stand-ins for weekly_review_service.py's gather_user_stats() —
+-- real schemas are 038_xp_gamification.sql (xp_logs), 010/012 (enrollments/
+-- lesson_progress, both FK'd to courses/lessons this test schema doesn't
+-- have — FKs dropped here, same "minimal, not a full snapshot" convention
+-- as everything else in this file), and flashcard_decks predates the
+-- numbered migrations entirely (created directly in Supabase, like profiles).
+CREATE TABLE xp_logs (
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      BIGINT NOT NULL,
+    amount       INTEGER NOT NULL,
+    source       TEXT NOT NULL,
+    reference_id BIGINT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE flashcard_decks (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE course_enrollments (
+    id          BIGSERIAL PRIMARY KEY,
+    course_id   INTEGER NOT NULL,
+    student_id  BIGINT NOT NULL,
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE lesson_progress (
+    id           BIGSERIAL PRIMARY KEY,
+    course_id    INTEGER NOT NULL,
+    lesson_id    INTEGER NOT NULL,
+    student_id   BIGINT NOT NULL,
+    is_completed BOOLEAN NOT NULL DEFAULT TRUE,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Real schema is migrations/034_analytics_events.sql — that file's own
 -- helper FUNCTIONS reference other tables (posts, course_enrollments) this
 -- minimal test schema doesn't have, and Postgres validates a LANGUAGE sql

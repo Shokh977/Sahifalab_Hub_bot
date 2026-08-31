@@ -5,12 +5,30 @@ times/totals, streak state, flashcard accuracy this week, course/quiz
 engagement. Never charges Tanga — see app/api/v1/endpoints/cron.py's
 weekly-review-batch route, which is the only caller.
 
-Staggering (spec: "Run it staggered across the week, not all at once, to
-spread both API and DB load"): this is called once per day by the cron
-scheduler, and only processes users whose telegram_id falls on today's slot
-(telegram_id % 7 == today.weekday()), plus the UNIQUE(user_id, week_start)
-constraint on weekly_reviews makes a re-run same-week idempotent — an
-already-reviewed user is simply skipped.
+Timing (superseded the old telegram_id%7-staggered-across-the-week design):
+every user gets their review on MONDAY, at THEIR OWN local 7am
+(profiles.timezone, default Asia/Tashkent) — not a single shared UTC
+instant. A user in Seoul and a user in Tashkent both see it appear at
+7am their own time, on their own Monday, not both at whatever UTC hour
+used to be hardcoded (found via a live report: a Korea-based user's Monday
+review wasn't ready mid-afternoon their time because the batch was pinned
+to 06:00 UTC = 15:00 KST).
+
+A single fixed UTC cron trigger cannot hit "7am" correctly for every
+timezone at once, so the cron caller (cron.py) ticks HOURLY and
+run_staggered_batch's own SQL WHERE clause decides who's actually due —
+the exact same idiom already used by streak_freeze_auto_apply/
+streak_at_risk_push in cron.py — even though the user-visible behavior is
+weekly, not hourly. The filter is "local Monday, local hour >= 7" (not
+"== 7"): a missed hourly tick self-heals later the same Monday instead of
+silently waiting a full week, and the UNIQUE(user_id, week_start)
+constraint on weekly_reviews (checked in generate_weekly_review) makes
+repeat candidates across those ticks a cheap no-op. Since most active
+users share Asia/Tashkent, many become due in the same ~1h UTC window each
+Monday; the existing max_users/LIMIT cap plus ">= 7" (not "== 7") already
+throttles this naturally — an overflow past the per-tick cap simply rolls
+into the next hourly tick that same Monday, still within the local-morning
+window, rather than needing a separate day-of-week spread.
 
 v2 addition (user request): a deterministic "feature spotlight" — Python
 decides which underused feature (flashcards first, then courses) to nudge
@@ -33,6 +51,7 @@ from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
 from app.services.ai.prompts import weekly_review_v2
+from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
 
@@ -294,26 +313,34 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
     return True
 
 
-async def run_staggered_batch(db: Session, today: date, max_users: int = 500) -> dict:
-    """Called once/day by the cron scheduler. Only processes users whose
-    telegram_id lands on today's slot (spread across the ISO week)."""
-    day_slot = today.weekday()  # 0=Monday .. 6=Sunday
+async def run_staggered_batch(db: Session, max_users: int = 500) -> dict:
+    """Called hourly by the cron scheduler (cron.py ticks every hour; this
+    function's own SQL WHERE clause decides who's actually due — see module
+    docstring). A candidate is a user for whom it's currently MONDAY and
+    LOCAL time is 7am or later — both evaluated per-row via
+    profiles.timezone, defaulting to Asia/Tashkent for accounts that never
+    confirmed one. No telegram_id stagger anymore — everyone's review lands
+    on their own Monday morning, not spread across the week.
 
+    EXTRACT(ISODOW ...) returns 1=Monday..7=Sunday, so "= 1" is Monday."""
     candidates = db.execute(
         text("""
-            SELECT telegram_id FROM profiles
-            WHERE status = 'active' AND MOD(telegram_id, 7) = :slot
+            SELECT telegram_id, timezone FROM profiles
+            WHERE status = 'active'
+              AND EXTRACT(ISODOW FROM (NOW() AT TIME ZONE COALESCE(timezone, 'Asia/Tashkent'))) = 1
+              AND EXTRACT(HOUR FROM (NOW() AT TIME ZONE COALESCE(timezone, 'Asia/Tashkent'))) >= 7
             ORDER BY telegram_id
             LIMIT :max_users
         """),
-        {"slot": day_slot, "max_users": max_users},
+        {"max_users": max_users},
     ).fetchall()
 
     generated = 0
     skipped = 0
     for row in candidates:
         try:
-            ok = await generate_weekly_review(db, int(row.telegram_id), today)
+            local_today = user_local_date(row.timezone)
+            ok = await generate_weekly_review(db, int(row.telegram_id), local_today)
             if ok:
                 generated += 1
             else:

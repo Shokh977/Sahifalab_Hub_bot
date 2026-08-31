@@ -904,9 +904,12 @@ def _start_cron_scheduler():
     scheduler.add_job(_run_streak_freeze_auto_apply, CronTrigger(minute=10))
     # Hourly, local-hour-9 filter inside streak_at_risk_push (plan doc F).
     scheduler.add_job(_run_streak_at_risk_push, CronTrigger(minute=20))
-    # Daily 06:00 UTC — free weekly personal review (spec Part 6, feature 2).
-    # Staggered internally by telegram_id % 7, not a once-a-week burst.
-    scheduler.add_job(_run_weekly_review_batch, CronTrigger(hour=6, minute=0))
+    # Free weekly personal review (spec Part 6, feature 2) — user-visible
+    # cadence is weekly (every Monday), but the trigger ticks hourly with a
+    # local-Monday/local-hour-7-plus filter inside run_staggered_batch,
+    # since each user's own profiles.timezone decides their "Monday 7am",
+    # not a single fixed UTC hour.
+    scheduler.add_job(_run_weekly_review_batch, CronTrigger(minute=45))
     # tanga-reconciliation job REMOVED (was every 15 min) — its premise
     # predated migration 092 and was actively re-farming uncapped Tanga for
     # every focus session; see app/services/tanga_reconciliation.py's module
