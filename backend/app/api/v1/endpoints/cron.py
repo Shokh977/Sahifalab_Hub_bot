@@ -1045,6 +1045,68 @@ async def weekly_review_force(
     return {"ok": True, "generated": generated, "week_start": target_week_start.isoformat()}
 
 
+@router.post("/weekly-review-backfill-all")
+async def weekly_review_backfill_all(
+    after_telegram_id: int = -10_000_000_000,
+    max_users: int = 100,
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    ONE-OFF bulk catch-up: generate every active user's most-recently-
+    completed-week review right now, regardless of what day/local-hour it
+    currently is for them — bypasses the local-Monday/7am gate that
+    weekly-review-batch's normal per-user cadence uses. For catching
+    everyone up in one pass (e.g. right after a fix) instead of waiting for
+    each person's own next Monday.
+
+    Paginated via after_telegram_id (cursor) + max_users, deliberately kept
+    small per call: at real user-base scale, one unbounded request calling
+    Gemini sequentially for every user would run well past any reasonable
+    HTTP timeout. Call repeatedly, each time passing the previous response's
+    next_after_telegram_id, until "done": true. A user with no activity in
+    their target week or one already reviewed is a fast no-op (skipped
+    before/without any AI call), so most of a call's time is spent on users
+    who actually generate.
+    """
+    from app.services.weekly_review_service import generate_weekly_review, _week_start
+    from app.services.user_time import user_local_date
+
+    candidates = db.execute(
+        text("""
+            SELECT telegram_id, timezone FROM profiles
+            WHERE status = 'active' AND telegram_id > :after
+            ORDER BY telegram_id
+            LIMIT :max_users
+        """),
+        {"after": after_telegram_id, "max_users": max_users},
+    ).fetchall()
+
+    generated = skipped = 0
+    for row in candidates:
+        try:
+            today = user_local_date(row.timezone)
+            ok = await generate_weekly_review(db, int(row.telegram_id), today)
+            if ok:
+                generated += 1
+            else:
+                skipped += 1
+        except Exception:
+            db.rollback()
+            logger.error("weekly_review_backfill_all item failed for user_id=%s", row.telegram_id, exc_info=True)
+
+    next_after = int(candidates[-1].telegram_id) if candidates else after_telegram_id
+    done = len(candidates) < max_users
+    logger.info(
+        "weekly_review_backfill_all: candidates=%d generated=%d skipped=%d next_after=%d done=%s",
+        len(candidates), generated, skipped, next_after, done,
+    )
+    return {
+        "ok": True, "candidates": len(candidates), "generated": generated, "skipped": skipped,
+        "next_after_telegram_id": next_after, "done": done,
+    }
+
+
 @router.post("/tanga-reconciliation")
 async def tanga_reconciliation(
     db: Session = Depends(get_db),
