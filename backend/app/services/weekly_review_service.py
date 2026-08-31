@@ -57,35 +57,52 @@ logger = logging.getLogger(__name__)
 
 
 def _week_start(today: date) -> date:
-    return today - timedelta(days=today.weekday())  # Monday
+    """The Monday of the most recently COMPLETED Mon-Sun week as of `today`
+    — NOT "this week so far". generate_weekly_review is now only ever
+    called on the user's own local Monday (see run_staggered_batch), so a
+    review generated the same morning a new week starts must summarize the
+    week that just ENDED (yesterday, Sunday), never the few hours since
+    midnight. Correct for any `today`, not just Monday — stable across the
+    whole week, then jumps forward exactly once, at the next Monday."""
+    this_monday = today - timedelta(days=today.weekday())
+    return this_monday - timedelta(days=7)
 
 
 def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) -> dict:
+    """Stats for the single Mon-Sun window [week_start, week_start+7) —
+    every query below is bounded on BOTH ends. Missing the upper bound
+    (found live: this used to be open-ended "since week_start", which
+    silently kept accumulating into whatever week `today` actually falls
+    in — harmless under the old same-week-review model, but wrong now that
+    a review always looks BACK at an already-completed week that `today`
+    is no longer part of)."""
     week_ago = week_start
+    week_end = week_start + timedelta(days=7)  # exclusive
     prev_start = week_start - timedelta(days=7)
     week_start_ts = datetime.combine(week_start, datetime.min.time()).replace(tzinfo=UTC)
+    week_end_ts = datetime.combine(week_end, datetime.min.time()).replace(tzinfo=UTC)
 
     focus_row = db.execute(
         text("""
             SELECT
-                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago), 0) AS this_week_minutes,
+                COALESCE(SUM(minutes) FILTER (WHERE session_date >= :week_ago AND session_date < :week_end), 0) AS this_week_minutes,
                 COALESCE(SUM(minutes) FILTER (WHERE session_date >= :prev_start AND session_date < :week_ago), 0) AS prev_week_minutes,
-                COALESCE(COUNT(DISTINCT session_date) FILTER (WHERE session_date >= :week_ago), 0) AS days_active
+                COALESCE(COUNT(DISTINCT session_date) FILTER (WHERE session_date >= :week_ago AND session_date < :week_end), 0) AS days_active
             FROM focus_sessions
-            WHERE user_id = :uid AND session_date >= :prev_start
+            WHERE user_id = :uid AND session_date >= :prev_start AND session_date < :week_end
         """),
-        {"uid": user_id, "week_ago": week_ago, "prev_start": prev_start},
+        {"uid": user_id, "week_ago": week_ago, "week_end": week_end, "prev_start": prev_start},
     ).fetchone()
 
-    # Day-by-day minutes for the last 7 days — powers the mobile bar chart.
+    # Day-by-day minutes for the reviewed week — powers the mobile bar chart.
     day_rows = db.execute(
         text("""
             SELECT session_date, SUM(minutes) AS minutes
             FROM focus_sessions
-            WHERE user_id = :uid AND session_date >= :week_ago
+            WHERE user_id = :uid AND session_date >= :week_ago AND session_date < :week_end
             GROUP BY session_date
         """),
-        {"uid": user_id, "week_ago": week_ago},
+        {"uid": user_id, "week_ago": week_ago, "week_end": week_end},
     ).fetchall()
     by_date = {r.session_date: int(r.minutes) for r in day_rows}
     daily_goal_for_chart_row = db.execute(
@@ -99,7 +116,7 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
             "minutes":  by_date.get(week_ago + timedelta(days=i), 0),
             "goal_met": by_date.get(week_ago + timedelta(days=i), 0) >= daily_goal_for_chart,
         }
-        for i in range(7) if (week_ago + timedelta(days=i)) <= today
+        for i in range(7) if (week_ago + timedelta(days=i)) < today
     ]
 
     profile_row = db.execute(
@@ -111,8 +128,8 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
     # week_xp — kept here so that card's one genuinely unique number
     # (XP earned this week, as opposed to lifetime total_xp) isn't lost.
     xp_row = db.execute(
-        text("SELECT COALESCE(SUM(amount), 0) AS xp FROM xp_logs WHERE user_id = :uid AND created_at >= :week_start_ts"),
-        {"uid": user_id, "week_start_ts": week_start_ts},
+        text("SELECT COALESCE(SUM(amount), 0) AS xp FROM xp_logs WHERE user_id = :uid AND created_at >= :week_start_ts AND created_at < :week_end_ts"),
+        {"uid": user_id, "week_start_ts": week_start_ts, "week_end_ts": week_end_ts},
     ).fetchone()
     week_xp = int(xp_row.xp) if xp_row else 0
 
@@ -123,9 +140,9 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
                 COUNT(*) FILTER (WHERE rating IN (0, 1, 2))  AS again_or_hard,
                 COUNT(DISTINCT deck_id)                       AS decks_studied
             FROM flashcard_reviews
-            WHERE user_id = :uid AND reviewed_at >= :week_start_ts AND rating < 90
+            WHERE user_id = :uid AND reviewed_at >= :week_start_ts AND reviewed_at < :week_end_ts AND rating < 90
         """),
-        {"uid": user_id, "week_start_ts": week_start_ts},
+        {"uid": user_id, "week_start_ts": week_start_ts, "week_end_ts": week_end_ts},
     ).fetchone()
     total_reviews = int(review_row.good_or_easy or 0) + int(review_row.again_or_hard or 0) if review_row else 0
     accuracy_pct = round(100 * int(review_row.good_or_easy or 0) / total_reviews) if total_reviews > 0 else None
@@ -155,9 +172,10 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
     lessons_row = db.execute(
         text("""
             SELECT COUNT(*) AS n FROM lesson_progress
-            WHERE student_id = :uid AND is_completed = true AND completed_at >= :week_start_ts
+            WHERE student_id = :uid AND is_completed = true
+              AND completed_at >= :week_start_ts AND completed_at < :week_end_ts
         """),
-        {"uid": user_id, "week_start_ts": week_start_ts},
+        {"uid": user_id, "week_start_ts": week_start_ts, "week_end_ts": week_end_ts},
     ).fetchone()
     lessons_completed_this_week = int(lessons_row.n or 0) if lessons_row else 0
 
@@ -170,15 +188,16 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
         quiz_row = db.execute(
             text("""
                 SELECT COUNT(*) AS n FROM user_quiz_completion
-                WHERE telegram_id = :uid AND completed_at >= :week_start_ts
+                WHERE telegram_id = :uid AND completed_at >= :week_start_ts AND completed_at < :week_end_ts
             """),
-            {"uid": user_id, "week_start_ts": week_start_ts},
+            {"uid": user_id, "week_start_ts": week_start_ts, "week_end_ts": week_end_ts},
         ).fetchone()
         quiz_attempts_this_week = int(quiz_row.n or 0) if quiz_row else 0
     except (OperationalError, ProgrammingError):
         db.rollback()
 
     return {
+        "week_start":            week_start.isoformat(),
         "first_name":            profile_row.first_name if profile_row else "",
         "this_week_minutes":     int(focus_row.this_week_minutes) if focus_row else 0,
         "prev_week_minutes":     int(focus_row.prev_week_minutes) if focus_row else 0,

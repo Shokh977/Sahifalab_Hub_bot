@@ -37,8 +37,13 @@ def db_session():
     try:
         yield session
     finally:
-        ids = [TEST_BASE_ID - i for i in range(len(ZONES) + 2)]
+        # Covers the ZONES-indexed ids (0..len(ZONES)-1) AND the individual
+        # tests' fixed offsets (100-109) — each test uses a distinct offset
+        # so there's no intra-run collision, but every id used anywhere in
+        # this file must be cleaned up here regardless.
+        ids = [TEST_BASE_ID - i for i in range(len(ZONES) + 2)] + [TEST_BASE_ID - i for i in range(100, 110)]
         session.execute(text("DELETE FROM weekly_reviews WHERE user_id = ANY(:ids)"), {"ids": ids})
+        session.execute(text("DELETE FROM focus_sessions WHERE user_id = ANY(:ids)"), {"ids": ids})
         session.execute(text("DELETE FROM profiles WHERE telegram_id = ANY(:ids)"), {"ids": ids})
         session.commit()
         session.close()
@@ -148,3 +153,60 @@ def test_generate_weekly_review_is_idempotent_per_week(db_session):
 
     count = db_session.execute(text("SELECT COUNT(*) FROM weekly_reviews WHERE user_id = :uid"), {"uid": uid}).scalar()
     assert count == 1
+
+
+def test_week_start_returns_last_completed_week_not_this_week():
+    """Regression for a real bug the timing rework exposed: since the batch
+    now only ever calls generate_weekly_review on the user's own local
+    Monday, _week_start(today) must return LAST week's Monday (the week
+    that just ended), never "today" itself — a review generated the same
+    morning a new week starts must summarize the completed week, not the
+    few hours since midnight. Checked for every weekday, not just Monday,
+    since the formula must stay correct even if called off-schedule."""
+    from app.services.weekly_review_service import _week_start
+    from datetime import timedelta
+
+    monday = date(2026, 8, 31)  # a known real Monday
+    assert monday.weekday() == 0
+    for offset in range(7):
+        today = monday + timedelta(days=offset)
+        result = _week_start(today)
+        assert result == monday - timedelta(days=7), (
+            f"for today={today} ({today.strftime('%A')}), expected last week's Monday "
+            f"{monday - timedelta(days=7)}, got {result}"
+        )
+
+
+def test_gather_user_stats_excludes_activity_outside_the_reviewed_week(db_session):
+    """Regression: this_week_minutes/days_active/week_xp/etc. used to have
+    no upper bound, so a review generated Monday morning for LAST week
+    would silently include today's (the NEW week's) activity too. A
+    session inside the reviewed week must count; one the day after the
+    reviewed week ends (i.e. in the following week) must not."""
+    from app.services.weekly_review_service import gather_user_stats
+
+    uid = TEST_BASE_ID - 103
+    week_start = date(2026, 8, 17)   # a Monday
+    week_end_exclusive = date(2026, 8, 24)  # the following Monday
+    today = date(2026, 8, 24)  # the day the review is generated (next Monday)
+
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    # Inside the reviewed week — must count.
+    db_session.execute(
+        text("INSERT INTO focus_sessions (user_id, minutes, session_date) VALUES (:uid, 30, :d)"),
+        {"uid": uid, "d": week_start},
+    )
+    # The day the NEW week starts — must NOT count toward the reviewed week.
+    db_session.execute(
+        text("INSERT INTO focus_sessions (user_id, minutes, session_date) VALUES (:uid, 999, :d)"),
+        {"uid": uid, "d": week_end_exclusive},
+    )
+    db_session.commit()
+
+    stats = gather_user_stats(db_session, uid, week_start, today)
+    assert stats["week_start"] == week_start.isoformat()
+    assert stats["this_week_minutes"] == 30, "must exclude the session dated the day the following week starts"
+    assert stats["days_active"] == 1

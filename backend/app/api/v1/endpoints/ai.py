@@ -311,27 +311,33 @@ async def confirm_generated_flashcards(
 @router.get("/weekly-review")
 async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     """Spec Part 6, feature 2 — always free. Returns the caller's most
-    recent cron-generated weekly review (possibly from a prior week, if
-    this week's batch hasn't reached their telegram_id%7 slot yet).
+    recent cron-generated weekly review — a review of the most recently
+    COMPLETED Mon-Sun week (never "this week so far": the batch only runs
+    on the user's own local Monday, so a review generated that same
+    morning summarizes the week that just ended, not the few hours since
+    midnight — see weekly_review_service._week_start).
 
-    Also returns `live_stats`: the same deterministic, no-LLM stats this
-    week's review will eventually be built from, computed on demand
-    whenever the CURRENT week's review isn't ready yet. This lets the
-    client show real numbers (a live in-progress bar chart, streak, etc.)
-    instead of an empty state while waiting for the cron-staggered batch —
-    no AI call, no Tanga, no rate-limit exposure, since it's the same plain
-    aggregation query the batch job itself runs.
+    Also returns `live_stats`: the same deterministic, no-LLM numbers the
+    target week's review is (or will be) built from, computed on demand
+    whenever that review isn't ready yet. This lets the client show real
+    numbers instead of an empty state while waiting for the cron-staggered
+    batch — no AI call, no Tanga, no rate-limit exposure, since it's the
+    same plain aggregation query the batch job itself runs, for the exact
+    same target week the eventual review will cover (never a different,
+    still-in-progress current week — that would show the user one set of
+    numbers now and a review about a completely different week later).
 
-    "today"/"this week" are resolved in the CALLER's own local timezone
-    (profiles.timezone, default Asia/Tashkent) — weekly_review_service's
-    batch now writes week_start using each user's own local date too, so
-    this read side has to agree with it the same way, or a user well
-    ahead/behind UTC could see their already-generated review reported as
-    stale (or vice versa) purely from a UTC-vs-local week boundary mismatch.
+    "today"/target week are resolved in the CALLER's own local timezone
+    (profiles.timezone, default Asia/Tashkent) via the SAME _week_start()
+    the batch uses — this read side has to agree with the writer's
+    definition of "the target week," or a user well ahead/behind UTC could
+    see their already-generated review reported as stale (or vice versa).
     """
+    from app.services.weekly_review_service import gather_user_stats, _week_start
+
     tz_row = db.execute(text("SELECT timezone FROM profiles WHERE telegram_id = :uid"), {"uid": caller_id}).fetchone()
     today = user_local_date(tz_row.timezone if tz_row else None)
-    this_week_start = today - timedelta(days=today.weekday())
+    target_week_start = _week_start(today)
 
     row = db.execute(
         text("""
@@ -350,8 +356,7 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
         }
 
     live_stats = None
-    if not row or row.week_start < this_week_start:
-        from app.services.weekly_review_service import gather_user_stats
-        live_stats = gather_user_stats(db, caller_id, this_week_start, today)
+    if not row or row.week_start < target_week_start:
+        live_stats = gather_user_stats(db, caller_id, target_week_start, today)
 
     return {"review": review, "live_stats": live_stats}
