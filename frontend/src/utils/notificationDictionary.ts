@@ -184,7 +184,10 @@ const dict: Record<string, NotifDef> = {
       m.score != null
         ? `Test muvaffaqiyatli topshirildi! Ball: ${m.score}%`
         : "Testni muvaffaqiyatli topshirdingiz.",
-    route: (m) => m.quiz_id ? `/quiz/${m.quiz_id}` : '/quiz',
+    // The quiz-taking route itself is gone (course quizzes were removed) —
+    // historical quiz_pass notifications now route to Cabinet's certificate
+    // list, the only place that result is still visible.
+    route: () => '/cabinet',
   },
 
   // ─────────────────────────── GROWTH ───────────────────────────────────────

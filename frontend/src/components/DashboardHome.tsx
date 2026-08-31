@@ -22,7 +22,7 @@ import {
   Clock,
   Cpu,
   Play,
-  LayoutList,
+  ListChecks,
   Star,
   Users,
 } from 'lucide-react'
@@ -34,6 +34,7 @@ import {
 } from '../context/progressStore'
 import HeroSection from './HeroSection'
 import { thumb } from '../utils/bunnyOptimize'
+import apiService from '../services/apiService'
 
 import { API_BASE } from '../lib/apiUrl'
 
@@ -74,7 +75,6 @@ const LEVEL_LABELS: Record<string, string> = {
 const ll = (l: string) => LEVEL_LABELS[l] ?? l
 
 const DAILY_FOCUS_GOAL_MINS = 30
-const DAILY_QUIZ_GOAL       = 3
 
 // ── Fade-in entrance variant ──────────────────────────────────────────────────
 const fadeUp = (delay = 0) => ({
@@ -126,7 +126,7 @@ const HeroBanner: React.FC<{
 
   const PILLS = [
     { icon: Clock,      label: "O'qish",   path: '/workspace?tab=focus' },
-    { icon: LayoutList, label: 'Test',     path: '/quiz'                },
+    { icon: ListChecks, label: '5 Savol',  path: '/5-savol'             },
     { icon: BookOpen,   label: 'Kitoblar', path: '/kitoblar'            },
     { icon: Cpu,        label: 'Kabinet',  path: '/cabinet'             },
   ]
@@ -478,12 +478,34 @@ const XPRingCell: React.FC<{
 // BENTO CELL 5: Focus Goal widget
 // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 const FocusGoalCell: React.FC<{
-  focusSeconds: number; quizzesCompleted: number
-}> = ({ focusSeconds, quizzesCompleted }) => {
+  focusSeconds: number
+}> = ({ focusSeconds }) => {
   const navigate  = useNavigate()
   const focusMins = Math.round(focusSeconds / 60)
   const focusPct  = Math.min(100, Math.round((focusMins / DAILY_FOCUS_GOAL_MINS) * 100))
-  const quizPct   = Math.min(100, Math.round((quizzesCompleted / DAILY_QUIZ_GOAL) * 100))
+
+  // "5 Savol" status — fetched live rather than from the old quizzesCompleted
+  // progress-store stat, which only ever counted the (now removed) book/course
+  // quiz feature and can no longer change.
+  const [dailyQuiz, setDailyQuiz] = useState<{ state: 'none' | 'in_progress' | 'submitted'; correctCount: number }>({
+    state: 'none', correctCount: 0,
+  })
+  useEffect(() => {
+    let cancelled = false
+    apiService.getDailyQuizToday()
+      .then(({ data }) => {
+        if (cancelled) return
+        if (!data.quiz) { setDailyQuiz({ state: 'none', correctCount: 0 }); return }
+        setDailyQuiz({
+          state: data.quiz.state,
+          correctCount: data.quiz.correct_count ?? 0,
+        })
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+  const quizSubmitted = dailyQuiz.state === 'submitted'
+  const quizPct = quizSubmitted ? Math.round((dailyQuiz.correctCount / 5) * 100) : 0
 
   const R_F    = 36
   const CIRC_F = 2 * Math.PI * R_F
@@ -543,7 +565,7 @@ const FocusGoalCell: React.FC<{
 
         
         <button
-          onClick={() => navigate('/quiz')}
+          onClick={() => navigate('/5-savol')}
           className="flex flex-col items-center gap-2 p-3 rounded-[16px] bg-slate-50 dark:bg-[#1A1A28] border border-slate-100 dark:border-[#2E2E3A] hover:border-sahifa-300 dark:hover:border-sahifa-800 transition-all"
         >
           <div className="relative w-20 h-20">
@@ -566,12 +588,16 @@ const FocusGoalCell: React.FC<{
               />
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-sm font-extrabold text-slate-800 dark:text-white">{quizPct}%</span>
+              <span className="text-sm font-extrabold text-slate-800 dark:text-white">
+                {quizSubmitted ? `${dailyQuiz.correctCount}/5` : '5 Savol'}
+              </span>
             </div>
           </div>
           <div className="text-center">
-            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Testlar</p>
-            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">{quizzesCompleted} / {DAILY_QUIZ_GOAL} ta</p>
+            <p className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">5 Savol</p>
+            <p className="text-xs font-bold text-slate-700 dark:text-slate-200">
+              {quizSubmitted ? 'Bajarildi ✓' : "Bugungi savollar"}
+            </p>
           </div>
         </button>
       </div>
@@ -708,7 +734,7 @@ const DashboardHome: React.FC = () => {
   const navigate = useNavigate()
   const {
     totalXP, level, focusSeconds,
-    quizzesCompleted, isInitialized,
+    isInitialized,
   } = useProgressStore()
 
   const [courses,        setCourses]        = useState<CourseItem[]>([])
@@ -797,7 +823,7 @@ const DashboardHome: React.FC = () => {
           />
         )}
         {isInitialized && (
-          <FocusGoalCell focusSeconds={focusSeconds} quizzesCompleted={quizzesCompleted ?? 0} />
+          <FocusGoalCell focusSeconds={focusSeconds} />
         )}
       </div>
 

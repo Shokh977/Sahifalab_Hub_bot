@@ -105,24 +105,16 @@ export const supabase = createClient(
 // the Vercel backend (~3-5s cold start). Writes still go through backend.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Fetch all quizzes — routed through FastAPI backend (direct Postgres, no Supabase egress) */
+/**
+ * Fetch all (legacy course/book) quizzes — routed through FastAPI backend.
+ * The quiz-taking UI itself was removed; this is kept only because
+ * fetchQuizTitles() (below) still needs it to label historical certificates
+ * on the Cabinet page.
+ */
 export async function fetchQuizzes() {
   return cached('quizzes', TTL.STATIC, async () => {
     const res = await fetch(`${API_BASE}/api/quizzes?limit=100`)
     if (!res.ok) throw new Error(`quizzes fetch failed: ${res.status}`)
-    return res.json()
-  })
-}
-
-/**
- * Fetch a single quiz with its questions.
- * SECURITY: correct_answer is deliberately excluded — scoring is server-side only.
- * Routed through FastAPI backend (direct Postgres, no Supabase egress).
- */
-export async function fetchQuiz(quizId: number) {
-  return cached(`quiz:${quizId}`, TTL.STATIC, async () => {
-    const res = await fetch(`${API_BASE}/api/quizzes/${quizId}`)
-    if (!res.ok) throw new Error(`quiz fetch failed: ${res.status}`)
     return res.json()
   })
 }

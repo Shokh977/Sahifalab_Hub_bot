@@ -26,6 +26,7 @@ import {
   Info,
   Lightbulb,
   Link,
+  ListChecks,
   PenLine,
   PlayCircle,
   Sparkles,
@@ -968,13 +969,6 @@ const CabinetPage: React.FC = () => {
           <div className="px-4 py-6 text-center">
             <Trophy className="h-8 w-8 mx-auto mb-2 text-slate-400" />
             <p className="text-sm text-gray-500 dark:text-gray-400">Hali sertifikat yo'q</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Quizlardan 80%+ oling va sertifikat qozing!</p>
-            <button
-              onClick={() => navigate('/quiz')}
-              className="mt-3 text-xs font-semibold text-sahifa-500 hover:text-sahifa-600 inline-flex items-center gap-1"
-            >
-              Quizlarga o'tish <ArrowRight className="h-3.5 w-3.5" />
-            </button>
           </div>
         ) : (
           <>
@@ -1146,10 +1140,10 @@ const CabinetPage: React.FC = () => {
           onClick={() => navigate('/leaderboard')}
         />
         <MenuRow
-          icon={BarChart2}
-          label="Testlar"
-          sublabel="Bilimingizni sinab ko'ring"
-          onClick={() => navigate('/quiz')}
+          icon={ListChecks}
+          label="5 Savol"
+          sublabel="Kunlik bilim sinovi"
+          onClick={() => navigate('/5-savol')}
         />
         <MenuRow
           icon={BookOpen}

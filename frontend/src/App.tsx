@@ -52,7 +52,7 @@ const VerifyEmailPendingPage  = lazy(() => import('./pages/VerifyEmailPendingPag
 const VerifyEmailPage         = lazy(() => import('./pages/VerifyEmailPage'))
 const ForgotPasswordPage      = lazy(() => import('./pages/ForgotPasswordPage'))
 const ResetPasswordPage       = lazy(() => import('./pages/ResetPasswordPage'))
-const QuizPage = lazy(() => import('./pages/QuizPage'))
+const DailyQuizPage = lazy(() => import('./pages/DailyQuizPage'))
 const KitoblarPage = lazy(() => import('./pages/KitoblarPage'))
 const BookDetailPage = lazy(() => import('./pages/BookDetailPage'))
 const BookReaderPage = lazy(() => import('./pages/BookReaderPage'))
@@ -305,7 +305,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
           <Route path="/workspace"      element={<AppLayout rightSidebar={<WorkspaceRightSidebar />} maxWidth="max-w-[760px]"><WorkspacePage /></AppLayout>} />
           <Route path="/read/:bookId"   element={<BookReaderPage />} />
-          <Route path="/quiz"           element={<AppLayout maxWidth="max-w-[760px]"><QuizPage /></AppLayout>} />
+          <Route path="/5-savol"        element={<AppLayout maxWidth="max-w-[760px]"><DailyQuizPage /></AppLayout>} />
           <Route path="/kitoblar"       element={<AppLayout maxWidth="max-w-[900px]"><KitoblarPage /></AppLayout>} />
           <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
           <Route path="/resources"      element={<ResourcesPage />} />

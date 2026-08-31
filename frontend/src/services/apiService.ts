@@ -289,37 +289,27 @@ class ApiService {
     return this.axiosInstance.delete(`/api/admin/books/${bookId}`, this.adminParams(telegramId))
   }
 
-  // ─── Quiz endpoints ─────────────────────────────────────────────────────────
+  // ─── Daily quiz ("5 Savol") endpoints ────────────────────────────────────────
+  // Named dailyQuiz* — /api/quizzes/* above (now removed) was the old
+  // book/course knowledge-test + certificate feature. /api/quiz/* (singular)
+  // is a different feature: one shared 5-question quiz per day for everyone,
+  // scored server-side, rewarding Tanga (never XP). Mirrors the shapes used
+  // by the mobile app's lib/api.ts `dailyQuiz` namespace.
 
-  async getQuizzes(category?: string, difficulty?: string) {
-    return this.axiosInstance.get('/api/quizzes', { params: { category, difficulty } })
+  async getDailyQuizToday() {
+    return this.axiosInstance.get('/api/quiz/today')
   }
 
-  /** Returns quiz + questions (correct_answer NOT included — use verifyQuiz for scoring) */
-  async getQuiz(quizId: number) {
-    return this.axiosInstance.get(`/api/quizzes/${quizId}`)
+  async submitDailyQuiz(quizId: number, answers: Array<{ question_id: number; selected_index: number }>) {
+    return this.axiosInstance.post('/api/quiz/submit', { quiz_id: quizId, answers })
   }
 
-  /** Legacy: kept for backward-compat */
-  async getQuizQuestions(quizId: number) {
-    return this.axiosInstance.get(`/api/quizzes/${quizId}`)
+  async getDailyQuizResults(quizId: number) {
+    return this.axiosInstance.get(`/api/quiz/results/${quizId}`)
   }
 
-  /**
-   * Submit raw selected-option indices for server-side scoring.
-   * Returns { score, total, percentage, passed, certificate_eligible, result_token }.
-   */
-  async verifyQuiz(
-    quizId: number,
-    telegramId: number,
-    telegramName: string,
-    answers: number[],
-  ) {
-    return this.axiosInstance.post(`/api/quizzes/${quizId}/verify`, {
-      telegram_id: telegramId,
-      telegram_name: telegramName,
-      answers,
-    })
+  async reportDailyQuizQuestion(questionId: number, reason: string) {
+    return this.axiosInstance.post('/api/quiz/report', { question_id: questionId, reason })
   }
 
   // ─── Payment endpoints ────────────────────────────────────────────────────

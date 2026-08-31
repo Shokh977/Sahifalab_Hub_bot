@@ -537,8 +537,8 @@ export function seedSupabaseCache() {
   }
   write('leaderboard:top', MOCK_LEADERBOARD)
   write('ambient_sounds', MOCK_AMBIENT_SOUNDS)
-  // Seed books + quizzes so supabase.ts fetchBooks() / fetchQuizzes() / fetchQuiz(id)
-  // return mock data without hitting the (offline in dev) FastAPI backend.
+  // Seed books + quizzes so supabase.ts fetchBooks() / fetchQuizzes() return
+  // mock data without hitting the (offline in dev) FastAPI backend.
   write('books', MOCK_BOOKS)
   write('quizzes', MOCK_QUIZZES)
   MOCK_BOOKS.forEach(b  => write(`book:${b.id}`, b))
