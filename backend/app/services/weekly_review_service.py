@@ -50,7 +50,7 @@ from sqlalchemy.orm import Session
 from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
-from app.services.ai.prompts import weekly_review_v2
+from app.services.ai.prompts import weekly_review_v3
 from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
@@ -201,6 +201,56 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
     except (OperationalError, ProgrammingError):
         db.rollback()
 
+    # Bellashuv (challenges, 074) — lifetime "ever joined" snapshot + this
+    # week's completions, same shape as courses_enrolled_count/
+    # lessons_completed_this_week above.
+    challenges_joined_row = db.execute(
+        text("SELECT COUNT(*) AS n FROM challenge_participants WHERE user_id = :uid"),
+        {"uid": user_id},
+    ).fetchone()
+    challenges_joined_count = int(challenges_joined_row.n or 0) if challenges_joined_row else 0
+
+    challenges_completed_row = db.execute(
+        text("""
+            SELECT COUNT(*) AS n FROM challenge_participants
+            WHERE user_id = :uid AND completed_at >= :week_start_ts AND completed_at < :week_end_ts
+        """),
+        {"uid": user_id, "week_start_ts": week_start_ts, "week_end_ts": week_end_ts},
+    ).fetchone()
+    challenges_completed_this_week = int(challenges_completed_row.n or 0) if challenges_completed_row else 0
+
+    # "5 Savol" (090_daily_quiz) — completed attempts within the reviewed week.
+    daily_quiz_row = db.execute(
+        text("""
+            SELECT COUNT(*) AS n FROM daily_quiz_attempts
+            WHERE user_id = :uid AND submitted_at IS NOT NULL
+              AND submitted_at >= :week_start_ts AND submitted_at < :week_end_ts
+        """),
+        {"uid": user_id, "week_start_ts": week_start_ts, "week_end_ts": week_end_ts},
+    ).fetchone()
+    daily_quiz_played_this_week = int(daily_quiz_row.n or 0) if daily_quiz_row else 0
+
+    # Global rank by XP EARNED WITHIN the reviewed week specifically (not
+    # lifetime total_xp) — same RANK() OVER (...) idiom as
+    # leaderboard.py's weekly leaderboard, just bounded to this exact week
+    # instead of "since Monday of the current week". Lets the AI say
+    # something concrete and competitive ("you were Nth this week") instead
+    # of generic praise — per spec, never fabricated, always this real number.
+    rank_row = db.execute(
+        text("""
+            SELECT COUNT(*) + 1 AS rank
+            FROM (
+                SELECT user_id, SUM(amount) AS score
+                FROM xp_logs
+                WHERE created_at >= :week_start_ts AND created_at < :week_end_ts
+                GROUP BY user_id
+            ) ranked
+            WHERE score > COALESCE(:my_xp, 0)
+        """),
+        {"week_start_ts": week_start_ts, "week_end_ts": week_end_ts, "my_xp": week_xp},
+    ).fetchone()
+    week_xp_rank = int(rank_row.rank) if rank_row and week_xp > 0 else None
+
     return {
         "week_start":            week_start.isoformat(),
         "first_name":            profile_row.first_name if profile_row else "",
@@ -219,13 +269,23 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
         "courses_enrolled_count":      courses_enrolled,
         "lessons_completed_this_week": lessons_completed_this_week,
         "quiz_attempts_this_week":     quiz_attempts_this_week,
+        "challenges_joined_count":         challenges_joined_count,
+        "challenges_completed_this_week":  challenges_completed_this_week,
+        "daily_quiz_played_this_week":     daily_quiz_played_this_week,
+        "week_xp_rank":                    week_xp_rank,
     }
 
 
 def _pick_feature_spotlight(stats: dict) -> dict:
     """Deterministic — the LLM only phrases this, it never decides it.
-    Priority: flashcards (explicitly requested), then courses, then a
-    positive fallback when everything's active."""
+    Priority: flashcards (explicitly requested) -> daily quiz (lowest-
+    friction habit, good early nudge) -> courses -> Bellashuv (challenges)
+    -> a positive fallback once all four are reasonably active. Every
+    `fact` here is a real, defensible claim (spaced repetition, retrieval
+    practice, social accountability) — never a fabricated statistic; the
+    system prompt's "never invent a number" rule stays intact because
+    these facts aren't numbers, they're pre-written and Python-owned, same
+    as the flashcards/courses ones below."""
     if stats["flashcard_decks_owned"] == 0:
         return {
             "hint_key": "flashcards_never_tried",
@@ -248,6 +308,16 @@ def _pick_feature_spotlight(stats: dict) -> dict:
                 "unutishning oldini oladi."
             ),
         }
+    if stats.get("daily_quiz_played_this_week", 0) == 0:
+        return {
+            "hint_key": "daily_quiz_untried",
+            "feature":  "daily_quiz",
+            "fact": (
+                "\"5 Savol\" — kuniga atigi bir necha daqiqa vaqt oladigan, lekin "
+                "muntazam takrorlash orqali xotirani mustahkamlaydigan (retrieval "
+                "practice) qisqa kunlik odat."
+            ),
+        }
     if stats["courses_enrolled_count"] == 0:
         return {
             "hint_key": "no_course",
@@ -263,10 +333,20 @@ def _pick_feature_spotlight(stats: dict) -> dict:
                 "birorta dars tugallanmadi."
             ),
         }
+    if stats.get("challenges_joined_count", 0) == 0:
+        return {
+            "hint_key": "challenges_untried",
+            "feature":  "challenges",
+            "fact": (
+                "Bellashuv — boshqa o'quvchilar bilan birga maqsad sari intilish. "
+                "Ijtimoiy mas'uliyat (boshqalar ham ko'rayotganini bilish) odatni "
+                "mustahkamlashning eng samarali usullaridan biri."
+            ),
+        }
     return {
         "hint_key": "all_active",
         "feature":  None,
-        "fact": "Flashcard va kurslardan barqaror foydalanyapsiz.",
+        "fact": "Flashcard, kunlik viktorina, kurslar va Bellashuvdan barqaror foydalanyapsiz.",
     }
 
 
@@ -290,26 +370,26 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> bool
     spotlight_hint = _pick_feature_spotlight(stats)
 
     provider = get_provider()
-    user_prompt = weekly_review_v2.build_user_prompt(stats, spotlight_hint)
+    user_prompt = weekly_review_v3.build_user_prompt(stats, spotlight_hint)
 
     try:
         response = await provider.generate_json(
-            system_prompt=weekly_review_v2.SYSTEM_PROMPT,
+            system_prompt=weekly_review_v3.SYSTEM_PROMPT,
             user_prompt=user_prompt,
-            prompt_version=weekly_review_v2.VERSION,
-            json_schema=weekly_review_v2.JSON_SCHEMA,
+            prompt_version=weekly_review_v3.VERSION,
+            json_schema=weekly_review_v3.JSON_SCHEMA,
         )
     except AiProviderError as e:
         log_usage(
             db, user_id, feature="weekly_review", model="gemini-flash-lite-latest",
-            prompt_version=weekly_review_v2.VERSION, outcome=e.outcome, error_detail=str(e),
+            prompt_version=weekly_review_v3.VERSION, outcome=e.outcome, error_detail=str(e),
         )
         logger.error("Weekly review generation failed for user_id=%s", user_id, exc_info=True)
         return False
 
     log_usage(
         db, user_id, feature="weekly_review", model=response.model,
-        prompt_version=weekly_review_v2.VERSION, input_tokens=response.input_tokens,
+        prompt_version=weekly_review_v3.VERSION, input_tokens=response.input_tokens,
         output_tokens=response.output_tokens, cost_usd=response.cost_usd,
         latency_ms=response.latency_ms, outcome=response.outcome,
     )

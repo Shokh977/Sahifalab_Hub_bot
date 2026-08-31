@@ -129,6 +129,17 @@ CREATE TABLE lesson_progress (
     completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Real schema is migrations/074_challenges_schema.sql — minimal stand-in
+-- for weekly_review_service.py's gather_user_stats(), which only reads
+-- user_id/completed_at (Bellashuv "ever joined" + "completed this week").
+CREATE TABLE challenge_participants (
+    id           BIGSERIAL PRIMARY KEY,
+    challenge_id BIGINT,
+    user_id      BIGINT NOT NULL,
+    joined_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+
 -- Real schema is migrations/034_analytics_events.sql — that file's own
 -- helper FUNCTIONS reference other tables (posts, course_enrollments) this
 -- minimal test schema doesn't have, and Postgres validates a LANGUAGE sql

@@ -12,7 +12,7 @@ decision computed via user_time.py's already-unit-tested pure functions,
 for a spread of real IANA zones, regardless of the actual wall-clock time.
 """
 import os
-from datetime import date
+from datetime import date, datetime, UTC
 
 import pytest
 from sqlalchemy import text
@@ -44,6 +44,8 @@ def db_session():
         ids = [TEST_BASE_ID - i for i in range(len(ZONES) + 2)] + [TEST_BASE_ID - i for i in range(100, 110)]
         session.execute(text("DELETE FROM weekly_reviews WHERE user_id = ANY(:ids)"), {"ids": ids})
         session.execute(text("DELETE FROM focus_sessions WHERE user_id = ANY(:ids)"), {"ids": ids})
+        session.execute(text("DELETE FROM challenge_participants WHERE user_id = ANY(:ids)"), {"ids": ids})
+        session.execute(text("DELETE FROM xp_logs WHERE user_id = ANY(:ids)"), {"ids": ids})
         session.execute(text("DELETE FROM profiles WHERE telegram_id = ANY(:ids)"), {"ids": ids})
         session.commit()
         session.close()
@@ -261,3 +263,57 @@ def test_weekly_review_endpoint_always_returns_current_week_progress(db_session)
     assert "current_week_progress" in result
     assert result["current_week_progress"] is not None
     assert result["current_week_progress"]["week_start"] is not None
+
+
+def test_gather_user_stats_includes_challenges_quiz_and_rank(db_session):
+    """Regression for the content-richness gap: gather_user_stats used to
+    say nothing about Bellashuv (challenges) or the daily quiz, and had no
+    competitive framing (week_xp_rank) for the AI to use instead of generic
+    praise."""
+    from app.services.weekly_review_service import gather_user_stats
+
+    uid = TEST_BASE_ID - 106
+    week_start = date(2026, 8, 17)
+    today = date(2026, 8, 24)
+
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    db_session.execute(
+        text("INSERT INTO challenge_participants (user_id, completed_at) VALUES (:uid, :d)"),
+        {"uid": uid, "d": datetime(2026, 8, 19, tzinfo=UTC)},
+    )
+    db_session.execute(
+        text("INSERT INTO xp_logs (user_id, amount, source, created_at) VALUES (:uid, 500, 'DEEP_WORK', :d)"),
+        {"uid": uid, "d": datetime(2026, 8, 18, tzinfo=UTC)},
+    )
+    db_session.commit()
+
+    stats = gather_user_stats(db_session, uid, week_start, today)
+    assert stats["challenges_joined_count"] == 1
+    assert stats["challenges_completed_this_week"] == 1
+    assert stats["daily_quiz_played_this_week"] == 0
+    assert stats["week_xp_rank"] == 1, "sole scorer that week must rank 1st"
+
+
+def test_pick_feature_spotlight_covers_daily_quiz_and_challenges():
+    """The spotlight used to only ever recommend flashcards or courses —
+    now covers daily_quiz and challenges too, reached once flashcards and
+    courses are both already active."""
+    from app.services.weekly_review_service import _pick_feature_spotlight
+
+    base_active_stats = {
+        "flashcard_decks_owned": 3, "flashcard_reviews_this_week": 5,
+        "days_since_last_flashcard_review": 1,
+        "courses_enrolled_count": 1, "lessons_completed_this_week": 2,
+    }
+
+    quiz_hint = _pick_feature_spotlight({**base_active_stats, "daily_quiz_played_this_week": 0, "challenges_joined_count": 0})
+    assert quiz_hint["feature"] == "daily_quiz"
+
+    challenge_hint = _pick_feature_spotlight({**base_active_stats, "daily_quiz_played_this_week": 2, "challenges_joined_count": 0})
+    assert challenge_hint["feature"] == "challenges"
+
+    all_active_hint = _pick_feature_spotlight({**base_active_stats, "daily_quiz_played_this_week": 2, "challenges_joined_count": 1})
+    assert all_active_hint["hint_key"] == "all_active"
