@@ -13,6 +13,8 @@ Routes (secret-key protected, NOT JWT):
   POST /api/cron/weekly-review-batch          — 088/089 Tanga+AI: free weekly personal review,
                                                  every user's own local Monday 7am
                                                  (profiles.timezone)
+  POST /api/cron/weekly-review-force/{telegram_id} — manual: generate one user's review now,
+                                                 bypassing the local-Monday/7am gate
   POST /api/cron/tanga-reconciliation         — DISABLED (092 rework made its premise obsolete and
                                                  it was actively re-farming Tanga — see
                                                  app/services/tanga_reconciliation.py). No-op, kept
@@ -1011,6 +1013,36 @@ async def weekly_review_batch(
     result = await run_staggered_batch(db)
     logger.info("weekly_review_batch: %s", result)
     return {"ok": True, **result}
+
+
+@router.post("/weekly-review-force/{telegram_id}")
+async def weekly_review_force(
+    telegram_id: int,
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """
+    Manual override: generate ONE user's weekly review right now, bypassing
+    the local-Monday/7am gate — for backfilling a review without waiting
+    for next Monday, entirely server-side (no app release needed). Does
+    NOT bypass generate_weekly_review()'s own safeguards: a genuinely
+    empty target week is still skipped (nothing to summarize), and an
+    already-generated week is still idempotent (UNIQUE(user_id,
+    week_start) — calling this twice for the same target week is a no-op,
+    not a duplicate).
+    """
+    from app.services.weekly_review_service import generate_weekly_review, _week_start
+    from app.services.user_time import user_local_date
+
+    profile = db.execute(text("SELECT timezone FROM profiles WHERE telegram_id = :uid"), {"uid": telegram_id}).fetchone()
+    if profile is None:
+        raise HTTPException(404, "User not found")
+
+    today = user_local_date(profile.timezone)
+    target_week_start = _week_start(today)
+    generated = await generate_weekly_review(db, telegram_id, today)
+    logger.info("weekly_review_force: user_id=%s target_week=%s generated=%s", telegram_id, target_week_start, generated)
+    return {"ok": True, "generated": generated, "week_start": target_week_start.isoformat()}
 
 
 @router.post("/tanga-reconciliation")
