@@ -1018,6 +1018,7 @@ async def weekly_review_batch(
 @router.post("/weekly-review-force/{telegram_id}")
 async def weekly_review_force(
     telegram_id: int,
+    regenerate: bool = False,
     db: Session = Depends(get_db),
     _: None = Depends(_require_cron_secret),
 ):
@@ -1030,6 +1031,12 @@ async def weekly_review_force(
     already-generated week is still idempotent (UNIQUE(user_id,
     week_start) — calling this twice for the same target week is a no-op,
     not a duplicate).
+
+    regenerate=true deletes the existing row for the target week first
+    (admin-only escape hatch, e.g. to re-run a week under a newer prompt
+    version — reviews are otherwise permanent once generated). Never
+    touches any OTHER week's review; this account keeps its full history
+    for every other week untouched.
     """
     from app.services.weekly_review_service import generate_weekly_review, _week_start
     from app.services.user_time import user_local_date
@@ -1040,9 +1047,22 @@ async def weekly_review_force(
 
     today = user_local_date(profile.timezone)
     target_week_start = _week_start(today)
+
+    deleted = False
+    if regenerate:
+        result = db.execute(
+            text("DELETE FROM weekly_reviews WHERE user_id = :uid AND week_start = :ws"),
+            {"uid": telegram_id, "ws": target_week_start},
+        )
+        deleted = result.rowcount > 0
+        db.commit()
+
     generated = await generate_weekly_review(db, telegram_id, today)
-    logger.info("weekly_review_force: user_id=%s target_week=%s generated=%s", telegram_id, target_week_start, generated)
-    return {"ok": True, "generated": generated, "week_start": target_week_start.isoformat()}
+    logger.info(
+        "weekly_review_force: user_id=%s target_week=%s regenerate=%s deleted=%s generated=%s",
+        telegram_id, target_week_start, regenerate, deleted, generated,
+    )
+    return {"ok": True, "regenerated": deleted, "generated": generated, "week_start": target_week_start.isoformat()}
 
 
 @router.post("/weekly-review-backfill-all")

@@ -12,7 +12,7 @@ decision computed via user_time.py's already-unit-tested pure functions,
 for a spread of real IANA zones, regardless of the actual wall-clock time.
 """
 import os
-from datetime import date, datetime, UTC
+from datetime import date, datetime, timedelta, UTC
 
 import pytest
 from sqlalchemy import text
@@ -317,3 +317,55 @@ def test_pick_feature_spotlight_covers_daily_quiz_and_challenges():
 
     all_active_hint = _pick_feature_spotlight({**base_active_stats, "daily_quiz_played_this_week": 2, "challenges_joined_count": 1})
     assert all_active_hint["hint_key"] == "all_active"
+
+
+def test_weekly_review_force_regenerate_replaces_only_the_target_week(db_session):
+    """regenerate=true must delete and replace ONLY the target week's row
+    — an existing review for a DIFFERENT week must survive untouched, and
+    without regenerate=true an existing row must NOT be touched at all
+    (idempotent, per generate_weekly_review's own contract)."""
+    import asyncio
+    import json
+    from app.api.v1.endpoints.cron import weekly_review_force
+    from app.services.weekly_review_service import _week_start
+
+    uid = TEST_BASE_ID - 107
+    today = date.today()
+    target_week = _week_start(today)
+    other_week = target_week - timedelta(days=7)
+
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    for ws, marker in [(target_week, "old_target"), (other_week, "other_week_untouched")]:
+        db_session.execute(
+            text("INSERT INTO weekly_reviews (user_id, week_start, content) VALUES (:uid, :ws, CAST(:content AS jsonb))"),
+            {"uid": uid, "ws": ws, "content": json.dumps({"marker": marker})},
+        )
+    db_session.commit()
+    # Deliberately NO focus_sessions/flashcard activity seeded for the
+    # target week — this test only needs to prove the delete-old-row
+    # behavior, and zero activity keeps generate_weekly_review()'s own
+    # early-return firing (see the other test for that), so this stays a
+    # fast, hermetic test with no real AI call.
+
+    # Without regenerate: existing target-week row must be left alone.
+    result_no_regen = asyncio.run(weekly_review_force(telegram_id=uid, regenerate=False, db=db_session, _=None))
+    assert result_no_regen["regenerated"] is False
+    assert result_no_regen["generated"] is False  # already existed, untouched
+    row = db_session.execute(
+        text("SELECT content FROM weekly_reviews WHERE user_id = :uid AND week_start = :ws"),
+        {"uid": uid, "ws": target_week},
+    ).fetchone()
+    assert row.content["marker"] == "old_target"
+
+    # With regenerate: target week's old row is gone; the OTHER week survives.
+    result_regen = asyncio.run(weekly_review_force(telegram_id=uid, regenerate=True, db=db_session, _=None))
+    assert result_regen["regenerated"] is True
+
+    other_row = db_session.execute(
+        text("SELECT content FROM weekly_reviews WHERE user_id = :uid AND week_start = :ws"),
+        {"uid": uid, "ws": other_week},
+    ).fetchone()
+    assert other_row.content["marker"] == "other_week_untouched"
