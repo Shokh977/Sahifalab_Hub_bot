@@ -210,3 +210,54 @@ def test_gather_user_stats_excludes_activity_outside_the_reviewed_week(db_sessio
     assert stats["week_start"] == week_start.isoformat()
     assert stats["this_week_minutes"] == 30, "must exclude the session dated the day the following week starts"
     assert stats["days_active"] == 1
+
+
+def test_gather_user_stats_day_chart_includes_todays_partial_activity(db_session):
+    """Regression: the day-by-day chart loop must include TODAY's own data
+    when `today` falls genuinely inside the queried window (the
+    current_week_progress use case in GET /weekly-review) — not stop the
+    day before. For an already-completed week `today` is always
+    week_start+7 regardless, so this can't regress that case."""
+    from app.services.weekly_review_service import gather_user_stats
+
+    uid = TEST_BASE_ID - 104
+    monday = date(2026, 8, 17)
+    wednesday = date(2026, 8, 19)  # "today" — day 2 of the in-progress week
+
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    db_session.execute(
+        text("INSERT INTO focus_sessions (user_id, minutes, session_date) VALUES (:uid, 25, :d)"),
+        {"uid": uid, "d": wednesday},
+    )
+    db_session.commit()
+
+    stats = gather_user_stats(db_session, uid, monday, wednesday)
+    day_dates = [d["date"] for d in stats["days"]]
+    assert wednesday.isoformat() in day_dates, "today's own date must appear in the in-progress-week chart"
+    assert len(stats["days"]) == 3  # Mon, Tue, Wed — not stopping at Tue
+    wed_entry = next(d for d in stats["days"] if d["date"] == wednesday.isoformat())
+    assert wed_entry["minutes"] == 25
+
+
+def test_weekly_review_endpoint_always_returns_current_week_progress(db_session):
+    """current_week_progress must always be present and reflect the TRUE
+    current week — distinct from live_stats/review, which stay scoped to
+    the last COMPLETED week. Additive field; must not change live_stats'
+    existing meaning (the old deployed client depends on that)."""
+    import asyncio
+    from app.api.v1.endpoints.ai import get_latest_weekly_review
+
+    uid = TEST_BASE_ID - 105
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    db_session.commit()
+
+    result = asyncio.run(get_latest_weekly_review(db=db_session, caller_id=uid))
+    assert "current_week_progress" in result
+    assert result["current_week_progress"] is not None
+    assert result["current_week_progress"]["week_start"] is not None

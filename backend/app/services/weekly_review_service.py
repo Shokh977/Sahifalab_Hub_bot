@@ -116,7 +116,12 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
             "minutes":  by_date.get(week_ago + timedelta(days=i), 0),
             "goal_met": by_date.get(week_ago + timedelta(days=i), 0) >= daily_goal_for_chart,
         }
-        for i in range(7) if (week_ago + timedelta(days=i)) < today
+        # <= (not <): for a COMPLETED week `today` is always week_ago+7, so
+        # this is trivially true for every day either way — but for an
+        # IN-PROGRESS week (current_week_progress in ai.py's /weekly-review,
+        # where `today` is a day genuinely inside this window) it must
+        # include today's own partial-day activity, not stop the day before.
+        for i in range(7) if (week_ago + timedelta(days=i)) <= today
     ]
 
     profile_row = db.execute(
