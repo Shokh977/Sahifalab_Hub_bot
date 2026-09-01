@@ -20,6 +20,7 @@ export interface FlashcardDeck {
   due_count: number
   created_at: string | null
   updated_at: string | null
+  cloned_from_deck_id?: number | null
 }
 
 export interface Flashcard {
@@ -71,6 +72,46 @@ export interface CompleteSessionResult {
   goal_met: boolean
   stages_completed: Array<{ key: string; stage_number: number; title: string; bonus_xp: number; bonus_tanga: number }>
   challenges_completed: Array<{ challenge_id: string; slug: string; title: string; reward_xp: number }>
+}
+
+export type DeckBadgeType = 'none' | 'official' | 'verified_creator'
+export type DeckCategory = 'english' | 'ielts' | 'business' | 'arabic' | 'programming' | 'medical' | 'other'
+export type DeckSort = 'popular' | 'newest' | 'top_rated'
+
+export interface PublicDeckCreator {
+  id: number
+  name: string
+  avatar_url: string | null
+}
+
+export interface PublicDeckItem {
+  id: number
+  title: string
+  description: string | null
+  color: string
+  card_count: number
+  category: string | null
+  badge_type: DeckBadgeType
+  creator: PublicDeckCreator | null
+  clone_count: number
+  rating_avg: number
+  rating_count: number
+  is_featured: boolean
+  already_cloned: boolean
+}
+
+export interface DeckRatingEntry {
+  rating: number
+  comment: string | null
+  created_at: string | null
+  rater: PublicDeckCreator
+}
+
+export interface PublicDeckDetail extends PublicDeckItem {
+  is_verified: boolean
+  published_at: string | null
+  preview_cards: { front_text: string; back_text: string }[]
+  recent_ratings: DeckRatingEntry[]
 }
 
 export const DECK_COLORS = [

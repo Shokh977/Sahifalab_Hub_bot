@@ -19,7 +19,6 @@ import CoursesRightSidebar from './components/sidebars/CoursesRightSidebar'
 import JobsRightSidebar from './components/sidebars/JobsRightSidebar'
 import WorkspaceRightSidebar from './components/sidebars/WorkspaceRightSidebar'
 import DailyQuizRightSidebar from './components/sidebars/DailyQuizRightSidebar'
-import FlashcardsRightSidebar from './components/sidebars/FlashcardsRightSidebar'
 import AuthGuard from './components/AuthGuard'
 import NotificationToast from './components/NotificationToast'
 import EmailLinkPrompt from './components/EmailLinkPrompt'
@@ -91,6 +90,8 @@ const JobsPage = lazy(() => import('./pages/JobsPage'))
 const FlashcardsPage = lazy(() => import('./pages/FlashcardsPage'))
 const FlashcardDeckPage = lazy(() => import('./pages/FlashcardDeckPage'))
 const FlashcardStudyPage = lazy(() => import('./pages/FlashcardStudyPage'))
+const FlashcardCreatePage = lazy(() => import('./pages/FlashcardCreatePage'))
+const FlashcardPublicDetailPage = lazy(() => import('./pages/FlashcardPublicDetailPage'))
 const CertificatePage = lazy(() => import('./pages/CertificatePage'))
 const SettingsPage = lazy(() => import('./pages/SettingsPage'))
 const SavedPostsPage = lazy(() => import('./pages/SavedPostsPage'))
@@ -307,9 +308,11 @@ const AppRoutes: React.FC = () => {
           <Route path="/messages"        element={<SlouthMessenger />} />
           <Route path="/messages/:conversationId" element={<SlouthMessenger />} />
           <Route path="/jobs"            element={<AppLayout rightSidebar={<JobsRightSidebar />} maxWidth="max-w-[760px]"><JobsPage /></AppLayout>} />
-          <Route path="/flashcards"          element={<AppLayout rightSidebar={<FlashcardsRightSidebar />} maxWidth="max-w-[760px]"><FlashcardsPage /></AppLayout>} />
-          <Route path="/flashcards/:deckId"       element={<AppLayout maxWidth="max-w-[720px]"><FlashcardDeckPage /></AppLayout>} />
-          <Route path="/flashcards/:deckId/study" element={<FlashcardStudyPage />} />
+          <Route path="/flashcards"                element={<FlashcardsPage />} />
+          <Route path="/flashcards/new"             element={<FlashcardCreatePage />} />
+          <Route path="/flashcards/public/:deckId"  element={<FlashcardPublicDetailPage />} />
+          <Route path="/flashcards/:deckId"         element={<FlashcardDeckPage />} />
+          <Route path="/flashcards/:deckId/study"   element={<FlashcardStudyPage />} />
           <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
           <Route path="/workspace"      element={<AppLayout rightSidebar={<WorkspaceRightSidebar />} maxWidth="max-w-[760px]"><WorkspacePage /></AppLayout>} />
           <Route path="/read/:bookId"   element={<BookReaderPage />} />

@@ -1,209 +1,42 @@
 /**
- * FlashcardDeckPage — deck detail: card list + add/edit/delete cards,
- * deck settings, and the entry point into a study session
- * (/flashcards/:deckId/study).
+ * FlashcardDeckPage — deck detail (View C): card list, add/edit/delete
+ * cards, deck settings, mastery/next-review breakdown, entry into a study
+ * session at /flashcards/:deckId/study.
  */
-import React, { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
-import { motion, AnimatePresence } from 'framer-motion'
-import {
-  ArrowLeft, Plus, Play, RefreshCw, Pencil, Trash2, X, Settings,
-} from 'lucide-react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { ChevronLeft, Plus, Settings, Star, Share2 } from 'lucide-react'
 import apiService from '../services/apiService'
-import PageWrapper from '../components/PageWrapper'
-import DeleteConfirmModal from '../components/social/DeleteConfirmModal'
 import { showToast } from '../components/ErrorBoundary'
+import FlashcardsRoot from './flashcards/FlashcardsRoot'
+import FlashcardHeader from './flashcards/FlashcardHeader'
+import CardFormModal from './flashcards/CardFormModal'
+import DeckFormModal from './flashcards/DeckFormModal'
+import ConfirmModal from './flashcards/ConfirmModal'
+import { gradientFromColor, deckCode } from './flashcards/colors'
 import type { FlashcardDeck, Flashcard, CardStatus } from '../types/flashcards'
-import { DECK_COLORS } from '../types/flashcards'
 
 const STATUS_DOT: Record<CardStatus, string> = {
-  new: 'bg-gray-300 dark:bg-gray-600',
-  learning: 'bg-orange-400',
-  reviewing: 'bg-blue-400',
-  mastered: 'bg-emerald-500',
+  new: 'var(--purple)', learning: 'var(--accent)', reviewing: 'var(--accent)', mastered: 'var(--green)',
 }
 const STATUS_LABEL: Record<CardStatus, string> = {
-  new: 'Yangi', learning: "O'rganilmoqda", reviewing: 'Takrorlanmoqda', mastered: "O'zlashtirilgan",
+  new: 'Yangi', learning: "O'rganilmoqda", reviewing: 'Takrorlash', mastered: "O'rganilgan",
+}
+const STATUS_PILL_BG: Record<CardStatus, string> = {
+  new: 'var(--purpleSoft)', learning: 'var(--accentSoft)', reviewing: 'var(--accentSoft)', mastered: 'var(--greenSoft)',
+}
+const STATUS_PILL_FG: Record<CardStatus, string> = {
+  new: 'var(--purple)', learning: 'var(--accent)', reviewing: 'var(--accent)', mastered: 'var(--green)',
 }
 
-// ─── Add/edit card modal ─────────────────────────────────────────────────
-
-const CardFormModal: React.FC<{
-  open: boolean
-  deckId: number
-  editing: Flashcard | null
-  onClose: () => void
-  onSaved: (card: Flashcard, wasEdit: boolean) => void
-}> = ({ open, deckId, editing, onClose, onSaved }) => {
-  const [front, setFront] = useState('')
-  const [back, setBack] = useState('')
-  const [quickAdd, setQuickAdd] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const frontRef = useRef<HTMLTextAreaElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    setFront(editing?.front_text ?? '')
-    setBack(editing?.back_text ?? '')
-    setTimeout(() => frontRef.current?.focus(), 50)
-  }, [open, editing])
-
-  const handleSave = async (keepOpen: boolean) => {
-    if (!front.trim() || !back.trim() || saving) return
-    setSaving(true)
-    try {
-      if (editing) {
-        const { data } = await apiService.updateFlashcard(editing.id, { front_text: front.trim(), back_text: back.trim() })
-        onSaved(data, true)
-      } else {
-        const { data } = await apiService.addFlashcard(deckId, { front_text: front.trim(), back_text: back.trim() })
-        onSaved(data, false)
-      }
-      if (keepOpen) {
-        setFront(''); setBack(''); frontRef.current?.focus()
-      } else {
-        onClose()
-      }
-    } catch {
-      showToast("Karta saqlanmadi. Qayta urinib ko'ring.", 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (!open) return null
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-lg rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl p-5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-gray-900 dark:text-white">{editing ? 'Kartani tahrirlash' : 'Yangi karta'}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="grid sm:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 block">Old tomon (savol)</label>
-            <textarea
-              ref={frontRef}
-              value={front}
-              onChange={(e) => setFront(e.target.value)}
-              placeholder="Masalan: Apple"
-              rows={4}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-sahifa-400"
-            />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1 block">Orqa tomon (javob)</label>
-            <textarea
-              value={back}
-              onChange={(e) => setBack(e.target.value)}
-              placeholder="Masalan: Olma"
-              rows={4}
-              className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-sahifa-400"
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between mt-4">
-          {!editing ? (
-            <label className="inline-flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
-              <input type="checkbox" checked={quickAdd} onChange={(e) => setQuickAdd(e.target.checked)} className="rounded" />
-              Tez qo'shish (formani ochiq qoldirish)
-            </label>
-          ) : <span />}
-          <button
-            onClick={() => handleSave(quickAdd && !editing)}
-            disabled={!front.trim() || !back.trim() || saving}
-            className="px-5 py-2 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 disabled:opacity-40 transition-all"
-          >
-            {saving ? 'Saqlanmoqda…' : editing ? 'Saqlash' : 'Qo\'shish'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
+function daysUntil(dateStr: string | null): number | null {
+  if (!dateStr) return null
+  const target = new Date(dateStr)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  target.setHours(0, 0, 0, 0)
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
 }
-
-// ─── Edit deck modal ─────────────────────────────────────────────────────
-
-const DeckEditModal: React.FC<{
-  open: boolean
-  deck: FlashcardDeck | null
-  onClose: () => void
-  onSaved: (deck: FlashcardDeck) => void
-}> = ({ open, deck, onClose, onSaved }) => {
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [color, setColor] = useState<string>(DECK_COLORS[0])
-  const [saving, setSaving] = useState(false)
-
-  useEffect(() => {
-    if (open && deck) { setTitle(deck.title); setDescription(deck.description ?? ''); setColor(deck.color) }
-  }, [open, deck])
-
-  const handleSave = async () => {
-    if (!deck || !title.trim() || saving) return
-    setSaving(true)
-    try {
-      const { data } = await apiService.updateFlashcardDeck(deck.id, { title: title.trim(), description: description.trim(), color })
-      onSaved(data)
-      onClose()
-    } catch {
-      showToast("Saqlanmadi. Qayta urinib ko'ring.", 'error')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  if (!open || !deck) return null
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-      <div className="relative w-full max-w-md rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-bold text-gray-900 dark:text-white">To'plam sozlamalari</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="space-y-3">
-          <input
-            value={title} onChange={(e) => setTitle(e.target.value)} maxLength={100}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sahifa-400"
-          />
-          <textarea
-            value={description} onChange={(e) => setDescription(e.target.value)} maxLength={300} rows={2}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white resize-none focus:outline-none focus:ring-2 focus:ring-sahifa-400"
-          />
-          <div className="flex flex-wrap gap-2">
-            {DECK_COLORS.map((c) => (
-              <button
-                key={c} onClick={() => setColor(c)}
-                className="w-7 h-7 rounded-full transition-transform"
-                style={{ backgroundColor: c, transform: color === c ? 'scale(1.15)' : 'scale(1)', boxShadow: color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none' }}
-              />
-            ))}
-          </div>
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={!title.trim() || saving}
-          className="w-full mt-5 py-2.5 rounded-xl font-bold text-white bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 disabled:opacity-40 transition-all"
-        >
-          {saving ? 'Saqlanmoqda…' : 'Saqlash'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Main page ───────────────────────────────────────────────────────────
 
 const FlashcardDeckPage: React.FC = () => {
   const { deckId } = useParams<{ deckId: string }>()
@@ -217,16 +50,14 @@ const FlashcardDeckPage: React.FC = () => {
   const [deckEditOpen, setDeckEditOpen] = useState(false)
   const [deleteCard, setDeleteCard] = useState<Flashcard | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [openMenuId, setOpenMenuId] = useState<number | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [deckRes, cardsRes] = await Promise.all([
-        apiService.getFlashcardDeck(id),
-        apiService.listFlashcards(id),
-      ])
-      setDeck(deckRes.data)
-      setCards(cardsRes.data)
+      const [deckRes, cardsRes] = await Promise.all([apiService.getFlashcardDeck(id), apiService.listFlashcards(id)])
+      setDeck(deckRes.data && typeof deckRes.data === 'object' ? deckRes.data : null)
+      setCards(Array.isArray(cardsRes.data) ? cardsRes.data : [])
     } catch {
       showToast("To'plam yuklanmadi.", 'error')
     } finally {
@@ -260,136 +91,211 @@ const FlashcardDeckPage: React.FC = () => {
     }
   }
 
+  const handleShare = async () => {
+    try {
+      await navigator.clipboard.writeText(window.location.href)
+      showToast('Havola nusxalandi!', 'success')
+    } catch {
+      showToast('Havolani nusxalab bo\'lmadi.', 'error')
+    }
+  }
+
+  const handleRate = async () => {
+    if (!deck?.cloned_from_deck_id) {
+      showToast("Bu to'plam ommaviy manbadan olinmagan.", 'info')
+      return
+    }
+    const raw = window.prompt("1 dan 5 gacha baho bering:", "5")
+    const rating = Number(raw)
+    if (!raw || !Number.isFinite(rating) || rating < 1 || rating > 5) return
+    try {
+      await apiService.rateFlashcardDeck(deck.cloned_from_deck_id, { rating })
+      showToast('Rahmat! Bahoyingiz saqlandi.', 'success')
+    } catch {
+      showToast("Baholab bo'lmadi.", 'error')
+    }
+  }
+
+  const masteryTally = useMemo(() => {
+    const t = { new: 0, active: 0, mastered: 0 }
+    for (const c of cards) {
+      if (c.status === 'new') t.new++
+      else if (c.status === 'mastered') t.mastered++
+      else t.active++
+    }
+    return t
+  }, [cards])
+
+  const nextReviewBuckets = useMemo(() => {
+    let today = 0, tomorrow = 0, later = 0
+    for (const c of cards) {
+      const d = daysUntil(c.next_review)
+      if (d === null) continue
+      if (d <= 0) today++
+      else if (d === 1) tomorrow++
+      else later++
+    }
+    return { today, tomorrow, later }
+  }, [cards])
+
   if (loading) {
     return (
-      <PageWrapper className="space-y-4">
-        <div className="h-8 w-40 rounded bg-gray-100 dark:bg-slate-800 animate-pulse" />
-        <div className="h-28 rounded-2xl bg-gray-100 dark:bg-slate-800 animate-pulse" />
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="h-14 rounded-xl bg-gray-100 dark:bg-slate-800 animate-pulse" />
-        ))}
-      </PageWrapper>
+      <FlashcardsRoot>
+        <FlashcardHeader title="Yuklanmoqda…" />
+        <div className="fc-body">
+          <div className="fc-col">
+            <div className="fc-skeleton-pulse" style={{ height: 120, borderRadius: 20, background: 'var(--surface2)' }} />
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="fc-skeleton-pulse" style={{ height: 64, borderRadius: 16, background: 'var(--surface2)' }} />
+            ))}
+          </div>
+        </div>
+      </FlashcardsRoot>
     )
   }
 
   if (!deck) {
     return (
-      <PageWrapper className="text-center py-16">
-        <p className="text-gray-500 dark:text-gray-400">To'plam topilmadi.</p>
-        <Link to="/flashcards" className="text-sahifa-500 font-semibold text-sm mt-2 inline-block">Ortga qaytish</Link>
-      </PageWrapper>
+      <FlashcardsRoot>
+        <FlashcardHeader title="Topilmadi" />
+        <div className="fc-body"><div className="fc-col">
+          <p style={{ color: 'var(--muted)' }}>To'plam topilmadi.</p>
+          <button className="fc-back" onClick={() => navigate('/flashcards')}><ChevronLeft size={15} strokeWidth={2.4} />Kartalar</button>
+        </div></div>
+      </FlashcardsRoot>
     )
   }
 
-  const masteryPct = deck.card_count > 0 ? Math.round((deck.mastered_count / deck.card_count) * 100) : 0
+  const [g1, g2] = gradientFromColor(deck.color)
 
   return (
-    <PageWrapper className="space-y-5">
-      <div className="flex items-center gap-2">
-        <button onClick={() => navigate('/flashcards')} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1">
-          <ArrowLeft className="w-5 h-5" />
-        </button>
-        <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: deck.color }} />
-        <h1 className="text-xl font-bold text-gray-900 dark:text-white flex-1 truncate">{deck.title}</h1>
-        <button onClick={() => setDeckEditOpen(true)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 p-1.5">
-          <Settings className="w-4.5 h-4.5" />
-        </button>
-      </div>
-      {deck.description && <p className="text-sm text-gray-500 dark:text-gray-400 -mt-3">{deck.description}</p>}
-
-      {/* Study hero */}
-      <div className="bg-gradient-to-br from-sahifa-50 to-orange-50 dark:from-sahifa-900/20 dark:to-orange-900/10 rounded-2xl border border-sahifa-100 dark:border-sahifa-800/40 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <div>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white">{deck.due_count}</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">bugun takrorlash kerak</p>
-          </div>
-          <div className="text-right">
-            <p className="text-sm font-bold text-gray-700 dark:text-gray-200">{masteryPct}%</p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">o'zlashtirilgan</p>
-          </div>
-        </div>
-        <div className="h-2 rounded-full bg-white/60 dark:bg-black/20 overflow-hidden mb-4">
-          <div className="h-full rounded-full bg-gradient-to-r from-sahifa-400 to-sahifa-600" style={{ width: `${masteryPct}%` }} />
-        </div>
-        <div className="flex flex-col sm:flex-row gap-2">
-          <button
-            onClick={() => navigate(`/flashcards/${deck.id}/study`)}
-            disabled={deck.card_count === 0}
-            className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-sahifa-500 to-sahifa-600 hover:from-sahifa-600 hover:to-sahifa-700 disabled:opacity-40 transition-all"
-          >
-            <Play className="w-4 h-4" />
-            {deck.due_count > 0 ? "O'rganishni boshlash" : 'Yangi kartalarni ko\'rish'}
+    <FlashcardsRoot>
+      <FlashcardHeader title={deck.title} />
+      <div className="fc-body">
+        <div className="fc-col">
+          <button className="fc-back" onClick={() => navigate('/flashcards')}>
+            <ChevronLeft size={15} strokeWidth={2.4} />Kartalar
           </button>
-          {deck.card_count > 0 && (
-            <button
-              onClick={() => navigate(`/flashcards/${deck.id}/study?practice=1`)}
-              className="inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl font-semibold text-sm text-sahifa-700 dark:text-sahifa-300 bg-white/70 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 transition-all"
-            >
-              <RefreshCw className="w-4 h-4" />Barchasini mashq qilish
+
+          <div className="fc-deck-header">
+            <div className="fc-deck-icon" style={{ background: `linear-gradient(140deg, ${g1}, ${g2})` }}>
+              {deckCode(deck.title)}
+            </div>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <h2 className="fc-deck-header-title">{deck.title}</h2>
+              {deck.description && <p className="fc-deck-header-desc">{deck.description}</p>}
+            </div>
+            <button className="fc-modal-close" onClick={() => setDeckEditOpen(true)} aria-label="Sozlamalar">
+              <Settings size={18} />
             </button>
+          </div>
+
+          <div className="fc-section-head">
+            <h3 className="fc-section-title">Kartalar <span className="fc-section-count">({cards.length})</span></h3>
+            <button className="fc-link-accent" onClick={() => setCardModal({ open: true, editing: null })}>
+              + Qo'shish
+            </button>
+          </div>
+
+          {cards.length === 0 ? (
+            <div className="fc-panel" style={{ textAlign: 'center', padding: 32 }}>
+              <p style={{ margin: '0 0 12px', color: 'var(--muted)', fontSize: 13 }}>Hali karta yo'q.</p>
+              <button className="fc-btn-primary" style={{ margin: '0 auto' }} onClick={() => setCardModal({ open: true, editing: null })}>
+                <Plus size={16} />Birinchi kartani qo'shish
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {cards.map((card) => (
+                <div key={card.id} className="fc-card-row" style={{ position: 'relative' }}>
+                  <span className="fc-status-dot" style={{ background: STATUS_DOT[card.status] }} />
+                  <p className="fc-card-front">{card.front_text}</p>
+                  <p className="fc-card-back">{card.back_text}</p>
+                  <span className="fc-status-pill" style={{ background: STATUS_PILL_BG[card.status], color: STATUS_PILL_FG[card.status] }}>
+                    {STATUS_LABEL[card.status]}
+                  </span>
+                  <button className="fc-row-menu" onClick={() => setOpenMenuId(openMenuId === card.id ? null : card.id)}>···</button>
+                  {openMenuId === card.id && (
+                    <div
+                      style={{
+                        position: 'absolute', right: 18, top: '100%', marginTop: 4, zIndex: 3,
+                        background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 12,
+                        boxShadow: '0 8px 24px rgba(0,0,0,.12)', overflow: 'hidden', minWidth: 120,
+                      }}
+                    >
+                      <button
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}
+                        onClick={() => { setCardModal({ open: true, editing: card }); setOpenMenuId(null) }}
+                      >
+                        Tahrirlash
+                      </button>
+                      <button
+                        style={{ display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--red)' }}
+                        onClick={() => { setDeleteCard(card); setOpenMenuId(null) }}
+                      >
+                        O'chirish
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
-      </div>
 
-      {/* Card list */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-sm font-bold text-gray-900 dark:text-white">Kartalar ({cards.length})</h2>
-        <button
-          onClick={() => setCardModal({ open: true, editing: null })}
-          className="inline-flex items-center gap-1 text-xs font-semibold text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-700"
-        >
-          <Plus className="w-3.5 h-3.5" />Karta qo'shish
-        </button>
-      </div>
+        <div className="fc-rail">
+          <div className="fc-study-cta">
+            <p className="fc-study-cta-title">{deck.due_count} ta karta kutmoqda</p>
+            <button
+              className="fc-btn-block solid purple"
+              disabled={deck.card_count === 0}
+              onClick={() => navigate(`/flashcards/${deck.id}/study`)}
+            >
+              O'rganishni boshlash
+            </button>
+            {deck.card_count > 0 && (
+              <button className="fc-study-cta-link" onClick={() => navigate(`/flashcards/${deck.id}/study?practice=1`)}>
+                Barchasini mashq qilish ({deck.card_count} ta)
+              </button>
+            )}
+          </div>
 
-      {cards.length === 0 ? (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 text-center border border-slate-200 dark:border-slate-700">
-          <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">Hali karta yo'q.</p>
-          <button
-            onClick={() => setCardModal({ open: true, editing: null })}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-semibold text-sm text-white bg-sahifa-500 hover:bg-sahifa-600 transition-colors"
-          >
-            <Plus className="w-4 h-4" />Birinchi kartani qo'shish
-          </button>
+          <div className="fc-panel">
+            <div className="fc-section-head">
+              <p className="fc-panel-title">O'rganilganlik darajasi</p>
+              <span style={{ fontSize: 13, fontWeight: 800, color: 'var(--muted)' }}>{deck.mastered_count}/{deck.card_count}</span>
+            </div>
+            <div className="fc-bar lg" style={{ marginTop: 12 }}>
+              <div className="fc-bar-fill" style={{ width: `${deck.card_count > 0 ? (deck.mastered_count / deck.card_count) * 100 : 0}%`, background: 'var(--purple)' }} />
+            </div>
+            <div className="fc-mastery-legend">
+              <div className="fc-mastery-row"><span className="fc-status-dot" style={{ background: 'var(--purple)' }} />Yangi<span className="count">{masteryTally.new}</span></div>
+              <div className="fc-mastery-row"><span className="fc-status-dot" style={{ background: 'var(--accent)' }} />O'rganilmoqda<span className="count">{masteryTally.active}</span></div>
+              <div className="fc-mastery-row"><span className="fc-status-dot" style={{ background: 'var(--green)' }} />O'rganilgan<span className="count">{masteryTally.mastered}</span></div>
+            </div>
+          </div>
+
+          <div className="fc-panel">
+            <p className="fc-panel-title">Keyingi takrorlash</p>
+            <div className="fc-nextreview-row"><span>Bugun</span><span className="val">{nextReviewBuckets.today} karta</span></div>
+            <div className="fc-nextreview-row"><span>Ertaga</span><span className="val">{nextReviewBuckets.tomorrow} karta</span></div>
+            <div className="fc-nextreview-row"><span>Keyinroq</span><span className="val">{nextReviewBuckets.later} karta</span></div>
+          </div>
+
+          <div className="fc-half-row">
+            <button className="fc-btn-half" onClick={handleRate}><Star size={13} style={{ marginRight: 5, verticalAlign: -2 }} />Baholash</button>
+            <button className="fc-btn-half" onClick={handleShare}><Share2 size={13} style={{ marginRight: 5, verticalAlign: -2 }} />Ulashish</button>
+          </div>
         </div>
-      ) : (
-        <div className="space-y-2">
-          <AnimatePresence initial={false}>
-            {cards.map((card) => (
-              <motion.div
-                key={card.id}
-                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, height: 0 }}
-                className="group flex items-center gap-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3"
-              >
-                <span className={`w-2 h-2 rounded-full shrink-0 ${STATUS_DOT[card.status]}`} title={STATUS_LABEL[card.status]} />
-                <div className="flex-1 min-w-0 grid sm:grid-cols-2 gap-1 sm:gap-4">
-                  <p className="text-sm text-gray-900 dark:text-white truncate">{card.front_text}</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 truncate hidden sm:block">{card.back_text}</p>
-                </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button onClick={() => setCardModal({ open: true, editing: card })} className="p-1.5 text-gray-400 hover:text-sahifa-500">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                  <button onClick={() => setDeleteCard(card)} className="p-1.5 text-gray-400 hover:text-red-500">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </motion.div>
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
+      </div>
 
       <CardFormModal
-        open={cardModal.open}
-        deckId={id}
-        editing={cardModal.editing}
+        open={cardModal.open} deckId={id} editing={cardModal.editing}
         onClose={() => setCardModal({ open: false, editing: null })}
         onSaved={handleCardSaved}
       />
-      <DeckEditModal open={deckEditOpen} deck={deck} onClose={() => setDeckEditOpen(false)} onSaved={setDeck} />
-      <DeleteConfirmModal
+      <DeckFormModal open={deckEditOpen} deck={deck} onClose={() => setDeckEditOpen(false)} onSaved={setDeck} />
+      <ConfirmModal
         open={!!deleteCard}
         title="Kartani o'chirasizmi?"
         description="Bu amalni ortga qaytarib bo'lmaydi."
@@ -397,7 +303,7 @@ const FlashcardDeckPage: React.FC = () => {
         onConfirm={handleDeleteCard}
         onCancel={() => setDeleteCard(null)}
       />
-    </PageWrapper>
+    </FlashcardsRoot>
   )
 }
 

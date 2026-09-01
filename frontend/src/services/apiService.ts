@@ -372,6 +372,46 @@ class ApiService {
     return this.axiosInstance.get('/api/flashcards/stats')
   }
 
+  // ── Public deck library ────────────────────────────────────────────────────
+
+  async publishFlashcardDeck(deckId: number, body: { is_anonymous: boolean; category: string }) {
+    return this.axiosInstance.patch(`/api/flashcards/decks/${deckId}/publish`, body)
+  }
+
+  async unpublishFlashcardDeck(deckId: number) {
+    return this.axiosInstance.patch(`/api/flashcards/decks/${deckId}/unpublish`)
+  }
+
+  async listPublicFlashcardDecks(params: { category?: string; sort?: 'popular' | 'newest' | 'top_rated'; search?: string; page?: number; limit?: number }) {
+    return this.axiosInstance.get('/api/flashcards/public', { params })
+  }
+
+  async getPublicFlashcardDeck(deckId: number) {
+    return this.axiosInstance.get(`/api/flashcards/public/${deckId}`)
+  }
+
+  async cloneFlashcardDeck(deckId: number) {
+    return this.axiosInstance.post(`/api/flashcards/public/${deckId}/clone`)
+  }
+
+  async rateFlashcardDeck(deckId: number, body: { rating: number; comment?: string }) {
+    return this.axiosInstance.post(`/api/flashcards/public/${deckId}/rate`, body)
+  }
+
+  // ── AI-assisted creation (spec Part 6, feature 1) ──────────────────────────
+
+  async getAiLimits() {
+    return this.axiosInstance.get('/api/ai/limits')
+  }
+
+  async generateFlashcardsAI(body: { action_id: string; text?: string; image_base64?: string; image_mime_type?: string; language?: string }) {
+    return this.axiosInstance.post('/api/ai/flashcards/generate', body)
+  }
+
+  async confirmGeneratedFlashcards(body: { deck_title: string; description?: string; color?: string; icon?: string; cards: { front: string; back: string }[] }) {
+    return this.axiosInstance.post('/api/ai/flashcards/generate/confirm', body)
+  }
+
   // ─── Payment endpoints ────────────────────────────────────────────────────
 
   /** Check if user already purchased a paid book (JWT auth — no telegram_id param) */
