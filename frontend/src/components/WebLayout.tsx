@@ -26,7 +26,7 @@ import {
   User, Trophy, X, Menu, Plus,
   Search, ChevronRight, Settings, HelpCircle, LogOut,
   Wallet, Shield, GraduationCap, Loader2, Sun, Moon, Timer,
-  BookMarked, ListChecks, Bookmark, Heart,
+  BookMarked, ListChecks, Bookmark, Heart, Layers,
 } from 'lucide-react'
 import GlobalProgressBar from './GlobalProgressBar'
 import EmailVerificationBanner from './EmailVerificationBanner'
@@ -54,7 +54,7 @@ const NAV_MAIN: NavItem[] = [
   { icon: Network,       label: 'Tarmoq',        path: '/network' },
   { icon: BookOpen,      label: 'Kurslar',       path: '/courses' },
   { icon: Timer,         label: "O'qish maydoni", path: '/workspace' },
-  { icon: Briefcase,     label: 'Ish joyi',      path: '/jobs' },
+  { icon: Layers,        label: 'Kartalar',      path: '/flashcards' },
   { icon: MessageCircle, label: 'Xabarlar',      path: '/messages' },
 ]
 

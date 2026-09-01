@@ -312,6 +312,66 @@ class ApiService {
     return this.axiosInstance.post('/api/quiz/report', { question_id: questionId, reason })
   }
 
+  // ─── Flashcards ("Kartalar") endpoints ───────────────────────────────────────
+  // Core deck/card/study-session surface only — mirrors the mobile app's
+  // lib/api.ts `flashcards` namespace. The public deck library (browse/clone/
+  // rate/report/publish) is a separate, larger feature not covered here.
+
+  async listFlashcardDecks() {
+    return this.axiosInstance.get('/api/flashcards/decks')
+  }
+
+  async createFlashcardDeck(body: { title: string; description?: string; color?: string; icon?: string }) {
+    return this.axiosInstance.post('/api/flashcards/decks', body)
+  }
+
+  async getFlashcardDeck(deckId: number) {
+    return this.axiosInstance.get(`/api/flashcards/decks/${deckId}`)
+  }
+
+  async updateFlashcardDeck(deckId: number, body: Partial<{ title: string; description: string; color: string; icon: string }>) {
+    return this.axiosInstance.patch(`/api/flashcards/decks/${deckId}`, body)
+  }
+
+  async deleteFlashcardDeck(deckId: number) {
+    return this.axiosInstance.delete(`/api/flashcards/decks/${deckId}`)
+  }
+
+  async listFlashcards(deckId: number) {
+    return this.axiosInstance.get(`/api/flashcards/decks/${deckId}/cards`)
+  }
+
+  async addFlashcard(deckId: number, body: { front_text: string; back_text: string; position?: number }) {
+    return this.axiosInstance.post(`/api/flashcards/decks/${deckId}/cards`, body)
+  }
+
+  async updateFlashcard(cardId: number, body: Partial<{ front_text: string; back_text: string }>) {
+    return this.axiosInstance.patch(`/api/flashcards/cards/${cardId}`, body)
+  }
+
+  async deleteFlashcard(cardId: number) {
+    return this.axiosInstance.delete(`/api/flashcards/cards/${cardId}`)
+  }
+
+  async getFlashcardStudySession(deckId: number, practice?: boolean) {
+    return this.axiosInstance.get(`/api/flashcards/decks/${deckId}/study`, { params: { practice } })
+  }
+
+  async reviewFlashcard(cardId: number, body: { rating: 1 | 2 | 3 | 4; time_spent_ms?: number }) {
+    return this.axiosInstance.post(`/api/flashcards/cards/${cardId}/review`, body)
+  }
+
+  async completeFlashcardSession(deckId: number, body: { total_time_ms: number; cards_reviewed: number }) {
+    return this.axiosInstance.post(`/api/flashcards/decks/${deckId}/complete`, {
+      ...body,
+      local_date: new Date().toLocaleDateString('en-CA'),   // YYYY-MM-DD, local calendar day
+    })
+  }
+
+  async getFlashcardStats() {
+    return this.axiosInstance.get('/api/flashcards/stats')
+  }
+
   // ─── Payment endpoints ────────────────────────────────────────────────────
 
   /** Check if user already purchased a paid book (JWT auth — no telegram_id param) */
