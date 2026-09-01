@@ -440,20 +440,10 @@ const DailyQuizPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Per-question review */}
-        <div className="space-y-3">
-          {questions.map((q) => (
-            <ResultQuestionCard
-              key={q.question_id}
-              question={q}
-              wasCorrect={submitCorrectMap?.[q.position]}
-              onReport={handleReport}
-            />
-          ))}
-        </div>
-
-        {/* Leaderboard */}
-        <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
+        {/* Leaderboard — mobile/tablet only; xl+ gets it in the right sidebar
+           instead (DailyQuizRightSidebar), so it isn't buried at the bottom
+           of a long page on desktop. */}
+        <div className="xl:hidden bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-sm font-bold text-gray-900 dark:text-white inline-flex items-center gap-2">
               <Trophy className="w-4 h-4 text-amber-500" />Reyting
@@ -477,6 +467,18 @@ const DailyQuizPage: React.FC = () => {
               />
             </div>
           )}
+        </div>
+
+        {/* Per-question review */}
+        <div className="space-y-3">
+          {questions.map((q) => (
+            <ResultQuestionCard
+              key={q.question_id}
+              question={q}
+              wasCorrect={submitCorrectMap?.[q.position]}
+              onReport={handleReport}
+            />
+          ))}
         </div>
 
         <div className="text-center">

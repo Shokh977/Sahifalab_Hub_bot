@@ -18,6 +18,7 @@ import NetworkRightSidebar from './components/sidebars/NetworkRightSidebar'
 import CoursesRightSidebar from './components/sidebars/CoursesRightSidebar'
 import JobsRightSidebar from './components/sidebars/JobsRightSidebar'
 import WorkspaceRightSidebar from './components/sidebars/WorkspaceRightSidebar'
+import DailyQuizRightSidebar from './components/sidebars/DailyQuizRightSidebar'
 import AuthGuard from './components/AuthGuard'
 import NotificationToast from './components/NotificationToast'
 import EmailLinkPrompt from './components/EmailLinkPrompt'
@@ -305,7 +306,7 @@ const AppRoutes: React.FC = () => {
           <Route path="/study"          element={<Navigate to="/workspace?tab=focus" replace />} />
           <Route path="/workspace"      element={<AppLayout rightSidebar={<WorkspaceRightSidebar />} maxWidth="max-w-[760px]"><WorkspacePage /></AppLayout>} />
           <Route path="/read/:bookId"   element={<BookReaderPage />} />
-          <Route path="/5-savol"        element={<AppLayout maxWidth="max-w-[760px]"><DailyQuizPage /></AppLayout>} />
+          <Route path="/5-savol"        element={<AppLayout rightSidebar={<DailyQuizRightSidebar />} maxWidth="max-w-[680px]"><DailyQuizPage /></AppLayout>} />
           <Route path="/kitoblar"       element={<AppLayout maxWidth="max-w-[900px]"><KitoblarPage /></AppLayout>} />
           <Route path="/kitoblar/:id"   element={<BookDetailPage />} />
           <Route path="/resources"      element={<ResourcesPage />} />
