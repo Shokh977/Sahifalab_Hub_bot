@@ -132,7 +132,8 @@ const FlashcardsPage: React.FC = () => {
   const loadPublic = useCallback(async () => {
     setPublicLoading(true)
     try {
-      const { data } = await apiService.listPublicFlashcardDecks({ category: category || undefined, sort: 'popular', limit: 24 })
+      // Backend caps limit at 20 (le=20) — see GET /api/flashcards/public.
+      const { data } = await apiService.listPublicFlashcardDecks({ category: category || undefined, sort: 'popular', limit: 20 })
       setPublicDecks(Array.isArray(data?.decks) ? data.decks : [])
     } catch {
       showToast("Ommaviy to'plamlar yuklanmadi.", 'error')
