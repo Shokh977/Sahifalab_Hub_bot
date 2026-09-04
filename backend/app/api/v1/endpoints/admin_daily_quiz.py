@@ -10,7 +10,12 @@ GET    /week                        — full rolling-week view: every calendar d
                                        all ("missing"), each with its full question list —
                                        the previous /pending endpoint only ever showed days
                                        that already existed, so a day nobody had generated yet
-                                       was invisible until someone clicked generate.
+                                       was invisible until someone clicked generate. Now also
+                                       carries candidates_generated/candidates_verified/
+                                       rejection_rate per day (5-savol-quality-fixes brief,
+                                       deliverable 1's missing aggregate metric).
+GET    /category-config              — current 5-category mix + resolved weekday rotation
+PUT    /category-config              — retune category weights, no deploy needed (app_config)
 POST   /generate-week                — admin-triggered top-up: same pipeline as the daily cron
                                         (JWT-gated instead of cron-secret) — generates any
                                         missing day and tops up any day still stuck in 'draft'
@@ -46,9 +51,79 @@ from app.db.session import get_db
 from app.api.v1.endpoints.admin import verify_admin
 from app.models.admin_models import AdminUser
 from app.services import daily_quiz_service as svc
+from app.services import category_config
+from app.services.config_service import invalidate_config_cache
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/category-config")
+async def get_category_config(
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Current 5-category mix (5-savol-quality-fixes brief Part 3), resolved
+    with defaults — read-only view of what generate_week will actually use
+    on its next run."""
+    categories = category_config.get_categories(db)
+    rotation = category_config.build_weekday_rotation(categories)
+    weekday_names = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
+    return {
+        "categories": categories,
+        "weekday_rotation": [
+            {"weekday": i, "weekday_name": weekday_names[i], "category": rotation[i]["key"]}
+            for i in range(7)
+        ],
+    }
+
+
+class CategoryConfigUpdate(BaseModel):
+    categories: list[dict]
+
+
+@router.put("/category-config")
+async def update_category_config(
+    body: CategoryConfigUpdate,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Persists a new category mix to app_config — no deploy needed, same
+    mechanism as tanga_earning (config_service.get_config). Takes effect on
+    the very next generate_week run (daily 05:00 UTC cron or this router's
+    own /generate-week)."""
+    categories = body.categories
+    required_fields = {"key", "label", "brief", "weight", "curated"}
+    for c in categories:
+        missing = required_fields - set(c.keys())
+        if missing:
+            raise HTTPException(422, f"category {c.get('key', '?')} missing fields: {missing}")
+        if not isinstance(c["weight"], (int, float)) or c["weight"] <= 0:
+            raise HTTPException(422, f"category {c['key']} weight must be a positive number")
+
+    total_weight = sum(c["weight"] for c in categories)
+    if not (95 <= total_weight <= 105):
+        raise HTTPException(422, f"category weights must sum to ~100, got {total_weight}")
+
+    keys = [c["key"] for c in categories]
+    if len(set(keys)) != len(keys):
+        raise HTTPException(422, "duplicate category keys")
+
+    db.execute(
+        text("""
+            INSERT INTO app_config (key, value, description, updated_by)
+            VALUES (:key, CAST(:value AS jsonb), :desc, :uid)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW(), updated_by = EXCLUDED.updated_by
+        """),
+        {
+            "key": category_config.CONFIG_KEY, "value": json.dumps(categories),
+            "desc": "5 Savol category mix (weight %, curated flag) — see category_config.py",
+            "uid": admin.telegram_id,
+        },
+    )
+    db.commit()
+    invalidate_config_cache(category_config.CONFIG_KEY)
+    return {"ok": True, "categories": categories}
 
 
 @router.post("/generate-week")
@@ -72,6 +147,7 @@ def _question_dict(q) -> dict:
         "options": q.options, "correct_index": q.correct_index, "explanation": q.explanation,
         "source": q.source, "difficulty": q.difficulty, "verified": q.verified,
         "verify_model_answer": q.verify_model_answer, "voided": q.voided,
+        "curated_fact_id": q.curated_fact_id,
         # No verify_model_answer means this question never went through the
         # AI cold-check — the natural signal that it was manually authored
         # via POST /{quiz_id}/questions rather than generated.
@@ -93,7 +169,7 @@ async def week_overview(
     rows = db.execute(
         text("""
             SELECT id, quiz_number, publish_date, theme, status, notes, created_at,
-                   approved_at, published_at
+                   approved_at, published_at, candidates_generated, candidates_verified
             FROM daily_quizzes
             WHERE publish_date BETWEEN :start AND :end
             ORDER BY publish_date
@@ -111,21 +187,27 @@ async def week_overview(
                 "exists": False, "publish_date": d.isoformat(), "status": "missing",
                 "id": None, "quiz_number": None, "theme": None, "notes": None,
                 "question_count": 0, "questions": [],
+                "candidates_generated": None, "candidates_verified": None, "rejection_rate": None,
             })
             continue
         questions = db.execute(
             text("""
                 SELECT id, position, question_text, options, correct_index,
-                       explanation, source, difficulty, verified, verify_model_answer, voided
+                       explanation, source, difficulty, verified, verify_model_answer, voided,
+                       curated_fact_id
                 FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position
             """),
             {"qid": row.id},
         ).fetchall()
+        gen_count, ver_count = row.candidates_generated, row.candidates_verified
+        rejection_rate = round(1 - ver_count / gen_count, 3) if gen_count else None
         days.append({
             "exists": True, "id": row.id, "quiz_number": row.quiz_number,
             "publish_date": d.isoformat(), "theme": row.theme, "status": row.status,
             "notes": row.notes, "question_count": sum(1 for q in questions if not q.voided),
             "questions": [_question_dict(q) for q in questions],
+            "candidates_generated": gen_count, "candidates_verified": ver_count,
+            "rejection_rate": rejection_rate,
         })
     return {"today": today.isoformat(), "days": days}
 

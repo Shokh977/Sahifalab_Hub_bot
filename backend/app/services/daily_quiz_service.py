@@ -4,15 +4,21 @@ daily_quiz_service.py — "5 Savol", the daily AI quiz (5-savol-daily-quiz-spec.
 Five questions a day, the same five for every user worldwide, released
 00:00 UTC, hard-expiring at the next 00:00 UTC. This module owns:
 
-  - generate_week()      — DAILY top-up: 10 candidates/day -> cold
-                            verification -> best-5 selection, with
-                            in-day backfill retries (_generate_full_day) if
-                            attrition leaves a day short, AND top-up-in-place
-                            for a day previously stuck in 'draft' (never
-                            skipped forever just because a row exists). Never
-                            same-day (a live generation failure must never
-                            become a live outage — the week is always kept
-                            generated ahead).
+  - generate_week()      — DAILY top-up: 10 candidates/day (freeform AI
+                            generation or, for the two curated categories,
+                            formatted from an admin-verified curated_facts
+                            row — see category_config.py) -> cold verify +
+                            deep content-check + transliteration check ->
+                            best-5 selection, with in-day backfill retries
+                            (_generate_full_day) if attrition leaves a day
+                            short, AND top-up-in-place for a day previously
+                            stuck in 'draft' (never skipped forever just
+                            because a row exists). Never same-day (a live
+                            generation failure must never become a live
+                            outage — the week is always kept generated
+                            ahead). Also tracks candidates_generated/
+                            candidates_verified per day and pages admin if
+                            the rejection rate exceeds 60%.
   - deliver_today()       — GET /today's core: idempotently creates the
                             per-user attempt row that starts the server
                             clock (delivered_at).
@@ -50,9 +56,11 @@ from sqlalchemy.orm import Session
 from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
-from app.services.ai.prompts import daily_quiz_gen_v1, daily_quiz_verify_v1
+from app.services.ai.prompts import daily_quiz_gen_v2, daily_quiz_verify_v1, daily_quiz_deepcheck_v1, daily_quiz_format_v1
 from app.services.tanga_service import grant_tanga, daily_capped_grant
 from app.services.config_service import get_config
+from app.services import category_config
+from app.services.uzbek_translit import find_translit_issues
 
 logger = logging.getLogger(__name__)
 
@@ -75,33 +83,47 @@ DIFFICULTY_TARGET = {"easy": 2, "medium": 2, "hard": 1}
 
 REPORT_VOID_THRESHOLD = 5  # reports on one question before it's auto-voided
 
+# 5-savol-quality-fixes brief, Part 5: "if the rejection rate exceeds 60%,
+# surface it to admin — that means the generation prompt needs work, not
+# the verifier." See _page_admins_high_rejection_rate.
+REJECTION_RATE_ALERT_THRESHOLD = 0.6
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PART 1 — Generation pipeline
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def _generate_candidates(db: Session, weekday: int, avoid_questions: Optional[list[str]] = None) -> list[dict]:
+async def _generate_candidates(db: Session, category: dict, avoid_questions: Optional[list[str]] = None) -> list[dict]:
+    """Dispatches to the freeform generator or the curated-fact formatter
+    depending on category["curated"] (category_config.py). Returns [] on
+    any failure (logged) — caller treats an empty candidate list as "this
+    day needs attention," never as a crash."""
+    if category.get("curated"):
+        return await _generate_curated_candidates(db, category, avoid_questions)
+    return await _generate_freeform_candidates(db, category, avoid_questions)
+
+
+async def _generate_freeform_candidates(db: Session, category: dict, avoid_questions: Optional[list[str]] = None) -> list[dict]:
     """One generation call -> up to 10 raw candidate questions for that
-    weekday's theme. Returns [] on any failure (logged) — caller treats an
-    empty candidate list as "this day needs attention," never as a crash."""
+    category. Only ever called for non-curated categories (amaliy_fan,
+    kitoblar_goyalar, til_soz_tarixi) — see category_config.py."""
     provider = get_provider()
-    theme_key, _, _ = daily_quiz_gen_v1.THEMES[weekday]
     try:
         response = await provider.generate_json(
-            system_prompt=daily_quiz_gen_v1.SYSTEM_PROMPT,
-            user_prompt=daily_quiz_gen_v1.build_user_prompt(weekday, avoid_questions),
-            prompt_version=daily_quiz_gen_v1.VERSION,
-            json_schema=daily_quiz_gen_v1.JSON_SCHEMA,
+            system_prompt=daily_quiz_gen_v2.SYSTEM_PROMPT,
+            user_prompt=daily_quiz_gen_v2.build_user_prompt(category, avoid_questions),
+            prompt_version=daily_quiz_gen_v2.VERSION,
+            json_schema=daily_quiz_gen_v2.JSON_SCHEMA,
             temperature=0.2,  # low temperature (spec) — consistency over creativity
         )
     except AiProviderError as e:
         log_usage(db, user_id=None, feature="daily_quiz_gen", model="gemini-flash-lite-latest",
-                  prompt_version=daily_quiz_gen_v1.VERSION, outcome=e.outcome, error_detail=str(e))
-        logger.error("daily_quiz generation call failed for theme=%s", theme_key, exc_info=True)
+                  prompt_version=daily_quiz_gen_v2.VERSION, outcome=e.outcome, error_detail=str(e))
+        logger.error("daily_quiz generation call failed for category=%s", category["key"], exc_info=True)
         return []
 
     log_usage(db, user_id=None, feature="daily_quiz_gen", model=response.model,
-              prompt_version=daily_quiz_gen_v1.VERSION, input_tokens=response.input_tokens,
+              prompt_version=daily_quiz_gen_v2.VERSION, input_tokens=response.input_tokens,
               output_tokens=response.output_tokens, cost_usd=response.cost_usd,
               latency_ms=response.latency_ms, outcome=response.outcome)
 
@@ -129,6 +151,115 @@ async def _generate_candidates(db: Session, weekday: int, avoid_questions: Optio
         else:
             logger.warning("daily_quiz candidate dropped (malformed): %r", q)
     return valid
+
+
+async def _generate_curated_candidates(db: Session, category: dict, avoid_questions: Optional[list[str]] = None) -> list[dict]:
+    """Format-only path for ozbek_adabiyoti/tarix_meros (brief Part 4): pulls
+    admin-verified, not-recently-used facts from curated_facts (owned by the
+    content-bot repo, same shared Postgres — see plan doc) and asks the model
+    ONLY to build a question+distractors around each fact, never to supply
+    the fact itself. A day with fewer available facts than needed simply
+    comes up short through the existing retry/backfill/warning machinery in
+    _generate_full_day — no special-case error path needed."""
+    provider = get_provider()
+    n = sum(daily_quiz_gen_v2.CANDIDATE_MIX.values())
+    avoid_set = set(avoid_questions or [])
+
+    rows = db.execute(
+        text("""
+            SELECT id, fact_text, source FROM curated_facts
+            WHERE category = :cat AND verified = true AND active = true
+              AND (last_used_at IS NULL OR last_used_at < NOW() - INTERVAL '90 days')
+            ORDER BY times_used ASC, last_used_at ASC NULLS FIRST
+            LIMIT :n
+        """),
+        {"cat": category["key"], "n": n},
+    ).fetchall()
+
+    candidates = []
+    for row in rows:
+        try:
+            response = await provider.generate_json(
+                system_prompt=daily_quiz_format_v1.SYSTEM_PROMPT,
+                user_prompt=daily_quiz_format_v1.build_user_prompt(row.fact_text),
+                prompt_version=daily_quiz_format_v1.VERSION,
+                json_schema=daily_quiz_format_v1.JSON_SCHEMA,
+                temperature=0.2,
+            )
+        except AiProviderError as e:
+            log_usage(db, user_id=None, feature="daily_quiz_format", model="gemini-flash-lite-latest",
+                      prompt_version=daily_quiz_format_v1.VERSION, outcome=e.outcome, error_detail=str(e))
+            logger.error("daily_quiz format call failed for curated_fact_id=%s", row.id, exc_info=True)
+            continue
+
+        log_usage(db, user_id=None, feature="daily_quiz_format", model=response.model,
+                  prompt_version=daily_quiz_format_v1.VERSION, input_tokens=response.input_tokens,
+                  output_tokens=response.output_tokens, cost_usd=response.cost_usd,
+                  latency_ms=response.latency_ms, outcome=response.outcome)
+
+        q = response.data or {}
+        opts = q.get("options") or []
+        idx = q.get("correct_index")
+        if not (
+            isinstance(q.get("question_text"), str) and q["question_text"].strip()
+            and isinstance(opts, list) and len(opts) == 4 and all(isinstance(o, str) for o in opts)
+            and isinstance(idx, int) and 0 <= idx <= 3
+            and isinstance(q.get("explanation"), str) and q["explanation"].strip()
+            and q.get("difficulty") in ("easy", "medium", "hard")
+        ):
+            logger.warning("daily_quiz curated candidate dropped (malformed): %r", q)
+            continue
+        if q["question_text"] in avoid_set:
+            continue
+
+        candidates.append({
+            "question_text": q["question_text"], "options": opts, "correct_index": idx,
+            "explanation": q["explanation"],
+            "source": row.source,  # admin-pinned, never model-authored (brief Part 4 rule #3)
+            "difficulty": q["difficulty"],
+            "curated_fact_id": int(row.id),
+        })
+    return candidates
+
+
+async def _deep_verify_candidate(db: Session, candidate: dict) -> tuple[bool, list[str]]:
+    """The 'hot' content check (brief Part 5) — sees the full candidate and
+    judges mutual exclusivity, distractor authenticity, the difficulty
+    floor, single-defensible-answer, and the banned-content list. Runs
+    alongside (never instead of) _verify_candidate's cold answer-only
+    check, which can't see any of this. Fails closed on any call error."""
+    provider = get_provider()
+    try:
+        response = await provider.generate_json(
+            system_prompt=daily_quiz_deepcheck_v1.SYSTEM_PROMPT,
+            user_prompt=daily_quiz_deepcheck_v1.build_user_prompt(candidate),
+            prompt_version=daily_quiz_deepcheck_v1.VERSION,
+            json_schema=daily_quiz_deepcheck_v1.JSON_SCHEMA,
+            temperature=0.0,
+        )
+    except AiProviderError as e:
+        log_usage(db, user_id=None, feature="daily_quiz_deepcheck", model="gemini-flash-lite-latest",
+                  prompt_version=daily_quiz_deepcheck_v1.VERSION, outcome=e.outcome, error_detail=str(e))
+        logger.error("daily_quiz deep-check call failed", exc_info=True)
+        return False, ["deep-check call failed"]
+
+    log_usage(db, user_id=None, feature="daily_quiz_deepcheck", model=response.model,
+              prompt_version=daily_quiz_deepcheck_v1.VERSION, input_tokens=response.input_tokens,
+              output_tokens=response.output_tokens, cost_usd=response.cost_usd,
+              latency_ms=response.latency_ms, outcome=response.outcome)
+
+    data = response.data or {}
+    if data.get("verdict") != "pass":
+        reasons = data.get("reasons") or ["deep-check returned no reasons"]
+        return False, reasons
+    return True, []
+
+
+def _check_transliteration(candidate: dict) -> list[str]:
+    """Deterministic, no AI call (see uzbek_translit.py docstring for why).
+    Returns human-readable reason strings, empty if clean."""
+    issues = find_translit_issues(candidate)
+    return [f"{i['field']}: '{i['wrong']}' -> '{i['correct']}'" for i in issues]
 
 
 async def _verify_candidate(db: Session, candidate: dict) -> bool:
@@ -208,9 +339,32 @@ def _next_quiz_number(db: Session) -> int:
 MAX_GENERATION_ROUNDS = 3  # bounds AI cost/latency — see _generate_full_day
 
 
+async def _run_verification(db: Session, candidate: dict) -> None:
+    """Runs all three checks (brief Part 5) and sets candidate["verified"] +
+    candidate["reject_reasons"] in place. The deep-check AI call is skipped
+    if the cold check already disagreed (cost saving — the candidate is
+    rejected either way); the transliteration check is always run (free,
+    deterministic) so reject_reasons stays informative for admin review."""
+    cold_ok = await _verify_candidate(db, candidate)
+    if cold_ok:
+        deep_ok, deep_reasons = await _deep_verify_candidate(db, candidate)
+    else:
+        deep_ok, deep_reasons = False, []
+    translit_reasons = _check_transliteration(candidate)
+
+    reject_reasons = []
+    if not cold_ok:
+        reject_reasons.append("cold verification disagreed with correct_index")
+    reject_reasons.extend(deep_reasons)
+    reject_reasons.extend(translit_reasons)
+
+    candidate["verified"] = cold_ok and deep_ok and not translit_reasons
+    candidate["reject_reasons"] = reject_reasons
+
+
 async def _generate_full_day(
-    db: Session, weekday: int, seed_pool: Optional[list[dict]] = None,
-) -> tuple[list[dict], list[str]]:
+    db: Session, category: dict, seed_pool: Optional[list[dict]] = None,
+) -> tuple[list[dict], list[str], int, int]:
     """
     Generate (or top up) one day's worth of verified candidates. The old
     version called _generate_candidates exactly once and accepted whatever
@@ -224,28 +378,32 @@ async def _generate_full_day(
     budget is exhausted. seed_pool lets a caller resume from questions a
     PRIOR run already verified (used by generate_week's top-up-in-place path
     for a day stuck in 'draft') instead of throwing away good work.
+
+    Returns (selected, warnings, candidates_generated, candidates_verified) —
+    the last two feed the rejection-rate tracking in generate_week (brief
+    Part 5 / deliverable 1's missing aggregate metric).
     """
     pool: list[dict] = list(seed_pool or [])
     selected, warnings = select_five(pool)
     if len(selected) >= QUESTIONS_PER_QUIZ:
-        return selected, []
+        return selected, [], len(pool), sum(1 for c in pool if c.get("verified"))
 
     for round_num in range(1, MAX_GENERATION_ROUNDS + 1):
         avoid = [c["question_text"] for c in pool]
-        candidates = await _generate_candidates(db, weekday, avoid_questions=avoid)
+        candidates = await _generate_candidates(db, category, avoid_questions=avoid)
         for c in candidates:
-            c["verified"] = await _verify_candidate(db, c)
+            await _run_verification(db, c)
         pool.extend(candidates)
 
         selected, warnings = select_five(pool)
         if len(selected) >= QUESTIONS_PER_QUIZ:
-            return selected, []
+            return selected, [], len(pool), sum(1 for c in pool if c.get("verified"))
         if round_num < MAX_GENERATION_ROUNDS:
             logger.warning(
-                "daily_quiz weekday=%d generation round %d/%d short: %d/%d verified so far — retrying",
-                weekday, round_num, MAX_GENERATION_ROUNDS, len(selected), QUESTIONS_PER_QUIZ,
+                "daily_quiz category=%s generation round %d/%d short: %d/%d verified so far — retrying",
+                category["key"], round_num, MAX_GENERATION_ROUNDS, len(selected), QUESTIONS_PER_QUIZ,
             )
-    return selected, warnings
+    return selected, warnings, len(pool), sum(1 for c in pool if c.get("verified"))
 
 
 async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> dict:
@@ -282,7 +440,8 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
             continue
 
         weekday = publish_date.weekday()
-        theme_key, theme_label, _ = daily_quiz_gen_v1.THEMES[weekday]
+        category = category_config.get_weekday_category(db, weekday)
+        theme_key, theme_label = category["key"], category["label"]
 
         if existing:
             quiz_id = int(existing.id)
@@ -290,7 +449,7 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
             prior_rows = db.execute(
                 text("""
                     SELECT question_text, options, correct_index, explanation, source,
-                           difficulty, verify_model_answer
+                           difficulty, verify_model_answer, curated_fact_id
                     FROM daily_quiz_questions WHERE quiz_id = :qid
                 """),
                 {"qid": quiz_id},
@@ -300,13 +459,16 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                     "question_text": r.question_text, "options": list(r.options), "correct_index": r.correct_index,
                     "explanation": r.explanation, "source": r.source, "difficulty": r.difficulty,
                     "verified": True, "verify_model_answer": r.verify_model_answer,
+                    "curated_fact_id": r.curated_fact_id,
                 }
                 for r in prior_rows
             ]
-            selected, warnings = await _generate_full_day(db, weekday, seed_pool=seed_pool)
+            seed_fact_ids = {r.curated_fact_id for r in prior_rows if r.curated_fact_id}
+            selected, warnings, gen_count, ver_count = await _generate_full_day(db, category, seed_pool=seed_pool)
             db.execute(text("DELETE FROM daily_quiz_questions WHERE quiz_id = :qid"), {"qid": quiz_id})
         else:
-            selected, warnings = await _generate_full_day(db, weekday)
+            seed_fact_ids = set()
+            selected, warnings, gen_count, ver_count = await _generate_full_day(db, category)
             quiz_number = _next_quiz_number(db)
             quiz_row = db.execute(
                 text("""
@@ -320,8 +482,16 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
 
         status = "verified" if len(selected) == QUESTIONS_PER_QUIZ and not warnings else "draft"
         db.execute(
-            text("UPDATE daily_quizzes SET status = :status, notes = :notes WHERE id = :id"),
-            {"status": status, "notes": "; ".join(warnings) or None, "id": quiz_id},
+            text("""
+                UPDATE daily_quizzes
+                SET status = :status, notes = :notes,
+                    candidates_generated = :gen, candidates_verified = :ver
+                WHERE id = :id
+            """),
+            {
+                "status": status, "notes": "; ".join(warnings) or None,
+                "gen": gen_count, "ver": ver_count, "id": quiz_id,
+            },
         )
 
         for position, q in enumerate(selected):
@@ -329,18 +499,36 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                 text("""
                     INSERT INTO daily_quiz_questions
                         (quiz_id, position, question_text, options, correct_index,
-                         explanation, source, difficulty, verified, verify_model_answer)
+                         explanation, source, difficulty, verified, verify_model_answer,
+                         curated_fact_id)
                     VALUES
                         (:qid, :pos, :qtext, CAST(:opts AS jsonb), :cidx,
-                         :expl, :src, :diff, :verified, :vma)
+                         :expl, :src, :diff, :verified, :vma, :fact_id)
                 """),
                 {
                     "qid": quiz_id, "pos": position, "qtext": q["question_text"],
                     "opts": json.dumps(q["options"]), "cidx": q["correct_index"],
                     "expl": q["explanation"], "src": q["source"], "diff": q["difficulty"],
                     "verified": True, "vma": q.get("verify_model_answer"),
+                    "fact_id": q.get("curated_fact_id"),
                 },
             )
+
+        # Only bump usage on facts NEWLY consumed this run — a fact already
+        # in the seed pool (from a prior top-up run) was already marked used
+        # when it was first selected; re-inserting it here on a top-up must
+        # not double-count it (brief Part 4: "avoid repeating a fact within
+        # ~90 days" depends on times_used/last_used_at being accurate).
+        newly_used_fact_ids = [
+            q["curated_fact_id"] for q in selected
+            if q.get("curated_fact_id") and q["curated_fact_id"] not in seed_fact_ids
+        ]
+        if newly_used_fact_ids:
+            db.execute(
+                text("UPDATE curated_facts SET times_used = times_used + 1, last_used_at = NOW() WHERE id = ANY(:ids)"),
+                {"ids": newly_used_fact_ids},
+            )
+
         db.commit()
 
         if warnings:
@@ -350,8 +538,15 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                 publish_date, quiz_number, theme_label, MAX_GENERATION_ROUNDS,
                 "; ".join(warnings), len(selected), QUESTIONS_PER_QUIZ,
             )
+
+        rejection_rate = (1 - ver_count / gen_count) if gen_count else 0.0
+        if gen_count > 0 and rejection_rate > REJECTION_RATE_ALERT_THRESHOLD:
+            await _page_admins_high_rejection_rate(publish_date, theme_label, gen_count, ver_count, rejection_rate)
+
         created.append({"publish_date": publish_date.isoformat(), "quiz_number": quiz_number,
-                         "theme": theme_key, "status": status, "question_count": len(selected)})
+                         "theme": theme_key, "status": status, "question_count": len(selected),
+                         "candidates_generated": gen_count, "candidates_verified": ver_count,
+                         "rejection_rate": round(rejection_rate, 3)})
 
         # A day for TODAY that just became ready (this run finally reached
         # 5, or a regenerate replaced a voided/short today) has already
@@ -726,6 +921,40 @@ async def _page_admins_question_voided(question_id: int, report_count: int, void
                 )
         except Exception:
             logger.error("Failed to page admin %s about auto-voided daily_quiz question", chat_id, exc_info=True)
+
+
+async def _page_admins_high_rejection_rate(
+    publish_date: date, theme_label: str, gen_count: int, ver_count: int, rejection_rate: float,
+) -> None:
+    """Brief Part 5 / deliverable 1's missing piece: 'if the rejection rate
+    exceeds 60%, surface it to admin — that means the generation prompt
+    needs work, not the verifier.' Same direct-Telegram-message channel as
+    the other daily_quiz paging functions."""
+    from app.core.config import settings
+
+    admin_ids: list[int] = settings.ADMIN_TELEGRAM_IDS or []
+    bot_token: str = settings.TELEGRAM_BOT_TOKEN
+    message = (
+        "⚠️ <b>5 Savol — rad etish darajasi yuqori</b>\n\n"
+        f"Sana: {publish_date.isoformat()} ({theme_label})\n"
+        f"Yaratilgan nomzodlar: {gen_count}\n"
+        f"Tasdiqlangan: {ver_count}\n"
+        f"Rad etish darajasi: {round(rejection_rate * 100)}%\n\n"
+        "Bu generatsiya promptida muammo borligini bildiradi, verifikatorda "
+        "emas — promptni ko'rib chiqing."
+    )
+    if not bot_token or not admin_ids:
+        logger.critical("daily_quiz high rejection rate (no admin channel configured, logging only): %s", message)
+        return
+    for chat_id in admin_ids:
+        try:
+            async with httpx.AsyncClient(timeout=10) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": chat_id, "text": message, "parse_mode": "HTML"},
+                )
+        except Exception:
+            logger.error("Failed to page admin %s about daily_quiz high rejection rate", chat_id, exc_info=True)
 
 
 async def _page_admins_rollover_failed(publish_date: date, reason: str) -> None:
