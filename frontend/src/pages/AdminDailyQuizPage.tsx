@@ -44,6 +44,9 @@ interface DayEntry {
   notes: string | null
   question_count: number
   questions: DayQuestion[]
+  candidates_generated: number | null
+  candidates_verified: number | null
+  rejection_rate: number | null
 }
 
 // 5-savol-quality-fixes brief, Part 3 — replaced the old 7-weekday theme
@@ -255,6 +258,14 @@ function DayCard({
       {day.notes && (
         <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 rounded-lg px-2.5 py-1.5">
           {day.notes}
+        </div>
+      )}
+
+      {day.candidates_generated !== null && (
+        <div className="text-xs text-gray-400 dark:text-gray-500">
+          {day.candidates_generated === 0
+            ? "0 nomzod yaratildi — AI chaqiruvi butunlay muvaffaqiyatsiz bo'ldi (tarmoq/kvota/circuit-breaker tekshiring), bu tasdiqlash muammosi emas"
+            : `Nomzodlar: ${day.candidates_generated} yaratildi, ${day.candidates_verified} tasdiqlandi (${Math.round((day.rejection_rate ?? 0) * 100)}% rad etildi)`}
         </div>
       )}
 
