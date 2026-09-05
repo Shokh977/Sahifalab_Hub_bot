@@ -1947,6 +1947,12 @@ const AdminPage: React.FC = () => {
             5 Savol
           </button>
           <button
+            onClick={() => navigate('/admin/curated-facts')}
+            className="text-sm text-sahifa-600 dark:text-sahifa-400 hover:text-sahifa-800 transition-colors font-medium"
+          >
+            Kurativ faktlar
+          </button>
+          <button
             onClick={() => setAdminId(null)}
             className="text-sm text-gray-500 hover:text-red-500 transition-colors"
           >

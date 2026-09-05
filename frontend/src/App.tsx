@@ -78,6 +78,7 @@ const LessonCreatePage = lazy(() => import('./pages/LessonCreatePage'))
 const TeacherWalletPage = lazy(() => import('./pages/TeacherWalletPage'))
 const AdminPayoutsPage = lazy(() => import('./pages/AdminPayoutsPage'))
 const AdminDailyQuizPage = lazy(() => import('./pages/AdminDailyQuizPage'))
+const AdminCuratedFactsPage = lazy(() => import('./pages/AdminCuratedFactsPage'))
 const SocialFeed = lazy(() => import('./pages/SocialFeed'))
 const SlouthMessenger = lazy(() => import('./pages/SlouthMessenger'))
 const PublicProfile = lazy(() => import('./pages/ProfilePage'))
@@ -350,6 +351,7 @@ const AppRoutes: React.FC = () => {
 
           {/* "5 Savol" daily quiz approval queue (090_daily_quiz) */}
           <Route path="/admin/daily-quiz" element={<AdminDailyQuizPage />} />
+          <Route path="/admin/curated-facts" element={<AdminCuratedFactsPage />} />
 
           {/* Teacher application — any authenticated user */}
           <Route path="/become-teacher" element={<AppLayout maxWidth="max-w-[680px]"><TeacherApplyPage /></AppLayout>} />

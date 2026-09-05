@@ -46,7 +46,15 @@ interface DayEntry {
   questions: DayQuestion[]
 }
 
+// 5-savol-quality-fixes brief, Part 3 — replaced the old 7-weekday theme
+// rotation with a 5-category weighted mix (category_config.py). Old keys
+// kept alongside the new ones so historical days already published under
+// the old rotation still render a real label instead of the raw slug.
 const THEME_LABELS: Record<string, string> = {
+  amaliy_fan: 'Amaliy fan', kitoblar_goyalar: "Kitoblar va g'oyalar",
+  ozbek_adabiyoti: "O'zbek adabiyoti", tarix_meros: 'Tarix va meros',
+  til_soz_tarixi: "Til va so'z tarixi",
+  // Pre-rework themes (090_daily_quiz) — still shown for old published days.
   kitoblar: 'Kitoblar', miya_xotira: 'Miya va xotira', psixologiya: 'Psixologiya',
   shaxslar: 'Shaxslar', moliyaviy_savodxonlik: 'Moliyaviy savodxonlik',
   umumiy_bilim: 'Umumiy bilim', til: 'Til',
