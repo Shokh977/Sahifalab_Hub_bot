@@ -115,6 +115,13 @@ async def _generate_freeform_candidates(db: Session, category: dict, avoid_quest
             prompt_version=daily_quiz_gen_v2.VERSION,
             json_schema=daily_quiz_gen_v2.JSON_SCHEMA,
             temperature=0.2,  # low temperature (spec) — consistency over creativity
+            # v2's situation-framed questions + explicit distractor-authenticity/
+            # mutual-exclusivity rules produce meaningfully longer output per
+            # candidate than v1 did. The default 2048 was v1-era headroom; at
+            # 10 candidates/call it was silently truncating mid-JSON-string
+            # every time (confirmed live: "Unterminated string..." on every
+            # single generation call, never a rate-limit or key problem).
+            max_output_tokens=8192,
         )
     except AiProviderError as e:
         log_usage(db, user_id=None, feature="daily_quiz_gen", model="gemini-flash-lite-latest",
