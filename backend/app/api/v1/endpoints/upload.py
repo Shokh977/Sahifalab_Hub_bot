@@ -44,7 +44,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.config import settings
-from app.services.auth_service import decode_token_payload
+from app.services.auth_service import decode_token_payload, get_current_role
 
 router = APIRouter()
 _security = HTTPBearer()
@@ -165,15 +165,20 @@ def _cdn_url(remote_path: str) -> str:
 
 async def _get_caller(creds: HTTPAuthorizationCredentials) -> dict:
     """
-    Decode JWT and verify the caller is a teacher or admin.
-    Returns {"telegram_id": int, "role": str}.
+    Decode JWT and verify the caller is CURRENTLY a teacher or admin.
+    A fresh DB lookup, not the JWT's own `role` claim — that claim is only
+    set at token-issue time and goes stale the instant an admin approves a
+    teacher (see auth_service.get_current_role's docstring); trusting it
+    locked freshly-approved teachers out of uploading for up to 30 days.
+    Returns {"telegram_id": int, "role": str} (role is the fresh value).
     """
     payload = decode_token_payload(creds.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    role = payload.get("role", "student")
+    role = await get_current_role(int(payload["telegram_id"]))
     if role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Faqat o'qituvchilar yuklashi mumkin")
+    payload["role"] = role
     return payload
 
 

@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.db.session import get_db
-from app.services.auth_service import decode_token_payload
+from app.services.auth_service import decode_token_payload, get_current_role
 from app.services import bunny_stream_service as bss
 from app.core.admin_check import is_role_admin
 
@@ -72,13 +72,17 @@ def _supabase_headers() -> dict:
 
 
 async def _get_caller(creds: HTTPAuthorizationCredentials) -> dict:
-    """Decode JWT and verify teacher/admin role."""
+    """Decode JWT and verify the caller is CURRENTLY teacher/admin — a fresh
+    DB lookup, not the JWT's own stale `role` claim (see upload.py's _get_caller
+    / auth_service.get_current_role for why: trusting the claim locked
+    freshly-approved teachers out for up to 30 days)."""
     payload = decode_token_payload(creds.credentials)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    role = payload.get("role", "student")
+    role = await get_current_role(int(payload["telegram_id"]))
     if role not in ("teacher", "admin"):
         raise HTTPException(status_code=403, detail="Faqat o'qituvchilar yuklashi mumkin")
+    payload["role"] = role
     return payload
 
 

@@ -2,9 +2,11 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import urllib.parse
 from datetime import datetime, UTC, timedelta
 from typing import Optional
+import httpx
 import jwt
 from pydantic import BaseModel
 
@@ -16,6 +18,38 @@ logger = logging.getLogger(__name__)
 SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = settings.ALGORITHM
 ACCESS_TOKEN_EXPIRE_DAYS = 30
+
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
+
+
+async def get_current_role(telegram_id: int) -> str:
+    """Fresh role lookup from the DB. A JWT's `role` claim is only set at
+    login/token-issue time (ACCESS_TOKEN_EXPIRE_DAYS=30 above) and goes stale
+    the instant an admin approves or demotes a teacher — that action updates
+    the DB but can't reach a token the client already holds. Trusting the
+    claim meant a freshly-approved teacher stayed locked out of uploading
+    (endpoints/upload.py, endpoints/stream.py both hit this independently —
+    same bug, copy-pasted twice) for up to 30 days, until their token
+    happened to expire. Originally written once in endpoints/teacher.py;
+    moved here so a third copy-paste of the same landmine can't happen again.
+    Fails closed (returns "student") if the lookup itself fails."""
+    try:
+        async with httpx.AsyncClient(timeout=5) as client:
+            res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/profiles",
+                params={"telegram_id": f"eq.{telegram_id}", "select": "role"},
+                headers={
+                    "apikey": SUPABASE_KEY,
+                    "Authorization": f"Bearer {SUPABASE_KEY}",
+                },
+            )
+        rows = res.json() if res.status_code == 200 else []
+        if rows:
+            return rows[0].get("role") or "student"
+    except Exception as e:
+        logger.warning("get_current_role lookup failed for %d: %s", telegram_id, e)
+    return "student"
 
 class TelegramAuthData(BaseModel):
     """Data from Telegram login widget"""

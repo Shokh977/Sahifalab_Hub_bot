@@ -17,7 +17,7 @@ from datetime import datetime, UTC
 from sqlalchemy.orm import Session
 from sqlalchemy import func as sa_func
 
-from app.services.auth_service import decode_token_payload
+from app.services.auth_service import decode_token_payload, get_current_role
 from app.db.session import get_db
 from app.models.course_models import CourseView
 
@@ -46,29 +46,6 @@ def _ensure_supabase():
         )
 
 
-async def _get_current_role(telegram_id: int) -> str:
-    """Fresh role lookup from the DB. The JWT's `role` claim is only set at
-    login/token-issue time (see create_access_token) and goes stale the instant
-    an admin approves or demotes a teacher — those actions update the DB but
-    don't (and can't) reach a token the client already holds. Trusting the
-    claim here meant a freshly-approved teacher stayed locked out of their own
-    panel (and a demoted teacher kept access) until their token happened to
-    expire. Fails closed (returns "student") if the lookup itself fails."""
-    try:
-        async with httpx.AsyncClient(timeout=5) as client:
-            res = await client.get(
-                f"{SUPABASE_URL}/rest/v1/profiles",
-                params={"telegram_id": f"eq.{telegram_id}", "select": "role"},
-                headers=_supabase_headers(),
-            )
-        rows = res.json() if res.status_code == 200 else []
-        if rows:
-            return rows[0].get("role") or "student"
-    except Exception as e:
-        logger.warning("_get_current_role lookup failed for %d: %s", telegram_id, e)
-    return "student"
-
-
 async def _get_telegram_id(authorization: Optional[str], require_teacher: bool = False) -> int:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
@@ -80,7 +57,11 @@ async def _get_telegram_id(authorization: Optional[str], require_teacher: bool =
         raise HTTPException(status_code=401, detail="Invalid or expired token")
     telegram_id = int(payload["telegram_id"])
     if require_teacher:
-        current_role = await _get_current_role(telegram_id)
+        # Fresh DB lookup, not the JWT's own role claim — see
+        # auth_service.get_current_role's docstring for why (this used to be
+        # a local copy of that exact function; consolidated so upload.py and
+        # stream.py's independent copies of the same bug can't recur here).
+        current_role = await get_current_role(telegram_id)
         if current_role not in ("teacher", "admin"):
             raise HTTPException(status_code=403, detail="Teacher account required")
     return telegram_id
