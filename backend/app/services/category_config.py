@@ -4,14 +4,20 @@ brief, Part 3), configurable without a deploy via app_config, same
 mechanism as tanga_earning (config_service.get_config/invalidate_config_cache).
 
 Replaces daily_quiz_gen_v1.THEMES's static per-weekday dict. Categories
-carry a `curated` flag: ozbek_adabiyoti and tarix_meros are never generated
-freeform (daily_quiz_gen_v2) — they're formatted from an admin-verified
-curated_facts row (daily_quiz_format_v1) — because this model's Uzbek
-literature/history knowledge is unreliable enough that letting it invent
-the underlying fact risks the same hallucination that produced Bug B's
-"Honavar effekti," in a domain (Uzbek culture) where getting it wrong in
-front of the target audience is far more damaging than in Western
-psychology trivia.
+carry a `curated` flag, still read by daily_quiz_service._generate_candidates
+to route to the curated_facts-formatting path (daily_quiz_format_v1) instead
+of freeform generation (daily_quiz_gen_v2) — the machinery from the original
+design is left in place (curated_facts table, /admin/curated-facts CRUD,
+_generate_curated_candidates) in case a category needs it again later.
+
+ozbek_adabiyoti/tarix_meros were originally curated=True: this model's
+Uzbek literature/history knowledge is unreliable enough that letting it
+invent the underlying fact risked the same hallucination that produced Bug
+B's "Honavar effekti," in a domain where getting it wrong in front of the
+target audience is more damaging than in Western psychology trivia. Set to
+curated=False on explicit request (full automation, no manual fact-seeding)
+— that hallucination risk is accepted, not eliminated; nothing about the
+verification pipeline changed to compensate for it.
 """
 from typing import Any
 
@@ -38,12 +44,18 @@ DEFAULT_CATEGORIES: list[dict[str, Any]] = [
         "brief": "mashhur kitoblarda aytilgan g'oya NIMA ekanligi, atamasi emas",
     },
     {
-        "key": "ozbek_adabiyoti", "label": "O'zbek adabiyoti", "weight": 20, "curated": True,
-        "brief": "",
+        "key": "ozbek_adabiyoti", "label": "O'zbek adabiyoti", "weight": 20, "curated": False,
+        "brief": (
+            "o'zbek adabiyoti asarlari, qahramonlari, mualliflari — aniq va tekshirilishi "
+            "mumkin bo'lgan faktlar (kim, qaysi asarda, qaysi qahramon), sana yoki raqam emas"
+        ),
     },
     {
-        "key": "tarix_meros", "label": "Tarix va meros", "weight": 15, "curated": True,
-        "brief": "",
+        "key": "tarix_meros", "label": "Tarix va meros", "weight": 15, "curated": False,
+        "brief": (
+            "o'zbek tarixi va merosi — me'morchilik, ixtirolar, buyuk shaxslarning ishlari; "
+            "sana, yil, aholi soni yoki boshqa statistik ko'rsatkich qat'iyan taqiqlanadi"
+        ),
     },
     {
         "key": "til_soz_tarixi", "label": "Til va so'z tarixi", "weight": 10, "curated": False,

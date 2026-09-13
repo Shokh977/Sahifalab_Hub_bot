@@ -10,13 +10,15 @@ What changed from v1, and why:
     app/services/category_config.py's weighted category mix, passed into
     build_user_prompt() as a plain dict — this module no longer owns
     category data at all.
-  - v1 only ever ran for ALL weekdays/themes. v2 only ever runs for
-    non-curated categories (amaliy_fan, kitoblar_goyalar, til_soz_tarixi) —
-    ozbek_adabiyoti and tarix_meros are format-only against curated_facts
-    (see daily_quiz_format_v1.py) and never reach this generator, because
-    this model's Uzbek-literature/history knowledge is unreliable enough to
-    have produced a hallucinated psychological effect in a domain it should
-    have been STRONGER in, let alone a weaker one.
+  - v1 only ever ran for ALL weekdays/themes. v2 runs for whichever
+    categories category_config.py marks curated=False — originally that
+    excluded ozbek_adabiyoti/tarix_meros (routed instead to the format-only
+    curated_facts path, daily_quiz_format_v1.py) because this model's
+    Uzbek-literature/history knowledge is unreliable enough to have produced
+    a hallucinated psychological effect in a domain it should have been
+    STRONGER in, let alone a weaker one. Both are now curated=False too (full
+    automation, requested explicitly) — see category_config.py's docstring:
+    that hallucination risk is accepted, not mitigated, for these two.
   - Added the situation-framing rule: never ask "what is X called," ask
     "what happens when...". This is the single biggest quality change in
     the brief — recall-the-term questions are unanswerable for anyone who
