@@ -423,6 +423,56 @@ def test_pick_feature_spotlight_covers_daily_quiz_and_challenges():
     assert all_active_hint["hint_key"] == "all_active"
 
 
+def test_pick_study_method_rotates_deterministically_by_week_number():
+    """Same week number -> same method, always (reproducible, no per-user
+    randomness) -- and it must actually cycle through more than one entry
+    across a real range of ISO week numbers, not collapse to a constant."""
+    from app.services.weekly_review_service import _pick_study_method
+    from app.services.ai.prompts._curated_content import STUDY_METHODS
+
+    assert _pick_study_method(5) == _pick_study_method(5)
+    seen = {_pick_study_method(w)["key"] for w in range(1, 53)}
+    assert len(seen) == len(STUDY_METHODS), "a full year of week numbers must cycle through every method"
+    # Exactly one full cycle apart -> identical pick.
+    assert _pick_study_method(1)["key"] == _pick_study_method(1 + len(STUDY_METHODS))["key"]
+
+
+def test_pick_category_context_matches_first_known_interest():
+    from app.services.weekly_review_service import _pick_category_context
+
+    assert _pick_category_context([]) is None
+    assert _pick_category_context([{"name": "Dasturlash", "slug": "programming"}])["name"] == "Dasturlash"
+    # First interest wins even with multiple set.
+    result = _pick_category_context([
+        {"name": "Dasturlash", "slug": "programming"},
+        {"name": "Tillar", "slug": "languages"},
+    ])
+    assert result["name"] == "Dasturlash"
+
+
+def test_check_tutor_opportunity_gates_on_role_interests_and_engagement():
+    """None for an existing teacher/admin regardless of stats (the app
+    already knows they're a teacher — nothing to suggest), None with no
+    declared interest (nothing real to ground the suggestion in), None
+    below the engagement bar, and a real hint once either threshold is met."""
+    from app.services.weekly_review_service import _check_tutor_opportunity
+
+    interests = [{"name": "Dasturlash", "slug": "programming"}]
+    strong_stats = {"streak_days": 20, "flashcard_accuracy_pct": 90, "flashcard_reviews_this_week": 10}
+    weak_stats = {"streak_days": 1, "flashcard_accuracy_pct": 40, "flashcard_reviews_this_week": 1}
+
+    assert _check_tutor_opportunity("teacher", strong_stats, interests) is None
+    assert _check_tutor_opportunity("admin", strong_stats, interests) is None
+    assert _check_tutor_opportunity("student", strong_stats, []) is None
+    assert _check_tutor_opportunity("student", weak_stats, interests) is None
+
+    via_streak = _check_tutor_opportunity("student", {"streak_days": 14, "flashcard_accuracy_pct": None, "flashcard_reviews_this_week": 0}, interests)
+    assert via_streak == {"category_name": "Dasturlash"}
+
+    via_accuracy = _check_tutor_opportunity("student", {"streak_days": 0, "flashcard_accuracy_pct": 85, "flashcard_reviews_this_week": 5}, interests)
+    assert via_accuracy == {"category_name": "Dasturlash"}
+
+
 def test_weekly_review_force_regenerate_replaces_only_the_target_week(db_session):
     """regenerate=true must delete and replace ONLY the target week's row
     — an existing review for a DIFFERENT week must survive untouched, and

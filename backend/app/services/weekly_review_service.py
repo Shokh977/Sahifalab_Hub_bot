@@ -42,6 +42,7 @@ never re-derived from LLM text.
 """
 import logging
 from datetime import date, datetime, timedelta, UTC
+from typing import Optional
 
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -51,6 +52,7 @@ from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
 from app.services.ai.prompts import weekly_review_v3, current_week_progress_v1
+from app.services.ai.prompts._curated_content import STUDY_METHODS, CATEGORY_CONTEXT
 from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
@@ -376,6 +378,83 @@ def _pick_feature_spotlight(stats: dict) -> dict:
     }
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# Personalization (current_week_progress only) — onboarding goal/interest
+# data feeding the AI narrative. Kept OUT of gather_user_stats's own return
+# dict on purpose: these three signals feed the PROMPT, not the
+# frontend-facing WeeklyReviewStats shape, which stays exactly as tested.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _gather_personalization(db: Session, user_id: int) -> dict:
+    """profiles.user_settings->>'interests' is a JSON array of category IDs
+    (set once at onboarding, see app/api/v1/endpoints/profile_public.py's
+    POST /profile/interests) — resolve to category name/slug here so the
+    prompt gets human-readable labels, not raw IDs."""
+    row = db.execute(
+        text("SELECT user_settings, role FROM profiles WHERE telegram_id = :uid"),
+        {"uid": user_id},
+    ).fetchone()
+    settings = (row.user_settings or {}) if row else {}
+    role = row.role if row and row.role else "student"
+
+    interest_ids = settings.get("interests") or []
+    interests: list[dict] = []
+    if interest_ids:
+        cat_rows = db.execute(
+            text("SELECT name, slug FROM categories WHERE id = ANY(:ids)"),
+            {"ids": interest_ids},
+        ).fetchall()
+        interests = [{"name": r.name, "slug": r.slug} for r in cat_rows]
+
+    return {
+        "interests":           interests,
+        "learning_motivation": settings.get("learning_motivation"),
+        "experience_level":    settings.get("experience_level"),
+        "role":                role,
+    }
+
+
+def _pick_study_method(week_number: int) -> dict:
+    """Rotates by ISO week number — same method for every user in a given
+    week (reproducible, no per-user randomness), cycling through all of
+    STUDY_METHODS before repeating."""
+    return STUDY_METHODS[week_number % len(STUDY_METHODS)]
+
+
+def _pick_category_context(interests: list[dict]) -> Optional[dict]:
+    """First matching category's evergreen fact, or None if the user set
+    no interests at onboarding — never invented, always one of the
+    pre-written CATEGORY_CONTEXT entries."""
+    for interest in interests:
+        ctx = CATEGORY_CONTEXT.get(interest["slug"])
+        if ctx:
+            return ctx
+    return None
+
+
+TUTOR_STREAK_THRESHOLD = 14
+TUTOR_ACCURACY_THRESHOLD = 85
+TUTOR_MIN_REVIEWS = 5
+
+
+def _check_tutor_opportunity(role: str, stats: dict, interests: list[dict]) -> Optional[dict]:
+    """Real engagement signal, pointing at the app's OWN existing teacher
+    program — never an invented external opportunity. None if already a
+    teacher/admin, or if the user never declared an interest (nothing to
+    ground the suggestion in)."""
+    if role in ("teacher", "admin") or not interests:
+        return None
+    strong_streak = stats.get("streak_days", 0) >= TUTOR_STREAK_THRESHOLD
+    strong_accuracy = (
+        stats.get("flashcard_accuracy_pct") is not None
+        and stats["flashcard_accuracy_pct"] >= TUTOR_ACCURACY_THRESHOLD
+        and stats.get("flashcard_reviews_this_week", 0) >= TUTOR_MIN_REVIEWS
+    )
+    if not (strong_streak or strong_accuracy):
+        return None
+    return {"category_name": interests[0]["name"]}
+
+
 async def generate_weekly_review(db: Session, user_id: int, today: date) -> tuple[bool, str]:
     """Generate and store one user's weekly review.
 
@@ -482,11 +561,26 @@ async def get_or_refresh_current_week_progress(db: Session, user_id: int, today:
     )
     if has_activity:
         spotlight_hint = _pick_feature_spotlight(stats)
+        personalization = _gather_personalization(db, user_id)
+        # Keyed off this_week_start's ISO week (stable all week), not
+        # `today` — the featured method shouldn't change mid-week just
+        # because the cache happened to refresh on a different day.
+        study_hint = _pick_study_method(this_week_start.isocalendar()[1])
+        category_hint = _pick_category_context(personalization["interests"])
+        tutor_hint = _check_tutor_opportunity(personalization["role"], stats, personalization["interests"])
+
         provider = get_provider()
         try:
             response = await provider.generate_json(
                 system_prompt=current_week_progress_v1.SYSTEM_PROMPT,
-                user_prompt=current_week_progress_v1.build_user_prompt(stats, spotlight_hint),
+                user_prompt=current_week_progress_v1.build_user_prompt(
+                    stats, spotlight_hint,
+                    learning_motivation=personalization["learning_motivation"],
+                    experience_level=personalization["experience_level"],
+                    study_method_hint=study_hint,
+                    category_context_hint=category_hint,
+                    tutor_hint=tutor_hint,
+                ),
                 prompt_version=current_week_progress_v1.VERSION,
                 json_schema=current_week_progress_v1.JSON_SCHEMA,
             )
