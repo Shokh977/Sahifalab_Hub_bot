@@ -50,7 +50,7 @@ from sqlalchemy.orm import Session
 from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
-from app.services.ai.prompts import weekly_review_v3
+from app.services.ai.prompts import weekly_review_v3, current_week_progress_v1
 from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
@@ -93,6 +93,30 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
         """),
         {"uid": user_id, "week_ago": week_ago, "week_end": week_end, "prev_start": prev_start},
     ).fetchone()
+
+    # Fair "same point in the week" comparison basis — for a COMPLETED week
+    # (today >= week_end - 1) this equals prev_week_minutes exactly (both
+    # spans are the full 7 days), so callers that only ever pass a completed
+    # week see no behavior change. For an IN-PROGRESS week it's last week's
+    # minutes through the SAME number of elapsed days, not the full week —
+    # comparing a 2-day-old current week against a full 7-day-old one is
+    # misleading. current_week_progress_v1.py's prompt is told to use this
+    # field specifically, never raw prev_week_minutes, for that reason.
+    days_elapsed = min(7, (today - week_start).days + 1)
+    prev_same_point_row = db.execute(
+        text("""
+            SELECT COALESCE(SUM(minutes), 0) AS minutes FROM focus_sessions
+            WHERE user_id = :uid AND session_date >= :prev_start AND session_date < :prev_cutoff
+        """),
+        {"uid": user_id, "prev_start": prev_start, "prev_cutoff": prev_start + timedelta(days=days_elapsed)},
+    ).fetchone()
+    prev_week_minutes_same_point = int(prev_same_point_row.minutes) if prev_same_point_row else 0
+
+    this_week_minutes = int(focus_row.this_week_minutes) if focus_row else 0
+    # Simple linear projection — equals this_week_minutes exactly once the
+    # week is complete (days_elapsed == 7), so no special-casing needed by
+    # callers that only ever pass a completed week.
+    projected_week_minutes = round(this_week_minutes / days_elapsed * 7) if days_elapsed > 0 else 0
 
     # Day-by-day minutes for the reviewed week — powers the mobile bar chart.
     day_rows = db.execute(
@@ -254,8 +278,10 @@ def gather_user_stats(db: Session, user_id: int, week_start: date, today: date) 
     return {
         "week_start":            week_start.isoformat(),
         "first_name":            profile_row.first_name if profile_row else "",
-        "this_week_minutes":     int(focus_row.this_week_minutes) if focus_row else 0,
+        "this_week_minutes":     this_week_minutes,
         "prev_week_minutes":     int(focus_row.prev_week_minutes) if focus_row else 0,
+        "prev_week_minutes_same_point": prev_week_minutes_same_point,
+        "projected_week_minutes":       projected_week_minutes,
         "days_active":           int(focus_row.days_active) if focus_row else 0,
         "week_xp":               week_xp,
         "days":                  days,
@@ -423,6 +449,81 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> tupl
         return False, "store_failed"
 
     return True, "generated"
+
+
+async def get_or_refresh_current_week_progress(db: Session, user_id: int, today: date) -> dict:
+    """The TRUE in-progress week's stats + AI comparison narrative, cached
+    once per local day per user (weekly_progress_cache) — GET /weekly-review
+    is hit on every screen load, and recomputing gather_user_stats's ~9
+    queries plus a fresh Gemini call on every single one of those would be
+    pure waste (per explicit request: cut Supabase/AI load). A stale-by-date
+    cache is the whole mechanism — no TTL, no background job needed; the
+    next request after midnight (local) just naturally misses and refreshes.
+
+    Unlike generate_weekly_review (which is idempotent via a UNIQUE DB
+    constraint and never overwrites), this ALWAYS overwrites on a cache
+    miss — there is exactly one current week per user, not a history."""
+    this_week_start = today - timedelta(days=today.weekday())
+
+    cached = db.execute(
+        text("SELECT computed_date, content FROM weekly_progress_cache WHERE user_id = :uid"),
+        {"uid": user_id},
+    ).fetchone()
+    if cached and cached.computed_date == today:
+        return cached.content
+
+    stats = gather_user_stats(db, user_id, this_week_start, today)
+
+    narrative: dict = {}
+    has_activity = (
+        stats["this_week_minutes"] > 0
+        or stats["prev_week_minutes"] > 0
+        or stats["flashcard_reviews_this_week"] > 0
+    )
+    if has_activity:
+        spotlight_hint = _pick_feature_spotlight(stats)
+        provider = get_provider()
+        try:
+            response = await provider.generate_json(
+                system_prompt=current_week_progress_v1.SYSTEM_PROMPT,
+                user_prompt=current_week_progress_v1.build_user_prompt(stats, spotlight_hint),
+                prompt_version=current_week_progress_v1.VERSION,
+                json_schema=current_week_progress_v1.JSON_SCHEMA,
+            )
+        except AiProviderError as e:
+            log_usage(
+                db, user_id, feature="current_week_progress", model="gemini-flash-lite-latest",
+                prompt_version=current_week_progress_v1.VERSION, outcome=e.outcome, error_detail=str(e),
+            )
+            logger.error("current_week_progress generation failed for user_id=%s", user_id, exc_info=True)
+            response = None
+
+        if response is not None:
+            log_usage(
+                db, user_id, feature="current_week_progress", model=response.model,
+                prompt_version=current_week_progress_v1.VERSION, input_tokens=response.input_tokens,
+                output_tokens=response.output_tokens, cost_usd=response.cost_usd,
+                latency_ms=response.latency_ms, outcome=response.outcome,
+            )
+            if response.data:
+                narrative = {**response.data, "feature_spotlight_key": spotlight_hint["feature"]}
+            # else: empty_response — fall through with narrative={}, same
+            # fail-open-on-stats-only behavior as an AiProviderError above.
+
+    import json
+    content = {"week_start": this_week_start.isoformat(), "stats": stats, **narrative}
+    db.execute(
+        text("""
+            INSERT INTO weekly_progress_cache (user_id, week_start, computed_date, content, updated_at)
+            VALUES (:uid, :ws, :cd, CAST(:content AS jsonb), NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                week_start = EXCLUDED.week_start, computed_date = EXCLUDED.computed_date,
+                content = EXCLUDED.content, updated_at = NOW()
+        """),
+        {"uid": user_id, "ws": this_week_start, "cd": today, "content": json.dumps(content)},
+    )
+    db.commit()
+    return content
 
 
 async def run_staggered_batch(db: Session, max_users: int = 500) -> dict:

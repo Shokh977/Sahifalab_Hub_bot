@@ -333,25 +333,24 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
     definition of "the target week," or a user well ahead/behind UTC could
     see their already-generated review reported as stale (or vice versa).
 
-    Also returns `current_week_progress`: the same no-LLM stats, but for
-    the TRUE current in-progress week (Monday-of-this-week through today),
-    always computed regardless of review/live_stats state. This is
-    additive-only, for a future client that shows both the last-completed-
-    week review AND a live current-week tracker side by side — deliberately
-    NOT folded into `live_stats`, whose existing meaning ("last completed
-    week, shown only as a fallback until the real review exists") the
-    CURRENT deployed client depends on: that client shows the live_stats
-    view whenever live_stats is non-null, in preference to the real
-    review, so making it always-present would hide an existing review
-    behind a permanent "still preparing" screen for anyone still on that
-    build. An old client harmlessly ignores this unknown field.
+    Also returns `current_week_progress`: stats + an AI comparison narrative
+    (vs. last week's numbers through the same elapsed-day point) for the
+    TRUE current in-progress week (Monday-of-this-week through today),
+    always present regardless of review/live_stats state. This is now the
+    PRIMARY view the mobile client renders (charts/cards show the ongoing
+    week, not the completed one) — `review`/`live_stats` (completed week)
+    are still returned unchanged for the client's secondary "last week"
+    section. Cached once per local day per user (weekly_progress_cache,
+    see get_or_refresh_current_week_progress) — this endpoint is hit on
+    every screen load, so recomputing stats AND re-calling the AI on every
+    request would be pure waste; a request after local midnight naturally
+    misses the cache and refreshes once.
     """
-    from app.services.weekly_review_service import gather_user_stats, _week_start
+    from app.services.weekly_review_service import gather_user_stats, _week_start, get_or_refresh_current_week_progress
 
     tz_row = db.execute(text("SELECT timezone FROM profiles WHERE telegram_id = :uid"), {"uid": caller_id}).fetchone()
     today = user_local_date(tz_row.timezone if tz_row else None)
     target_week_start = _week_start(today)
-    this_week_start = today - timedelta(days=today.weekday())
 
     row = db.execute(
         text("""
@@ -373,6 +372,6 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
     if not row or row.week_start < target_week_start:
         live_stats = gather_user_stats(db, caller_id, target_week_start, today)
 
-    current_week_progress = gather_user_stats(db, caller_id, this_week_start, today)
+    current_week_progress = await get_or_refresh_current_week_progress(db, caller_id, today)
 
     return {"review": review, "live_stats": live_stats, "current_week_progress": current_week_progress}

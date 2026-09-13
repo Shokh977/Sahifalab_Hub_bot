@@ -41,7 +41,8 @@ def db_session():
         # tests' fixed offsets (100-109) — each test uses a distinct offset
         # so there's no intra-run collision, but every id used anywhere in
         # this file must be cleaned up here regardless.
-        ids = [TEST_BASE_ID - i for i in range(len(ZONES) + 2)] + [TEST_BASE_ID - i for i in range(100, 110)]
+        ids = [TEST_BASE_ID - i for i in range(len(ZONES) + 2)] + [TEST_BASE_ID - i for i in range(100, 112)]
+        session.execute(text("DELETE FROM weekly_progress_cache WHERE user_id = ANY(:ids)"), {"ids": ids})
         session.execute(text("DELETE FROM weekly_reviews WHERE user_id = ANY(:ids)"), {"ids": ids})
         session.execute(text("DELETE FROM focus_sessions WHERE user_id = ANY(:ids)"), {"ids": ids})
         session.execute(text("DELETE FROM challenge_participants WHERE user_id = ANY(:ids)"), {"ids": ids})
@@ -265,6 +266,107 @@ def test_weekly_review_endpoint_always_returns_current_week_progress(db_session)
     assert "current_week_progress" in result
     assert result["current_week_progress"] is not None
     assert result["current_week_progress"]["week_start"] is not None
+
+
+def test_gather_user_stats_same_point_comparison_and_projection(db_session):
+    """prev_week_minutes_same_point must compare against last week's minutes
+    through the SAME elapsed-day count, not the full completed week — and
+    projected_week_minutes must linearly extrapolate from days-elapsed-so-far.
+    For a COMPLETED week (today == week_start+6, 7 days elapsed) both new
+    fields must equal their "no in-progress adjustment" values exactly, so
+    every existing completed-week call site sees no behavior change."""
+    from app.services.weekly_review_service import gather_user_stats
+
+    uid = TEST_BASE_ID - 108
+    monday = date(2026, 8, 17)
+    prev_monday = monday - timedelta(days=7)
+    wednesday = monday + timedelta(days=2)  # "today" — day 3 of an in-progress week (days_elapsed=3)
+
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    # Last week: 10/day Mon-Wed (the comparable window), 999 on Sat (outside it).
+    for i, mins in [(0, 10), (1, 10), (2, 10), (5, 999)]:
+        db_session.execute(
+            text("INSERT INTO focus_sessions (user_id, minutes, session_date) VALUES (:uid, :m, :d)"),
+            {"uid": uid, "m": mins, "d": prev_monday + timedelta(days=i)},
+        )
+    # This week so far: 15/day Mon-Wed (3 days elapsed).
+    for i in range(3):
+        db_session.execute(
+            text("INSERT INTO focus_sessions (user_id, minutes, session_date) VALUES (:uid, 15, :d)"),
+            {"uid": uid, "d": monday + timedelta(days=i)},
+        )
+    db_session.commit()
+
+    in_progress = gather_user_stats(db_session, uid, monday, wednesday)
+    assert in_progress["this_week_minutes"] == 45  # 15*3
+    assert in_progress["prev_week_minutes"] == 1029  # 10*3 + 999 — the OLD, full-week field, unchanged
+    assert in_progress["prev_week_minutes_same_point"] == 30, "must be last week's Mon-Wed only (10*3), excluding Saturday's 999"
+    assert in_progress["projected_week_minutes"] == 105, "45 minutes / 3 days-elapsed * 7 = 105"
+
+    completed = gather_user_stats(db_session, uid, monday, monday + timedelta(days=6))
+    assert completed["prev_week_minutes_same_point"] == completed["prev_week_minutes"], \
+        "for a completed week (7 days elapsed) same_point must equal the full-week figure"
+    assert completed["projected_week_minutes"] == completed["this_week_minutes"], \
+        "for a completed week the projection must equal the real total exactly"
+
+
+def test_get_or_refresh_current_week_progress_skips_ai_and_caches_on_zero_activity(db_session):
+    """Zero activity -> no AI call (mirrors generate_weekly_review's own
+    no-activity skip — never spend a Gemini call narrating silence), but a
+    cache row must still be written so a same-day repeat request is a pure
+    cache hit rather than re-running gather_user_stats's ~9 queries."""
+    import asyncio
+    from app.services.weekly_review_service import get_or_refresh_current_week_progress
+
+    uid = TEST_BASE_ID - 109
+    today = date.today()
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone, daily_goal_minutes) VALUES (:uid, 'active', 'Asia/Tashkent', 20)"),
+        {"uid": uid},
+    )
+    db_session.commit()
+
+    content = asyncio.run(get_or_refresh_current_week_progress(db_session, uid, today))
+    assert "summary" not in content, "no activity -> no AI narrative fields"
+    assert content["stats"]["this_week_minutes"] == 0
+
+    row = db_session.execute(
+        text("SELECT computed_date FROM weekly_progress_cache WHERE user_id = :uid"), {"uid": uid},
+    ).fetchone()
+    assert row is not None and row.computed_date == today
+
+
+def test_get_or_refresh_current_week_progress_cache_hit_skips_recompute(db_session):
+    """A cache row already dated `today` must be returned verbatim — proven
+    by seeding a marker value that gather_user_stats could never itself
+    produce, so returning it back proves the cache-hit path was taken, not
+    a fresh recompute that happened to match."""
+    import asyncio
+    import json
+    from app.services.weekly_review_service import get_or_refresh_current_week_progress
+
+    uid = TEST_BASE_ID - 111
+    today = date.today()
+    db_session.execute(
+        text("INSERT INTO profiles (telegram_id, status, timezone) VALUES (:uid, 'active', 'Asia/Tashkent')"),
+        {"uid": uid},
+    )
+    marker_content = {"week_start": today.isoformat(), "stats": {"this_week_minutes": 424242}, "summary": "CACHE_MARKER"}
+    db_session.execute(
+        text("""
+            INSERT INTO weekly_progress_cache (user_id, week_start, computed_date, content)
+            VALUES (:uid, :ws, :cd, CAST(:content AS jsonb))
+        """),
+        {"uid": uid, "ws": today, "cd": today, "content": json.dumps(marker_content)},
+    )
+    db_session.commit()
+
+    content = asyncio.run(get_or_refresh_current_week_progress(db_session, uid, today))
+    assert content["summary"] == "CACHE_MARKER"
+    assert content["stats"]["this_week_minutes"] == 424242
 
 
 def test_gather_user_stats_includes_challenges_quiz_and_rank(db_session):
