@@ -24,9 +24,6 @@ import NotificationToast from './components/NotificationToast'
 import EmailLinkPrompt from './components/EmailLinkPrompt'
 import AppDownloadModal from './components/AppDownloadModal'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import { MessagingProvider } from './context/MessagingContext'
-import GlobalMessagingWatcher from './components/GlobalMessagingWatcher'
-import MessageToast from './components/MessageToast'
 import RoleGuard from './components/RoleGuard'
 import { usePlatform } from './hooks/usePlatform'
 import { useTelegramBackButton } from './hooks/useTelegramWebApp'
@@ -80,7 +77,6 @@ const AdminPayoutsPage = lazy(() => import('./pages/AdminPayoutsPage'))
 const AdminDailyQuizPage = lazy(() => import('./pages/AdminDailyQuizPage'))
 const AdminCuratedFactsPage = lazy(() => import('./pages/AdminCuratedFactsPage'))
 const SocialFeed = lazy(() => import('./pages/SocialFeed'))
-const SlouthMessenger = lazy(() => import('./pages/SlouthMessenger'))
 const PublicProfile = lazy(() => import('./pages/ProfilePage'))
 const DiscoverUsers = lazy(() => import('./pages/DiscoverUsers'))
 const SearchPage = lazy(() => import('./pages/SearchPage'))
@@ -306,8 +302,6 @@ const AppRoutes: React.FC = () => {
         {/* ── Protected — AuthGuard redirects guests to /login ──────── */}
         <Route element={<AuthGuard />}>
           <Route path="/network"         element={<AppLayout rightSidebar={<NetworkRightSidebar />} maxWidth="max-w-[760px]"><NetworkPage /></AppLayout>} />
-          <Route path="/messages"        element={<SlouthMessenger />} />
-          <Route path="/messages/:conversationId" element={<SlouthMessenger />} />
           <Route path="/jobs"            element={<AppLayout rightSidebar={<JobsRightSidebar />} maxWidth="max-w-[760px]"><JobsPage /></AppLayout>} />
           <Route path="/flashcards"                element={<FlashcardsPage />} />
           <Route path="/flashcards/new"             element={<FlashcardCreatePage />} />
@@ -329,8 +323,6 @@ const AppRoutes: React.FC = () => {
           <Route path="/ai-companion"   element={<Navigate to="/" replace />} />
           <Route path="/notifications"  element={<NotificationsPage />} />
           <Route path="/saved"           element={<AppLayout maxWidth="max-w-[680px]"><SavedPostsPage /></AppLayout>} />
-          <Route path="/messenger"      element={<SlouthMessenger />} />
-          <Route path="/messenger/:conversationId" element={<SlouthMessenger />} />
 
           {/* Legacy teacher profile → redirects to unified profile */}
           <Route path="/teacher/:id" element={<TeacherRedirect />} />
@@ -446,16 +438,12 @@ const App: React.FC = () => {
     <ErrorBoundary>
       <Router>
         <AuthProvider>
-          <MessagingProvider>
-            <ProgressProvider>
-              <AppShell />
-              <GlobalMessagingWatcher />
-              <MessageToast />
-              <NotificationToast />
-              <EmailLinkPrompt />
-              <AppDownloadModal />
-            </ProgressProvider>
-          </MessagingProvider>
+          <ProgressProvider>
+            <AppShell />
+            <NotificationToast />
+            <EmailLinkPrompt />
+            <AppDownloadModal />
+          </ProgressProvider>
         </AuthProvider>
         <ToastContainer />
       </Router>

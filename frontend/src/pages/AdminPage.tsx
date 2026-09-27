@@ -1528,16 +1528,6 @@ const AdminPage: React.FC = () => {
     } finally { setDrawerSuspending(false) }
   }
 
-  const handleMessageTeacher = async (telegramId: number) => {
-    try {
-      const r = await apiService.client.post(`/api/v1/messenger/conversations/${telegramId}`)
-      navigate(`/messenger/${r.data.id}`)
-    } catch (err: any) {
-      console.error('[Admin] handleMessageTeacher error:', err?.response?.data?.detail || err?.message)
-      setTeacherMsg('❌ Xabar yuborishda xatolik')
-    }
-  }
-
   useEffect(() => {
     if (!adminId) return
     loadStats()
@@ -3192,13 +3182,6 @@ const AdminPage: React.FC = () => {
 
                       {/* Actions */}
                       <div className="flex gap-2 flex-col">
-                        <button
-                          onClick={() => handleMessageTeacher(req.telegram_id)}
-                          className="w-full py-2 rounded-xl bg-blue-50 dark:bg-blue-900/20 hover:bg-blue-100 dark:hover:bg-blue-900/40 text-blue-600 dark:text-blue-400 text-xs font-semibold transition-colors border border-blue-200 dark:border-blue-800"
-                        >
-                          💬 Xabar yuborish
-                        </button>
-
                         {req.status === 'pending' && (
                           teacherRejectId === req.telegram_id ? (
                             <div className="flex flex-col gap-2">
@@ -5377,16 +5360,6 @@ const AdminPage: React.FC = () => {
                       {/* ── ADMIN ── */}
                       {userDetailTab === 'admin' && (
                         <div className="space-y-3">
-                          {/* Admin authority: message any user directly in-app,
-                              regardless of connection status or blocks — see
-                              _can_message/_is_admin in messenger_routes.py. */}
-                          <button
-                            onClick={() => handleMessageTeacher(u.telegram_id)}
-                            className="w-full py-2.5 rounded-xl bg-sahifa-50 dark:bg-sahifa-900/20 hover:bg-sahifa-100 dark:hover:bg-sahifa-900/40 border border-sahifa-200 dark:border-sahifa-800/60 text-sahifa-700 dark:text-sahifa-400 text-sm font-medium transition-colors"
-                          >
-                            💬 Ilova ichida xabar yuborish
-                          </button>
-
                           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
                             <h4 className="text-red-600 dark:text-red-400 font-semibold text-sm mb-3">Xavfli amallar</h4>
                             {u.status === 'suspended' ? (

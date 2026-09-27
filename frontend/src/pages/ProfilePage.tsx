@@ -2,7 +2,7 @@
  * ProfilePage — LinkedIn-style profile. Handles both own profile (/profile/me)
  * and public profiles (/profile/:userId) via the same rich endpoint
  * (GET /api/profile/{username_or_id}) — it already returns viewer-relationship
- * fields (is_following, can_message, connection_status) for any caller, so
+ * fields (is_following, connection_status) for any caller, so
  * there's no separate "slim" fetch path anymore.
  */
 
@@ -64,7 +64,6 @@ interface ProfileData {
   following_count: number
 
   is_following: boolean
-  can_message: boolean
   connection_status: 'own' | 'none' | 'accepted' | 'pending_sent' | 'pending_received'
   connection_id: number | null
 
@@ -111,7 +110,6 @@ function normalizeProfile(raw: any): ProfileData {
     following_count:   raw.following_count ?? 0,
 
     is_following:      raw.is_following ?? false,
-    can_message:       raw.can_message ?? false,
     connection_status: raw.connection_status ?? 'none',
     connection_id:     raw.connection_id ?? null,
 
@@ -197,7 +195,6 @@ const ProfilePage: React.FC = () => {
       setProfile(p => p ? {
         ...p,
         connection_status: 'accepted',
-        can_message: true,
         connections_count: p.connections_count + 1,
       } : p)
     } catch {}
@@ -213,15 +210,6 @@ const ProfilePage: React.FC = () => {
     } catch {}
     setConnectionLoading(false)
   }, [profile])
-
-  // ── Message ──────────────────────────────────────────────────────────────
-  const handleMessage = useCallback(async () => {
-    if (!profile) return
-    try {
-      const res = await api.client.post(`/api/v1/messenger/conversations/${profile.telegram_id}`)
-      navigate(`/messages/${res.data.id}`)
-    } catch {}
-  }, [profile, navigate])
 
   // ── Cover photo upload (own profile only) ──────────────────────────────────
   const handleCoverUpload = useCallback(async (file: File) => {
@@ -330,8 +318,6 @@ const ProfilePage: React.FC = () => {
         onAcceptConnect={!isOwnProfile ? handleAcceptConnect : undefined}
         onDeclineConnect={!isOwnProfile ? handleDeclineConnect : undefined}
         connectionLoading={connectionLoading}
-        onMessage={!isOwnProfile ? handleMessage : undefined}
-        canMessage={profile.can_message}
         onEditProfile={isOwnProfile ? () => navigate('/settings') : undefined}
         onFollowersClick={() => setFollowListType('followers')}
         onFollowingClick={() => setFollowListType('following')}

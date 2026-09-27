@@ -2,7 +2,7 @@
  * DeleteConfirmModal — Premium confirmation overlay for destructive actions.
  *
  * Frosted-glass modal with cancel/confirm buttons.
- * Used across Posts, Comments, and Messenger delete flows.
+ * Used across Posts and Comments delete flows.
  */
 
 import React from 'react'

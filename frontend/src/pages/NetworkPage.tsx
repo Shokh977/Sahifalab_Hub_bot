@@ -12,7 +12,7 @@ import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users, UserPlus, Clock, Compass,
-  Search, X, MessageCircle, Check, Loader2,
+  Search, X, Check, Loader2,
   UserCheck, UserX,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
@@ -121,10 +121,6 @@ const ConnectionsTab: React.FC = () => {
     return () => clearTimeout(t)
   }, [search, load])
 
-  const handleMessage = (userId: number) => {
-    window.location.href = `/messages?user=${userId}`
-  }
-
   if (loading && !items.length) {
     return <div className="flex justify-center py-16"><Loader2 className="w-5 h-5 animate-spin text-white/20" /></div>
   }
@@ -183,12 +179,6 @@ const ConnectionsTab: React.FC = () => {
                   <p className="text-[11px] text-white/25 mt-1">Daraja {item.user.level}</p>
                 </div>
               </div>
-              <button
-                onClick={() => handleMessage(item.user.id)}
-                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl text-xs font-medium text-white/60 bg-white/[0.04] hover:bg-white/[0.07] border border-white/[0.06] transition-colors"
-              >
-                <MessageCircle className="w-3.5 h-3.5" /> Xabar
-              </button>
             </motion.div>
           ))}
         </div>

@@ -12,8 +12,8 @@
 import React, { useRef, useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import {
-  BadgeCheck, Shield, UserPlus, UserMinus, MessageCircle,
-  PenSquare, Camera, Loader2, MapPin, Globe, UserCheck, Clock, Check, X, Lock,
+  BadgeCheck, Shield, UserPlus, UserMinus,
+  PenSquare, Camera, Loader2, MapPin, Globe, UserCheck, Clock, Check, X,
   MoreHorizontal,
 } from 'lucide-react'
 import UserIdentity, { getRankInfo } from './social/UserIdentity'
@@ -57,13 +57,7 @@ export interface ProfileHeaderCardProps {
   /** Follow/unfollow */
   onFollow?: () => void
   followLoading?: boolean
-  /** Open messenger — always shown when provided, disabled unless canMessage */
-  onMessage?: () => void
-  /** Gates the Message button — blocked (visible but disabled) until an
-   * accepted connection exists (or a teacher-student link, per backend rules) */
-  canMessage?: boolean
-
-  // ── Mutual connection (LinkedIn-style, gates messaging) ───────────────────
+  // ── Mutual connection (LinkedIn-style) ──────────────────────────────────
 
   connectionStatus?: 'own' | 'none' | 'accepted' | 'pending_sent' | 'pending_received'
   onConnect?: () => void
@@ -118,8 +112,6 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
   editMode = false,
   onFollow,
   followLoading = false,
-  onMessage,
-  canMessage = false,
   connectionStatus,
   onConnect,
   onCancelConnect,
@@ -325,17 +317,6 @@ const ProfileHeaderCard: React.FC<ProfileHeaderCardProps> = ({
                     <span className={`${pillBase} px-4 text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-500/10 border border-green-200/60 dark:border-green-500/20`}>
                       <UserCheck className="w-4 h-4" /> Ulangan
                     </span>
-                  )}
-
-                  {onMessage && (
-                    <button
-                      onClick={canMessage ? onMessage : undefined}
-                      disabled={!canMessage}
-                      title={canMessage ? 'Xabar yuborish' : "Xabar yuborish uchun avval ulaning"}
-                      className={canMessage ? pillSecondary : `${pillBase} px-4 text-gray-300 dark:text-white/25 bg-gray-50 dark:bg-white/[0.03] border border-gray-200/40 dark:border-white/[0.05]`}
-                    >
-                      {canMessage ? <MessageCircle className="w-4 h-4" /> : <Lock className="w-3.5 h-3.5" />} Xabar
-                    </button>
                   )}
 
                   {onFollow && (

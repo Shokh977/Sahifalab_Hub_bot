@@ -95,7 +95,7 @@ class ApiService {
 
   /**
    * Public accessor for the underlying Axios instance.
-   * Useful for ad-hoc requests (social, messenger, etc.) that don't
+   * Useful for ad-hoc requests (social, etc.) that don't
    * have dedicated wrapper methods yet.
    */
   get client(): AxiosInstance {
@@ -510,11 +510,6 @@ class ApiService {
   /** Current user: delete own account permanently */
   async deleteAccount() {
     return this.axiosInstance.delete('/api/settings/account')
-  }
-
-  /** Messenger: delete a conversation for both sides */
-  async deleteConversation(conversationId: number) {
-    return this.axiosInstance.delete(`/api/v1/messenger/conversations/${conversationId}`)
   }
 
   /** Current user: update profile photo URL */

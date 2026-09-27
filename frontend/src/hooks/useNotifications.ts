@@ -3,9 +3,11 @@
  *
  * Architecture:
  *   1. On mount: fetch unread count + first page from backend REST API
- *   2. Subscribe to Supabase Realtime Postgres Changes on `notifications` table
- *      filtered by user_id (low egress — broadcast only delivers new row id + type)
- *   3. On INSERT event: add to local cache; if not in cache, fetch full row
+ *   2. Subscribe to Supabase Realtime Broadcast on topic `notif:<userId>`.
+ *      A DB trigger (migration 100_notifications_broadcast) sends only
+ *      { id, is_read } — the topic is public, so content never goes over it.
+ *      (Was postgres_changes, which made Realtime poll the DB ~2x/sec forever.)
+ *   3. On `notification_created`: fetch the full row via the backend, cache it
  *   4. Toast queue: emits new notifications to the toast system
  *   5. Mark-read: single RPC call, optimistic local update
  *
@@ -114,34 +116,16 @@ export function useNotifications(userId: number | null) {
     const channel = supabase
       .channel(`notif:${userId}`)
       .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        async (payload) => {
-          const row = payload.new as any
+        'broadcast',
+        { event: 'notification_created' },
+        async ({ payload }) => {
+          const row = payload as { id?: number } | undefined
           if (!row?.id) return
 
-          // Build a lightweight item from the broadcast payload
-          const item: NotificationItem = {
-            id: row.id,
-            type: row.type ?? 'unknown',
-            category: row.category ?? 'SOCIAL',
-            meta: row.meta ?? {},
-            is_read: false,
-            created_at: row.created_at ?? new Date().toISOString(),
-            sender_id: row.sender_id ?? (row.meta?.actor_id ?? null),
-          }
-
-          // If payload is partial (Realtime might only send id + type),
-          // fetch full details if not in cache
-          if (!row.meta && !_cache.has(row.id)) {
-            const fetched = await fetchById(row.id)
-            if (fetched) Object.assign(item, fetched)
-          }
+          // The broadcast carries only the id — load the full row from the
+          // authenticated backend.
+          const item = await fetchById(row.id)
+          if (!item) return
 
           _cache.set(item.id, item)
 
@@ -160,23 +144,20 @@ export function useNotifications(userId: number | null) {
           if (_toastCallback) _toastCallback([item])
         },
       )
-      // ── Realtime UPDATE: notification marked as read elsewhere ──────────
+      // ── Read-state changed elsewhere ────────────────────────────────────
       // E.g. user reads on mobile → badge decrements on desktop instantly.
       .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'notifications',
-          filter: `user_id=eq.${userId}`,
-        },
-        async (payload) => {
-          const row = payload.new as any
+        'broadcast',
+        { event: 'notification_updated' },
+        async ({ payload }) => {
+          const row = payload as { id?: number; is_read?: boolean } | undefined
           if (!row?.id) return
+          const cached = _cache.get(row.id)
+          if (cached) _cache.set(row.id, { ...cached, is_read: !!row.is_read })
 
           // Optimistic local update
           setNotifications(prev =>
-            prev.map(n => n.id === row.id ? { ...n, is_read: row.is_read } : n),
+            prev.map(n => n.id === row.id ? { ...n, is_read: !!row.is_read } : n),
           )
 
           // Re-fetch unique-sender count so the badge is authoritative

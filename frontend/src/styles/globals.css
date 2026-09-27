@@ -235,11 +235,6 @@ html:not(.dark) [class~="text-white"]:not([class~="bg-[#e8792f]"]):not([class~="
   min-height: 100vh;
 }
 
-/* ── Messenger: theme-aware input placeholders ──────────────────────────── */
-.messenger-input::placeholder {
-  color: var(--text-muted);
-}
-
 /* ── Email link modal: prevent oversized native email contact icons in webviews ── */
 .email-link-modal .email-link-input::-webkit-contacts-auto-fill-button,
 .email-link-modal .email-link-input::-webkit-credentials-auto-fill-button,

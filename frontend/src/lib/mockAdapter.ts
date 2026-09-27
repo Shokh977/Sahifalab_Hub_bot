@@ -20,7 +20,6 @@ import {
   MOCK_TEACHER_PROFILE, MOCK_TEACHER_ANALYTICS, MOCK_ADMIN_STATS,
   MOCK_PLATFORM_ANALYTICS, MOCK_HERO, MOCK_PAYMENT_ORDER, MOCK_LEADERBOARD,
   MOCK_POSTS, MOCK_PUBLIC_PROFILE, MOCK_OWN_PROFILE, MOCK_DISCOVER_USERS,
-  MOCK_CONVERSATIONS, MOCK_MESSAGES,
 } from './mockData'
 import { MOCK_NOTIFICATIONS, computeUniqueSenderCount } from './mock_notifications'
 
@@ -350,49 +349,6 @@ function route(url: string, method: string, config: InternalAxiosRequestConfig):
       (u.username ?? '').toLowerCase().includes(q)
     )
     return ok({ users: filtered }, config)
-  }
-
-  // ── Messenger — List conversations ────────────────────────────────────────
-  if (m === 'get' && u === '/api/v1/messenger/conversations') {
-    return ok(MOCK_CONVERSATIONS, config)
-  }
-
-  // ── Messenger — Create / get conversation ─────────────────────────────────
-  if (m === 'post' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+$/)) {
-    const targetId = seg(url, '/api/v1/messenger/conversations')
-    const existing = MOCK_CONVERSATIONS.find(c => c.other_user.telegram_id === targetId)
-    return ok({ id: existing?.id ?? 99 }, config)
-  }
-
-  // ── Messenger — Get messages ──────────────────────────────────────────────
-  if (m === 'get' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/messages$/)) {
-    const convId = seg(url, '/api/v1/messenger/conversations')
-    return ok(MOCK_MESSAGES[convId ?? 0] ?? [], config)
-  }
-
-  // ── Messenger — Send message ──────────────────────────────────────────────
-  if (m === 'post' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/messages$/)) {
-    const convId = seg(url, '/api/v1/messenger/conversations')
-    const body = typeof config.data === 'string' ? JSON.parse(config.data) : config.data
-    const newMsg = {
-      id: Date.now(),
-      conversation_id: convId ?? 0,
-      sender_id: MOCK_USER.telegram_id,
-      content: body?.content ?? '',
-      is_read: false,
-      created_at: new Date().toISOString(),
-    }
-    return ok(newMsg, config)
-  }
-
-  // ── Messenger — Delete message ────────────────────────────────────────────
-  if (m === 'delete' && u.match(/^\/api\/v1\/messenger\/messages\/\d+$/)) {
-    return ok({ ok: true }, config)
-  }
-
-  // ── Messenger — Mark read ─────────────────────────────────────────────────
-  if (m === 'patch' && u.match(/^\/api\/v1\/messenger\/conversations\/\d+\/read$/)) {
-    return ok({ success: true }, config)
   }
 
   // ── Notifications — unread count (unique senders) ────────────────────────

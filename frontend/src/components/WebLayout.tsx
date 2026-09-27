@@ -22,7 +22,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Home, Network, BookOpen, Briefcase, MessageCircle,
+  Home, Network, BookOpen, Briefcase,
   User, Trophy, X, Menu, Plus,
   Search, ChevronRight, Settings, HelpCircle, LogOut,
   Wallet, Shield, GraduationCap, Loader2, Sun, Moon, Timer,
@@ -36,7 +36,6 @@ import { useProgressStore } from '../context/progressStore'
 import { useThemeStore } from '../context/themeStore'
 import api from '../services/apiService'
 import { getLevelEmoji } from '../utils/levelTitles'
-import { useMessagingSafe } from '../context/MessagingContext'
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Nav items definitions
@@ -55,7 +54,6 @@ const NAV_MAIN: NavItem[] = [
   { icon: BookOpen,      label: 'Kurslar',       path: '/courses' },
   { icon: Timer,         label: "O'qish maydoni", path: '/workspace' },
   { icon: Layers,        label: 'Kartalar',      path: '/flashcards' },
-  { icon: MessageCircle, label: 'Xabarlar',      path: '/messages' },
 ]
 
 const NAV_PROFILE: NavItem[] = [
@@ -70,7 +68,7 @@ const BOTTOM_TABS = [
   { icon: Home,          label: 'Bosh sahifa', path: '/feed' },
   { icon: Network,       label: 'Tarmoq',      path: '/network' },
   { icon: null,          label: 'Post',        path: '__new_post__' }, // special
-  { icon: MessageCircle, label: 'Xabar',       path: '/messages' },
+  { icon: Layers,        label: 'Kartalar',    path: '/flashcards' },
   { icon: User,          label: 'Profil',      path: '/profile/me' },
 ]
 
@@ -188,13 +186,10 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
   const { user, logout }    = useAuth()
   const { totalXP, level: storeLevel, isInitialized } = useProgressStore()
   const pendingCount = usePendingCount()
-  const messaging = useMessagingSafe()
-  const totalUnread = messaging?.totalUnread ?? 0
 
   const isActive = (path: string) => {
     if (path === '/feed')    return ['/feed', '/social'].includes(location.pathname)
     if (path === '/network') return ['/network', '/discover'].includes(location.pathname)
-    if (path === '/messages')return ['/messages', '/messenger'].includes(location.pathname) || location.pathname.startsWith('/messenger')
     if (path === '/profile/me') return location.pathname.startsWith('/profile') || location.pathname === '/cabinet'
     return location.pathname === path || location.pathname.startsWith(path + '/')
   }
@@ -204,10 +199,9 @@ const SidebarContent: React.FC<{ onNavClick?: () => void }> = ({ onNavClick }) =
   const isTeacher    = user?.role === 'teacher' || user?.role === 'admin'
   const myUsername   = (user as any)?.username
 
-  // Inject pending badge into Tarmoq; unread badge into Xabarlar
+  // Inject pending badge into Tarmoq
   const mainNavWithBadges = NAV_MAIN.map(item => {
     if (item.path === '/network')  return { ...item, badge: pendingCount }
-    if (item.path === '/messages') return { ...item, badge: totalUnread }
     return item
   })
 
@@ -706,7 +700,6 @@ const MobileBottomTabs: React.FC<MobileBottomTabsProps> = ({ onNewPost }) => {
   const isActive = (path: string) => {
     if (path === '/feed')       return ['/feed', '/social'].includes(location.pathname)
     if (path === '/network')    return ['/network', '/discover'].includes(location.pathname)
-    if (path === '/messages')   return ['/messages', '/messenger'].includes(location.pathname) || location.pathname.startsWith('/messenger')
     if (path === '/profile/me') return location.pathname.startsWith('/profile') || location.pathname === '/cabinet'
     return location.pathname === path
   }
