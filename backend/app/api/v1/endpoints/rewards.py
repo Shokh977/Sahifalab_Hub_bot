@@ -47,7 +47,7 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 
 
 @router.get("/pending")
-async def get_pending_rewards(
+def get_pending_rewards(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -83,7 +83,7 @@ class AcknowledgeRequest(BaseModel):
 
 
 @router.post("/acknowledge")
-async def acknowledge_rewards(
+def acknowledge_rewards(
     body: AcknowledgeRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),

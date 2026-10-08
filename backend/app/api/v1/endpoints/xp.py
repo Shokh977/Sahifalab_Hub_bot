@@ -200,7 +200,7 @@ async def award_xp(
 
 
 @router.get("/daily/{telegram_id}")
-async def get_daily_xp_status(
+def get_daily_xp_status(
     telegram_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -233,7 +233,7 @@ async def get_daily_xp_status(
 
 
 @router.get("/badges/{telegram_id}")
-async def get_user_badges(
+def get_user_badges(
     telegram_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),

@@ -47,7 +47,7 @@ def _window_close(publish_date) -> datetime:
 
 
 @router.get("/today")
-async def get_today(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def get_today(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     today = datetime.now(UTC).date()
     quiz = db.execute(
         text("SELECT id, quiz_number, theme, publish_date FROM daily_quizzes WHERE publish_date = :d AND status = 'published'"),
@@ -90,7 +90,7 @@ class SubmitRequest(BaseModel):
 
 
 @router.post("/submit")
-async def submit(
+def submit(
     body: SubmitRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -119,7 +119,7 @@ async def submit(
 
 
 @router.get("/results/{quiz_id}")
-async def get_results(
+def get_results(
     quiz_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),

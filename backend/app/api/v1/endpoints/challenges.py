@@ -182,7 +182,7 @@ def _fetch_team_totals_map(db: Session, challenge_ids: list) -> dict:
 # ── List ─────────────────────────────────────────────────────────────────────
 
 @router.get("")
-async def list_challenges(
+def list_challenges(
     status: str = Query("upcoming_active", description="upcoming|active|ended|all|upcoming_active"),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -233,7 +233,7 @@ async def list_challenges(
 # ── Detail ───────────────────────────────────────────────────────────────────
 
 @router.get("/me")
-async def my_challenges(
+def my_challenges(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -280,7 +280,7 @@ async def my_challenges(
 
 
 @router.get("/{slug}")
-async def get_challenge(
+def get_challenge(
     slug: str,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -380,7 +380,7 @@ def _assign_team(db: Session, challenge_id) -> str:
 
 
 @router.post("/{challenge_id}/join")
-async def join_challenge(
+def join_challenge(
     challenge_id: uuid.UUID,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -469,7 +469,7 @@ async def join_challenge(
 
 
 @router.delete("/{challenge_id}/leave")
-async def leave_challenge(
+def leave_challenge(
     challenge_id: uuid.UUID,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -511,7 +511,7 @@ async def leave_challenge(
 # ── Leaderboard ────────────────────────────────────────────────────────────────
 
 @router.get("/{challenge_id}/leaderboard")
-async def challenge_leaderboard(
+def challenge_leaderboard(
     challenge_id: uuid.UUID,
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -585,7 +585,7 @@ async def challenge_leaderboard(
 
 
 @router.get("/{challenge_id}/team-leaderboard")
-async def team_leaderboard(
+def team_leaderboard(
     challenge_id: uuid.UUID,
     top_n: int = Query(10, ge=1, le=50),
     db: Session = Depends(get_db),

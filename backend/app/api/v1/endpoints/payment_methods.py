@@ -75,7 +75,7 @@ async def list_payment_methods(db: Session = Depends(get_db)) -> dict:
 
 
 @router.get("/config/flags")
-async def get_public_flags(db: Session = Depends(get_db)) -> dict:
+def get_public_flags(db: Session = Depends(get_db)) -> dict:
     """Small, purpose-built remote-config surface for client feature flags —
     deliberately NOT a raw app_config dump. Only specific, curated,
     non-sensitive keys are ever added here; add new flags one at a time,

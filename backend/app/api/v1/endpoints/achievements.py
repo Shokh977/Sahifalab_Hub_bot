@@ -34,7 +34,7 @@ async def _require_token(authorization: Optional[str] = Header(None)) -> int:
 
 
 @router.get("")
-async def list_achievements(
+def list_achievements(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):

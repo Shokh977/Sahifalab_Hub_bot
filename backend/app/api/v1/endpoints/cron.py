@@ -1134,7 +1134,7 @@ async def weekly_review_backfill_all(
 
 
 @router.post("/tanga-reconciliation")
-async def tanga_reconciliation(
+def tanga_reconciliation(
     db: Session = Depends(get_db),
     _: None = Depends(_require_cron_secret),
 ):

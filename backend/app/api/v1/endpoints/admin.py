@@ -153,7 +153,7 @@ async def verify_admin(
 
 # Hero Content Management
 @router.post("/hero", response_model=HeroContentResponse, status_code=status.HTTP_201_CREATED)
-async def create_hero_content(
+def create_hero_content(
     content: HeroContentCreate,
 
     db: Session = Depends(get_db),
@@ -170,7 +170,7 @@ async def create_hero_content(
     return db_content
 
 @router.put("/hero/{hero_id}", response_model=HeroContentResponse)
-async def update_hero_content(
+def update_hero_content(
     hero_id: int,
     content: HeroContentUpdate,
 
@@ -195,7 +195,7 @@ async def update_hero_content(
     return db_content
 
 @router.get("/hero", response_model=list[HeroContentResponse])
-async def list_hero_content(
+def list_hero_content(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db)
@@ -204,7 +204,7 @@ async def list_hero_content(
     return db.query(HeroContent).filter(HeroContent.is_active == True).offset(skip).limit(limit).all()
 
 @router.delete("/hero/{hero_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_hero_content(
+def delete_hero_content(
     hero_id: int,
 
     db: Session = Depends(get_db),
@@ -224,7 +224,7 @@ async def delete_hero_content(
 
 # Quiz Upload Management
 @router.get("/quizzes", response_model=list[QuizManagementResponse])
-async def list_quizzes_admin(
+def list_quizzes_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=200),
 
@@ -248,7 +248,7 @@ async def list_quizzes_admin(
 
 
 @router.post("/quizzes/upload", response_model=QuizUploadResponse, status_code=status.HTTP_201_CREATED)
-async def upload_quiz(
+def upload_quiz(
     quiz_data: QuizUpload,
 
     db: Session = Depends(get_db),
@@ -300,7 +300,7 @@ async def upload_quiz(
 
 
 @router.delete("/quizzes/{quiz_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_quiz(
+def delete_quiz(
     quiz_id: int,
 
     db: Session = Depends(get_db),
@@ -324,7 +324,7 @@ async def delete_quiz(
 
 # Book Management
 @router.post("/books", response_model=BookManagementResponse, status_code=status.HTTP_201_CREATED)
-async def create_book(
+def create_book(
     book_data: BookManagementCreate,
 
     db: Session = Depends(get_db),
@@ -349,7 +349,7 @@ async def create_book(
     return db_book
 
 @router.put("/books/{book_id}", response_model=BookManagementResponse)
-async def update_book(
+def update_book(
     book_id: int,
     book_data: BookManagementUpdate,
 
@@ -391,7 +391,7 @@ async def update_book(
     return db_book
 
 @router.delete("/books/{book_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_book(
+def delete_book(
     book_id: int,
 
     db: Session = Depends(get_db),
@@ -416,7 +416,7 @@ async def delete_book(
     db.commit()
 
 @router.get("/books", response_model=list[BookManagementResponse])
-async def list_books_admin(
+def list_books_admin(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
 
@@ -428,7 +428,7 @@ async def list_books_admin(
 
 # Payment Configuration
 @router.post("/payments", response_model=PaymentConfigResponse, status_code=status.HTTP_201_CREATED)
-async def configure_payment(
+def configure_payment(
     payment_config: PaymentConfigCreate,
 
     db: Session = Depends(get_db),
@@ -456,7 +456,7 @@ async def configure_payment(
     return db_config
 
 @router.get("/payments", response_model=list[PaymentConfigResponse])
-async def list_payment_configs(
+def list_payment_configs(
 
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin)
@@ -465,7 +465,7 @@ async def list_payment_configs(
     return db.query(PaymentConfig).all()
 
 @router.get("/payments/{provider}", response_model=PaymentConfigResponse)
-async def get_payment_config(
+def get_payment_config(
     provider: str,
 
     db: Session = Depends(get_db),
@@ -484,7 +484,7 @@ async def get_payment_config(
 
 # Debug endpoint — tests DB connectivity and returns diagnostics
 @router.get("/debug")
-async def debug_db(
+def debug_db(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -587,7 +587,7 @@ async def get_admin_stats(
 
 # Audit Logs
 @router.get("/audit-logs/books", response_model=list[AuditLogResponse])
-async def get_book_audit_logs(
+def get_book_audit_logs(
     book_id: int = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
@@ -604,7 +604,7 @@ async def get_book_audit_logs(
     return query.order_by(BookAuditLog.created_at.desc()).offset(skip).limit(limit).all()
 
 @router.get("/audit-logs/quizzes", response_model=list[AuditLogResponse])
-async def get_quiz_audit_logs(
+def get_quiz_audit_logs(
     quiz_id: int = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=100),
@@ -622,7 +622,7 @@ async def get_quiz_audit_logs(
 
 
 @router.get("/audit-logs/enrollments", response_model=list[EnrollmentAuditLogResponse])
-async def get_enrollment_audit_logs(
+def get_enrollment_audit_logs(
     action:           Optional[str] = Query(None, description="Filter by action type"),
     user_telegram_id: Optional[int] = Query(None),
     course_id:        Optional[int] = Query(None),
@@ -2171,7 +2171,7 @@ async def admin_mark_enrollment_paid(
 # pattern); nothing here ever auto-punishes an account.
 
 @router.get("/focus-anomalies")
-async def list_focus_anomalies(
+def list_focus_anomalies(
     reviewed: Optional[bool] = Query(None, description="Filter by reviewed status; omit for all"),
     limit: int = Query(50, ge=1, le=200),
     db: Session = Depends(get_db),
@@ -2207,7 +2207,7 @@ async def list_focus_anomalies(
 
 
 @router.post("/focus-anomalies/{flag_id}/review")
-async def mark_focus_anomaly_reviewed(
+def mark_focus_anomaly_reviewed(
     flag_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),

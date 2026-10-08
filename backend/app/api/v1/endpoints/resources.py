@@ -37,7 +37,7 @@ async def _require_admin(
     return telegram_id
 
 @router.get("/", response_model=list[ResourceResponse])
-async def get_resources(
+def get_resources(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     category: str = Query(None),
@@ -55,7 +55,7 @@ async def get_resources(
     return query.offset(skip).limit(limit).all()
 
 @router.get("/{resource_id}", response_model=ResourceResponse)
-async def get_resource(resource_id: int, db: Session = Depends(get_db)):
+def get_resource(resource_id: int, db: Session = Depends(get_db)):
     """Get resource details"""
     resource = db.query(Resource).filter(Resource.id == resource_id).first()
     
@@ -67,7 +67,7 @@ async def get_resource(resource_id: int, db: Session = Depends(get_db)):
     return resource
 
 @router.post("/", response_model=ResourceResponse, status_code=status.HTTP_201_CREATED)
-async def create_resource(
+def create_resource(
     resource_data: ResourceCreate,
     db: Session = Depends(get_db),
     admin_id: int = Depends(_require_admin),
@@ -80,7 +80,7 @@ async def create_resource(
     return db_resource
 
 @router.put("/{resource_id}", response_model=ResourceResponse)
-async def update_resource(
+def update_resource(
     resource_id: int,
     resource_data: ResourceCreate,
     db: Session = Depends(get_db),
@@ -103,7 +103,7 @@ async def update_resource(
     return db_resource
 
 @router.delete("/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_resource(
+def delete_resource(
     resource_id: int,
     db: Session = Depends(get_db),
     admin_id: int = Depends(_require_admin),

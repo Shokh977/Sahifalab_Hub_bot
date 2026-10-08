@@ -31,7 +31,7 @@ _STATUSES = {"pending", "reviewed", "dismissed"}
 
 
 @router.get("")
-async def list_reports(
+def list_reports(
     status: str = Query("pending"),
     page:   int = Query(1, ge=1),
     limit:  int = Query(20, ge=1, le=50),
@@ -142,7 +142,7 @@ def _set_status(db: Session, report_id: int, new_status: str, admin: AdminUser) 
 
 
 @router.post("/{report_id}/resolve")
-async def resolve_report(
+def resolve_report(
     report_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -153,7 +153,7 @@ async def resolve_report(
 
 
 @router.post("/{report_id}/dismiss")
-async def dismiss_report(
+def dismiss_report(
     report_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),

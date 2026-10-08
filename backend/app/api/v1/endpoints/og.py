@@ -90,7 +90,7 @@ def _og_html(
 # ── Book ─────────────────────────────────────────────────────────────────────
 
 @router.get("/book/{book_id}", response_class=HTMLResponse)
-async def og_book(book_id: int, db: Session = Depends(get_db)):
+def og_book(book_id: int, db: Session = Depends(get_db)):
     book  = db.query(Book).filter(Book.id == book_id).first()
     title = f"{book.title} — {book.author}" if book else SITE_NAME
     desc  = (book.description or "") if book else ""
@@ -102,7 +102,7 @@ async def og_book(book_id: int, db: Session = Depends(get_db)):
 # ── Quiz ─────────────────────────────────────────────────────────────────────
 
 @router.get("/quiz/{quiz_id}", response_class=HTMLResponse)
-async def og_quiz(quiz_id: int, db: Session = Depends(get_db)):
+def og_quiz(quiz_id: int, db: Session = Depends(get_db)):
     quiz  = db.query(Quiz).filter(Quiz.id == quiz_id).first()
     title = quiz.title if quiz else SITE_NAME
     desc  = (quiz.description or f"{quiz.total_questions or 0} ta savol · {quiz.category or 'Umumiy'}") if quiz else ""
@@ -113,7 +113,7 @@ async def og_quiz(quiz_id: int, db: Session = Depends(get_db)):
 # ── Course ───────────────────────────────────────────────────────────────────
 
 @router.get("/course/{course_id}", response_class=HTMLResponse)
-async def og_course(course_id: int, db: Session = Depends(get_db)):
+def og_course(course_id: int, db: Session = Depends(get_db)):
     try:
         row = db.execute(_text("""
             SELECT title, description, thumbnail_url
@@ -147,7 +147,7 @@ async def og_donation():
 # ── Post (social feed) ───────────────────────────────────────────────────────
 
 @router.get("/post/{post_id}", response_class=HTMLResponse)
-async def og_post(post_id: int, db: Session = Depends(get_db)):
+def og_post(post_id: int, db: Session = Depends(get_db)):
     try:
         row = db.execute(_text("""
             SELECT p.content, p.image_url,

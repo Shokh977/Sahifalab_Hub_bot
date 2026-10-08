@@ -104,7 +104,7 @@ class ProgressSyncRequest(BaseModel):
 # ── Endpoints ──────────────────────────────────────────────────────────────────
 
 @router.get("/leaderboard")
-async def get_leaderboard(limit: int = 10, db: Session = Depends(get_db)):
+def get_leaderboard(limit: int = 10, db: Session = Depends(get_db)):
     """Top-N users by XP."""
     profiles = (
         db.query(Profile)
@@ -128,7 +128,7 @@ async def get_leaderboard(limit: int = 10, db: Session = Depends(get_db)):
 
 
 @router.get("/dashboard-stats")
-async def get_dashboard_stats(db: Session = Depends(get_db)):
+def get_dashboard_stats(db: Session = Depends(get_db)):
     """Summary stats for the teacher dashboard."""
     yesterday = datetime.now(UTC) - timedelta(days=1)
     from sqlalchemy import text
@@ -149,7 +149,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
 
 
 @router.get("/pulse")
-async def get_pulse(db: Session = Depends(get_db)):
+def get_pulse(db: Session = Depends(get_db)):
     """
     Live Pulse — returns:
       active_count      : number of users with app_online_at within the last 5 minutes
@@ -182,7 +182,7 @@ async def send_motivation(caller_id: int = Depends(_require_admin)):
 
 
 @router.post("/upsert")
-async def upsert_profile(
+def upsert_profile(
     body: ProfileUpsertRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -217,7 +217,7 @@ async def upsert_profile(
 
 
 @router.post("/sync")
-async def sync_progress(
+def sync_progress(
     body: ProgressSyncRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -270,7 +270,7 @@ async def sync_progress(
 
 
 @router.get("/teachers")
-async def get_teachers_gallery(db: Session = Depends(get_db)):
+def get_teachers_gallery(db: Session = Depends(get_db)):
     """
     Public teachers gallery.
     Joins profiles + teacher_profiles + course aggregates in one raw SQL query.
@@ -325,7 +325,7 @@ async def get_teachers_gallery(db: Session = Depends(get_db)):
 
 
 @router.get("/heatmap")
-async def get_heatmap(
+def get_heatmap(
     telegram_id: int,
     days: int = 365,
     db: Session = Depends(get_db),
@@ -375,7 +375,7 @@ async def get_heatmap(
 
 
 @router.get("/{telegram_id}")
-async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
+def get_profile(telegram_id: int, db: Session = Depends(get_db)):
     """Fetch a single user's gamification state."""
     profile = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
     if not profile:
@@ -398,7 +398,7 @@ async def get_profile(telegram_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{telegram_id}/completions")
-async def get_completions(telegram_id: int, db: Session = Depends(get_db)):
+def get_completions(telegram_id: int, db: Session = Depends(get_db)):
     """Fetch all quiz completions for a user (cabinet page)."""
     rows = (
         db.query(UserQuizCompletion)
@@ -420,7 +420,7 @@ async def get_completions(telegram_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{telegram_id}/rating/{book_id}")
-async def get_my_rating(telegram_id: int, book_id: int, db: Session = Depends(get_db)):
+def get_my_rating(telegram_id: int, book_id: int, db: Session = Depends(get_db)):
     """Fetch this user's rating for a specific book."""
     row = (
         db.query(BookRating)
@@ -438,7 +438,7 @@ async def get_my_rating(telegram_id: int, book_id: int, db: Session = Depends(ge
 
 
 @router.get("/{telegram_id}/purchases")
-async def get_purchases(
+def get_purchases(
     telegram_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),

@@ -88,7 +88,7 @@ def _sign_result(quiz_id: int, telegram_id: int, score: int, total: int, ts: int
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/", response_model=list[QuizResponse])
-async def get_quizzes(
+def get_quizzes(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     category: str = Query(None),
@@ -104,7 +104,7 @@ async def get_quizzes(
 
 
 @router.get("/{quiz_id}", response_model=QuizDetailPublic)
-async def get_quiz(quiz_id: int, db: Session = Depends(get_db)):
+def get_quiz(quiz_id: int, db: Session = Depends(get_db)):
     """
     Return quiz with questions.
     correct_answer is intentionally excluded from the response —
@@ -282,7 +282,7 @@ async def verify_quiz(
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/", response_model=QuizResponse, status_code=status.HTTP_201_CREATED)
-async def create_quiz(
+def create_quiz(
     quiz_data: QuizCreate,
     db: Session = Depends(get_db),
     admin_id: int = Depends(_require_admin),
@@ -316,13 +316,13 @@ async def create_quiz(
 
 
 @router.get("/by-book/{book_id}", response_model=list[QuizResponse])
-async def get_quizzes_by_book(book_id: int, db: Session = Depends(get_db)):
+def get_quizzes_by_book(book_id: int, db: Session = Depends(get_db)):
     """Return all quizzes linked to a specific book."""
     return db.query(Quiz).filter(Quiz.book_id == book_id).all()
 
 
 @router.patch("/{quiz_id}/link-book", response_model=QuizResponse)
-async def link_quiz_to_book(
+def link_quiz_to_book(
     quiz_id: int,
     book_id: Optional[int],
     db: Session = Depends(get_db),

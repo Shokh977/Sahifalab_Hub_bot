@@ -49,7 +49,7 @@ def _since(period: str) -> str:
 
 
 @router.get("/weekly")
-async def weekly_leaderboard(
+def weekly_leaderboard(
     scope:     str = Query("global"),
     period:    str = Query("week"),
     db:        Session = Depends(get_db),

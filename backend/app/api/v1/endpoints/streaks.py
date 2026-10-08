@@ -120,7 +120,7 @@ def _build_calendar(db: Session, user_id: int, today: date, days: int = 7, daily
 
 
 @router.get("/detail")
-async def get_streak_detail(
+def get_streak_detail(
     local_date: Optional[str] = Query(None),
     days: int = Query(7, ge=7, le=30),
     db: Session = Depends(get_db),
@@ -292,7 +292,7 @@ class PurchaseFreezeRequest(BaseModel):
 
 
 @router.post("/freeze/purchase")
-async def purchase_freeze(
+def purchase_freeze(
     body: PurchaseFreezeRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -415,7 +415,7 @@ def _purchase_freeze_legacy(db: Session, caller_id: int, body: "PurchaseFreezeRe
 
 
 @router.post("/freeze/use")
-async def use_freeze(
+def use_freeze(
     local_date: Optional[str] = Query(None),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),

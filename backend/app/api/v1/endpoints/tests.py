@@ -152,7 +152,7 @@ def _score_attempt(quiz: LessonQuiz, answers: list) -> dict:
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.put("/{lesson_id}/questions")
-async def upsert_quiz(
+def upsert_quiz(
     lesson_id: int,
     body:      UpsertQuizBody,
     db:        Session = Depends(get_db),
@@ -183,7 +183,7 @@ async def upsert_quiz(
 
 
 @router.get("/{lesson_id}")
-async def get_quiz_meta(
+def get_quiz_meta(
     lesson_id:   int,
     db:          Session = Depends(get_db),
     telegram_id: int     = Depends(_require_token),
@@ -203,7 +203,7 @@ async def get_quiz_meta(
 
 
 @router.post("/{lesson_id}/attempts")
-async def start_attempt(
+def start_attempt(
     lesson_id:   int,
     db:          Session = Depends(get_db),
     telegram_id: int     = Depends(_require_token),
@@ -234,7 +234,7 @@ async def start_attempt(
 
 
 @router.post("/{test_id}/attempts/{attempt_id}/submit")
-async def submit_attempt(
+def submit_attempt(
     test_id:     int,
     attempt_id:  int,
     body:        SubmitBody,

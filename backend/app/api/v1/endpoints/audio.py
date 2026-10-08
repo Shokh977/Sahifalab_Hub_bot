@@ -82,7 +82,7 @@ def _convert_drive_url(url: str) -> str:
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/ambient-sounds", response_model=list[AmbientSoundResponse])
-async def list_ambient_sounds(db: Session = Depends(get_db)):
+def list_ambient_sounds(db: Session = Depends(get_db)):
     """Return all active ambient sounds (for StudyPage)."""
     return (
         db.query(AmbientSound)
@@ -93,7 +93,7 @@ async def list_ambient_sounds(db: Session = Depends(get_db)):
 
 
 @router.get("/proxy/{sound_id}")
-async def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
+def proxy_audio(sound_id: int, db: Session = Depends(get_db)):
     """
     Redirect the browser directly to the stored audio URL.
 

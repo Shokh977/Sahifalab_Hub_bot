@@ -8,7 +8,7 @@ from app.schemas.admin_schemas import HeroContentResponse
 router = APIRouter()
 
 @router.get("/")
-async def get_hero_content(db: Session = Depends(get_db)):
+def get_hero_content(db: Session = Depends(get_db)):
     """Get random active hero content for the home page"""
     content = db.query(HeroContent).filter(
         HeroContent.is_active == True
@@ -36,7 +36,7 @@ async def get_hero_content(db: Session = Depends(get_db)):
     }
 
 @router.get("/all", response_model=list[HeroContentResponse])
-async def get_all_hero_content(
+def get_all_hero_content(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db)

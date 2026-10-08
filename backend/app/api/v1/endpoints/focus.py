@@ -251,7 +251,7 @@ async def complete_focus_session(
 
 
 @router.post("/heartbeat")
-async def study_heartbeat(
+def study_heartbeat(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -269,7 +269,7 @@ async def study_heartbeat(
 
 
 @router.get("/active-count")
-async def get_active_study_count(db: Session = Depends(get_db)):
+def get_active_study_count(db: Session = Depends(get_db)):
     """Count of users whose study_pulse_at is within the last 2 minutes."""
     try:
         row = db.execute(

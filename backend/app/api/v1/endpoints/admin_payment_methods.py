@@ -211,7 +211,7 @@ def _validate_and_normalize(bank_name: str, account_number: str, number_type: st
 
 
 @router.get("")
-async def list_all_payment_methods(db: Session = Depends(get_db), admin: AdminUser = Depends(verify_admin)):
+def list_all_payment_methods(db: Session = Depends(get_db), admin: AdminUser = Depends(verify_admin)):
     rows = db.execute(
         text("""
             SELECT id, bank_name, account_number, number_type, holder_name,

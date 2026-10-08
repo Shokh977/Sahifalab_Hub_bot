@@ -62,7 +62,7 @@ def _deck_summary(r) -> dict:
 # ── Reports queue ──────────────────────────────────────────────────────────────
 
 @router.get("/reports")
-async def list_reported_decks(
+def list_reported_decks(
     page:  int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -127,7 +127,7 @@ async def list_reported_decks(
 # ── Pending review (content-safety auto-flags) ──────────────────────────────────
 
 @router.get("/pending-review")
-async def list_pending_review_decks(
+def list_pending_review_decks(
     page:  int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db),
@@ -164,7 +164,7 @@ async def list_pending_review_decks(
 # ── Approved decks (browse/search for the featured-toggle UI) ──────────────────
 
 @router.get("/approved")
-async def list_approved_decks(
+def list_approved_decks(
     search: Optional[str] = Query(None),
     page:   int = Query(1, ge=1),
     limit:  int = Query(20, ge=1, le=50),
@@ -204,7 +204,7 @@ async def list_approved_decks(
 # ── Deck detail (full content + reports) ────────────────────────────────────────
 
 @router.get("/{deck_id}")
-async def get_deck_for_review(
+def get_deck_for_review(
     deck_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -276,7 +276,7 @@ async def get_deck_for_review(
 # ── Moderation actions ──────────────────────────────────────────────────────────
 
 @router.post("/{deck_id}/approve")
-async def approve_deck(
+def approve_deck(
     deck_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -302,7 +302,7 @@ class RemoveRequest(BaseModel):
     reason: str = Field(..., min_length=1, max_length=500)
 
 @router.post("/{deck_id}/remove")
-async def remove_deck(
+def remove_deck(
     deck_id: int,
     body: RemoveRequest,
     db: Session = Depends(get_db),
@@ -330,7 +330,7 @@ async def remove_deck(
 
 
 @router.post("/{deck_id}/ban-creator")
-async def ban_deck_creator(
+def ban_deck_creator(
     deck_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -361,7 +361,7 @@ class OfficialDeckCreate(BaseModel):
     cards:       list[CardInput] = Field(..., min_length=1)
 
 @router.post("/official", status_code=201)
-async def create_official_deck(
+def create_official_deck(
     body: OfficialDeckCreate,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -409,7 +409,7 @@ class VerifyRequest(BaseModel):
     is_verified: bool
 
 @router.patch("/{deck_id}/verify")
-async def set_deck_verified(
+def set_deck_verified(
     deck_id: int,
     body: VerifyRequest,
     db: Session = Depends(get_db),
@@ -436,7 +436,7 @@ class BadgeRequest(BaseModel):
     badge_type: str
 
 @router.patch("/{deck_id}/badge")
-async def set_deck_badge(
+def set_deck_badge(
     deck_id: int,
     body: BadgeRequest,
     db: Session = Depends(get_db),
@@ -468,7 +468,7 @@ class FeaturedRequest(BaseModel):
     is_featured: bool
 
 @router.patch("/{deck_id}/featured")
-async def set_deck_featured(
+def set_deck_featured(
     deck_id: int,
     body: FeaturedRequest,
     db: Session = Depends(get_db),

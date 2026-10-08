@@ -413,7 +413,7 @@ def _check_rate_limit(db: Session, action: str, user_id: int) -> None:
 # ── Deck endpoints ────────────────────────────────────────────────────────────
 
 @router.get("/decks")
-async def list_decks(
+def list_decks(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -437,7 +437,7 @@ async def list_decks(
 
 
 @router.post("/decks", status_code=201)
-async def create_deck(
+def create_deck(
     body: DeckCreate,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -459,7 +459,7 @@ async def create_deck(
 
 
 @router.get("/decks/{deck_id}")
-async def get_deck(
+def get_deck(
     deck_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -483,7 +483,7 @@ async def get_deck(
 
 
 @router.patch("/decks/{deck_id}")
-async def update_deck(
+def update_deck(
     deck_id: int,
     body: DeckUpdate,
     db: Session = Depends(get_db),
@@ -507,7 +507,7 @@ async def update_deck(
 
 
 @router.delete("/decks/{deck_id}", status_code=204)
-async def delete_deck(
+def delete_deck(
     deck_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -520,7 +520,7 @@ async def delete_deck(
 # ── Card endpoints ────────────────────────────────────────────────────────────
 
 @router.get("/decks/{deck_id}/cards")
-async def list_cards(
+def list_cards(
     deck_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -534,7 +534,7 @@ async def list_cards(
 
 
 @router.post("/decks/{deck_id}/cards", status_code=201)
-async def add_card(
+def add_card(
     deck_id: int,
     body: CardCreate,
     db: Session = Depends(get_db),
@@ -559,7 +559,7 @@ async def add_card(
 
 
 @router.patch("/cards/{card_id}")
-async def update_card(
+def update_card(
     card_id: int,
     body: CardUpdate,
     db: Session = Depends(get_db),
@@ -580,7 +580,7 @@ async def update_card(
 
 
 @router.delete("/cards/{card_id}", status_code=204)
-async def delete_card(
+def delete_card(
     card_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -605,7 +605,7 @@ async def delete_card(
 # ── Study session ─────────────────────────────────────────────────────────────
 
 @router.get("/decks/{deck_id}/study")
-async def get_study_session(
+def get_study_session(
     deck_id: int,
     practice: bool = Query(False, description="Return all cards regardless of due date"),
     db: Session = Depends(get_db),
@@ -678,7 +678,7 @@ async def get_study_session(
 # ── Review (SM-2 + XP) ────────────────────────────────────────────────────────
 
 @router.post("/cards/{card_id}/review")
-async def review_card(
+def review_card(
     card_id: int,
     body: ReviewRequest,
     db: Session = Depends(get_db),
@@ -919,7 +919,7 @@ async def complete_session(
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 @router.get("/stats")
-async def get_stats(
+def get_stats(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -1050,7 +1050,7 @@ async def publish_deck(
 
 
 @router.patch("/decks/{deck_id}/unpublish")
-async def unpublish_deck(
+def unpublish_deck(
     deck_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -1067,7 +1067,7 @@ async def unpublish_deck(
 # ── Discovery (public library) ──────────────────────────────────────────────────
 
 @router.get("/public")
-async def list_public_decks(
+def list_public_decks(
     category: str = Query("all"),
     sort:     str = Query("popular", pattern="^(popular|newest|top_rated)$"),
     search:   Optional[str] = Query(None),
@@ -1131,7 +1131,7 @@ async def list_public_decks(
 
 
 @router.get("/public/featured")
-async def list_featured_decks(
+def list_featured_decks(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -1156,7 +1156,7 @@ async def list_featured_decks(
 
 
 @router.get("/public/{deck_id}")
-async def get_public_deck(
+def get_public_deck(
     deck_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -1360,7 +1360,7 @@ async def clone_public_deck(
 # ── Ratings ───────────────────────────────────────────────────────────────────
 
 @router.post("/public/{deck_id}/rate")
-async def rate_public_deck(
+def rate_public_deck(
     deck_id: int,
     body: RateRequest,
     db: Session = Depends(get_db),
@@ -1407,7 +1407,7 @@ async def rate_public_deck(
 
 
 @router.get("/public/{deck_id}/ratings")
-async def list_deck_ratings(
+def list_deck_ratings(
     deck_id: int,
     page:  int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=50),
@@ -1506,7 +1506,7 @@ async def report_public_deck(
 # ── Sharing (public link resolution, no auth) ──────────────────────────────────
 
 @router.get("/share/{deck_id}")
-async def get_share_info(
+def get_share_info(
     deck_id: int,
     db: Session = Depends(get_db),
 ):

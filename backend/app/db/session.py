@@ -51,11 +51,17 @@ def _create_engine_safe(db_url: str):
         # cost behind slow flashcard/deck endpoints. pool_pre_ping guards against
         # stale connections being handed out; pool_recycle avoids the DB/pooler
         # silently dropping idle connections out from under us.
+        # Pool exhaustion took the whole API down on 2026-10-08: async handlers
+        # block the event loop while waiting for a connection, so the holders
+        # can't finish and release theirs. Keep the pool comfortably large
+        # (Supavisor transaction mode multiplexes these) and fail fast instead
+        # of stalling the loop for the 30 s default.
         return create_engine(
             db_url,
             echo=settings.DATABASE_ECHO,
-            pool_size=5,
-            max_overflow=10,
+            pool_size=10,
+            max_overflow=20,
+            pool_timeout=5,
             pool_recycle=280,
             pool_pre_ping=True,
             connect_args=_build_connect_args(),

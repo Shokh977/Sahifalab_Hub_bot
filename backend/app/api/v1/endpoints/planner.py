@@ -156,7 +156,7 @@ async def create_task(body: TaskCreate, db: Session = Depends(get_db), caller_id
 
 
 @router.get("/tasks/{telegram_id}")
-async def list_tasks(telegram_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def list_tasks(telegram_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     # Only allow users to list their own tasks
     if caller_id != telegram_id:
         raise HTTPException(status_code=403, detail="Faqat o'z vazifalaringizni ko'rishingiz mumkin")
@@ -170,7 +170,7 @@ async def list_tasks(telegram_id: int, db: Session = Depends(get_db), caller_id:
 
 
 @router.put("/tasks/{task_id}")
-async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     task = db.query(PlannerTask).filter(PlannerTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -213,7 +213,7 @@ async def update_task(task_id: int, body: TaskUpdate, db: Session = Depends(get_
 
 
 @router.delete("/tasks/{task_id}")
-async def delete_task(task_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def delete_task(task_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     task = db.query(PlannerTask).filter(PlannerTask.id == task_id).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
@@ -225,7 +225,7 @@ async def delete_task(task_id: int, db: Session = Depends(get_db), caller_id: in
 
 
 @router.post("/tasks/reorder")
-async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     """Batch update sort_order and status for all tasks after a drag-drop."""
     xp_awarded = 0
 
@@ -268,7 +268,7 @@ async def reorder_tasks(body: ReorderRequest, db: Session = Depends(get_db), cal
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/notes")
-async def create_note(body: NoteCreate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def create_note(body: NoteCreate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     note = PlannerNote(
         user_id=caller_id,
         title=body.title,
@@ -281,7 +281,7 @@ async def create_note(body: NoteCreate, db: Session = Depends(get_db), caller_id
 
 
 @router.get("/notes/{telegram_id}")
-async def list_notes(telegram_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def list_notes(telegram_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     if caller_id != telegram_id:
         raise HTTPException(status_code=403, detail="Faqat o'z qaydlaringizni ko'rishingiz mumkin")
     notes = (
@@ -294,7 +294,7 @@ async def list_notes(telegram_id: int, db: Session = Depends(get_db), caller_id:
 
 
 @router.put("/notes/{note_id}")
-async def update_note(note_id: int, body: NoteUpdate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def update_note(note_id: int, body: NoteUpdate, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     note = db.query(PlannerNote).filter(PlannerNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")
@@ -311,7 +311,7 @@ async def update_note(note_id: int, body: NoteUpdate, db: Session = Depends(get_
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def delete_note(note_id: int, db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     note = db.query(PlannerNote).filter(PlannerNote.id == note_id).first()
     if not note:
         raise HTTPException(status_code=404, detail="Note not found")

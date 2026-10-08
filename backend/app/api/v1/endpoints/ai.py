@@ -107,7 +107,7 @@ _DEFAULT_GATE = {"free_daily_allowance": 3, "hard_daily_cap": 20, "prices": {}}
 
 
 @router.get("/limits")
-async def get_ai_limits(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def get_ai_limits(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
     """
     Spec Part 7: "Show cost before confirming any Tanga spend, and show
     remaining free allowance." The mobile client calls this before offering
@@ -270,7 +270,7 @@ class FlashcardGenerateConfirmRequest(BaseModel):
 
 
 @router.post("/flashcards/generate/confirm", status_code=201)
-async def confirm_generated_flashcards(
+def confirm_generated_flashcards(
     body: FlashcardGenerateConfirmRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),

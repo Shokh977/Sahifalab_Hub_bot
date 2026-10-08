@@ -60,7 +60,7 @@ def _fact_dict(row) -> dict:
 
 
 @router.get("")
-async def list_facts(
+def list_facts(
     category: Optional[str] = Query(None),
     verified: Optional[bool] = Query(None),
     db: Session = Depends(get_db),
@@ -95,7 +95,7 @@ class FactCreate(BaseModel):
 
 
 @router.post("")
-async def create_fact(
+def create_fact(
     body: FactCreate,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -120,7 +120,7 @@ async def create_fact(
 
 
 @router.post("/{fact_id}/verify")
-async def verify_fact(
+def verify_fact(
     fact_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -141,7 +141,7 @@ async def verify_fact(
 
 
 @router.delete("/{fact_id}")
-async def remove_fact(
+def remove_fact(
     fact_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),

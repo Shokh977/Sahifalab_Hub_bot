@@ -22,7 +22,7 @@ router = APIRouter()
 
 
 @router.get("")
-async def ai_usage_summary(
+def ai_usage_summary(
     days: int = Query(7, ge=1, le=90),
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),

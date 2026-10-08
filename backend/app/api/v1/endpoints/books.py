@@ -43,7 +43,7 @@ async def _require_admin(authorization: Optional[str] = Header(None)) -> int:
     return payload["telegram_id"]
 
 @router.get("/", response_model=list[BookListResponse])
-async def get_books(
+def get_books(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=100),
     category: str = Query(None),
@@ -61,7 +61,7 @@ async def get_books(
     return query.offset(skip).limit(limit).all()
 
 @router.get("/{book_id}", response_model=BookResponse)
-async def get_book(book_id: int, db: Session = Depends(get_db)):
+def get_book(book_id: int, db: Session = Depends(get_db)):
     """Get book details"""
     book = db.query(Book).filter(Book.id == book_id).first()
     
@@ -73,7 +73,7 @@ async def get_book(book_id: int, db: Session = Depends(get_db)):
     return book
 
 @router.get("/{book_id}/download")
-async def download_book(
+def download_book(
     book_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -115,7 +115,7 @@ async def download_book(
     return {"download_url": book.file_url}
 
 @router.get("/{book_id}/reviews")
-async def get_book_reviews(
+def get_book_reviews(
     book_id: int,
     response: Response,
     db: Session = Depends(get_db),
@@ -152,7 +152,7 @@ async def get_book_reviews(
 
 
 @router.get("/{book_id}/my-rating")
-async def get_my_rating(
+def get_my_rating(
     book_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -169,7 +169,7 @@ async def get_my_rating(
     return {"rating": rating.rating if rating else 0, "review": review_text}
 
 @router.post("/{book_id}/rate")
-async def rate_book(
+def rate_book(
     book_id: int,
     body: BookRateRequest,
     db: Session = Depends(get_db),
@@ -216,7 +216,7 @@ async def rate_book(
     return {"rating": body.rating, "average": book.rating}
 
 @router.post("/", response_model=BookResponse, status_code=status.HTTP_201_CREATED)
-async def create_book(
+def create_book(
     book_data: BookCreate,
     db: Session = Depends(get_db),
     admin_id: int = Depends(_require_admin),
@@ -230,7 +230,7 @@ async def create_book(
 
 
 @router.get("/{book_id}/progress")
-async def get_book_progress(
+def get_book_progress(
     book_id: int,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
@@ -246,7 +246,7 @@ async def get_book_progress(
 
 
 @router.post("/{book_id}/progress")
-async def save_book_progress(
+def save_book_progress(
     book_id: int,
     body: BookProgressRequest,
     db: Session = Depends(get_db),
@@ -326,7 +326,7 @@ async def proxy_book_file(
 
 
 @router.put("/{book_id}", response_model=BookResponse)
-async def update_book(
+def update_book(
     book_id: int,
     book_data: BookCreate,
     db: Session = Depends(get_db),

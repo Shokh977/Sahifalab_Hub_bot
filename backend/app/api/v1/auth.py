@@ -462,7 +462,7 @@ async def tma_init(body: TmaInitRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me")
-async def get_current_user(
+def get_current_user(
     authorization: str = Header(None), db: Session = Depends(get_db)
 ):
     """Validate JWT and return current user profile."""
@@ -541,7 +541,7 @@ async def google_sign_in(
 
 
 @router.patch("/me/photo")
-async def update_my_photo(
+def update_my_photo(
     body: PhotoUpdateRequest, authorization: str = Header(None), db: Session = Depends(get_db)
 ):
     telegram_id = _require_bearer(authorization)
@@ -550,7 +550,7 @@ async def update_my_photo(
 
 
 @router.patch("/me")
-async def update_my_profile(
+def update_my_profile(
     body: ProfileUpdateRequest, authorization: str = Header(None), db: Session = Depends(get_db)
 ):
     telegram_id = _require_bearer(authorization)
@@ -653,7 +653,7 @@ async def update_my_profile(
 
 
 @router.delete("/me")
-async def delete_my_account(
+def delete_my_account(
     authorization: str = Header(None), db: Session = Depends(get_db)
 ):
     """Permanently delete the currently-authenticated user's account."""
@@ -732,7 +732,7 @@ async def upload_my_photo(
 
 
 @router.post("/push-token")
-async def save_push_token(
+def save_push_token(
     body: PushTokenBody,
     authorization: str = Header(None),
     db: Session = Depends(get_db),
@@ -754,7 +754,7 @@ async def save_push_token(
 
 
 @router.get("/notification-prefs")
-async def get_notification_prefs(
+def get_notification_prefs(
     authorization: str = Header(None), db: Session = Depends(get_db)
 ):
     telegram_id = _require_bearer(authorization)
@@ -771,7 +771,7 @@ async def get_notification_prefs(
 
 
 @router.put("/notification-prefs")
-async def update_notification_prefs(
+def update_notification_prefs(
     body: NotifPrefsBody,
     authorization: str = Header(None),
     db: Session = Depends(get_db),
@@ -801,7 +801,7 @@ async def logout(authorization: str = Header(None)):
 # ── Bot-code auth flow ────────────────────────────────────────────────────────
 
 @router.post("/request-code")
-async def request_code(db: Session = Depends(get_db)):
+def request_code(db: Session = Depends(get_db)):
     """Generate a one-time login code for the bot flow."""
     from sqlalchemy import text as _sa_text
     code       = secrets.token_hex(4)
@@ -824,7 +824,7 @@ async def request_code(db: Session = Depends(get_db)):
 
 
 @router.post("/bot-claim-code")
-async def bot_claim_code(body: BotClaimCodeRequest, db: Session = Depends(get_db)):
+def bot_claim_code(body: BotClaimCodeRequest, db: Session = Depends(get_db)):
     """
     Called by the Telegram bot when a user sends /start auth_{code}.
     Validates the shared secret (bot token), then writes the user's Telegram ID
@@ -858,7 +858,7 @@ async def bot_claim_code(body: BotClaimCodeRequest, db: Session = Depends(get_db
 
 
 @router.get("/verify-code/{code}")
-async def verify_code(
+def verify_code(
     code: str,
     db: Session = Depends(get_db),
     x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
@@ -917,7 +917,7 @@ async def verify_code(
 # ── Teacher application flow ──────────────────────────────────────────────────
 
 @router.post("/apply-teacher")
-async def apply_teacher(
+def apply_teacher(
     body: ApplyTeacherRequest,
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
@@ -956,7 +956,7 @@ async def apply_teacher(
 
 
 @router.get("/admin/teacher-requests")
-async def list_teacher_requests(
+def list_teacher_requests(
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
     _require_admin(db, authorization)
@@ -996,7 +996,7 @@ async def list_teacher_requests(
 
 
 @router.get("/admin/teachers")
-async def list_active_teachers(
+def list_active_teachers(
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
     """
@@ -1104,7 +1104,7 @@ async def approve_teacher(
 
 
 @router.patch("/admin/teacher-commission/{target_telegram_id}")
-async def update_teacher_commission(
+def update_teacher_commission(
     target_telegram_id: int,
     body: UpdateTeacherCommissionRequest,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
@@ -1128,7 +1128,7 @@ async def update_teacher_commission(
 
 
 @router.post("/admin/reject-teacher/{target_telegram_id}")
-async def reject_teacher(
+def reject_teacher(
     target_telegram_id: int,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
@@ -1143,7 +1143,7 @@ async def reject_teacher(
 
 
 @router.get("/admin/users")
-async def list_users(
+def list_users(
     q: Optional[str] = None, limit: int = 50,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
@@ -1181,7 +1181,7 @@ async def list_users(
 
 
 @router.delete("/admin/users/{target_telegram_id}")
-async def admin_delete_user(
+def admin_delete_user(
     target_telegram_id: int,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
@@ -1221,7 +1221,7 @@ async def admin_delete_user(
 
 
 @router.patch("/admin/users/{target_telegram_id}/role")
-async def set_user_role(
+def set_user_role(
     target_telegram_id: int, body: SetUserRoleRequest,
     authorization: Optional[str] = Header(None), db: Session = Depends(get_db)
 ):
@@ -1245,7 +1245,7 @@ async def set_user_role(
 # ── Email auth ────────────────────────────────────────────────────────────────
 
 @router.post("/email-register")
-async def email_register(
+def email_register(
     body: EmailRegisterRequest,
     db: Session = Depends(get_db),
     x_client_platform: Optional[str] = Header(None, alias="X-Client-Platform"),
@@ -1301,7 +1301,7 @@ async def email_register(
 
 
 @router.post("/email-login")
-async def email_login(body: EmailLoginRequest, db: Session = Depends(get_db)):
+def email_login(body: EmailLoginRequest, db: Session = Depends(get_db)):
     email_lower = body.email.lower()
     profile = db.query(Profile).filter(Profile.email == email_lower).first()
     if not profile:
@@ -1453,7 +1453,7 @@ def _merge_profiles(db: Session, primary_id: int, secondary_id: int) -> dict:
 
 
 @router.post("/link-email")
-async def link_email(
+def link_email(
     body: LinkEmailRequest,
     authorization: str = Header(None),
     db: Session = Depends(get_db),
@@ -1541,7 +1541,7 @@ async def link_email(
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.get("/verify-email")
-async def verify_email(token: str, db: Session = Depends(get_db)):
+def verify_email(token: str, db: Session = Depends(get_db)):
     """Verify email address using the one-time token from the verification email."""
     auth_token = (
         db.query(AuthToken)
@@ -1590,7 +1590,7 @@ async def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/resend-verification")
-async def resend_verification(body: ResendVerificationRequest, db: Session = Depends(get_db)):
+def resend_verification(body: ResendVerificationRequest, db: Session = Depends(get_db)):
     """Resend email verification link. Max 3 per hour per email."""
     email_lower = body.email.lower().strip()
     profile = db.query(Profile).filter(Profile.email == email_lower).first()
@@ -1631,7 +1631,7 @@ async def resend_verification(body: ResendVerificationRequest, db: Session = Dep
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.post("/forgot-password")
-async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
+def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get_db)):
     """Request a password reset email. Always returns the same message (no info leak)."""
     email_lower = body.email.lower().strip()
     generic_ok = {"ok": True, "message": "Agar bu email ro'yxatdan o'tgan bo'lsa, parolni tiklash havolasi yuborildi."}
@@ -1665,7 +1665,7 @@ async def forgot_password(body: ForgotPasswordRequest, db: Session = Depends(get
 
 
 @router.post("/reset-password")
-async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
+def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_db)):
     """Set a new password using the one-time reset token."""
     auth_token = (
         db.query(AuthToken)
@@ -1718,7 +1718,7 @@ async def reset_password(body: ResetPasswordRequest, db: Session = Depends(get_d
 # ══════════════════════════════════════════════════════════════════════════════
 
 @router.put("/change-password")
-async def change_password(
+def change_password(
     body: ChangePasswordRequest,
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
@@ -1753,7 +1753,7 @@ async def change_password(
 
 
 @router.post("/set-password")
-async def set_password(
+def set_password(
     body: NewPasswordRequest,
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),

@@ -59,7 +59,7 @@ router = APIRouter()
 
 
 @router.get("/category-config")
-async def get_category_config(
+def get_category_config(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
@@ -83,7 +83,7 @@ class CategoryConfigUpdate(BaseModel):
 
 
 @router.put("/category-config")
-async def update_category_config(
+def update_category_config(
     body: CategoryConfigUpdate,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -156,7 +156,7 @@ def _question_dict(q) -> dict:
 
 
 @router.get("/week")
-async def week_overview(
+def week_overview(
     days_ahead: int = 10,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -260,7 +260,7 @@ async def publish_now_endpoint(
 
 
 @router.post("/{quiz_id}/reject")
-async def reject_quiz(
+def reject_quiz(
     quiz_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -362,7 +362,7 @@ async def add_question(
 
 
 @router.delete("/questions/{question_id}")
-async def delete_question(
+def delete_question(
     question_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
@@ -404,7 +404,7 @@ class QuestionEdit(BaseModel):
 
 
 @router.patch("/questions/{question_id}")
-async def edit_question(
+def edit_question(
     question_id: int,
     body: QuestionEdit,
     db: Session = Depends(get_db),
@@ -446,7 +446,7 @@ async def edit_question(
 
 
 @router.post("/questions/{question_id}/void")
-async def void_question(
+def void_question(
     question_id: int,
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
