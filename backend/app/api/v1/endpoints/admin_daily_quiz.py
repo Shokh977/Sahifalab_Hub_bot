@@ -63,19 +63,32 @@ def get_category_config(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
-    """Current 5-category mix (5-savol-quality-fixes brief Part 3), resolved
-    with defaults — read-only view of what generate_week will actually use
-    on its next run."""
+    """Current categories and A/B weekly rotation, resolved with defaults,
+    plus the category each of the next 14 days will get — a read-only view
+    of what generate_week will actually use on its next run."""
     categories = category_config.get_categories(db)
-    rotation = category_config.build_weekday_rotation(categories)
-    weekday_names = ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"]
-    return {
-        "categories": categories,
-        "weekday_rotation": [
-            {"weekday": i, "weekday_name": weekday_names[i], "category": rotation[i]["key"]}
-            for i in range(7)
-        ],
-    }
+    rotation = category_config.get_rotation(db, categories)
+    labels = {c["key"]: c["label"] for c in categories}
+    today = date.today()
+    schedule = []
+    for i in range(14):
+        d = today + timedelta(days=i)
+        key = category_config.category_key_for_date(rotation, d)
+        schedule.append({"date": d.isoformat(), "category": key, "label": labels.get(key, key)})
+    return {"categories": categories, "rotation": rotation, "schedule": schedule}
+
+
+def _save_config(db: Session, key: str, value, description: str, admin: AdminUser) -> None:
+    db.execute(
+        text("""
+            INSERT INTO app_config (key, value, description, updated_by)
+            VALUES (:key, CAST(:value AS jsonb), :desc, :uid)
+            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW(), updated_by = EXCLUDED.updated_by
+        """),
+        {"key": key, "value": json.dumps(value), "desc": description, "uid": admin.telegram_id},
+    )
+    db.commit()
+    invalidate_config_cache(key)
 
 
 class CategoryConfigUpdate(BaseModel):
@@ -88,42 +101,46 @@ def update_category_config(
     db: Session = Depends(get_db),
     admin: AdminUser = Depends(verify_admin),
 ):
-    """Persists a new category mix to app_config — no deploy needed, same
-    mechanism as tanga_earning (config_service.get_config). Takes effect on
-    the very next generate_week run (daily 05:00 UTC cron or this router's
-    own /generate-week)."""
-    categories = body.categories
-    required_fields = {"key", "label", "brief", "weight", "curated"}
-    for c in categories:
-        missing = required_fields - set(c.keys())
-        if missing:
-            raise HTTPException(422, f"category {c.get('key', '?')} missing fields: {missing}")
-        if not isinstance(c["weight"], (int, float)) or c["weight"] <= 0:
-            raise HTTPException(422, f"category {c['key']} weight must be a positive number")
-
-    total_weight = sum(c["weight"] for c in categories)
-    if not (95 <= total_weight <= 105):
-        raise HTTPException(422, f"category weights must sum to ~100, got {total_weight}")
-
-    keys = [c["key"] for c in categories]
-    if len(set(keys)) != len(keys):
-        raise HTTPException(422, "duplicate category keys")
-
-    db.execute(
-        text("""
-            INSERT INTO app_config (key, value, description, updated_by)
-            VALUES (:key, CAST(:value AS jsonb), :desc, :uid)
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW(), updated_by = EXCLUDED.updated_by
-        """),
-        {
-            "key": category_config.CONFIG_KEY, "value": json.dumps(categories),
-            "desc": "5 Savol category mix (weight %, curated flag) — see category_config.py",
-            "uid": admin.telegram_id,
-        },
+    """Persists a new category list to app_config — no deploy needed. Takes
+    effect on the very next generate_week run (daily 05:00 UTC cron or this
+    router's own /generate-week). Rejected if the current rotation would
+    then name a category that no longer exists."""
+    problems = category_config.validate_categories(body.categories)
+    if not problems:
+        rotation = category_config.get_rotation(db, body.categories)
+        problems = category_config.validate_rotation(rotation, {c["key"] for c in body.categories})
+    if problems:
+        raise HTTPException(422, "; ".join(problems))
+    _save_config(
+        db, category_config.CATEGORIES_CONFIG_KEY, body.categories,
+        "5 Savol categories (sub-topics, tag prefix, curated flag) — see category_config.py", admin,
     )
-    db.commit()
-    invalidate_config_cache(category_config.CONFIG_KEY)
-    return {"ok": True, "categories": categories}
+    return {"ok": True, "categories": body.categories}
+
+
+class RotationUpdate(BaseModel):
+    rotation: dict
+
+
+@router.put("/rotation")
+def update_rotation(
+    body: RotationUpdate,
+    db: Session = Depends(get_db),
+    admin: AdminUser = Depends(verify_admin),
+):
+    """Persists a new A/B weekly rotation to app_config — no deploy needed.
+    Shape: {"anchor_monday": "YYYY-MM-DD", "weeks": {"A": {"0": [keys], ...
+    "6": [keys]}, "B": {...}}}; a cell with several keys alternates between
+    them on successive same-letter weeks."""
+    categories = category_config.get_categories(db)
+    problems = category_config.validate_rotation(body.rotation, {c["key"] for c in categories})
+    if problems:
+        raise HTTPException(422, "; ".join(problems))
+    _save_config(
+        db, category_config.ROTATION_CONFIG_KEY, body.rotation,
+        "5 Savol A/B weekly category rotation — see category_config.py", admin,
+    )
+    return {"ok": True, "rotation": body.rotation}
 
 
 @router.post("/generate-week")

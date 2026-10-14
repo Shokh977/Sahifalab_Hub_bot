@@ -4,10 +4,13 @@ daily_quiz_service.py — "5 Savol", the daily AI quiz (5-savol-daily-quiz-spec.
 Five questions a day, the same five for every user worldwide, released
 00:00 UTC, hard-expiring at the next 00:00 UTC. This module owns:
 
-  - generate_week()      — DAILY top-up: 10 candidates/day (freeform AI
-                            generation or, for the two curated categories,
-                            formatted from an admin-verified curated_facts
-                            row — see category_config.py) -> cold verify +
+  - generate_week()      — DAILY top-up: 10 candidates/day for that day's
+                            category and least-recently-used sub-topic
+                            (freeform AI generation or, for a curated
+                            category, formatted from an admin-verified
+                            curated_facts row — see category_config.py),
+                            minus any concept used in the last 120 days
+                            -> cold verify +
                             deep content-check + transliteration check ->
                             best-5 selection, with in-day backfill retries
                             (_generate_full_day) if attrition leaves a day
@@ -56,7 +59,7 @@ from sqlalchemy.orm import Session
 from app.services.ai.gemini_provider import get_provider
 from app.services.ai.base import AiProviderError
 from app.services.ai.usage import log_usage
-from app.services.ai.prompts import daily_quiz_gen_v2, daily_quiz_verify_v1, daily_quiz_deepcheck_v1, daily_quiz_format_v1
+from app.services.ai.prompts import daily_quiz_gen_v3, daily_quiz_verify_v1, daily_quiz_deepcheck_v2, daily_quiz_format_v1
 from app.services.tanga_service import grant_tanga, daily_capped_grant
 from app.services.config_service import get_config
 from app.services import category_config
@@ -88,34 +91,106 @@ REPORT_VOID_THRESHOLD = 5  # reports on one question before it's auto-voided
 # the verifier." See _page_admins_high_rejection_rate.
 REJECTION_RATE_ALERT_THRESHOLD = 0.6
 
+# Variety fix: a concept tag used on any day in the last CONCEPT_BLOCK_DAYS
+# is hard-blocked, and the category's last RECENT_TAGS_IN_PROMPT tags are
+# passed to the generator as an exclusion list. Generation runs warm
+# (correctness is enforced by the temperature-0 verifiers, not by a cold
+# generator — at 0.2 every call for a category converged on the same few
+# facts). Generation never goes through ai_response_cache.
+CONCEPT_BLOCK_DAYS = 120
+RECENT_TAGS_IN_PROMPT = 50
+GENERATION_TEMPERATURE = 0.9
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PART 1 — Generation pipeline
 # ═══════════════════════════════════════════════════════════════════════════
 
-async def _generate_candidates(db: Session, category: dict, avoid_questions: Optional[list[str]] = None) -> list[dict]:
+def normalize_concept_tag(raw: object, prefix: str) -> Optional[str]:
+    """Pure — lowercase snake_case, guaranteed to start with `prefix_` so
+    the 120-day block is per category. None if nothing usable is left."""
+    if not isinstance(raw, str):
+        return None
+    tag = "".join(ch if ch.isascii() and ch.isalnum() else "_" for ch in raw.strip().lower())
+    tag = "_".join(part for part in tag.split("_") if part)
+    if not tag:
+        return None
+    if tag == prefix:
+        return None
+    if not tag.startswith(prefix + "_"):
+        tag = f"{prefix}_{tag}"
+    return tag[:80]
+
+
+def _concept_tag_history(db: Session, publish_date: date, category: dict, exclude_quiz_id: Optional[int]) -> tuple[set[str], list[str]]:
+    """(tags blocked for this day, this category's most recent tags for the
+    prompt). Both look only at OTHER days — a draft day being topped up must
+    not block its own seed questions."""
+    blocked_rows = db.execute(
+        text("""
+            SELECT DISTINCT q.concept_tag
+            FROM daily_quiz_questions q JOIN daily_quizzes z ON z.id = q.quiz_id
+            WHERE q.concept_tag IS NOT NULL
+              AND z.publish_date >= :since
+              AND z.id <> :exclude
+        """),
+        {"since": publish_date - timedelta(days=CONCEPT_BLOCK_DAYS), "exclude": exclude_quiz_id or -1},
+    ).fetchall()
+    recent_rows = db.execute(
+        text("""
+            SELECT q.concept_tag
+            FROM daily_quiz_questions q JOIN daily_quizzes z ON z.id = q.quiz_id
+            WHERE q.concept_tag LIKE :prefix AND z.id <> :exclude
+            ORDER BY z.publish_date DESC, q.position
+            LIMIT :n
+        """),
+        {"prefix": category["tag_prefix"] + "\\_%", "exclude": exclude_quiz_id or -1, "n": RECENT_TAGS_IN_PROMPT},
+    ).fetchall()
+    return {r.concept_tag for r in blocked_rows}, [r.concept_tag for r in recent_rows]
+
+
+def _pick_sub_topic(db: Session, category: dict) -> str:
+    rows = db.execute(
+        text("""
+            SELECT sub_topic, MAX(publish_date) AS last_used
+            FROM daily_quizzes
+            WHERE theme = :theme AND sub_topic IS NOT NULL
+            GROUP BY sub_topic
+        """),
+        {"theme": category["key"]},
+    ).fetchall()
+    last_used = {r.sub_topic: r.last_used for r in rows}
+    return category_config.choose_sub_topic(category["sub_topics"], last_used)
+
+
+async def _generate_candidates(
+    db: Session, category: dict, sub_topic: str,
+    avoid_questions: Optional[list[str]] = None, recent_tags: Optional[list[str]] = None,
+) -> list[dict]:
     """Dispatches to the freeform generator or the curated-fact formatter
     depending on category["curated"] (category_config.py). Returns [] on
     any failure (logged) — caller treats an empty candidate list as "this
     day needs attention," never as a crash."""
     if category.get("curated"):
         return await _generate_curated_candidates(db, category, avoid_questions)
-    return await _generate_freeform_candidates(db, category, avoid_questions)
+    return await _generate_freeform_candidates(db, category, sub_topic, avoid_questions, recent_tags)
 
 
-async def _generate_freeform_candidates(db: Session, category: dict, avoid_questions: Optional[list[str]] = None) -> list[dict]:
-    """One generation call -> up to 10 raw candidate questions for that
-    category. Only ever called for non-curated categories (amaliy_fan,
-    kitoblar_goyalar, til_soz_tarixi) — see category_config.py."""
+async def _generate_freeform_candidates(
+    db: Session, category: dict, sub_topic: str,
+    avoid_questions: Optional[list[str]] = None, recent_tags: Optional[list[str]] = None,
+) -> list[dict]:
+    """One generation call -> up to 10 raw candidate questions for one
+    sub-topic of a non-curated category — see category_config.py."""
     provider = get_provider()
     try:
         response = await provider.generate_json(
-            system_prompt=daily_quiz_gen_v2.SYSTEM_PROMPT,
-            user_prompt=daily_quiz_gen_v2.build_user_prompt(category, avoid_questions),
-            prompt_version=daily_quiz_gen_v2.VERSION,
-            json_schema=daily_quiz_gen_v2.JSON_SCHEMA,
-            temperature=0.2,  # low temperature (spec) — consistency over creativity
-            # v2's situation-framed questions + explicit distractor-authenticity/
+            system_prompt=daily_quiz_gen_v3.SYSTEM_PROMPT,
+            user_prompt=daily_quiz_gen_v3.build_user_prompt(category, sub_topic, avoid_questions, recent_tags),
+            prompt_version=daily_quiz_gen_v3.VERSION,
+            json_schema=daily_quiz_gen_v3.JSON_SCHEMA,
+            temperature=GENERATION_TEMPERATURE,
+            # v2+'s situation-framed questions + explicit distractor-authenticity/
             # mutual-exclusivity rules produce meaningfully longer output per
             # candidate than v1 did. The default 2048 was v1-era headroom; at
             # 10 candidates/call it was silently truncating mid-JSON-string
@@ -125,12 +200,12 @@ async def _generate_freeform_candidates(db: Session, category: dict, avoid_quest
         )
     except AiProviderError as e:
         log_usage(db, user_id=None, feature="daily_quiz_gen", model="gemini-flash-lite-latest",
-                  prompt_version=daily_quiz_gen_v2.VERSION, outcome=e.outcome, error_detail=str(e))
+                  prompt_version=daily_quiz_gen_v3.VERSION, outcome=e.outcome, error_detail=str(e))
         logger.error("daily_quiz generation call failed for category=%s", category["key"], exc_info=True)
         return []
 
     log_usage(db, user_id=None, feature="daily_quiz_gen", model=response.model,
-              prompt_version=daily_quiz_gen_v2.VERSION, input_tokens=response.input_tokens,
+              prompt_version=daily_quiz_gen_v3.VERSION, input_tokens=response.input_tokens,
               output_tokens=response.output_tokens, cost_usd=response.cost_usd,
               latency_ms=response.latency_ms, outcome=response.outcome)
 
@@ -153,7 +228,9 @@ async def _generate_freeform_candidates(db: Session, category: dict, avoid_quest
             and isinstance(q.get("explanation"), str) and q["explanation"].strip()
             and isinstance(q.get("source"), str) and q["source"].strip()
             and q.get("difficulty") in ("easy", "medium", "hard")
+            and normalize_concept_tag(q.get("concept_tag"), category["tag_prefix"])
         ):
+            q["concept_tag"] = normalize_concept_tag(q["concept_tag"], category["tag_prefix"])
             valid.append(q)
         else:
             logger.warning("daily_quiz candidate dropped (malformed): %r", q)
@@ -169,7 +246,7 @@ async def _generate_curated_candidates(db: Session, category: dict, avoid_questi
     comes up short through the existing retry/backfill/warning machinery in
     _generate_full_day — no special-case error path needed."""
     provider = get_provider()
-    n = sum(daily_quiz_gen_v2.CANDIDATE_MIX.values())
+    n = sum(daily_quiz_gen_v3.CANDIDATE_MIX.values())
     avoid_set = set(avoid_questions or [])
 
     rows = db.execute(
@@ -225,6 +302,7 @@ async def _generate_curated_candidates(db: Session, category: dict, avoid_questi
             "source": row.source,  # admin-pinned, never model-authored (brief Part 4 rule #3)
             "difficulty": q["difficulty"],
             "curated_fact_id": int(row.id),
+            "concept_tag": f"{category['tag_prefix']}_fact_{int(row.id)}",
         })
     return candidates
 
@@ -232,34 +310,31 @@ async def _generate_curated_candidates(db: Session, category: dict, avoid_questi
 async def _deep_verify_candidate(db: Session, candidate: dict) -> tuple[bool, list[str]]:
     """The 'hot' content check (brief Part 5) — sees the full candidate and
     judges mutual exclusivity, distractor authenticity, the difficulty
-    floor, single-defensible-answer, and the banned-content list. Runs
+    floor, single-defensible-answer, the banned-content list, term
+    questions, and whether the fact is worth repeating. Runs
     alongside (never instead of) _verify_candidate's cold answer-only
     check, which can't see any of this. Fails closed on any call error."""
     provider = get_provider()
     try:
         response = await provider.generate_json(
-            system_prompt=daily_quiz_deepcheck_v1.SYSTEM_PROMPT,
-            user_prompt=daily_quiz_deepcheck_v1.build_user_prompt(candidate),
-            prompt_version=daily_quiz_deepcheck_v1.VERSION,
-            json_schema=daily_quiz_deepcheck_v1.JSON_SCHEMA,
+            system_prompt=daily_quiz_deepcheck_v2.SYSTEM_PROMPT,
+            user_prompt=daily_quiz_deepcheck_v2.build_user_prompt(candidate),
+            prompt_version=daily_quiz_deepcheck_v2.VERSION,
+            json_schema=daily_quiz_deepcheck_v2.JSON_SCHEMA,
             temperature=0.0,
         )
     except AiProviderError as e:
         log_usage(db, user_id=None, feature="daily_quiz_deepcheck", model="gemini-flash-lite-latest",
-                  prompt_version=daily_quiz_deepcheck_v1.VERSION, outcome=e.outcome, error_detail=str(e))
+                  prompt_version=daily_quiz_deepcheck_v2.VERSION, outcome=e.outcome, error_detail=str(e))
         logger.error("daily_quiz deep-check call failed", exc_info=True)
         return False, ["deep-check call failed"]
 
     log_usage(db, user_id=None, feature="daily_quiz_deepcheck", model=response.model,
-              prompt_version=daily_quiz_deepcheck_v1.VERSION, input_tokens=response.input_tokens,
+              prompt_version=daily_quiz_deepcheck_v2.VERSION, input_tokens=response.input_tokens,
               output_tokens=response.output_tokens, cost_usd=response.cost_usd,
               latency_ms=response.latency_ms, outcome=response.outcome)
 
-    data = response.data or {}
-    if data.get("verdict") != "pass":
-        reasons = data.get("reasons") or ["deep-check returned no reasons"]
-        return False, reasons
-    return True, []
+    return daily_quiz_deepcheck_v2.passes(response.data or {})
 
 
 def _check_transliteration(candidate: dict) -> list[str]:
@@ -370,7 +445,9 @@ async def _run_verification(db: Session, candidate: dict) -> None:
 
 
 async def _generate_full_day(
-    db: Session, category: dict, seed_pool: Optional[list[dict]] = None,
+    db: Session, category: dict, sub_topic: str,
+    blocked_tags: Optional[set[str]] = None, recent_tags: Optional[list[str]] = None,
+    seed_pool: Optional[list[dict]] = None,
 ) -> tuple[list[dict], list[str], int, int]:
     """
     Generate (or top up) one day's worth of verified candidates. The old
@@ -389,18 +466,35 @@ async def _generate_full_day(
     Returns (selected, warnings, candidates_generated, candidates_verified) —
     the last two feed the rejection-rate tracking in generate_week (brief
     Part 5 / deliverable 1's missing aggregate metric).
+
+    Candidates whose concept_tag is in blocked_tags (used on another day in
+    the last CONCEPT_BLOCK_DAYS) or already in the pool are dropped before
+    verification, so they cost no verifier calls and don't count as
+    generated.
     """
     pool: list[dict] = list(seed_pool or [])
     selected, warnings = select_five(pool)
     if len(selected) >= QUESTIONS_PER_QUIZ:
         return selected, [], len(pool), sum(1 for c in pool if c.get("verified"))
 
+    blocked = set(blocked_tags or ())
     for round_num in range(1, MAX_GENERATION_ROUNDS + 1):
         avoid = [c["question_text"] for c in pool]
-        candidates = await _generate_candidates(db, category, avoid_questions=avoid)
+        candidates = await _generate_candidates(
+            db, category, sub_topic, avoid_questions=avoid, recent_tags=recent_tags,
+        )
+        pool_tags = {c.get("concept_tag") for c in pool}
+        fresh = []
         for c in candidates:
+            tag = c.get("concept_tag")
+            if tag and (tag in blocked or tag in pool_tags):
+                logger.info("daily_quiz candidate dropped (concept %s used recently): %s", tag, c["question_text"])
+                continue
+            pool_tags.add(tag)
+            fresh.append(c)
+        for c in fresh:
             await _run_verification(db, c)
-        pool.extend(candidates)
+        pool.extend(fresh)
 
         selected, warnings = select_five(pool)
         if len(selected) >= QUESTIONS_PER_QUIZ:
@@ -439,16 +533,31 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
     for i in range(days_ahead):
         publish_date = start_date + timedelta(days=i)
         existing = db.execute(
-            text("SELECT id, status, quiz_number FROM daily_quizzes WHERE publish_date = :d"), {"d": publish_date},
+            text("SELECT id, status, quiz_number, theme, sub_topic FROM daily_quizzes WHERE publish_date = :d"),
+            {"d": publish_date},
         ).fetchone()
 
         if existing and existing.status != "draft":
             skipped.append(publish_date.isoformat())
             continue
 
-        weekday = publish_date.weekday()
-        category = category_config.get_weekday_category(db, weekday)
+        category = category_config.get_category_for_date(db, publish_date)
+        if existing and existing.theme != category["key"]:
+            # A draft day created under an older rotation keeps its theme
+            # when that category still exists, so its seed questions still
+            # match it.
+            category = next(
+                (c for c in category_config.get_categories(db) if c["key"] == existing.theme), category,
+            )
         theme_key, theme_label = category["key"], category["label"]
+        sub_topic = (
+            existing.sub_topic
+            if existing and existing.sub_topic in category["sub_topics"]
+            else _pick_sub_topic(db, category)
+        )
+        blocked_tags, recent_tags = _concept_tag_history(
+            db, publish_date, category, int(existing.id) if existing else None,
+        )
 
         if existing:
             quiz_id = int(existing.id)
@@ -456,7 +565,7 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
             prior_rows = db.execute(
                 text("""
                     SELECT question_text, options, correct_index, explanation, source,
-                           difficulty, verify_model_answer, curated_fact_id
+                           difficulty, verify_model_answer, curated_fact_id, concept_tag
                     FROM daily_quiz_questions WHERE quiz_id = :qid
                 """),
                 {"qid": quiz_id},
@@ -466,24 +575,28 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                     "question_text": r.question_text, "options": list(r.options), "correct_index": r.correct_index,
                     "explanation": r.explanation, "source": r.source, "difficulty": r.difficulty,
                     "verified": True, "verify_model_answer": r.verify_model_answer,
-                    "curated_fact_id": r.curated_fact_id,
+                    "curated_fact_id": r.curated_fact_id, "concept_tag": r.concept_tag,
                 }
                 for r in prior_rows
             ]
             seed_fact_ids = {r.curated_fact_id for r in prior_rows if r.curated_fact_id}
-            selected, warnings, gen_count, ver_count = await _generate_full_day(db, category, seed_pool=seed_pool)
+            selected, warnings, gen_count, ver_count = await _generate_full_day(
+                db, category, sub_topic, blocked_tags, recent_tags, seed_pool=seed_pool,
+            )
             db.execute(text("DELETE FROM daily_quiz_questions WHERE quiz_id = :qid"), {"qid": quiz_id})
         else:
             seed_fact_ids = set()
-            selected, warnings, gen_count, ver_count = await _generate_full_day(db, category)
+            selected, warnings, gen_count, ver_count = await _generate_full_day(
+                db, category, sub_topic, blocked_tags, recent_tags,
+            )
             quiz_number = _next_quiz_number(db)
             quiz_row = db.execute(
                 text("""
-                    INSERT INTO daily_quizzes (quiz_number, publish_date, theme, status)
-                    VALUES (:num, :d, :theme, 'draft')
+                    INSERT INTO daily_quizzes (quiz_number, publish_date, theme, sub_topic, status)
+                    VALUES (:num, :d, :theme, :sub_topic, 'draft')
                     RETURNING id
                 """),
-                {"num": quiz_number, "d": publish_date, "theme": theme_key},
+                {"num": quiz_number, "d": publish_date, "theme": theme_key, "sub_topic": sub_topic},
             ).fetchone()
             quiz_id = int(quiz_row.id)
 
@@ -491,12 +604,13 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
         db.execute(
             text("""
                 UPDATE daily_quizzes
-                SET status = :status, notes = :notes,
+                SET status = :status, notes = :notes, theme = :theme, sub_topic = :sub_topic,
                     candidates_generated = :gen, candidates_verified = :ver
                 WHERE id = :id
             """),
             {
                 "status": status, "notes": "; ".join(warnings) or None,
+                "theme": theme_key, "sub_topic": sub_topic,
                 "gen": gen_count, "ver": ver_count, "id": quiz_id,
             },
         )
@@ -507,17 +621,17 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                     INSERT INTO daily_quiz_questions
                         (quiz_id, position, question_text, options, correct_index,
                          explanation, source, difficulty, verified, verify_model_answer,
-                         curated_fact_id)
+                         curated_fact_id, concept_tag)
                     VALUES
                         (:qid, :pos, :qtext, CAST(:opts AS jsonb), :cidx,
-                         :expl, :src, :diff, :verified, :vma, :fact_id)
+                         :expl, :src, :diff, :verified, :vma, :fact_id, :tag)
                 """),
                 {
                     "qid": quiz_id, "pos": position, "qtext": q["question_text"],
                     "opts": json.dumps(q["options"]), "cidx": q["correct_index"],
                     "expl": q["explanation"], "src": q["source"], "diff": q["difficulty"],
                     "verified": True, "vma": q.get("verify_model_answer"),
-                    "fact_id": q.get("curated_fact_id"),
+                    "fact_id": q.get("curated_fact_id"), "tag": q.get("concept_tag"),
                 },
             )
 
@@ -551,7 +665,8 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
             await _page_admins_high_rejection_rate(publish_date, theme_label, gen_count, ver_count, rejection_rate)
 
         created.append({"publish_date": publish_date.isoformat(), "quiz_number": quiz_number,
-                         "theme": theme_key, "status": status, "question_count": len(selected),
+                         "theme": theme_key, "sub_topic": sub_topic, "status": status,
+                         "question_count": len(selected),
                          "candidates_generated": gen_count, "candidates_verified": ver_count,
                          "rejection_rate": round(rejection_rate, 3)})
 

@@ -107,6 +107,72 @@ def test_shuffle_for_user_differs_per_question():
     assert perm_q1 != perm_q2
 
 
+def test_default_categories_and_rotation_are_valid():
+    from app.services import category_config as cc
+
+    assert cc.validate_categories(cc.DEFAULT_CATEGORIES) == []
+    assert len(cc.DEFAULT_CATEGORIES) == 16
+    for c in cc.DEFAULT_CATEGORIES:
+        assert 8 <= len(c["sub_topics"]) <= 15, c["key"]
+    keys = {c["key"] for c in cc.DEFAULT_CATEGORIES}
+    assert cc.validate_rotation(cc.DEFAULT_ROTATION, keys) == []
+    # Every category appears somewhere in the A/B rotation.
+    used = {k for week in cc.DEFAULT_ROTATION["weeks"].values() for cell in week.values() for k in cell}
+    assert used == keys
+
+
+def test_rotation_alternates_weeks_and_multi_key_cells():
+    from app.services.category_config import DEFAULT_ROTATION, category_key_for_date
+
+    monday_a = date(2026, 10, 12)
+    assert category_key_for_date(DEFAULT_ROTATION, monday_a) == "soz_tarixi"
+    assert category_key_for_date(DEFAULT_ROTATION, monday_a + timedelta(days=7)) == "kitoblar_mualliflar"
+    assert category_key_for_date(DEFAULT_ROTATION, monday_a + timedelta(days=14)) == "soz_tarixi"
+    # Week-A Saturdays step through [tabiat, kosmos]; week-B ones through
+    # [geografiya, tarixiy_taqqoslash].
+    saturdays = [category_key_for_date(DEFAULT_ROTATION, monday_a + timedelta(days=5 + 7 * w)) for w in range(4)]
+    assert saturdays == ["tabiat", "geografiya", "kosmos", "tarixiy_taqqoslash"]
+    # Dates before the anchor still resolve (floor division).
+    assert category_key_for_date(DEFAULT_ROTATION, monday_a - timedelta(days=7)) == "kitoblar_mualliflar"
+
+
+def test_choose_sub_topic_prefers_unused_then_oldest():
+    from app.services.category_config import choose_sub_topic
+
+    subs = ["a", "b", "c"]
+    assert choose_sub_topic(subs, {}) == "a"
+    assert choose_sub_topic(subs, {"a": date(2026, 1, 1)}) == "b"
+    used = {"a": date(2026, 3, 1), "b": date(2026, 1, 1), "c": date(2026, 2, 1)}
+    assert choose_sub_topic(subs, used) == "b"
+
+
+def test_normalize_concept_tag():
+    from app.services.daily_quiz_service import normalize_concept_tag
+
+    assert normalize_concept_tag("etymology_al_khwarizmi", "etymology") == "etymology_al_khwarizmi"
+    assert normalize_concept_tag("Al Khwarizmi!", "etymology") == "etymology_al_khwarizmi"
+    assert normalize_concept_tag("  microwave--oven ", "invention") == "invention_microwave_oven"
+    assert normalize_concept_tag("etymology", "etymology") is None
+    assert normalize_concept_tag("", "etymology") is None
+    assert normalize_concept_tag(None, "etymology") is None
+
+
+def test_deepcheck_rederives_verdict_from_flags():
+    from app.services.ai.prompts.daily_quiz_deepcheck_v2 import passes
+
+    good = {
+        "mutually_exclusive": True, "distractors_real": True, "meets_difficulty_floor": True,
+        "single_defensible_answer": True, "banned_content_found": False,
+        "is_term_question": False, "worth_repeating": True, "verdict": "pass", "reasons": [],
+    }
+    assert passes(good) == (True, [])
+    ok, reasons = passes({**good, "is_term_question": True})
+    assert not ok and any("term" in r for r in reasons)
+    ok, reasons = passes({**good, "worth_repeating": False})
+    assert not ok and any("repeating" in r for r in reasons)
+    assert passes({})[0] is False
+
+
 def test_window_close_is_next_midnight_utc():
     from app.api.v1.endpoints.daily_quiz import _window_close
 

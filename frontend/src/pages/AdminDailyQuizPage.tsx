@@ -49,14 +49,19 @@ interface DayEntry {
   rejection_rate: number | null
 }
 
-// 5-savol-quality-fixes brief, Part 3 — replaced the old 7-weekday theme
-// rotation with a 5-category weighted mix (category_config.py). Old keys
-// kept alongside the new ones so historical days already published under
-// the old rotation still render a real label instead of the raw slug.
+// The 16 categories of the A/B weekly rotation (category_config.py). Older
+// keys kept so historical days still render a real label instead of the
+// raw slug.
 const THEME_LABELS: Record<string, string> = {
-  amaliy_fan: 'Amaliy fan', kitoblar_goyalar: "Kitoblar va g'oyalar",
-  ozbek_adabiyoti: "O'zbek adabiyoti", tarix_meros: 'Tarix va meros',
-  til_soz_tarixi: "Til va so'z tarixi",
+  soz_tarixi: "So'z tarixi", ixtirolar: 'Ixtirolar va tasodiflar', nega_shunday: 'Nega shunday?',
+  tabiat: 'Tabiat va hayvonlar', inson_tanasi: 'Inson tanasi', kosmos: 'Kosmos',
+  geografiya: 'Jahon geografiyasi', tarixiy_taqqoslash: 'Tarixiy taqqoslashlar',
+  texnologiya: 'Texnologiya tarixi', oziq_ovqat: 'Oziq-ovqat tarixi', pul_iqtisod: 'Pul va iqtisod',
+  keng_xato: 'Keng tarqalgan xato', kitoblar_mualliflar: 'Kitoblar va mualliflar',
+  ozbek_adabiyoti: "O'zbek adabiyoti va madaniyati", tarix_meros: 'Tarix va meros',
+  amaliy_fan: 'Amaliy fan',
+  // 5-category weighted mix (5-savol-quality-fixes) — older published days.
+  kitoblar_goyalar: "Kitoblar va g'oyalar", til_soz_tarixi: "Til va so'z tarixi",
   // Pre-rework themes (090_daily_quiz) — still shown for old published days.
   kitoblar: 'Kitoblar', miya_xotira: 'Miya va xotira', psixologiya: 'Psixologiya',
   shaxslar: 'Shaxslar', moliyaviy_savodxonlik: 'Moliyaviy savodxonlik',
