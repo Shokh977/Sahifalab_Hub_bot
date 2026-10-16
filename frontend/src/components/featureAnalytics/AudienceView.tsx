@@ -34,20 +34,21 @@ export default function AudienceView({ data, days }: { data: AudienceData; days:
   }
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
         <p className="text-xs text-gray-500 dark:text-gray-400 max-w-xl">
           Reklama va kontent uchun: kimlar foydalanadi, nimani o'rganadi, qachon faol. "Haqiqiy qiziqishlar" — odamlar
           o'zi yaratgan va takrorlagan kartalar mavzusidan olinadi, onboardingdagi javobdan aniqroq.
         </p>
         <button onClick={exportCsv} disabled={exporting}
+          title="Har bir foydalanuvchi alohida qatorda: qiziqishlari, karta mavzulari, segmenti, faolligi"
           className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg bg-sahifa-600 text-white hover:bg-sahifa-700 disabled:opacity-50">
           <Download className="w-3.5 h-3.5" />
-          {exporting ? 'Tayyorlanmoqda…' : 'CSV yuklab olish'}
+          {exporting ? 'Tayyorlanmoqda…' : "Foydalanuvchilar ro'yxati (CSV)"}
         </button>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <StatTile label="Jami foydalanuvchilar" value={fmt(t.users)} />
         <StatTile label="Davrda faol" value={fmt(t.active)} sub={t.users ? `${((t.active / t.users) * 100).toFixed(1)}%` : undefined} />
         <StatTile label="Davrda yangi" value={fmt(t.new)} />
@@ -60,7 +61,7 @@ export default function AudienceView({ data, days }: { data: AudienceData; days:
         <BarList items={data.segments.map(s => ({ key: s.key, label: s.label, value: s.users, sub: `${s.pct}%` }))} />
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Haqiqiy qiziqishlar" subtitle="Kartalar mavzusi bo'yicha: yaratgan yoki davrda takrorlagan odamlar"
           hint="Bir kishi bir nechta mavzuda bo'lishi mumkin.">
           <BarList empty="Hali kartalar yo'q" items={data.flashcard_themes.map(th => ({
@@ -76,7 +77,7 @@ export default function AudienceView({ data, days }: { data: AudienceData; days:
         </Card>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
         <Card title="Maqsadi" subtitle="Nega o'rganadi">
           <BarList items={distItems(data.motivation)} />
         </Card>
@@ -96,11 +97,11 @@ export default function AudienceView({ data, days }: { data: AudienceData; days:
         {usedFeatures.length === 0 ? (
           <p className="text-xs text-gray-400 py-6 text-center">Bu davrda ma'lumot yo'q</p>
         ) : (
-          <div className="overflow-x-auto -mx-4 sm:-mx-5">
+          <div className="overflow-x-auto -mx-5 sm:-mx-6">
             <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-gray-100 dark:border-gray-700">
-                  <th className="px-4 sm:px-5 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Maqsad</th>
+                  <th className="px-5 sm:px-6 py-2 text-left font-medium text-gray-500 dark:text-gray-400">Maqsad</th>
                   <th className="px-2 py-2 text-right font-medium text-gray-500 dark:text-gray-400">Faol</th>
                   {usedFeatures.map(f => (
                     <th key={f.key} className="px-2 py-2 text-center font-medium text-gray-500 dark:text-gray-400" title={f.label}>
@@ -112,7 +113,7 @@ export default function AudienceView({ data, days }: { data: AudienceData; days:
               <tbody>
                 {mf.rows.map(r => (
                   <tr key={r.key} className="border-b border-gray-50 dark:border-gray-700/50 last:border-0">
-                    <td className="px-4 sm:px-5 py-1.5 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.label}</td>
+                    <td className="px-5 sm:px-6 py-1.5 text-gray-700 dark:text-gray-200 whitespace-nowrap">{r.label}</td>
                     <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{fmt(r.users)}</td>
                     {usedFeatures.map(f => {
                       const v = r.features[f.key] ?? 0
@@ -132,14 +133,14 @@ export default function AudienceView({ data, days }: { data: AudienceData; days:
                 ))}
               </tbody>
             </table>
-            <p className="px-4 sm:px-5 pt-2 text-[11px] text-gray-400">
+            <p className="px-5 sm:px-6 pt-2 text-[11px] text-gray-400">
               {usedFeatures.map(f => `${f.emoji} ${f.label}`).join(' · ')}
             </p>
           </div>
         )}
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Shaharlar" subtitle="Profilda ko'rsatilgan">
           <BarList empty="Hech kim shahar ko'rsatmagan" items={distItems(data.cities)} />
         </Card>

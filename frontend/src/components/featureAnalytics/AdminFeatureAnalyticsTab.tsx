@@ -9,9 +9,10 @@
  * fetched on first open and cached per (view, period) for the session.
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
+import { Download, RefreshCw } from 'lucide-react'
 import apiService from '../../services/apiService'
 import { FA_STYLE } from './charts'
+import { downloadAnalyticsCsv } from './csvExport'
 import OverviewView from './OverviewView'
 import FlashcardsView from './FlashcardsView'
 import DailyQuizView from './DailyQuizView'
@@ -75,17 +76,24 @@ export default function AdminFeatureAnalyticsTab() {
   const error = errors[key]
 
   return (
-    <div className="fa-root space-y-4">
+    <div className="fa-root space-y-6">
       <style>{FA_STYLE}</style>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Xususiyatlar analitikasi</h2>
-          <p className="text-xs text-gray-500 dark:text-gray-400">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="space-y-1">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Xususiyatlar analitikasi</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Kunlar Toshkent vaqti bo'yicha. O'zgarish — oldingi teng davrga nisbatan.
           </p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <button onClick={() => data !== undefined && downloadAnalyticsCsv(view, data, days)} disabled={data === undefined}
+            title="Ochiq bo'limdagi barcha jadvallarni CSV faylga yuklab olish"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50">
+            <Download className="w-3.5 h-3.5" />
+            CSV yuklab olish
+          </button>
+          <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-1" />
           {PERIODS.map(p => (
             <button key={p} onClick={() => setDays(p)}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${days === p
@@ -101,10 +109,12 @@ export default function AdminFeatureAnalyticsTab() {
         </div>
       </div>
 
-      <div className="flex gap-1 overflow-x-auto border-b border-gray-200 dark:border-gray-700">
+      {/* overflow-y-hidden: the tabs' -mb-px underline otherwise makes this
+          row scroll vertically and shows a stray scrollbar */}
+      <div className="flex gap-2 overflow-x-auto overflow-y-hidden border-b border-gray-200 dark:border-gray-700">
         {VIEWS.map(v => (
           <button key={v.id} onClick={() => setView(v.id)}
-            className={`px-3 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${view === v.id
+            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${view === v.id
               ? 'border-sahifa-600 text-sahifa-600 dark:text-sahifa-400'
               : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
             {v.label}
@@ -113,7 +123,7 @@ export default function AdminFeatureAnalyticsTab() {
       </div>
 
       {error && (
-        <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-3">
+        <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 px-3 py-2 text-xs text-red-700 dark:text-red-300 flex items-center justify-between gap-4">
           <span>{String(error)}</span>
           <button onClick={() => load(true)} className="font-semibold underline">Qayta urinish</button>
         </div>

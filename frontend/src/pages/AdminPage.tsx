@@ -1969,8 +1969,8 @@ const AdminPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Content — the analytics tab needs room for charts and tables */}
-      <div className={`${activeTab === 'feature_usage' ? 'max-w-7xl' : 'max-w-2xl'} mx-auto p-4 space-y-4`}>
+      {/* Content */}
+      <div className="max-w-2xl mx-auto p-4 space-y-4">
 
         {/* ── Stats Tab ──────────────────────────────────────────────────── */}
         {activeTab === 'stats' && (
@@ -5544,7 +5544,13 @@ const AdminPage: React.FC = () => {
           )
         })()}
 
-        {activeTab === 'feature_usage' && <AdminFeatureAnalyticsTab />}
+        {/* Rendered outside the max-w-2xl content column above, so it brings
+            its own width and padding (the dashboard needs the room). */}
+        {activeTab === 'feature_usage' && (
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8">
+            <AdminFeatureAnalyticsTab />
+          </div>
+        )}
 
     </div>
   )

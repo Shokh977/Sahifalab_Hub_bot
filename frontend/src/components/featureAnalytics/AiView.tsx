@@ -21,11 +21,11 @@ export default function AiView({ data, requestedDays }: { data: AiUsageData; req
   const tanga = f.reduce((s, x) => s + x.tanga_spent, 0)
   const failures = f.reduce((s, x) => s + x.failures, 0)
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {requestedDays > data.window_days && (
         <p className="text-xs text-gray-500 dark:text-gray-400">AI jurnali eng ko'pi bilan oxirgi {data.window_days} kunni ko'rsatadi.</p>
       )}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatTile label="AI chaqiruvlari" value={fmt(calls)} sub={`oxirgi ${data.window_days} kun`} />
         <StatTile label="API xarajati" value={`$${data.total_api_cost_usd.toFixed(2)}`} />
         <StatTile label="Foydalanuvchi sarflagan tanga" value={fmt(tanga)} sub={`qaytarilgan: ${fmt(data.total_tanga_refunded)}`} />

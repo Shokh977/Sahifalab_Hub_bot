@@ -27,14 +27,14 @@ export default function FlashcardsView({ data }: { data: FlashcardsData }) {
   const metricLabel = TREND_METRICS.find(m => m.key === metric)!.label
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       {!data.source_tracking && (
         <p className="text-xs rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 px-3 py-2">
           ⚠️ 102-migratsiya hali qo'llanmagan: to'plam manbasi taxminiy hisoblanmoqda, AI "matndan / rasmdan" ajratilmaydi.
         </p>
       )}
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-4 gap-4">
         <StatTile label="Jami to'plamlar" value={fmt(totals.decks)} sub={`${fmt(totals.owners)} egasi`} />
         <StatTile label="Jami kartalar" value={fmt(totals.cards)} sub={`~${fmt(totals.avg_cards_per_deck, 1)} / to'plam`} />
         <StatTile label="Yangi kartalar" value={fmt(period.new_cards.value)} delta={period.new_cards.delta} showDelta />
@@ -63,7 +63,7 @@ export default function FlashcardsView({ data }: { data: FlashcardsData }) {
         <TrendChart data={data.daily.map(d => ({ date: d.date, value: d[metric] }))} label={metricLabel.toLowerCase()} />
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Mavzular" subtitle="Kartalar nima haqida — sarlavha va karta yozuvi bo'yicha aniqlanadi"
           hint="Shaxsiy to'plamlarda kategoriya yo'q, shuning uchun mavzu sarlavhadagi kalit so'zlardan (IELTS, ingliz, arab, tibbiyot…) va kartalar alifbosidan (arab, koreys, kirill…) taxmin qilinadi.">
           <BarList items={data.themes.map(t => ({
@@ -100,7 +100,7 @@ export default function FlashcardsView({ data }: { data: FlashcardsData }) {
         </div>
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Javob sifati" subtitle="Takrorlashdagi baholar (davr ichida)">
           <StackedBar segments={RATING_SEGMENTS.map(s => ({
             key: String(s.rating), label: s.label, color: s.color,
@@ -140,7 +140,7 @@ export default function FlashcardsView({ data }: { data: FlashcardsData }) {
         />
       </Card>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Eng ko'p o'qilgan to'plamlar" subtitle="Davr ichidagi takrorlashlar bo'yicha">
           <Table
             align={['left', 'left', 'right', 'right']}

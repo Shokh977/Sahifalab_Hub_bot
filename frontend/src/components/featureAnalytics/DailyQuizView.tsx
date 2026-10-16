@@ -5,8 +5,8 @@ import { BarList, Card, Columns, Pill, StatTile, Table, TrendChart, fmt, shortDa
 export default function DailyQuizView({ data }: { data: DailyQuizData }) {
   const t = data.totals
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatTile label="O'yinchilar" value={fmt(t.players)} delta={t.players_delta} showDelta />
         <StatTile label="Yakunlangan o'yinlar" value={fmt(t.finished)} delta={t.finished_delta} showDelta
           sub={`${fmt(t.quizzes)} viktorina`} />
@@ -25,7 +25,7 @@ export default function DailyQuizView({ data }: { data: DailyQuizData }) {
         <TrendChart data={data.days.map(d => ({ date: d.date, value: d.finished }))} label="o'yinchi" />
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Ballar taqsimoti" subtitle="Nechta to'g'ri javob (0–5)">
           <Columns items={data.score_distribution.map(s => ({ label: String(s.score), value: s.count, tooltip: `${s.score}/5: ${fmt(s.count)} o'yin` }))} />
         </Card>
@@ -45,7 +45,7 @@ export default function DailyQuizView({ data }: { data: DailyQuizData }) {
         />
       </Card>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Sodiqlik" subtitle="Davr ichida necha kun o'ynagan">
           <BarList items={data.loyalty.map(l => ({ key: l.bucket, label: l.bucket, value: l.users, valueLabel: `${fmt(l.users)} kishi` }))} />
         </Card>
@@ -54,7 +54,7 @@ export default function DailyQuizView({ data }: { data: DailyQuizData }) {
         </Card>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-2">
+      <div className="grid gap-6 xl:grid-cols-2">
         <Card title="Eng qiyin savollar" subtitle="Kamida 3 ta javob berilgan, to'g'ri javob ulushi eng past">
           <Table
             align={['left', 'right', 'right']}

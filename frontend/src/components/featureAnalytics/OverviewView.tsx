@@ -8,8 +8,8 @@ export default function OverviewView({ data }: { data: OverviewData }) {
   const current = features.find(f => f.key === selected) ?? features[0]
 
   return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatTile label="Faol foydalanuvchilar" value={fmt(totals.active_users)} delta={totals.active_users_delta} showDelta
           hint="Davr ichida kamida bitta xususiyatdan foydalanganlar (karta, taymer, 5 Savol, kurs…)" />
         <StatTile label="Yangi ro'yxatdan o'tganlar" value={fmt(totals.new_users)} delta={totals.new_users_delta} showDelta />
@@ -53,7 +53,7 @@ export default function OverviewView({ data }: { data: OverviewData }) {
       {current && (
         <Card title={`${current.emoji} ${current.label} — kunlik`}
           subtitle={`${fmt(current.users)} foydalanuvchi · ${fmt(current.actions)} ${current.unit}`}>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-6 md:grid-cols-2">
             <div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Foydalanuvchilar</p>
               <TrendChart data={current.daily.map(d => ({ date: d.date, value: d.users }))} label="kishi" height={140} />
@@ -66,7 +66,7 @@ export default function OverviewView({ data }: { data: OverviewData }) {
         </Card>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Nechta xususiyatdan foydalanadi" subtitle="Faol foydalanuvchilar, davr ichida"
           hint="1 ta — faqat bitta narsa uchun keladi. 3+ — ilovaning chuqur foydalanuvchilari.">
           <BarList items={data.depth.map(d => ({

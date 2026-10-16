@@ -106,8 +106,8 @@ export const Card: React.FC<{
   className?: string
   children: React.ReactNode
 }> = ({ title, subtitle, hint, action, className = '', children }) => (
-  <section className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 sm:p-5 min-w-0 ${className}`}>
-    <header className="flex items-start justify-between gap-3 mb-4">
+  <section className={`bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 sm:p-6 min-w-0 ${className}`}>
+    <header className="flex items-start justify-between gap-3 mb-5">
       <div className="min-w-0">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
           {title}
@@ -144,7 +144,7 @@ export const StatTile: React.FC<{
   sub?: string
   hint?: string
 }> = ({ label, value, delta, showDelta, sub, hint }) => (
-  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 min-w-0">
+  <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-5 min-w-0">
     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1 min-w-0">
       <span className="truncate">{label}</span>
       {hint && <InfoTip text={hint} />}
@@ -172,7 +172,7 @@ export const BarList: React.FC<{ items: BarItem[]; empty?: string; max?: number 
   const top = max ?? Math.max(1, ...items.map(i => i.value))
   if (!items.length || items.every(i => !i.value)) return <Empty text={empty} />
   return (
-    <ul className="space-y-2.5">
+    <ul className="space-y-4">
       {items.map(item => (
         <li key={item.key} className="group" title={`${item.label}: ${item.valueLabel ?? fmt(item.value)}${item.sub ? ` · ${item.sub}` : ''}`}>
           <div className="flex items-baseline justify-between gap-3 text-xs mb-1">
@@ -410,12 +410,12 @@ export const Table: React.FC<{
 }> = ({ head, rows, align = [], empty }) => {
   if (!rows.length) return <Empty text={empty} />
   return (
-    <div className="overflow-x-auto -mx-4 sm:-mx-5">
+    <div className="overflow-x-auto -mx-5 sm:-mx-6">
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-gray-100 dark:border-gray-700">
             {head.map((h, i) => (
-              <th key={i} className={`px-4 sm:px-5 py-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap ${align[i] === 'right' ? 'text-right' : 'text-left'}`}>{h}</th>
+              <th key={i} className={`px-5 sm:px-6 py-2 font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap ${align[i] === 'right' ? 'text-right' : 'text-left'}`}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -423,7 +423,7 @@ export const Table: React.FC<{
           {rows.map((r, ri) => (
             <tr key={ri} className="border-b border-gray-50 dark:border-gray-700/50 last:border-0 hover:bg-gray-50 dark:hover:bg-gray-700/30">
               {r.map((c, ci) => (
-                <td key={ci} className={`px-4 sm:px-5 py-2 text-gray-700 dark:text-gray-200 ${align[ci] === 'right' ? 'text-right tabular-nums whitespace-nowrap' : ''}`}>{c}</td>
+                <td key={ci} className={`px-5 sm:px-6 py-3 text-gray-700 dark:text-gray-200 ${align[ci] === 'right' ? 'text-right tabular-nums whitespace-nowrap' : ''}`}>{c}</td>
               ))}
             </tr>
           ))}
