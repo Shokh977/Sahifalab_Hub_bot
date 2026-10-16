@@ -8,7 +8,8 @@
  * (flashcard ratings) is red↔blue with labels, never color alone.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react'
-import { Tooltip } from '../charts/AnalyticsCharts'
+import { createPortal } from 'react-dom'
+import { Info } from 'lucide-react'
 
 export const FA_STYLE = `
 .fa-root {
@@ -37,6 +38,64 @@ export const shortDate = (iso: string) => {
   return `${d}.${m}`
 }
 
+// ─── Info tooltip ─────────────────────────────────────────────────────────────
+// Rendered in a portal with fixed positioning: an absolutely positioned
+// bubble gets clipped by the tile's `truncate` label and painted under the
+// neighbouring card. Hover on desktop, tap on touch; clamped to the viewport.
+
+const TIP_WIDTH = 240
+// Inline, not text-white/bg-gray-900: globals.css rewrites bare `text-white`
+// to dark text in light mode, which made every tooltip unreadable.
+const TIP_COLORS: React.CSSProperties = { background: '#111827', color: '#f9fafb' }
+
+export const InfoTip: React.FC<{ text: string }> = ({ text }) => {
+  const ref = useRef<HTMLButtonElement>(null)
+  const [pos, setPos] = useState<{ left: number; top: number; below: boolean } | null>(null)
+
+  const open = () => {
+    const r = ref.current?.getBoundingClientRect()
+    if (!r) return
+    const margin = 8
+    const left = Math.min(Math.max(r.left + r.width / 2 - TIP_WIDTH / 2, margin), window.innerWidth - TIP_WIDTH - margin)
+    const below = r.top < 140  // not enough room above — flip under the icon
+    setPos({ left, top: below ? r.bottom + 8 : r.top - 8, below })
+  }
+  const close = () => setPos(null)
+
+  useEffect(() => {
+    if (!pos) return
+    const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) close() }
+    document.addEventListener('pointerdown', onDown)
+    window.addEventListener('scroll', close, true)
+    return () => {
+      document.removeEventListener('pointerdown', onDown)
+      window.removeEventListener('scroll', close, true)
+    }
+  }, [pos])
+
+  return (
+    <>
+      <button ref={ref} type="button" aria-label={text}
+        className="inline-flex shrink-0 text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 cursor-help"
+        onPointerEnter={e => { if (e.pointerType === 'mouse') open() }}
+        onPointerLeave={e => { if (e.pointerType === 'mouse') close() }}
+        onClick={e => { e.stopPropagation(); open() }}
+        onFocus={open} onBlur={close}>
+        <Info className="h-3.5 w-3.5" />
+      </button>
+      {pos && createPortal(
+        <div role="tooltip"
+          className="pointer-events-none rounded-xl px-3 py-2 text-[11px] leading-snug font-medium shadow-lg"
+          style={{ ...TIP_COLORS, position: 'fixed', left: pos.left, top: pos.top, width: TIP_WIDTH, zIndex: 1000,
+                   transform: pos.below ? undefined : 'translateY(-100%)' }}>
+          {text}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
 // ─── Card ─────────────────────────────────────────────────────────────────────
 
 export const Card: React.FC<{
@@ -52,7 +111,7 @@ export const Card: React.FC<{
       <div className="min-w-0">
         <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
           {title}
-          {hint && <Tooltip text={hint} />}
+          {hint && <InfoTip text={hint} />}
         </h3>
         {subtitle && <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{subtitle}</p>}
       </div>
@@ -86,9 +145,9 @@ export const StatTile: React.FC<{
   hint?: string
 }> = ({ label, value, delta, showDelta, sub, hint }) => (
   <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl p-4 min-w-0">
-    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1 truncate">
-      {label}
-      {hint && <Tooltip text={hint} />}
+    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1 min-w-0">
+      <span className="truncate">{label}</span>
+      {hint && <InfoTip text={hint} />}
     </p>
     <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1.5 leading-none tabular-nums">{value}</p>
     <div className="mt-1.5 flex items-center gap-2 min-h-[16px]">
@@ -203,8 +262,8 @@ export const TrendChart: React.FC<{
         <rect x={0} y={0} width={W} height={H} fill="transparent" onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
       </svg>
       {h && hover != null && (
-        <div className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 -translate-y-full rounded-lg bg-gray-900 dark:bg-gray-700 px-2 py-1 text-[11px] text-white shadow-lg whitespace-nowrap"
-          style={{ left: `${(x(hover) / W) * 100}%` }}>
+        <div className="pointer-events-none absolute -top-1 z-10 -translate-x-1/2 -translate-y-full rounded-lg px-2 py-1 text-[11px] shadow-lg whitespace-nowrap" 
+          style={{ ...TIP_COLORS, left: `${(x(hover) / W) * 100}%` }}>
           <span className="text-gray-300">{shortDate(h.date)}</span> · <b>{fmt(h.value)}</b> {compact ? '' : label}
         </div>
       )}
@@ -239,7 +298,7 @@ export const Columns: React.FC<{
             <div className="w-full rounded-t-[4px] transition-opacity"
               style={{ height: `${(it.value / max) * 100}%`, minHeight: it.value ? 2 : 0, background: 'var(--fa-s1)', opacity: hover == null || hover === i ? 1 : 0.55 }} />
             {hover === i && (
-              <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 rounded-lg bg-gray-900 dark:bg-gray-700 px-2 py-1 text-[11px] text-white shadow-lg whitespace-nowrap">
+              <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 rounded-lg px-2 py-1 text-[11px] shadow-lg whitespace-nowrap" style={TIP_COLORS}>
                 {it.tooltip ?? `${it.label}: ${fmt(it.value)} ${unit}`}
               </div>
             )}
@@ -307,7 +366,7 @@ export const Heatmap: React.FC<{ grid: number[][]; unit?: string }> = ({ grid, u
                 style={{ background: SEQ[step(v)] }}
                 onMouseEnter={() => setHover({ d, h })} onMouseLeave={() => setHover(null)}>
                 {hover && hover.d === d && hover.h === h && (
-                  <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 rounded-lg bg-gray-900 dark:bg-gray-700 px-2 py-1 text-[11px] text-white shadow-lg whitespace-nowrap">
+                  <div className="pointer-events-none absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 rounded-lg px-2 py-1 text-[11px] shadow-lg whitespace-nowrap" style={TIP_COLORS}>
                     {WEEKDAYS[d]}, {String(h).padStart(2, '0')}:00 · <b>{fmt(v)}</b> {unit}
                   </div>
                 )}
