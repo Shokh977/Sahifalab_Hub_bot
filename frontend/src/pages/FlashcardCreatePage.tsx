@@ -55,6 +55,7 @@ const FlashcardCreatePage: React.FC = () => {
   const [generating, setGenerating] = useState(false)
   const [reviewing, setReviewing] = useState<GeneratedCard[] | null>(null)
   const [reviewTitle, setReviewTitle] = useState('')
+  const [reviewMode, setReviewMode] = useState<'text' | 'image'>('text')
   const [saving, setSaving] = useState(false)
 
   useEffect(() => {
@@ -87,6 +88,7 @@ const FlashcardCreatePage: React.FC = () => {
       }
       const { data } = await apiService.generateFlashcardsAI(body)
       setReviewing(data.cards)
+      setReviewMode(mode === 'image' ? 'image' : 'text')
       setReviewTitle(title.trim() || data.deck_title)
       setFreeRemaining(data.free_remaining_today)
     } catch (e: any) {
@@ -103,6 +105,7 @@ const FlashcardCreatePage: React.FC = () => {
       const { data } = await apiService.confirmGeneratedFlashcards({
         deck_title: reviewTitle.trim(), color,
         cards: reviewing.filter(c => c.front.trim() && c.back.trim()),
+        input_mode: reviewMode,
       })
       showToast(`${data.card_count} ta karta saqlandi!`, 'success')
       navigate(`/flashcards/${data.deck_id}`)

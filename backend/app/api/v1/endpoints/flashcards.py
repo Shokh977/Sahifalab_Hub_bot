@@ -46,6 +46,7 @@ from app.services.xp_service import add_xp
 from app.services.study_activity import record_study_activity
 from app.services.day_bucket import resolve_day_bucket
 from app.services.badge_service import get_top_badges_map
+from app.services.feature_analytics import tag_source
 from app.api.v1.endpoints.notifications import send_notification
 
 router = APIRouter()
@@ -454,6 +455,7 @@ def create_deck(
             "color": body.color, "icon": body.icon, "course_id": body.course_id, "now": now,
         },
     ).fetchone()
+    tag_source(db, "flashcard_decks", row.id, "course" if body.course_id else "manual")
     db.commit()
     return _deck_row_simple(row)
 
@@ -1316,6 +1318,7 @@ async def clone_public_deck(
             "orig_id": deck_id, "now": now,
         },
     ).fetchone()
+    tag_source(db, "flashcard_decks", new_deck.id, "clone")
 
     seed_ef, seed_iv = _sm2_seed_for_experience(db, caller_id)
     first_batch = cards[:CLONE_SYNC_BATCH]

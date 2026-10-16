@@ -36,6 +36,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.services.xp_service import add_xp
+from app.services.feature_analytics import tag_source
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +118,10 @@ def record_study_activity(
         {"uid": user_id, "min": minutes, "xp": xp_awarded, "today": today},
     ).fetchone()
     session_id = int(session_row.id) if session_row else None
+    # Timer vs flashcard session, for admin analytics. Deliberately NOT part
+    # of the INSERT above: tag_source() runs in its own SAVEPOINT and swallows
+    # failures, so a missing column (migration 102) can never cost this row.
+    tag_source(db, "focus_sessions", session_id, source)
 
     # ── 2. Streak update — only advances when today's total meets the daily
     #    goal. The subquery runs after the INSERT above so it includes the

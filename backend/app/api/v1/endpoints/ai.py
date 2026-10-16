@@ -2,7 +2,7 @@ import base64
 import logging
 import re
 from datetime import datetime, timedelta, UTC
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
@@ -20,6 +20,7 @@ from app.services.ai import cache as ai_cache
 from app.services.ai.usage import log_usage
 from app.services.ai.prompts import flashcard_gen_v1
 from app.services.config_service import get_config
+from app.services.feature_analytics import tag_source
 from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
@@ -267,6 +268,9 @@ class FlashcardGenerateConfirmRequest(BaseModel):
     color: Optional[str] = Field(None, max_length=20)
     icon:  Optional[str] = Field(None, max_length=20)
     cards: list[GeneratedCard] = Field(..., min_length=1, max_length=50)
+    # How the preview was generated — analytics only (flashcard_decks.source,
+    # 102_feature_analytics_sources). Optional so older app builds still save.
+    input_mode: Optional[Literal["text", "image"]] = None
 
 
 @router.post("/flashcards/generate/confirm", status_code=201)
@@ -294,6 +298,7 @@ def confirm_generated_flashcards(
         },
     ).fetchone()
     deck_id = int(deck_row.id)
+    tag_source(db, "flashcard_decks", deck_id, f"ai_{body.input_mode}" if body.input_mode else "ai")
 
     for i, card in enumerate(body.cards):
         db.execute(

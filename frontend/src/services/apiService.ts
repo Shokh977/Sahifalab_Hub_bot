@@ -408,7 +408,7 @@ class ApiService {
     return this.axiosInstance.post('/api/ai/flashcards/generate', body)
   }
 
-  async confirmGeneratedFlashcards(body: { deck_title: string; description?: string; color?: string; icon?: string; cards: { front: string; back: string }[] }) {
+  async confirmGeneratedFlashcards(body: { deck_title: string; description?: string; color?: string; icon?: string; cards: { front: string; back: string }[]; input_mode?: 'text' | 'image' }) {
     return this.axiosInstance.post('/api/ai/flashcards/generate/confirm', body)
   }
 

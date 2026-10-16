@@ -26,6 +26,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.api.v1.endpoints.admin import verify_admin
 from app.models.admin_models import AdminUser, DeckAuditLog
+from app.services.feature_analytics import tag_source
 
 router = APIRouter()
 
@@ -390,6 +391,7 @@ def create_official_deck(
             "card_count": len(body.cards), "category": body.category, "now": now,
         },
     ).fetchone()
+    tag_source(db, "flashcard_decks", deck.id, "official")
 
     for i, c in enumerate(body.cards):
         db.execute(
