@@ -29,7 +29,12 @@ Storage region endpoints:
   jh  → jh.storage.bunnycdn.com
 """
 
+import asyncio
 import io
+import logging
+import shutil
+import subprocess
+import tempfile
 import uuid
 import httpx
 from pathlib import Path
@@ -48,6 +53,7 @@ from app.services.auth_service import decode_token_payload, get_current_role
 
 router = APIRouter()
 _security = HTTPBearer()
+logger = logging.getLogger(__name__)
 
 # ── allowed MIME types ────────────────────────────────────────────────────────
 ALLOWED_VIDEO_MIME = {
@@ -145,6 +151,48 @@ _MIME_EXT_MAP = {
     "audio/flac":  ".flac",
     "audio/mp4":   ".m4a",
 }
+
+# ── Audio downgrading (ambient sounds) ───────────────────────────────────────
+# Ambient sounds loop through whole focus sessions and every play streams the
+# full file, so their size is pure bandwidth. 96 kbps stereo MP3 is plenty for
+# rain/café/lofi backgrounds: a 14 MB upload comes out around 3 MB.
+SOUND_BITRATE = "96k"
+_FFMPEG_TIMEOUT_S = 180
+
+
+def _ffmpeg_to_mp3(data: bytes, suffix: str) -> bytes:
+    """Blocking: re-encode any audio ffmpeg can read to SOUND_BITRATE MP3."""
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise RuntimeError("ffmpeg not installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / f"in{suffix or '.bin'}"
+        dst = Path(tmp) / "out.mp3"
+        src.write_bytes(data)
+        proc = subprocess.run(
+            [ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-i", str(src),
+             "-vn", "-map_metadata", "-1", "-ac", "2", "-ar", "44100",
+             "-codec:a", "libmp3lame", "-b:a", SOUND_BITRATE, str(dst)],
+            capture_output=True, timeout=_FFMPEG_TIMEOUT_S,
+        )
+        if proc.returncode != 0 or not dst.exists():
+            raise RuntimeError(proc.stderr.decode(errors="replace")[-300:])
+        return dst.read_bytes()
+
+
+async def _downgrade_audio(data: bytes, filename: str) -> tuple[bytes, bool]:
+    """(bytes, downgraded?) — runs ffmpeg in a worker thread so the event loop
+    stays free. Never fails the upload: if ffmpeg is missing or errors, or the
+    result isn't smaller (already a small file), the original is kept."""
+    try:
+        out = await asyncio.to_thread(_ffmpeg_to_mp3, data, Path(filename or "").suffix.lower())
+    except Exception as e:
+        logger.warning("audio downgrade skipped for %s: %s", filename, e)
+        return data, False
+    if len(out) >= len(data):
+        return data, False
+    return out, True
+
 
 # ── Image compression ────────────────────────────────────────────────────────
 def _compress_to_webp(raw: bytes, max_px: int = 1200, quality: int = 85) -> bytes:
@@ -374,6 +422,9 @@ async def upload_file(
     file:      UploadFile = File(...),
     course_id: int | None = Form(None),
     folder:    str | None = Form(None),
+    # Audio only: re-encode to a small MP3 before storing (admin ambient
+    # sounds send this). Off by default so course audio is stored untouched.
+    optimize:  bool = Form(False),
     creds:     HTTPAuthorizationCredentials = Depends(_security),
 ):
     """
@@ -413,6 +464,8 @@ async def upload_file(
         )
 
     original_name = file.filename or "file"
+    original_size = len(file_bytes)
+    downgraded    = False
 
     # ── Raster images → WebP (reduces Bunny storage + CDN egress) ────────────
     upload_content_type = content_type
@@ -420,6 +473,13 @@ async def upload_file(
         file_bytes          = _compress_to_webp(file_bytes)
         ext                 = ".webp"
         upload_content_type = "image/webp"
+    elif optimize and content_type in ALLOWED_AUDIO_MIME:
+        file_bytes, downgraded = await _downgrade_audio(file_bytes, original_name)
+        if downgraded:
+            ext                 = ".mp3"
+            upload_content_type = "audio/mpeg"
+        else:
+            ext = Path(original_name).suffix.lower() or _MIME_EXT_MAP.get(content_type, ".bin")
     else:
         ext = Path(original_name).suffix.lower()
         if not ext:
@@ -443,6 +503,8 @@ async def upload_file(
         "filename":      unique_name,
         "content_type":  upload_content_type,
         "original_name": original_name,
+        "original_size_bytes": original_size,
+        "downgraded":    downgraded,
     }
 
 

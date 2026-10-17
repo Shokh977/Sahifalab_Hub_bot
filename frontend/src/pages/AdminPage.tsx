@@ -1809,7 +1809,9 @@ const AdminPage: React.FC = () => {
       const form = new FormData()
       form.append('file', soundFile)
       form.append('folder', 'sounds')
-      const publicUrl = await new Promise<string>((resolve, reject) => {
+      // Server re-encodes to a ~96 kbps MP3 (every play streams the whole file)
+      form.append('optimize', 'true')
+      const uploaded = await new Promise<{ url: string; size_bytes: number; original_size_bytes?: number; downgraded?: boolean }>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
         xhr.open('POST', `${apiBase}/api/upload/file`)
         xhr.setRequestHeader('Authorization', `Bearer ${jwt}`)
@@ -1818,7 +1820,7 @@ const AdminPage: React.FC = () => {
         }
         xhr.onload = () => {
           if (xhr.status === 200 || xhr.status === 201) {
-            try { resolve(JSON.parse(xhr.responseText).url) }
+            try { resolve(JSON.parse(xhr.responseText)) }
             catch { reject(new Error("Server javobi noto'g'ri")) }
           } else {
             try { reject(new Error(JSON.parse(xhr.responseText)?.detail || `Upload xatosi: ${xhr.status}`)) }
@@ -1831,8 +1833,11 @@ const AdminPage: React.FC = () => {
 
       // 2. Save Bunny CDN URL to Supabase DB record
       setSoundMsg('💾 Saqlanmoqda…')
-      await apiService.saveAmbientSound(adminId, soundName.trim(), soundEmoji, publicUrl)
-      setSoundMsg('✅ Tovush muvaffaqiyatli saqlandi!')
+      await apiService.saveAmbientSound(adminId, soundName.trim(), soundEmoji, uploaded.url)
+      const mb = (b: number) => (b / 1024 / 1024).toFixed(1)
+      setSoundMsg(uploaded.downgraded && uploaded.original_size_bytes
+        ? `✅ Saqlandi — ${mb(uploaded.original_size_bytes)} MB → ${mb(uploaded.size_bytes)} MB (96 kbps)`
+        : '✅ Tovush muvaffaqiyatli saqlandi!')
       setSoundName('')
       setSoundEmoji('🎵')
       setSoundFile(null)
@@ -3010,7 +3015,7 @@ const AdminPage: React.FC = () => {
               <ul className="text-xs text-emerald-700 dark:text-emerald-400 space-y-0.5 list-disc list-inside">
                 <li>Faylni shu yerdan yuklang — u avtomatik Bunny CDN'ga joylanadi. Supabase Storage ishlatilmaydi.</li>
                 <li>Formatlar: mp3, m4a, aac, ogg, wav, flac (30 MB gacha).</li>
-                <li>Har bir tinglashda fayl to'liq yuklanadi — 64–96 kbps mp3, 2–5 MB yetarli.</li>
+                <li>Yuklangan fayl avtomatik 96 kbps mp3 ga siqiladi (masalan 14 MB → ~3 MB), chunki har bir tinglashda to'liq yuklanadi.</li>
               </ul>
             </div>
           </div>
