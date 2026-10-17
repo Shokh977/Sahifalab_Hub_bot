@@ -13,6 +13,7 @@ tab (app/api/v1/endpoints/admin_feature_analytics.py).
     script the cards are written in (Arabic, Hangul, kana, CJK, Cyrillic).
     Pure function — unit-tested in tests/test_feature_analytics.py.
 """
+import json
 import logging
 import re
 from typing import Optional
@@ -44,6 +45,26 @@ def tag_source(db: Session, table: str, row_id: Optional[int], source: str) -> N
             db.execute(text(f"UPDATE {table} SET source = :src WHERE id = :id"), {"src": source, "id": int(row_id)})
     except Exception:
         logger.warning("tag_source skipped for %s id=%s (migration 102 applied?)", table, row_id, exc_info=True)
+
+
+def record_event(
+    db: Session, event_type: str, actor_id: int, meta: Optional[dict] = None, target_id: int = 0,
+) -> None:
+    """Server-side analytics_events row (034_analytics_events) for facts only
+    the server knows — e.g. which input an AI generation used. Best-effort in
+    a SAVEPOINT; never raises into the request."""
+    try:
+        with db.begin_nested():
+            db.execute(
+                text("""
+                    INSERT INTO analytics_events (event_type, actor_id, target_id, teacher_id, source, meta)
+                    VALUES (:et, :actor, :target, 0, 'direct', CAST(:meta AS jsonb))
+                """),
+                {"et": event_type, "actor": int(actor_id), "target": int(target_id),
+                 "meta": json.dumps({"surface": "server", **(meta or {})})},
+            )
+    except Exception:
+        logger.warning("record_event %s skipped", event_type, exc_info=True)
 
 
 # ── Deck theme classification ─────────────────────────────────────────────────

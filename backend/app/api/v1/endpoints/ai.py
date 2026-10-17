@@ -20,7 +20,7 @@ from app.services.ai import cache as ai_cache
 from app.services.ai.usage import log_usage
 from app.services.ai.prompts import flashcard_gen_v1
 from app.services.config_service import get_config
-from app.services.feature_analytics import tag_source
+from app.services.feature_analytics import record_event, tag_source
 from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
@@ -193,8 +193,17 @@ async def generate_flashcards(
         if len(image_bytes) > _MAX_IMAGE_BYTES:
             raise HTTPException(400, "Rasm hajmi juda katta (6MB dan oshmasin).")
 
+    source = "image" if has_image else "text"
+
+    def _log_generation(outcome: str, cache_hit: bool = False) -> None:
+        # Which input the user generated from, for every outcome — the saved
+        # deck's source (migration 102) only covers previews that got saved.
+        record_event(db, "ai_flashcard_generate", caller_id,
+                     {"source": source, "outcome": outcome, "cache_hit": cache_hit})
+
     gate_result = ai_limiter.check_and_charge(db, caller_id, feature="flashcard_gen", action_id=body.action_id)
     if not gate_result.allowed:
+        _log_generation(f"rejected:{gate_result.reason}")
         status_map = {
             "insufficient_balance": (402, "Tanga yetarli emas."),
             "daily_cap_reached":    (429, "Bugungi AI limitiga yetdingiz. Ertaga qayta urinib ko'ring."),
@@ -241,13 +250,16 @@ async def generate_flashcards(
                 ai_cache.store_cached(db, "flashcard_gen", normalized_input, data, language=resolved_language)
     except AiProviderError as e:
         ai_limiter.refund(db, caller_id, "flashcard_gen", body.action_id, gate_result.tanga_spent)
+        _log_generation("failed")
         logger.error("Flashcard generation failed for user_id=%s action_id=%s", caller_id, body.action_id, exc_info=True)
         raise HTTPException(502, "Flashcard yaratib bo'lmadi. Qayta urinib ko'ring — Tanga qaytarildi.")
     except Exception:
         ai_limiter.refund(db, caller_id, "flashcard_gen", body.action_id, gate_result.tanga_spent)
+        _log_generation("error")
         logger.error("Unexpected flashcard generation error for user_id=%s", caller_id, exc_info=True)
         raise HTTPException(500, "Kutilmagan xatolik. Tanga qaytarildi.")
 
+    _log_generation("success", cache_hit=cached is not None)
     return {
         "deck_title": data.get("deck_title") or "Yangi to'plam",
         "cards": data.get("cards", []),
