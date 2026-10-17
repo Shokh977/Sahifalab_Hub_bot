@@ -18,6 +18,7 @@ import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
 import AdminDonationsTab from '../components/donation/AdminDonationsTab'
 import AdminFeatureAnalyticsTab from '../components/featureAnalytics/AdminFeatureAnalyticsTab'
+import StorageMigrationCard from '../components/admin/StorageMigrationCard'
 
 const ADMIN_TELEGRAM_IDS = [807466591]
 
@@ -2557,6 +2558,7 @@ const AdminPage: React.FC = () => {
         {/* ── Books Tab ──────────────────────────────────────────────────── */}
         {activeTab === 'books' && (
           <div className="space-y-4">
+            <StorageMigrationCard />
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold text-gray-900 dark:text-white">Kitoblar</h2>
               <button

@@ -1,8 +1,16 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 # Admin User Schemas
+
+def reject_supabase_storage(v):
+    """Book files and covers must live on Bunny (POST /api/upload/file).
+    Supabase Storage links are what put the org over its egress quota."""
+    if v and ".supabase.co/storage/" in v:
+        raise ValueError("Fayllar Bunny.net'ga yuklanishi kerak — Supabase Storage havolasi qabul qilinmaydi.")
+    return v
+
 class AdminUserBase(BaseModel):
     telegram_id: int
     username: Optional[str] = None
@@ -127,6 +135,11 @@ class BookManagementCreate(BaseModel):
     category: str
     is_downloadable: bool = True
 
+    @field_validator("file_url", "thumbnail_url")
+    @classmethod
+    def _bunny_only(cls, v):
+        return reject_supabase_storage(v)
+
 class BookManagementUpdate(BaseModel):
     title: Optional[str] = None
     author: Optional[str] = None
@@ -138,6 +151,11 @@ class BookManagementUpdate(BaseModel):
     category: Optional[str] = None
     is_available: Optional[bool] = None
     is_downloadable: Optional[bool] = None
+
+    @field_validator("file_url", "thumbnail_url")
+    @classmethod
+    def _bunny_only(cls, v):
+        return reject_supabase_storage(v)
 
 class BookManagementResponse(BaseModel):
     id: int
