@@ -490,6 +490,41 @@ def test_friends_results_lists_followed_players_with_global_rank(db_session):
         db_session.commit()
 
 
+def test_players_summary_counts_finishers_and_followed_ones(db_session):
+    from app.services.daily_quiz_service import deliver_today, score_and_submit, players_summary
+
+    _seed_users(db_session)
+    db_session.execute(text("""
+        CREATE TABLE IF NOT EXISTS follows (
+            id SERIAL PRIMARY KEY,
+            follower_id BIGINT NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+            following_id BIGINT NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_follow UNIQUE (follower_id, following_id)
+        )
+    """))
+    db_session.execute(text("INSERT INTO follows (follower_id, following_id) VALUES (:a, :b) ON CONFLICT DO NOTHING"),
+                       {"a": TEST_USER_A, "b": TEST_USER_B})
+    db_session.commit()
+    try:
+        quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900030)
+        qs = db_session.execute(text("SELECT id FROM daily_quiz_questions WHERE quiz_id = :qid"), {"qid": quiz_id}).fetchall()
+
+        assert players_summary(db_session, quiz_id, TEST_USER_A) == {"players_count": 0, "friends_played": 0}
+
+        # B (followed by A) finishes; A only opens the round.
+        deliver_today(db_session, TEST_USER_B, quiz_id)
+        score_and_submit(db_session, TEST_USER_B, quiz_id, [{"question_id": q.id, "selected_index": 0} for q in qs])
+        deliver_today(db_session, TEST_USER_A, quiz_id)
+
+        assert players_summary(db_session, quiz_id, TEST_USER_A) == {"players_count": 1, "friends_played": 1}
+        # B follows nobody; A hasn't finished, and the caller never counts themselves.
+        assert players_summary(db_session, quiz_id, TEST_USER_B) == {"players_count": 0, "friends_played": 0}
+    finally:
+        db_session.execute(text("DELETE FROM follows WHERE follower_id = :a"), {"a": TEST_USER_A})
+        db_session.commit()
+
+
 def test_score_and_submit_requires_prior_delivery(db_session):
     from app.services.daily_quiz_service import score_and_submit
 

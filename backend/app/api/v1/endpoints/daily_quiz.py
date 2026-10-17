@@ -101,6 +101,13 @@ def get_today_status(db: Session = Depends(get_db), caller_id: int = Depends(_re
 
     status = svc.today_status(db, caller_id, quiz.id)
     close_at = _window_close(quiz.publish_date)
+    # Best-effort (own SAVEPOINT): a counting failure must not break Home.
+    try:
+        with db.begin_nested():
+            players = svc.players_summary(db, quiz.id, caller_id)
+    except Exception:
+        logger.warning("daily_quiz players_summary failed for quiz_id=%s", quiz.id, exc_info=True)
+        players = {"players_count": None, "friends_played": None}
     return {
         "quiz": {
             "id": quiz.id,
@@ -109,6 +116,10 @@ def get_today_status(db: Session = Depends(get_db), caller_id: int = Depends(_re
             "state": status["state"],  # not_started | in_progress | submitted
             "correct_count": status["correct_count"],
             "answered_count": status["answered_count"],
+            # Others who finished today (excludes the caller) and how many of
+            # them the caller follows — Bellashuv's "35 kishi oʻynadi".
+            "players_count": players["players_count"],
+            "friends_played": players["friends_played"],
             "seconds_remaining": max(0, int((close_at - datetime.now(UTC)).total_seconds())),
         },
     }

@@ -811,6 +811,25 @@ def today_status(db: Session, user_id: int, quiz_id: int) -> dict:
     }
 
 
+def players_summary(db: Session, quiz_id: int, user_id: int) -> dict:
+    """How many people finished today's round, and how many of them the
+    caller follows — Bellashuv's "35 kishi oʻynadi · 2 ta doʻstingiz ham"
+    before the caller has played. Counts only; no names or scores leak."""
+    row = db.execute(
+        text("""
+            SELECT
+                COUNT(*) AS players,
+                COUNT(*) FILTER (
+                    WHERE a.user_id IN (SELECT following_id FROM follows WHERE follower_id = :uid)
+                ) AS friends
+            FROM daily_quiz_attempts a
+            WHERE a.quiz_id = :qid AND a.submitted_at IS NOT NULL AND a.user_id <> :uid
+        """),
+        {"qid": quiz_id, "uid": user_id},
+    ).fetchone()
+    return {"players_count": int(row.players or 0), "friends_played": int(row.friends or 0)}
+
+
 def clamp_active_ms(active_ms: Optional[int], elapsed_ms: int) -> Optional[int]:
     """Client-reported foreground time, bounded by the server clock: it can't
     exceed the wall time since delivery, and can't be negative. Used for the
