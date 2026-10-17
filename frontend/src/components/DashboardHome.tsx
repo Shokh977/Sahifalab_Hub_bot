@@ -492,12 +492,13 @@ const FocusGoalCell: React.FC<{
   })
   useEffect(() => {
     let cancelled = false
-    apiService.getDailyQuizToday()
+    // Status, not today: showing the dashboard must not start the round.
+    apiService.getDailyQuizStatus()
       .then(({ data }) => {
         if (cancelled) return
         if (!data.quiz) { setDailyQuiz({ state: 'none', correctCount: 0 }); return }
         setDailyQuiz({
-          state: data.quiz.state,
+          state: data.quiz.state === 'not_started' ? 'none' : data.quiz.state,
           correctCount: data.quiz.correct_count ?? 0,
         })
       })

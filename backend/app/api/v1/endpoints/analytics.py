@@ -55,6 +55,16 @@ class AnalyticsEvent(BaseModel):
         # payment_methods.id is a UUID, not an int; the method id/surface/etc.
         # live in `meta` instead.
         "donation_page_view", "donation_card_swiped", "donation_number_copied",
+        # App redesign Phase 0 (mobile lib/analytics.ts). course_view above is
+        # shared with the web. target_id is the course id for course/purchase
+        # events and 0 otherwise; details live in `meta`.
+        "app_open", "today_primary_action_tap",
+        "quiz_start", "quiz_answer", "quiz_complete", "quiz_resume",
+        "purchase_sheet_open", "purchase_start", "purchase_approved",
+        "deck_copy", "review_session_start", "review_session_complete",
+        "ai_quota_exhausted", "pro_sheet_open",
+        # Logged server-side by POST /ai/flashcards/generate (input source).
+        "ai_flashcard_generate",
     ]
     target_id: int
     teacher_id: int = 0

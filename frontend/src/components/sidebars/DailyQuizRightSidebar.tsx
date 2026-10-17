@@ -43,7 +43,8 @@ const DailyQuizRightSidebar: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false
-    apiService.getDailyQuizToday()
+    // Status, not today: rendering the sidebar must not start the round.
+    apiService.getDailyQuizStatus()
       .then(async ({ data }) => {
         if (cancelled) return
         if (!data.quiz || data.quiz.state !== 'submitted') { setState('not_played'); return }

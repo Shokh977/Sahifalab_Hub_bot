@@ -779,7 +779,52 @@ def deliver_today(db: Session, user_id: int, quiz_id: int) -> dict:
     return result
 
 
-def score_and_submit(db: Session, user_id: int, quiz_id: int, answers: list[dict]) -> dict:
+def today_status(db: Session, user_id: int, quiz_id: int) -> dict:
+    """Read-only twin of deliver_today() for surfaces that only DISPLAY the
+    quiz (Home cards, web dashboard). It never inserts an attempt: GET /today
+    used to be called by those surfaces, which started the round — and its
+    server clock — the moment someone merely opened Home, so "started" meant
+    "opened Home" and elapsed_ms counted time spent elsewhere."""
+    row = db.execute(
+        text("SELECT submitted_at, correct_count FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
+        {"uid": user_id, "qid": quiz_id},
+    ).fetchone()
+    if row is None:
+        state = "not_started"
+    elif row.submitted_at is None:
+        state = "in_progress"
+    else:
+        state = "submitted"
+    return {"state": state, "correct_count": row.correct_count if row is not None else None}
+
+
+def clamp_active_ms(active_ms: Optional[int], elapsed_ms: int) -> Optional[int]:
+    """Client-reported foreground time, bounded by the server clock: it can't
+    exceed the wall time since delivery, and can't be negative. Used for the
+    time metric only — ranking stays on server-measured elapsed_ms."""
+    if active_ms is None:
+        return None
+    return max(0, min(int(active_ms), elapsed_ms))
+
+
+def _store_active_ms(db: Session, attempt_id: int, active_ms: Optional[int]) -> None:
+    """Best-effort, in a SAVEPOINT: the column comes from migration 103, and a
+    backend deployed before it must still record the submission."""
+    if active_ms is None:
+        return
+    try:
+        with db.begin_nested():
+            db.execute(
+                text("UPDATE daily_quiz_attempts SET active_ms = :ms WHERE id = :aid"),
+                {"ms": active_ms, "aid": attempt_id},
+            )
+    except Exception:
+        logger.warning("active_ms not stored for attempt %s (migration 103 applied?)", attempt_id, exc_info=True)
+
+
+def score_and_submit(
+    db: Session, user_id: int, quiz_id: int, answers: list[dict], active_ms: Optional[int] = None,
+) -> dict:
     """
     Server-authoritative scoring (spec Part 3 — never trust client score or
     timing). answers: [{"question_id": int, "selected_index": int}, ...].
@@ -842,6 +887,7 @@ def score_and_submit(db: Session, user_id: int, quiz_id: int, answers: list[dict
             "cc": correct_count, "tanga": tanga, "aid": int(attempt.id),
         },
     )
+    _store_active_ms(db, int(attempt.id), clamp_active_ms(active_ms, elapsed_ms))
     _bump_play_streak(db, user_id)
     db.commit()
 

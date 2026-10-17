@@ -139,7 +139,7 @@ function dailyQuiz(d: DailyQuizData): Section[] {
     kv("Umumiy ko'rsatkichlar", [
       ['Viktorinalar', t.quizzes], ["O'yinchilar", t.players], ["O'yinchilar (oldingi davr)", t.players_prev], ["O'zgarish %", t.players_delta],
       ['Boshlangan', t.started], ['Yakunlangan', t.finished], ['Yakunlangan (oldingi davr)', t.finished_prev],
-      ['Oxirigacha yechganlar %', t.completion_pct], ["O'rtacha ball (5 dan)", t.avg_score], ["O'rtacha vaqt (s)", t.avg_seconds],
+      ['Oxirigacha yechganlar %', t.completion_pct], ["O'rtacha ball (5 dan)", t.avg_score], ["O'rtacha vaqt, server (s)", t.avg_seconds], ["O'rtacha faol vaqt (s)", t.avg_active_seconds], ['Faol vaqt namunalari', t.active_samples],
       ['5/5 ulushi %', t.perfect_pct], ["Qaytib o'ynaganlar %", t.returning_pct], ["Kun / o'yinchi", t.avg_days_per_player],
       ['Berilgan tanga', t.tanga_awarded],
     ]),

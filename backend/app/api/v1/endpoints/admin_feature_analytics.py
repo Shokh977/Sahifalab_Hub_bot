@@ -696,8 +696,18 @@ def daily_quiz_analytics(
     w = _window(days)
     p = {"cur": w.start_ts, "prev": w.prev_ts, "start": w.start, "today": w.today}
     labels = _quiz_category_labels(db)
+    # Foreground-only play time (migration 103) where the client sent it;
+    # rounds without it fall back to the server clock in avg_ms below.
+    active_expr = (
+        "AVG(active_ms) FILTER (WHERE delivered_at >= :cur AND submitted_at IS NOT NULL AND active_ms IS NOT NULL)"
+        if _has_column(db, "daily_quiz_attempts", "active_ms") else "NULL::numeric"
+    )
+    active_n_expr = (
+        "COUNT(*) FILTER (WHERE delivered_at >= :cur AND submitted_at IS NOT NULL AND active_ms IS NOT NULL)"
+        if _has_column(db, "daily_quiz_attempts", "active_ms") else "0"
+    )
 
-    totals = _one(db, """
+    totals = _one(db, f"""
         SELECT COUNT(*) FILTER (WHERE delivered_at >= :cur) AS started,
                COUNT(*) FILTER (WHERE delivered_at >= :cur AND submitted_at IS NOT NULL) AS finished,
                COUNT(*) FILTER (WHERE delivered_at <  :cur AND submitted_at IS NOT NULL) AS finished_prev,
@@ -705,6 +715,8 @@ def daily_quiz_analytics(
                COUNT(DISTINCT user_id) FILTER (WHERE delivered_at <  :cur AND submitted_at IS NOT NULL) AS players_prev,
                AVG(correct_count) FILTER (WHERE delivered_at >= :cur AND submitted_at IS NOT NULL) AS avg_score,
                AVG(elapsed_ms) FILTER (WHERE delivered_at >= :cur AND submitted_at IS NOT NULL AND elapsed_ms > 0) AS avg_ms,
+               {active_expr} AS avg_active_ms,
+               {active_n_expr} AS active_samples,
                COUNT(*) FILTER (WHERE delivered_at >= :cur AND correct_count >= 5) AS perfect,
                COALESCE(SUM(tanga_awarded) FILTER (WHERE delivered_at >= :cur), 0) AS tanga
         FROM daily_quiz_attempts WHERE delivered_at >= :prev
@@ -818,7 +830,13 @@ def daily_quiz_analytics(
             "players_prev": players_prev,
             "players_delta": _delta(players, players_prev),
             "avg_score": round(float(totals.avg_score), 2) if totals and totals.avg_score is not None else None,
+            # Server clock (delivery → submit). Before Phase 0 delivery was
+            # triggered by opening Home, so older rounds overstate it.
             "avg_seconds": round(float(totals.avg_ms) / 1000, 1) if totals and totals.avg_ms is not None else None,
+            # Foreground-only time, from rounds whose client reports it.
+            "avg_active_seconds": (round(float(totals.avg_active_ms) / 1000, 1)
+                                   if totals and totals.avg_active_ms is not None else None),
+            "active_samples": int(totals.active_samples or 0) if totals else 0,
             "perfect_pct": _pct(int(totals.perfect) if totals else 0, finished),
             "tanga_awarded": int(totals.tanga) if totals else 0,
             "avg_days_per_player": round(sum(play_days) / len(play_days), 1) if play_days else 0,

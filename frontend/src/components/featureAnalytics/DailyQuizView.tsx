@@ -14,7 +14,14 @@ export default function DailyQuizView({ data }: { data: DailyQuizData }) {
           hint="Savollarni ochganlarning nechtasi javoblarni yuborgan" />
         <StatTile label="O'rtacha ball" value={t.avg_score != null ? `${t.avg_score} / 5` : '—'}
           sub={`5/5: ${fmt(t.perfect_pct, 1)}%`} />
-        <StatTile label="O'rtacha vaqt" value={t.avg_seconds != null ? `${fmt(t.avg_seconds, 1)} s` : '—'} />
+        {t.active_samples > 0 ? (
+          <StatTile label="O'rtacha vaqt" value={`${fmt(t.avg_active_seconds, 1)} s`}
+            sub={`${fmt(t.active_samples)} o'yin bo'yicha`}
+            hint="Faqat savollar ekranda ochiq turgan vaqt (ilova fonga o'tgan vaqt hisoblanmaydi). Yangi ilova versiyasidan o'ynalgan o'yinlar bo'yicha." />
+        ) : (
+          <StatTile label="O'rtacha vaqt" value={t.avg_seconds != null ? `${fmt(t.avg_seconds, 1)} s` : '—'}
+            hint="Server soati: savollar yetkazilganidan javob yuborilguncha. Eski o'yinlarda Bosh sahifa ochilgan vaqtdan hisoblangan, shuning uchun oshirib ko'rsatadi." />
+        )}
         <StatTile label="Qaytib o'ynaganlar" value={`${fmt(t.returning_pct, 1)}%`}
           hint="Davr ichida kamida 2 kun o'ynaganlar ulushi" sub={`~${fmt(t.avg_days_per_player, 1)} kun / o'yinchi`} />
         <StatTile label="Berilgan tanga" value={fmt(t.tanga_awarded)} />

@@ -110,6 +110,8 @@ export interface DailyQuizData {
     players_delta: number | null
     avg_score: number | null
     avg_seconds: number | null
+    avg_active_seconds: number | null
+    active_samples: number
     perfect_pct: number
     tanga_awarded: number
     avg_days_per_player: number
