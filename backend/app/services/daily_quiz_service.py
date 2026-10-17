@@ -737,7 +737,7 @@ def deliver_today(db: Session, user_id: int, quiz_id: int) -> dict:
         )
         db.commit()
         existing = db.execute(
-            text("SELECT id, delivered_at, submitted_at, correct_count, elapsed_ms FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
+            text("SELECT id, delivered_at, submitted_at, correct_count, elapsed_ms, tanga_awarded, answers FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
             {"uid": user_id, "qid": quiz_id},
         ).fetchone()
 
@@ -767,6 +767,12 @@ def deliver_today(db: Session, user_id: int, quiz_id: int) -> dict:
     # POST /submit with an empty answers list, which 422'd outright
     # (SubmitRequest.answers has min_length=1) and surfaced the raw Pydantic
     # error array as on-screen text.
+    if existing.submitted_at is None:
+        # Answers already locked one at a time (POST /answer) — lets the
+        # client resume at the next question after an app kill or on another
+        # device, with each answered question's reveal intact.
+        result["answered"] = _answered_reveals(db, user_id, questions, existing.answers or [])
+
     if existing.submitted_at is not None:
         ordered_questions = sorted(
             (q for q in questions if not q.voided), key=lambda q: q.position,
@@ -786,7 +792,7 @@ def today_status(db: Session, user_id: int, quiz_id: int) -> dict:
     server clock — the moment someone merely opened Home, so "started" meant
     "opened Home" and elapsed_ms counted time spent elsewhere."""
     row = db.execute(
-        text("SELECT submitted_at, correct_count FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
+        text("SELECT submitted_at, correct_count, answers FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
         {"uid": user_id, "qid": quiz_id},
     ).fetchone()
     if row is None:
@@ -795,7 +801,14 @@ def today_status(db: Session, user_id: int, quiz_id: int) -> dict:
         state = "in_progress"
     else:
         state = "submitted"
-    return {"state": state, "correct_count": row.correct_count if row is not None else None}
+    # Locked answers so far (POST /answer) — Home's "Davom etish · 3/5".
+    # Older clients never lock, so an in-progress round of theirs reads 0.
+    answered = len(row.answers or []) if row is not None and row.submitted_at is None else 0
+    return {
+        "state": state,
+        "correct_count": row.correct_count if row is not None else None,
+        "answered_count": answered,
+    }
 
 
 def clamp_active_ms(active_ms: Optional[int], elapsed_ms: int) -> Optional[int]:
@@ -865,6 +878,12 @@ def score_and_submit(
     now = datetime.now(UTC)
     elapsed_ms = max(0, int((now - attempt.delivered_at).total_seconds() * 1000))
 
+    # Answers locked one at a time (POST /answer) win over whatever the
+    # client sends now: their correctness was already revealed, so they must
+    # not change. Questions never locked (every older client) still take the
+    # submitted value — unchanged behaviour for them.
+    answers = merge_locked_answers(attempt.answers or [], answers)
+
     per_question = _score_from_stored_answers(user_id, ordered_questions, answers)
     correct_count = sum(1 for c in per_question if c)
 
@@ -900,6 +919,126 @@ def score_and_submit(
         "per_question_correct": per_question,
         "quiz_streak_days": _current_play_streak(db, user_id),
     }
+
+
+def merge_locked_answers(locked: list[dict], submitted: list[dict]) -> list[dict]:
+    """Locked answers first (their order), then submitted ones for questions
+    that were never locked. Pure — unit-tested."""
+    merged = [{"question_id": a.get("question_id"), "selected_index": a.get("selected_index")} for a in (locked or [])]
+    seen = {a["question_id"] for a in merged}
+    for a in submitted or []:
+        if a.get("question_id") not in seen:
+            merged.append({"question_id": a.get("question_id"), "selected_index": a.get("selected_index")})
+            seen.add(a.get("question_id"))
+    return merged
+
+
+def _reveal(user_id: int, q, selected_index: int, per_correct: int) -> dict:
+    _, perm = shuffle_for_user(user_id, q.id, list(q.options))
+    correct = 0 <= selected_index < len(perm) and perm[selected_index] == q.correct_index
+    return {
+        "question_id": int(q.id),
+        "selected_index": int(selected_index),
+        "correct": bool(correct),
+        # In THIS user's shuffled order — the index they see on screen.
+        "correct_index": perm.index(q.correct_index) if q.correct_index in perm else None,
+        "explanation": q.explanation,
+        "tanga_per_correct": per_correct,
+    }
+
+
+def _answered_reveals(db: Session, user_id: int, questions: list, locked: list[dict]) -> list[dict]:
+    by_id = {q.id: q for q in questions if not q.voided}
+    if not locked:
+        return []
+    per_correct = _reward_config(db)["per_correct"]
+    out = []
+    for a in locked:
+        q = by_id.get(a.get("question_id"))
+        sel = a.get("selected_index")
+        if q is None or not isinstance(sel, int):
+            continue
+        out.append(_reveal(user_id, q, sel, per_correct))
+    return out
+
+
+def lock_answer(db: Session, user_id: int, quiz_id: int, question_id: int, selected_index: int) -> dict:
+    """POST /answer: locks one answer and reveals it. Idempotent — a question
+    already answered returns its ORIGINAL locked choice, never the new one,
+    so seeing the correct option can't be followed by changing the answer.
+    Scoring itself still happens only at submit (score_and_submit), which
+    uses these locks."""
+    attempt = db.execute(
+        text("""
+            SELECT id, submitted_at, answers FROM daily_quiz_attempts
+            WHERE user_id = :uid AND quiz_id = :qid
+            FOR UPDATE
+        """),
+        {"uid": user_id, "qid": quiz_id},
+    ).fetchone()
+    if attempt is None:
+        db.rollback()
+        raise ValueError("no delivered attempt — call GET /today first")
+    if attempt.submitted_at is not None:
+        db.rollback()
+        raise ValueError("already submitted")
+
+    q = next((x for x in _quiz_questions(db, quiz_id) if x.id == question_id and not x.voided), None)
+    if q is None or not 0 <= selected_index < len(q.options):
+        db.rollback()
+        raise ValueError("unknown question or option")
+
+    locked = list(attempt.answers or [])
+    existing = next((a for a in locked if a.get("question_id") == question_id), None)
+    if existing is None:
+        locked.append({"question_id": question_id, "selected_index": selected_index})
+        db.execute(
+            text("UPDATE daily_quiz_attempts SET answers = CAST(:answers AS jsonb) WHERE id = :aid"),
+            {"answers": json.dumps(locked), "aid": int(attempt.id)},
+        )
+        db.commit()
+        chosen = selected_index
+    else:
+        db.rollback()  # release the row lock; nothing to write
+        chosen = int(existing.get("selected_index"))
+
+    reveal = _reveal(user_id, q, chosen, _reward_config(db)["per_correct"])
+    reveal["answered_count"] = len(locked)
+    return reveal
+
+
+def friends_results(db: Session, quiz_id: int, user_id: int) -> list[dict]:
+    """People the caller follows (plus the caller) who finished this quiz,
+    with their GLOBAL rank — same follow pool as the weekly leaderboard's
+    friends scope (leaderboard.py)."""
+    rows = db.execute(
+        text("""
+            WITH pool AS (
+                SELECT following_id AS uid FROM follows WHERE follower_id = :uid
+                UNION SELECT CAST(:uid AS BIGINT)
+            ),
+            ranked AS (
+                SELECT user_id, correct_count, elapsed_ms,
+                       RANK() OVER (ORDER BY correct_count DESC, elapsed_ms ASC) AS rank
+                FROM daily_quiz_attempts
+                WHERE quiz_id = :qid AND submitted_at IS NOT NULL
+            )
+            SELECT r.rank, r.user_id, r.correct_count, r.elapsed_ms,
+                   p.first_name, p.username, p.photo_url
+            FROM ranked r
+            JOIN pool ON pool.uid = r.user_id
+            JOIN profiles p ON p.telegram_id = r.user_id
+            ORDER BY r.rank
+            LIMIT 50
+        """),
+        {"uid": user_id, "qid": quiz_id},
+    ).fetchall()
+    return [
+        {"rank": int(r.rank), "user_id": int(r.user_id), "first_name": r.first_name, "username": r.username,
+         "photo_url": r.photo_url, "correct_count": r.correct_count, "elapsed_ms": r.elapsed_ms,
+         "is_me": int(r.user_id) == int(user_id)}
+        for r in rows
+    ]
 
 
 def _current_play_streak(db: Session, user_id: int) -> int:

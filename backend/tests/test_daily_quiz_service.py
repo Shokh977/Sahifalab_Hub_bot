@@ -302,7 +302,7 @@ def test_today_status_never_starts_the_round(db_session):
 
     # Home asks for status repeatedly — no attempt row, no server clock.
     for _ in range(3):
-        assert today_status(db_session, TEST_USER_A, quiz_id) == {"state": "not_started", "correct_count": None}
+        assert today_status(db_session, TEST_USER_A, quiz_id) == {"state": "not_started", "correct_count": None, "answered_count": 0}
     count = db_session.execute(
         text("SELECT COUNT(*) FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
         {"uid": TEST_USER_A, "qid": quiz_id},
@@ -341,7 +341,153 @@ def test_submit_stores_clamped_active_ms_without_changing_score_or_elapsed(db_se
     if has_column:
         assert row.active_ms == row.elapsed_ms              # clamped to the server clock
     status = today_status(db_session, TEST_USER_A, quiz_id)
-    assert status == {"state": "submitted", "correct_count": result["correct_count"]}
+    assert status == {"state": "submitted", "correct_count": result["correct_count"], "answered_count": 0}
+
+
+def test_merge_locked_answers_prefers_locks_and_fills_the_rest():
+    from app.services.daily_quiz_service import merge_locked_answers
+
+    locked = [{"question_id": 1, "selected_index": 2}]
+    submitted = [{"question_id": 1, "selected_index": 0}, {"question_id": 2, "selected_index": 3}]
+    assert merge_locked_answers(locked, submitted) == [
+        {"question_id": 1, "selected_index": 2},   # the lock wins
+        {"question_id": 2, "selected_index": 3},   # never locked: client value
+    ]
+    assert merge_locked_answers([], submitted) == submitted       # older clients: unchanged
+    assert merge_locked_answers(None, []) == []
+
+
+def _correct_and_wrong_index(user_id, q):
+    from app.services.daily_quiz_service import shuffle_for_user
+    _, perm = shuffle_for_user(user_id, q.id, list(q.options))
+    right = perm.index(q.correct_index)
+    wrong = next(i for i in range(4) if i != right)
+    return right, wrong
+
+
+def test_lock_answer_reveals_and_never_changes(db_session):
+    from app.services.daily_quiz_service import deliver_today, lock_answer, today_status
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900020)
+    deliver_today(db_session, TEST_USER_A, quiz_id)
+    q0 = db_session.execute(
+        text("SELECT id, options, correct_index FROM daily_quiz_questions WHERE quiz_id = :qid AND position = 0"),
+        {"qid": quiz_id},
+    ).fetchone()
+    right, wrong = _correct_and_wrong_index(TEST_USER_A, q0)
+
+    first = lock_answer(db_session, TEST_USER_A, quiz_id, q0.id, wrong)
+    assert first["correct"] is False
+    assert first["correct_index"] == right
+    assert first["explanation"] == "expl"
+    assert first["answered_count"] == 1
+
+    # Seeing the answer, then sending the right one, changes nothing.
+    again = lock_answer(db_session, TEST_USER_A, quiz_id, q0.id, right)
+    assert again["selected_index"] == wrong
+    assert again["correct"] is False
+    assert again["answered_count"] == 1
+
+    assert today_status(db_session, TEST_USER_A, quiz_id) == {
+        "state": "in_progress", "correct_count": None, "answered_count": 1,
+    }
+
+
+def test_lock_answer_requires_an_open_attempt(db_session):
+    from app.services.daily_quiz_service import lock_answer
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900021)
+    q0 = db_session.execute(text("SELECT id FROM daily_quiz_questions WHERE quiz_id = :qid AND position = 0"), {"qid": quiz_id}).fetchone()
+    with pytest.raises(ValueError):
+        lock_answer(db_session, TEST_USER_A, quiz_id, q0.id, 0)   # never delivered
+
+
+def test_deliver_today_returns_locked_answers_for_resume(db_session):
+    from app.services.daily_quiz_service import deliver_today, lock_answer
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900022)
+    first = deliver_today(db_session, TEST_USER_A, quiz_id)
+    assert first["answered"] == []
+
+    qs = db_session.execute(
+        text("SELECT id, options, correct_index FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position"),
+        {"qid": quiz_id},
+    ).fetchall()
+    for q in qs[:3]:
+        right, _ = _correct_and_wrong_index(TEST_USER_A, q)
+        lock_answer(db_session, TEST_USER_A, quiz_id, q.id, right)
+
+    resumed = deliver_today(db_session, TEST_USER_A, quiz_id)
+    assert [a["question_id"] for a in resumed["answered"]] == [q.id for q in qs[:3]]
+    assert all(a["correct"] for a in resumed["answered"])
+    assert resumed["delivered_at"] == first["delivered_at"]   # resuming never restarts the clock
+
+
+def test_submit_scores_locked_answers_not_the_resubmitted_ones(db_session):
+    from app.services.daily_quiz_service import deliver_today, lock_answer, score_and_submit
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900023)
+    deliver_today(db_session, TEST_USER_A, quiz_id)
+    qs = db_session.execute(
+        text("SELECT id, options, correct_index FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position"),
+        {"qid": quiz_id},
+    ).fetchall()
+
+    # Lock question 0 wrong, then "submit" everything right.
+    _, wrong0 = _correct_and_wrong_index(TEST_USER_A, qs[0])
+    lock_answer(db_session, TEST_USER_A, quiz_id, qs[0].id, wrong0)
+    all_right = [{"question_id": q.id, "selected_index": _correct_and_wrong_index(TEST_USER_A, q)[0]} for q in qs]
+
+    result = score_and_submit(db_session, TEST_USER_A, quiz_id, all_right)
+    assert result["correct_count"] == 4                     # the locked wrong answer stands
+    assert result["per_question_correct"][0] is False
+    assert result["tanga_awarded"] == 5 + 4                 # played + 4 correct, no perfect bonus
+
+
+def test_friends_results_lists_followed_players_with_global_rank(db_session):
+    from app.services.daily_quiz_service import deliver_today, score_and_submit, friends_results
+
+    _seed_users(db_session)
+    db_session.execute(text("""
+        CREATE TABLE IF NOT EXISTS follows (
+            id SERIAL PRIMARY KEY,
+            follower_id BIGINT NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+            following_id BIGINT NOT NULL REFERENCES profiles(telegram_id) ON DELETE CASCADE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_follow UNIQUE (follower_id, following_id)
+        )
+    """))
+    db_session.execute(text("INSERT INTO follows (follower_id, following_id) VALUES (:a, :b) ON CONFLICT DO NOTHING"),
+                       {"a": TEST_USER_A, "b": TEST_USER_B})
+    db_session.commit()
+    try:
+        quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900024)
+        qs = db_session.execute(
+            text("SELECT id, options, correct_index FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position"),
+            {"qid": quiz_id},
+        ).fetchall()
+        for uid, n_right in ((TEST_USER_A, 2), (TEST_USER_B, 5)):
+            deliver_today(db_session, uid, quiz_id)
+            answers = []
+            for i, q in enumerate(qs):
+                right, wrong = _correct_and_wrong_index(uid, q)
+                answers.append({"question_id": q.id, "selected_index": right if i < n_right else wrong})
+            score_and_submit(db_session, uid, quiz_id, answers)
+
+        friends = friends_results(db_session, quiz_id, TEST_USER_A)
+        assert [(f["user_id"], f["rank"], f["correct_count"], f["is_me"]) for f in friends] == [
+            (TEST_USER_B, 1, 5, False),
+            (TEST_USER_A, 2, 2, True),
+        ]
+        # B follows nobody: only B.
+        assert [f["user_id"] for f in friends_results(db_session, quiz_id, TEST_USER_B)] == [TEST_USER_B]
+    finally:
+        db_session.execute(text("DELETE FROM follows WHERE follower_id = :a"), {"a": TEST_USER_A})
+        db_session.commit()
 
 
 def test_score_and_submit_requires_prior_delivery(db_session):

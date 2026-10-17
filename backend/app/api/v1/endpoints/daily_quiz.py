@@ -79,6 +79,9 @@ def get_today(db: Session = Depends(get_db), caller_id: int = Depends(_require_t
             "per_question_correct": delivery.get("per_question_correct"),
             "tanga_awarded": delivery.get("tanga_awarded"),
             "quiz_streak_days": delivery.get("quiz_streak_days"),
+            # In progress only: answers already locked via POST /answer, with
+            # their reveal — the client resumes at the next question.
+            "answered": delivery.get("answered"),
         },
     }
 
@@ -105,9 +108,32 @@ def get_today_status(db: Session = Depends(get_db), caller_id: int = Depends(_re
             "theme": quiz.theme,
             "state": status["state"],  # not_started | in_progress | submitted
             "correct_count": status["correct_count"],
+            "answered_count": status["answered_count"],
             "seconds_remaining": max(0, int((close_at - datetime.now(UTC)).total_seconds())),
         },
     }
+
+
+class AnswerRequest(BaseModel):
+    quiz_id: int
+    question_id: int
+    selected_index: int = Field(..., ge=0, le=3)
+
+
+@router.post("/answer")
+def answer(
+    body: AnswerRequest,
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+):
+    """Locks one answer and reveals it (correct?, the right option in the
+    caller's shuffled order, explanation). Idempotent: re-sending a question
+    returns the originally locked choice. Scoring still happens at /submit,
+    which uses these locks — so a reveal can never be followed by a change."""
+    try:
+        return svc.lock_answer(db, caller_id, body.quiz_id, body.question_id, body.selected_index)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 class SubmitAnswer(BaseModel):
@@ -201,6 +227,12 @@ def get_results(
     ).fetchall()
 
     standing = svc.results_and_percentile(db, quiz_id, caller_id)
+    try:
+        with db.begin_nested():
+            friends = svc.friends_results(db, quiz_id, caller_id)
+    except Exception:
+        logger.warning("daily_quiz friends slice failed for quiz_id=%s", quiz_id, exc_info=True)
+        friends = []
     streak_row = db.execute(
         text("SELECT quiz_streak_days FROM profiles WHERE telegram_id = :uid"), {"uid": caller_id},
     ).fetchone()
@@ -225,6 +257,9 @@ def get_results(
         ],
         "total_players": standing["total_players"],
         "caller": standing["caller"],
+        # People the caller follows (+ the caller), with their global rank —
+        # shown above the full ranking.
+        "friends": friends,
     }
 
 
