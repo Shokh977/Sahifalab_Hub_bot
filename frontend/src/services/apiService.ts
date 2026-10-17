@@ -296,8 +296,15 @@ class ApiService {
   // scored server-side, rewarding Tanga (never XP). Mirrors the shapes used
   // by the mobile app's lib/api.ts `dailyQuiz` namespace.
 
+  /** Starts the round (server clock) — call only from the play page. */
   async getDailyQuizToday() {
     return this.axiosInstance.get('/api/quiz/today')
+  }
+
+  /** Read-only state for display surfaces (dashboard, sidebar); never starts
+   *  the round. state: not_started | in_progress | submitted. */
+  async getDailyQuizStatus() {
+    return this.axiosInstance.get('/api/quiz/today/status')
   }
 
   async submitDailyQuiz(quizId: number, answers: Array<{ question_id: number; selected_index: number }>) {
