@@ -82,7 +82,37 @@ ALLOWED_AUDIO_MIME = {
     "audio/webm",    # .webm (audio)
     "audio/aac",     # .aac
     "audio/flac",    # .flac
+    "audio/mp4",     # .m4a
 }
+
+# Browsers label the same audio file differently (Chrome on Windows sends
+# .mp3 as audio/mp3, Safari sends .m4a as audio/x-m4a, some send nothing at
+# all). Unrecognised labels used to 415, which is how admins ended up putting
+# sounds in Supabase Storage by hand instead. Normalise before validating.
+_AUDIO_MIME_ALIASES = {
+    "audio/mp3": "audio/mpeg", "audio/x-mp3": "audio/mpeg", "audio/mpeg3": "audio/mpeg",
+    "audio/x-mpeg": "audio/mpeg", "audio/x-mpeg-3": "audio/mpeg",
+    "audio/x-wav": "audio/wav", "audio/wave": "audio/wav", "audio/vnd.wave": "audio/wav",
+    "audio/x-m4a": "audio/mp4", "audio/m4a": "audio/mp4", "audio/x-aac": "audio/aac",
+    "audio/x-flac": "audio/flac", "audio/vorbis": "audio/ogg", "application/ogg": "audio/ogg",
+}
+_AUDIO_EXT_MIME = {
+    ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg",
+    ".oga": "audio/ogg", ".opus": "audio/ogg", ".wav": "audio/wav", ".flac": "audio/flac",
+    ".weba": "audio/webm",
+}
+
+
+def _normalize_content_type(content_type: str | None, filename: str | None) -> str:
+    """Canonical MIME for audio uploads; anything else passes through unchanged."""
+    ctype = (content_type or "").split(";")[0].strip().lower()
+    if ctype in _AUDIO_MIME_ALIASES:
+        return _AUDIO_MIME_ALIASES[ctype]
+    if ctype in ("", "application/octet-stream", "binary/octet-stream"):
+        ext = Path(filename or "").suffix.lower()
+        if ext in _AUDIO_EXT_MIME:
+            return _AUDIO_EXT_MIME[ext]
+    return ctype or "application/octet-stream"
 
 # Raster types that will be auto-converted to WebP on upload
 RASTER_IMAGE_MIME = {"image/jpeg", "image/png", "image/gif", "image/webp"}
@@ -113,6 +143,7 @@ _MIME_EXT_MAP = {
     "audio/webm":  ".webm",
     "audio/aac":   ".aac",
     "audio/flac":  ".flac",
+    "audio/mp4":   ".m4a",
 }
 
 # ── Image compression ────────────────────────────────────────────────────────
@@ -362,15 +393,17 @@ async def upload_file(
     caller = await _get_caller(creds)
     teacher_id = caller.get("telegram_id")
 
-    if file.content_type not in ALLOWED_FILE_MIME:
+    content_type = _normalize_content_type(file.content_type, file.filename)
+    if content_type not in ALLOWED_FILE_MIME:
         raise HTTPException(
             status_code=415,
             detail=f"Fayl turi qo'llab-quvvatlanmaydi: {file.content_type}. "
-                   "jpg, png, webp, gif, svg, pdf, doc, docx, pptx, xlsx, txt kiriting.",
+                   "jpg, png, webp, gif, svg, pdf, doc, docx, pptx, xlsx, txt, "
+                   "mp3, m4a, aac, ogg, wav, flac kiriting.",
         )
 
     file_bytes = await file.read()
-    size_limit = MAX_AUDIO_SIZE_BYTES if file.content_type in ALLOWED_AUDIO_MIME else MAX_FILE_SIZE_BYTES
+    size_limit = MAX_AUDIO_SIZE_BYTES if content_type in ALLOWED_AUDIO_MIME else MAX_FILE_SIZE_BYTES
     if len(file_bytes) > size_limit:
         mb        = len(file_bytes) // (1024 * 1024)
         limit_mb  = size_limit // (1024 * 1024)
@@ -382,19 +415,19 @@ async def upload_file(
     original_name = file.filename or "file"
 
     # ── Raster images → WebP (reduces Bunny storage + CDN egress) ────────────
-    upload_content_type = file.content_type or "application/octet-stream"
-    if file.content_type in RASTER_IMAGE_MIME:
+    upload_content_type = content_type
+    if content_type in RASTER_IMAGE_MIME:
         file_bytes          = _compress_to_webp(file_bytes)
         ext                 = ".webp"
         upload_content_type = "image/webp"
     else:
         ext = Path(original_name).suffix.lower()
         if not ext:
-            ext = _MIME_EXT_MAP.get(file.content_type or "", ".bin")
+            ext = _MIME_EXT_MAP.get(content_type, ".bin")
 
     unique_name = f"{uuid.uuid4().hex}{ext}"
     # default subfolder: 'sounds' for audio, 'files' for everything else
-    subfolder = folder or ("sounds" if file.content_type in ALLOWED_AUDIO_MIME else "files")
+    subfolder = folder or ("sounds" if content_type in ALLOWED_AUDIO_MIME else "files")
 
     if course_id:
         remote_path = f"courses/{course_id}/{subfolder}/{unique_name}"

@@ -1840,7 +1840,8 @@ const AdminPage: React.FC = () => {
       loadSounds()
     } catch (err: any) {
       console.error('[AdminPage] handleUploadSound error:', err)
-      setSoundMsg('❌ Xatolik yuz berdi')
+      // Show the server's reason (unsupported type, too large, not on Bunny…)
+      setSoundMsg(`❌ ${err?.response?.data?.detail || err?.message || 'Xatolik yuz berdi'}`)
     } finally {
       setSoundUploading(false)
     }
@@ -3003,13 +3004,14 @@ const AdminPage: React.FC = () => {
               </div>
             )}
 
-            {/* Setup instructions */}
+            {/* Where sounds live */}
             <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 space-y-1">
-              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">⚙️ Bir martalik sozlash:</p>
-              <ol className="text-xs text-emerald-700 dark:text-emerald-400 space-y-0.5 list-decimal list-inside">
-                <li>Supabase → Storage → <strong>ambient-sounds</strong> bucket yarating (<strong>Public ✓</strong>)</li>
-                <li>Vercel env vars-ga qo'shing: <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">VITE_SUPABASE_URL</code> va <code className="bg-emerald-100 dark:bg-emerald-900/50 px-1 rounded">VITE_SUPABASE_ANON_KEY</code></li>
-              </ol>
+              <p className="text-xs font-semibold text-emerald-800 dark:text-emerald-300">ℹ️ Tovushlar Bunny.net'ga yuklanadi</p>
+              <ul className="text-xs text-emerald-700 dark:text-emerald-400 space-y-0.5 list-disc list-inside">
+                <li>Faylni shu yerdan yuklang — u avtomatik Bunny CDN'ga joylanadi. Supabase Storage ishlatilmaydi.</li>
+                <li>Formatlar: mp3, m4a, aac, ogg, wav, flac (30 MB gacha).</li>
+                <li>Har bir tinglashda fayl to'liq yuklanadi — 64–96 kbps mp3, 2–5 MB yetarli.</li>
+              </ul>
             </div>
           </div>
         )}

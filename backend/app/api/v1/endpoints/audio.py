@@ -5,7 +5,9 @@ Public:
   GET  /ambient-sounds              → list active sounds from DB
 
 Admin:
-  POST   /admin/ambient-sounds      → save { name, emoji, url } to DB
+  POST   /admin/ambient-sounds      → save { name, emoji, url } to DB; the url
+                                      must be on the Bunny CDN (uploaded via
+                                      POST /api/upload/file)
   DELETE /admin/ambient-sounds/{id} → delete a sound
 """
 
@@ -133,7 +135,19 @@ from pydantic import BaseModel as _BM
 class SaveSoundPayload(_BM):
     name: str
     emoji: str = "🎵"
-    url: str   # Google Drive share link OR any direct audio URL
+    url: str   # Bunny CDN URL returned by POST /api/upload/file
+
+
+def _is_bunny_cdn_url(url: str) -> bool:
+    """Ambient sounds loop for whole focus sessions and are re-fetched on
+    every play, so they must be served from Bunny. Sounds hosted in Supabase
+    Storage were what pushed the project over its Cached Egress quota."""
+    m = re.match(r"^https://([^/]+)/", url)
+    if not m:
+        return False
+    host = m.group(1).lower()
+    configured = (settings.BUNNY_CDN_HOSTNAME or "").lower().rstrip("/")
+    return host == configured or host.endswith(".b-cdn.net")
 
 
 @router.post("/admin/ambient-sounds", response_model=AmbientSoundResponse, status_code=201)
@@ -143,14 +157,20 @@ async def save_ambient_sound(
     db: Session = Depends(get_db),
 ):
     """
-    Save an ambient sound by URL.
-    Accepts a Google Drive share link or any direct audio URL.
-    Google Drive links are converted to stream URLs automatically.
+    Save an ambient sound. The admin panel first uploads the file to Bunny
+    (POST /api/upload/file) and passes the returned CDN URL here; any other
+    host — Supabase Storage, Google Drive, etc. — is rejected.
 
     JSON body: { name, emoji, url }
     """
     admin = await _verify_admin_jwt(authorization, db)
-    direct_url = _convert_drive_url(body.url.strip())
+    direct_url = body.url.strip()
+    if not _is_bunny_cdn_url(direct_url):
+        raise HTTPException(
+            status_code=400,
+            detail="Tovush Bunny.net'ga yuklangan bo'lishi kerak — admin panelda faylni yuklang "
+                   "(Supabase yoki boshqa havolalar qabul qilinmaydi).",
+        )
     max_order = db.query(AmbientSound).count()
     sound = AmbientSound(
         name=body.name,
