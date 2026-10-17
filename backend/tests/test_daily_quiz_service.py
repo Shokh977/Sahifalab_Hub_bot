@@ -285,6 +285,65 @@ def test_score_and_submit_scores_correctly_and_is_idempotent(db_session):
     assert replay["tanga_awarded"] == 13
 
 
+def test_clamp_active_ms_bounds_client_time_by_server_clock():
+    from app.services.daily_quiz_service import clamp_active_ms
+
+    assert clamp_active_ms(None, 60_000) is None          # older clients send nothing
+    assert clamp_active_ms(42_000, 60_000) == 42_000
+    assert clamp_active_ms(90_000, 60_000) == 60_000      # can't exceed wall time
+    assert clamp_active_ms(-5, 60_000) == 0
+
+
+def test_today_status_never_starts_the_round(db_session):
+    from app.services.daily_quiz_service import today_status, deliver_today
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900010)
+
+    # Home asks for status repeatedly — no attempt row, no server clock.
+    for _ in range(3):
+        assert today_status(db_session, TEST_USER_A, quiz_id) == {"state": "not_started", "correct_count": None}
+    count = db_session.execute(
+        text("SELECT COUNT(*) FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
+        {"uid": TEST_USER_A, "qid": quiz_id},
+    ).scalar()
+    assert count == 0
+
+    deliver_today(db_session, TEST_USER_A, quiz_id)  # the play screen
+    assert today_status(db_session, TEST_USER_A, quiz_id)["state"] == "in_progress"
+
+
+def test_submit_stores_clamped_active_ms_without_changing_score_or_elapsed(db_session):
+    from app.services.daily_quiz_service import deliver_today, score_and_submit, today_status
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, date.today(), quiz_number=900011)
+    deliver_today(db_session, TEST_USER_A, quiz_id)
+    has_column = db_session.execute(text("""
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'daily_quiz_attempts' AND column_name = 'active_ms'
+    """)).fetchone() is not None
+
+    questions = db_session.execute(
+        text("SELECT id FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position"), {"qid": quiz_id},
+    ).fetchall()
+    # A client claiming far more foreground time than wall time has passed.
+    result = score_and_submit(
+        db_session, TEST_USER_A, quiz_id,
+        [{"question_id": q.id, "selected_index": 0} for q in questions], active_ms=10_000_000,
+    )
+    row = db_session.execute(
+        text(f"SELECT elapsed_ms{', active_ms' if has_column else ''} FROM daily_quiz_attempts WHERE user_id = :uid AND quiz_id = :qid"),
+        {"uid": TEST_USER_A, "qid": quiz_id},
+    ).fetchone()
+
+    assert result["elapsed_ms"] == row.elapsed_ms           # ranking input untouched
+    if has_column:
+        assert row.active_ms == row.elapsed_ms              # clamped to the server clock
+    status = today_status(db_session, TEST_USER_A, quiz_id)
+    assert status == {"state": "submitted", "correct_count": result["correct_count"]}
+
+
 def test_score_and_submit_requires_prior_delivery(db_session):
     from app.services.daily_quiz_service import score_and_submit
 

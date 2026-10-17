@@ -4,8 +4,12 @@ Part 5). Admin approval-queue endpoints live in admin_daily_quiz.py; cron
 triggers live in cron.py.
 
 GET  /api/quiz/today            — today's published quiz, shuffled options,
-                                   no correct answers. Starts the server clock.
-POST /api/quiz/submit           — answers; server scores, times, grants Tanga.
+                                   no correct answers. Starts the server clock —
+                                   call it only from the play screen.
+GET  /api/quiz/today/status     — read-only state for display surfaces (Home);
+                                   never starts the round.
+POST /api/quiz/submit           — answers (+ optional foreground active_ms);
+                                   server scores, times, grants Tanga.
 GET  /api/quiz/results/{quiz_id} — available as soon as the CALLER submits
                                    their own attempt (not gated on window
                                    close/other users — deliberate product
@@ -79,6 +83,33 @@ def get_today(db: Session = Depends(get_db), caller_id: int = Depends(_require_t
     }
 
 
+@router.get("/today/status")
+def get_today_status(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+    """Read-only summary for surfaces that only show the quiz (Home cards,
+    web dashboard/sidebar). Unlike GET /today it never starts the round, so
+    opening Home no longer counts as a start or starts the server clock."""
+    today = datetime.now(UTC).date()
+    quiz = db.execute(
+        text("SELECT id, quiz_number, theme, publish_date FROM daily_quizzes WHERE publish_date = :d AND status = 'published'"),
+        {"d": today},
+    ).fetchone()
+    if quiz is None:
+        return {"quiz": None}
+
+    status = svc.today_status(db, caller_id, quiz.id)
+    close_at = _window_close(quiz.publish_date)
+    return {
+        "quiz": {
+            "id": quiz.id,
+            "quiz_number": quiz.quiz_number,
+            "theme": quiz.theme,
+            "state": status["state"],  # not_started | in_progress | submitted
+            "correct_count": status["correct_count"],
+            "seconds_remaining": max(0, int((close_at - datetime.now(UTC)).total_seconds())),
+        },
+    }
+
+
 class SubmitAnswer(BaseModel):
     question_id: int
     selected_index: int = Field(..., ge=0, le=3)
@@ -87,6 +118,9 @@ class SubmitAnswer(BaseModel):
 class SubmitRequest(BaseModel):
     quiz_id: int
     answers: list[SubmitAnswer] = Field(..., min_length=1, max_length=5)
+    # Foreground-only play time measured by the client (AppState). Metric
+    # only — clamped to the server's elapsed_ms and never used for ranking.
+    active_ms: Optional[int] = Field(None, ge=0)
 
 
 @router.post("/submit")
@@ -99,6 +133,7 @@ def submit(
         result = svc.score_and_submit(
             db, caller_id, body.quiz_id,
             [{"question_id": a.question_id, "selected_index": a.selected_index} for a in body.answers],
+            active_ms=body.active_ms,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
