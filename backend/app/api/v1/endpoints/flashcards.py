@@ -53,6 +53,45 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 MAX_NEW_PER_SESSION = 10
+# Per-deck daily new-card limit (migration 104, redesign Phase 6). NULL on a
+# deck keeps the old MAX_NEW_PER_SESSION-per-session rule.
+NEW_PER_DAY_MIN = 5
+NEW_PER_DAY_MAX = 100
+
+
+def new_card_allowance(new_per_day: Optional[int], introduced_today: int) -> int:
+    """How many brand-new cards a study session may introduce. Pure."""
+    if new_per_day is None:
+        return MAX_NEW_PER_SESSION
+    return max(0, int(new_per_day) - int(introduced_today))
+
+
+def _deck_new_per_day(db: Session, deck_id: int) -> Optional[int]:
+    """The deck's daily limit, or None (also when migration 104 isn't applied)."""
+    try:
+        with db.begin_nested():
+            row = db.execute(
+                text("SELECT new_per_day FROM flashcard_decks WHERE id = :id"), {"id": deck_id},
+            ).fetchone()
+        return int(row.new_per_day) if row and row.new_per_day is not None else None
+    except Exception:
+        return None
+
+
+def introduced_today(db: Session, deck_id: int, user_id: int) -> int:
+    """Cards of this deck whose FIRST review was today (same CURRENT_DATE
+    convention as the XP dedup) — i.e. new cards already introduced today."""
+    return int(db.execute(
+        text("""
+            SELECT COUNT(*) FROM (
+                SELECT card_id FROM flashcard_reviews
+                WHERE deck_id = :did AND user_id = :uid AND rating != 99
+                GROUP BY card_id
+                HAVING MIN(reviewed_at)::date = CURRENT_DATE
+            ) t
+        """),
+        {"did": deck_id, "uid": user_id},
+    ).scalar() or 0)
 
 XP_MASTERY_DECK = 50  # 100% deck mastery (all cards ever mastered)
 
@@ -167,6 +206,13 @@ class DeckUpdate(BaseModel):
     description: Optional[str] = None
     color:       Optional[str] = Field(None, max_length=7)
     icon:        Optional[str] = None
+    # Daily new-card limit (migration 104). Only settable, never cleared, here.
+    new_per_day: Optional[int] = Field(None, ge=NEW_PER_DAY_MIN, le=NEW_PER_DAY_MAX)
+
+
+class CloneRequest(BaseModel):
+    # Asked when copying a big deck: "Kuniga nechta yangi karta?" (10/20/30).
+    new_per_day: Optional[int] = Field(None, ge=NEW_PER_DAY_MIN, le=NEW_PER_DAY_MAX)
 
 class CardCreate(BaseModel):
     front_text: str = Field(..., min_length=1)
@@ -497,6 +543,7 @@ def update_deck(
     if body.description is not None: sets.append("description = :desc");  params["desc"]        = body.description
     if body.color       is not None: sets.append("color = :color");       params["color"]       = body.color
     if body.icon        is not None: sets.append("icon = :icon");         params["icon"]        = body.icon
+    if body.new_per_day is not None: sets.append("new_per_day = :npd");   params["npd"]         = body.new_per_day
     if not sets:
         raise HTTPException(status_code=400, detail="Nothing to update")
     sets.append("updated_at = :now")
@@ -648,6 +695,12 @@ def get_study_session(
         {"did": deck_id, "now": now},
     ).fetchall()
 
+    # New cards: the deck's daily limit minus those already introduced today
+    # (decks without a limit keep MAX_NEW_PER_SESSION per session).
+    new_per_day = _deck_new_per_day(db, deck_id)
+    allowance = new_card_allowance(
+        new_per_day, introduced_today(db, deck_id, caller_id) if new_per_day is not None else 0,
+    )
     new_cards = db.execute(
         text("""
             SELECT * FROM flashcards
@@ -655,8 +708,8 @@ def get_study_session(
             ORDER BY position, created_at
             LIMIT :limit
         """),
-        {"did": deck_id, "limit": MAX_NEW_PER_SESSION},
-    ).fetchall()
+        {"did": deck_id, "limit": allowance},
+    ).fetchall() if allowance > 0 else []
 
     all_cards = [_card_row(r) for r in due] + [_card_row(r) for r in new_cards]
 
@@ -674,6 +727,9 @@ def get_study_session(
         "total":     len(all_cards),
         "due_count": int(total_due),
         "new_count": len(new_cards),
+        "new_per_day": new_per_day,
+        # New cards still allowed today after this session's batch.
+        "new_left_today": max(0, allowance - len(new_cards)) if new_per_day is not None else None,
     }
 
 
@@ -1276,6 +1332,7 @@ def _finish_clone_in_background(new_deck_id: int, remaining_cards: list, ef: flo
 async def clone_public_deck(
     deck_id: int,
     background_tasks: BackgroundTasks,
+    body: Optional[CloneRequest] = None,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -1348,6 +1405,19 @@ async def clone_public_deck(
     db.execute(text("UPDATE flashcard_decks SET clone_count = clone_count + 1 WHERE id = :id"), {"id": deck_id})
     db.commit()
 
+    # Daily new-card limit chosen at copy time (migration 104). Best-effort:
+    # a backend deployed before the migration still clones fine.
+    if body is not None and body.new_per_day is not None:
+        try:
+            with db.begin_nested():
+                db.execute(
+                    text("UPDATE flashcard_decks SET new_per_day = :n WHERE id = :id"),
+                    {"n": body.new_per_day, "id": int(new_deck.id)},
+                )
+            db.commit()
+        except Exception:
+            logger.warning("new_per_day not stored for deck %s (migration 104 applied?)", int(new_deck.id), exc_info=True)
+
     # Creator-side milestone bonus only — cloning never grants XP to the cloner.
     await _check_clone_milestones(db, deck_id)
 
@@ -1357,6 +1427,8 @@ async def clone_public_deck(
     result = _deck_row_simple(new_deck)
     result["card_count"] = len(cards)
     result["already_cloned"] = False
+    if body is not None and body.new_per_day is not None:
+        result["new_per_day"] = body.new_per_day
     return result
 
 
@@ -1576,6 +1648,7 @@ def _deck_row(r) -> dict:
         "is_public":      bool(r.is_public),
         "course_id":      r.course_id,
         "due_count":      int(getattr(r, "due_count", 0) or 0),
+        "new_per_day":    getattr(r, "new_per_day", None),
         "created_at":     r.created_at.isoformat() if r.created_at else None,
         "updated_at":     r.updated_at.isoformat() if r.updated_at else None,
         **_public_fields(r),
@@ -1595,6 +1668,7 @@ def _deck_row_simple(r) -> dict:
         "is_public":      bool(r.is_public),
         "course_id":      r.course_id,
         "due_count":      0,
+        "new_per_day":    getattr(r, "new_per_day", None),
         "created_at":     r.created_at.isoformat() if r.created_at else None,
         "updated_at":     r.updated_at.isoformat() if r.updated_at else None,
         **_public_fields(r),
