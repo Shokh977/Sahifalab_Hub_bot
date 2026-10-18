@@ -47,23 +47,41 @@ from app.services.study_activity import record_study_activity
 from app.services.day_bucket import resolve_day_bucket
 from app.services.badge_service import get_top_badges_map
 from app.services.feature_analytics import tag_source
+from app.services.user_time import local_midnight_utc, user_local_date
 from app.api.v1.endpoints.notifications import send_notification
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-MAX_NEW_PER_SESSION = 10
-# Per-deck daily new-card limit (migration 104, redesign Phase 6). NULL on a
-# deck keeps the old MAX_NEW_PER_SESSION-per-session rule.
+# Per-deck daily new-card limit (migration 104, redesign Phase 6). A deck
+# without one (NULL — every deck copied or made before Phase 6) gets
+# DEFAULT_NEW_PER_DAY per local day (Phase 7.5 A1; it used to be 10 per
+# session with no daily cap, so several sessions meant unlimited new cards).
+DEFAULT_NEW_PER_DAY = 20
 NEW_PER_DAY_MIN = 5
 NEW_PER_DAY_MAX = 100
 
 
 def new_card_allowance(new_per_day: Optional[int], introduced_today: int) -> int:
-    """How many brand-new cards a study session may introduce. Pure."""
-    if new_per_day is None:
-        return MAX_NEW_PER_SESSION
-    return max(0, int(new_per_day) - int(introduced_today))
+    """How many brand-new cards may still be introduced today. Pure."""
+    limit = DEFAULT_NEW_PER_DAY if new_per_day is None else int(new_per_day)
+    return max(0, limit - int(introduced_today))
+
+
+def local_day_bounds(db: Session, user_id: int) -> tuple[datetime, datetime]:
+    """[start, end) of the user's local today as UTC instants, from
+    profiles.timezone (Asia/Tashkent when unset). "Due today" and "introduced
+    today" both use these, so the counts and the study session agree."""
+    tz = None
+    try:
+        with db.begin_nested():
+            tz = db.execute(
+                text("SELECT timezone FROM profiles WHERE telegram_id = :uid"), {"uid": user_id},
+            ).scalar()
+    except Exception:
+        tz = None
+    today = user_local_date(tz)
+    return local_midnight_utc(tz, today - timedelta(days=1)), local_midnight_utc(tz, today)
 
 
 def _deck_new_per_day(db: Session, deck_id: int) -> Optional[int]:
@@ -78,20 +96,77 @@ def _deck_new_per_day(db: Session, deck_id: int) -> Optional[int]:
         return None
 
 
-def introduced_today(db: Session, deck_id: int, user_id: int) -> int:
-    """Cards of this deck whose FIRST review was today (same CURRENT_DATE
-    convention as the XP dedup) — i.e. new cards already introduced today."""
+def introduced_today(db: Session, deck_id: int, user_id: int,
+                     bounds: Optional[tuple[datetime, datetime]] = None) -> int:
+    """Cards of this deck whose FIRST review falls in the user's local today —
+    i.e. new cards already introduced today."""
+    start, end = bounds or local_day_bounds(db, user_id)
     return int(db.execute(
         text("""
             SELECT COUNT(*) FROM (
                 SELECT card_id FROM flashcard_reviews
                 WHERE deck_id = :did AND user_id = :uid AND rating != 99
                 GROUP BY card_id
-                HAVING MIN(reviewed_at)::date = CURRENT_DATE
+                HAVING MIN(reviewed_at) >= :start AND MIN(reviewed_at) < :end
             ) t
         """),
-        {"did": deck_id, "uid": user_id},
+        {"did": deck_id, "uid": user_id, "start": start, "end": end},
     ).scalar() or 0)
+
+
+def deck_queue_counts(db: Session, user_id: int, deck_id: Optional[int] = None) -> dict[int, dict]:
+    """Per deck: reviews due by the end of the user's local today, new cards
+    available, and new cards already introduced today — what the app's
+    review queue (getTodayReviewQueue) is built from. Best-effort: {} on any
+    error, and the app falls back to its older numbers."""
+    try:
+        with db.begin_nested():
+            start, end = local_day_bounds(db, user_id)
+            only = "AND d.id = :did" if deck_id is not None else ""
+            rows = db.execute(
+                text(f"""
+                    SELECT d.id,
+                        COUNT(fc.id) FILTER (
+                            WHERE fc.status NOT IN ('new', 'mastered')
+                              AND (fc.next_review IS NULL OR fc.next_review < :end)
+                        ) AS reviews_due_today,
+                        COUNT(fc.id) FILTER (WHERE fc.status = 'new') AS new_available
+                    FROM flashcard_decks d
+                    LEFT JOIN flashcards fc ON fc.deck_id = d.id
+                    WHERE d.user_id = :uid {only}
+                    GROUP BY d.id
+                """),
+                {"uid": user_id, "end": end, "did": deck_id},
+            ).fetchall()
+            # First reviews today, per deck; only cards touched today can qualify.
+            intro = db.execute(
+                text("""
+                    SELECT deck_id, COUNT(*) AS n FROM (
+                        SELECT deck_id, card_id FROM flashcard_reviews
+                        WHERE user_id = :uid AND rating != 99
+                          AND card_id IN (
+                              SELECT card_id FROM flashcard_reviews
+                              WHERE user_id = :uid AND reviewed_at >= :start AND reviewed_at < :end
+                          )
+                        GROUP BY deck_id, card_id
+                        HAVING MIN(reviewed_at) >= :start AND MIN(reviewed_at) < :end
+                    ) t
+                    GROUP BY deck_id
+                """),
+                {"uid": user_id, "start": start, "end": end},
+            ).fetchall()
+        introduced = {int(r.deck_id): int(r.n) for r in intro if r.deck_id is not None}
+        return {
+            int(r.id): {
+                "reviews_due_today": int(r.reviews_due_today or 0),
+                "new_available":     int(r.new_available or 0),
+                "introduced_today":  introduced.get(int(r.id), 0),
+            }
+            for r in rows
+        }
+    except Exception:
+        logger.warning("deck_queue_counts failed for user %s", user_id, exc_info=True)
+        return {}
 
 XP_MASTERY_DECK = 50  # 100% deck mastery (all cards ever mastered)
 
@@ -480,7 +555,8 @@ def list_decks(
         {"uid": caller_id, "now": now},
     ).fetchall()
 
-    return [_deck_row(r) for r in rows]
+    counts = deck_queue_counts(db, caller_id)
+    return [{**_deck_row(r), **counts.get(int(r.id), {})} for r in rows]
 
 
 @router.post("/decks", status_code=201)
@@ -527,7 +603,7 @@ def get_deck(
         """),
         {"id": deck_id, "uid": caller_id, "now": now},
     ).fetchone()
-    return _deck_row(row)
+    return {**_deck_row(row), **deck_queue_counts(db, caller_id, deck_id).get(int(row.id), {})}
 
 
 @router.patch("/decks/{deck_id}")
@@ -683,24 +759,25 @@ def get_study_session(
         all_cards = [_card_row(r) for r in rows]
         return {"cards": all_cards, "total": len(all_cards), "due_count": 0, "new_count": 0}
 
-    # Normal mode: failed/due cards first, then new cards (max 10)
+    # Normal mode: reviews due by the end of the user's local today (the same
+    # cut-off the deck list counts), then today's new cards.
+    bounds = local_day_bounds(db, caller_id)
+    day_end = bounds[1]
     due = db.execute(
         text("""
             SELECT * FROM flashcards
             WHERE deck_id = :did AND status != 'new'
-              AND (next_review IS NULL OR next_review <= :now)
+              AND (next_review IS NULL OR next_review < :day_end)
               AND status != 'mastered'
             ORDER BY next_review ASC NULLS FIRST
         """),
-        {"did": deck_id, "now": now},
+        {"did": deck_id, "day_end": day_end},
     ).fetchall()
 
-    # New cards: the deck's daily limit minus those already introduced today
-    # (decks without a limit keep MAX_NEW_PER_SESSION per session).
+    # New cards: the deck's daily limit (DEFAULT_NEW_PER_DAY when unset)
+    # minus those already introduced today.
     new_per_day = _deck_new_per_day(db, deck_id)
-    allowance = new_card_allowance(
-        new_per_day, introduced_today(db, deck_id, caller_id) if new_per_day is not None else 0,
-    )
+    allowance = new_card_allowance(new_per_day, introduced_today(db, deck_id, caller_id, bounds))
     new_cards = db.execute(
         text("""
             SELECT * FROM flashcards
@@ -713,14 +790,7 @@ def get_study_session(
 
     all_cards = [_card_row(r) for r in due] + [_card_row(r) for r in new_cards]
 
-    total_due = db.execute(
-        text("""
-            SELECT COUNT(*) FROM flashcards
-            WHERE deck_id = :did AND status != 'new' AND status != 'mastered'
-              AND (next_review IS NULL OR next_review <= :now)
-        """),
-        {"did": deck_id, "now": now},
-    ).scalar() or 0
+    total_due = len(due)
 
     return {
         "cards":     all_cards,
@@ -729,7 +799,7 @@ def get_study_session(
         "new_count": len(new_cards),
         "new_per_day": new_per_day,
         # New cards still allowed today after this session's batch.
-        "new_left_today": max(0, allowance - len(new_cards)) if new_per_day is not None else None,
+        "new_left_today": max(0, allowance - len(new_cards)),
     }
 
 
@@ -1282,7 +1352,7 @@ def _clone_already_response(db: Session, clone_deck_id: int) -> dict:
     return result
 
 
-# A study session only ever pulls MAX_NEW_PER_SESSION (10) cards at a time, so a
+# A study session pulls at most DEFAULT_NEW_PER_DAY (20) new cards a day by default, so a
 # freshly-cloned deck only needs this many rows present before the user can start
 # practicing. Decks at or under this size clone fully inline; larger decks get this
 # many cards inserted synchronously and the remainder finishes in the background so

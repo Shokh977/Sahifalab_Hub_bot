@@ -112,6 +112,19 @@ CREATE TABLE flashcard_decks (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Minimal flashcards (real table: created in main.py's startup block) — only
+-- the columns the review-queue counts read (Phase 7.5 A1).
+CREATE TABLE flashcards (
+    id          BIGSERIAL PRIMARY KEY,
+    deck_id     BIGINT NOT NULL,
+    front_text  TEXT NOT NULL DEFAULT '',
+    back_text   TEXT NOT NULL DEFAULT '',
+    position    INTEGER NOT NULL DEFAULT 0,
+    next_review TIMESTAMPTZ,
+    status      VARCHAR(20) NOT NULL DEFAULT 'new',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE TABLE course_enrollments (
     id          BIGSERIAL PRIMARY KEY,
     course_id   INTEGER NOT NULL,
