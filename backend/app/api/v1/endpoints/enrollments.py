@@ -8,6 +8,7 @@ Routes (Bearer JWT required):
   GET    /api/enrollments/mine                      — list caller's active enrollments
   POST   /api/enrollments/request-code              — generate/return payment reference code for paid course
   GET    /api/enrollments/pending-status?course_id= — check if caller has a pending payment request
+  GET    /api/enrollments/pending-mine              — caller's active payment requests (all courses)
 """
 from fastapi import APIRouter, Depends, HTTPException, Header, Query
 from pydantic import BaseModel
@@ -334,6 +335,47 @@ async def pending_enrollment_status(course_id: int = Query(...), authorization: 
         "status":          row["status"],
         "expires_at":      row["expires_at"],
     }
+
+
+@router.get("/pending-mine")
+async def my_pending_enrollments(authorization: Optional[str] = Header(None)):
+    """Caller's active payment requests across all courses (read-only).
+
+    Lets the app mark pending courses in lists without one pending-status
+    call per course. Same filter as pending-status: awaiting_payment or paid,
+    not yet expired.
+    """
+    caller_id = await _resolve_caller(authorization)
+    _ensure_supabase()
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={
+                "user_id":    f"eq.{caller_id}",
+                "status":     "in.(awaiting_payment,paid)",
+                "expires_at": f"gt.{now_iso}",
+                "select":     "course_id,reference_code,status,expires_at",
+                "order":      "created_at.desc",
+            },
+            headers=_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    seen: set[int] = set()
+    out = []
+    for row in rows if isinstance(rows, list) else []:
+        cid = row.get("course_id")
+        if cid is None or cid in seen:
+            continue  # newest row per course
+        seen.add(cid)
+        out.append({
+            "course_id":      cid,
+            "reference_code": row.get("reference_code"),
+            "status":         row.get("status"),
+            "expires_at":     row.get("expires_at"),
+        })
+    return out
 
 
 @router.get("/mine")

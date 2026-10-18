@@ -452,7 +452,8 @@ def _expo_screen_data(notif_type: str, meta: dict) -> dict:
     if notif_type in ("follow", "connection_request", "connection_accepted") and meta.get("actor_id"):
         return {"screen": "profile", "actor_id": meta["actor_id"]}
     if notif_type in ("course_complete", "course_granted") and meta.get("course_id"):
-        return {"screen": "course", "course_id": meta["course_id"]}
+        # type: the app counts course_granted as purchase_approved.
+        return {"screen": "course", "course_id": meta["course_id"], "type": notif_type}
     if notif_type == "certificate" and meta.get("code"):
         return {"screen": "certificate", "code": meta["code"]}
     if notif_type == "quiz_pass" and meta.get("test_id"):
