@@ -108,6 +108,16 @@ def get_today_status(db: Session = Depends(get_db), caller_id: int = Depends(_re
     except Exception:
         logger.warning("daily_quiz players_summary failed for quiz_id=%s", quiz.id, exc_info=True)
         players = {"players_count": None, "friends_played": None}
+    # Your place once you've submitted (Bugun's "#10-oʻrin bugun"); same
+    # ranking as the results screen. Best-effort like the counts above.
+    my_rank = None
+    if status["state"] == "submitted":
+        try:
+            with db.begin_nested():
+                res = svc.results_and_percentile(db, quiz.id, caller_id)
+            my_rank = res["caller"]["rank"] if res and res["caller"] else None
+        except Exception:
+            logger.warning("daily_quiz my_rank failed for quiz_id=%s", quiz.id, exc_info=True)
     return {
         "quiz": {
             "id": quiz.id,
@@ -120,6 +130,7 @@ def get_today_status(db: Session = Depends(get_db), caller_id: int = Depends(_re
             # them the caller follows — Bellashuv's "35 kishi oʻynadi".
             "players_count": players["players_count"],
             "friends_played": players["friends_played"],
+            "my_rank": int(my_rank) if my_rank is not None else None,
             "seconds_remaining": max(0, int((close_at - datetime.now(UTC)).total_seconds())),
         },
     }
