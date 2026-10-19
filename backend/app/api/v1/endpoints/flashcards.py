@@ -62,10 +62,18 @@ NEW_PER_DAY_MIN = 5
 NEW_PER_DAY_MAX = 100
 
 
-def new_card_allowance(new_per_day: Optional[int], introduced_today: int) -> int:
-    """How many brand-new cards may still be introduced today. Pure."""
+# "Yana 20 ta yangi karta": a study session may ask for up to this many new
+# cards beyond today's limit (Phase 7.5). Stateless: the extra cards count
+# as introduced today, so the next normal session is back at the limit.
+EXTRA_NEW_MAX = 50
+
+
+def new_card_allowance(new_per_day: Optional[int], introduced_today: int, extra_new: int = 0) -> int:
+    """How many brand-new cards this session may introduce: what's left of
+    today's limit, plus `extra_new` asked for on top of it. Pure."""
     limit = DEFAULT_NEW_PER_DAY if new_per_day is None else int(new_per_day)
-    return max(0, limit - int(introduced_today))
+    extra = max(0, min(EXTRA_NEW_MAX, int(extra_new)))
+    return max(0, limit - int(introduced_today)) + extra
 
 
 def local_day_bounds(db: Session, user_id: int) -> tuple[datetime, datetime]:
@@ -733,6 +741,7 @@ def delete_card(
 def get_study_session(
     deck_id: int,
     practice: bool = Query(False, description="Return all cards regardless of due date"),
+    extra_new: int = Query(0, ge=0, le=EXTRA_NEW_MAX, description="New cards beyond today's limit (\"Yana 20 ta yangi karta\")"),
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
@@ -777,7 +786,7 @@ def get_study_session(
     # New cards: the deck's daily limit (DEFAULT_NEW_PER_DAY when unset)
     # minus those already introduced today.
     new_per_day = _deck_new_per_day(db, deck_id)
-    allowance = new_card_allowance(new_per_day, introduced_today(db, deck_id, caller_id, bounds))
+    allowance = new_card_allowance(new_per_day, introduced_today(db, deck_id, caller_id, bounds), extra_new)
     new_cards = db.execute(
         text("""
             SELECT * FROM flashcards
@@ -1052,6 +1061,7 @@ def get_stats(
     caller_id: int = Depends(_require_token),
 ):
     now = datetime.now(UTC)
+    day_start, day_end = local_day_bounds(db, caller_id)
     row = db.execute(
         text("""
             SELECT
@@ -1068,13 +1078,13 @@ def get_stats(
                 COALESCE((
                     SELECT COUNT(*) FROM flashcard_reviews r2
                     WHERE r2.user_id = :uid
-                      AND DATE(r2.reviewed_at) = CURRENT_DATE
+                      AND r2.reviewed_at >= :day_start AND r2.reviewed_at < :day_end
                       AND r2.rating != 99
                 ), 0) AS today_reviewed
             FROM flashcard_decks d
             WHERE d.user_id = :uid
         """),
-        {"uid": caller_id, "now": now},
+        {"uid": caller_id, "now": now, "day_start": day_start, "day_end": day_end},
     ).fetchone()
 
     return {
