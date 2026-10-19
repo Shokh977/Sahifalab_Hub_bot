@@ -10,6 +10,13 @@ GET /api/leaderboard/weekly?scope=global|friends&period=week|month|all
 Each entry includes:
   score   — XP earned in the period
   minutes — focus session minutes in the period
+
+Also (redesign Phase 7.5 C4, additive):
+  total     — how many people have XP in the period (global) / are in the
+              friends pool — Bugun's "186 kishi bu hafta"
+  around_me — for week/month global, when the caller is outside the returned
+              list: the rows at their rank −1, their own, and +1 (same shape
+              as entries), so Bugun's rival ladder works for everyone
 """
 
 from typing import Optional
@@ -213,6 +220,9 @@ def weekly_leaderboard(
             "top_badge":    top_badge_map.get(r.telegram_id),
         })
 
+    total = _total(db, scope, period, caller_id)
+    around_me: list = []
+
     # Caller rank when outside the top list
     if my_rank is None and scope == "global":
         if period == "all":
@@ -246,5 +256,76 @@ def weekly_leaderboard(
             ).fetchone()
         if rank_row:
             my_rank = int(rank_row.rank)
+        if period != "all":
+            around_me = _around_me(db, period, caller_id)
 
-    return {"entries": entries, "my_rank": my_rank}
+    return {"entries": entries, "my_rank": my_rank, "total": total, "around_me": around_me}
+
+
+def _total(db: Session, scope: str, period: str, caller_id: int) -> Optional[int]:
+    """People on the board for this period. Best-effort: None on any error."""
+    try:
+        with db.begin_nested():
+            if scope == "friends":
+                return int(db.execute(text("""
+                    SELECT COUNT(*) FROM (
+                        SELECT following_id FROM follows WHERE follower_id = :uid
+                        UNION SELECT :uid
+                    ) pool
+                """), {"uid": caller_id}).scalar() or 0)
+            if period == "all":
+                return int(db.execute(text(
+                    "SELECT COUNT(*) FROM profiles WHERE COALESCE(total_xp, 0) > 0"
+                )).scalar() or 0)
+            since = _since(period)
+            return int(db.execute(text(f"""
+                SELECT COUNT(DISTINCT user_id) FROM xp_logs WHERE created_at >= {since}
+            """)).scalar() or 0)
+    except Exception:
+        return None
+
+
+def _around_me(db: Session, period: str, caller_id: int) -> list:
+    """The caller's row and the rows ranked just above and below (global)."""
+    since = _since(period)
+    try:
+        with db.begin_nested():
+            rows = db.execute(text(f"""
+                WITH xp_period AS (
+                    SELECT user_id, SUM(amount) AS score
+                    FROM   xp_logs
+                    WHERE  created_at >= {since}
+                    GROUP  BY user_id
+                ),
+                ranked AS (
+                    SELECT x.user_id, x.score,
+                           RANK() OVER (ORDER BY x.score DESC) AS rank,
+                           ROW_NUMBER() OVER (ORDER BY x.score DESC, x.user_id) AS pos
+                    FROM xp_period x
+                ),
+                me AS (SELECT pos FROM ranked WHERE user_id = :uid)
+                SELECT r.user_id, r.score, r.rank,
+                       p.first_name, p.site_username AS username, p.photo_url, p.level,
+                       COALESCE(p.account_type, 'student') AS account_type,
+                       COALESCE((SELECT SUM(minutes) FROM focus_sessions f
+                                 WHERE f.user_id = r.user_id AND f.created_at >= {since}), 0) AS minutes
+                FROM ranked r
+                JOIN me ON r.pos BETWEEN me.pos - 1 AND me.pos + 1
+                JOIN profiles p ON p.telegram_id = r.user_id
+                ORDER BY r.pos
+            """), {"uid": caller_id}).fetchall()
+    except Exception:
+        return []
+    return [{
+        "rank":         int(r.rank),
+        "telegram_id":  r.user_id,
+        "first_name":   r.first_name or "",
+        "username":     r.username or "",
+        "photo_url":    r.photo_url,
+        "level":        int(r.level or 1),
+        "score":        int(r.score),
+        "minutes":      int(r.minutes),
+        "account_type": r.account_type or "student",
+        "is_me":        r.user_id == caller_id,
+        "top_badge":    None,
+    } for r in rows]

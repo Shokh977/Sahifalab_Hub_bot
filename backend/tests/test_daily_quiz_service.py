@@ -789,3 +789,29 @@ def test_report_question_is_idempotent_per_user_and_auto_voids_at_threshold(db_s
         db_session.execute(text("DELETE FROM daily_quiz_reports WHERE user_id = ANY(:uids)"), {"uids": extra_reporters})
         db_session.execute(text("DELETE FROM profiles WHERE telegram_id = ANY(:uids)"), {"uids": extra_reporters})
         db_session.commit()
+
+
+def test_status_carries_my_rank_once_submitted(db_session):
+    # Bugun's 5 Savol tile: "#{rank}-oʻrin bugun" (redesign Phase 7.5 C3).
+    from app.api.v1.endpoints.daily_quiz import get_today_status
+    from app.services.daily_quiz_service import deliver_today, score_and_submit
+
+    _seed_users(db_session)
+    quiz_id = _seed_quiz(db_session, datetime.now(UTC).date(), quiz_number=900040)
+    qs = db_session.execute(
+        text("SELECT id, correct_index FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position"), {"qid": quiz_id},
+    ).fetchall()
+
+    assert get_today_status(db=db_session, caller_id=TEST_USER_A)["quiz"]["my_rank"] is None   # not played
+
+    # B answers everything right; A gets one wrong → B #1, A #2.
+    deliver_today(db_session, TEST_USER_B, quiz_id)
+    score_and_submit(db_session, TEST_USER_B, quiz_id, [{"question_id": q.id, "selected_index": q.correct_index} for q in qs])
+    deliver_today(db_session, TEST_USER_A, quiz_id)
+    score_and_submit(db_session, TEST_USER_A, quiz_id, [
+        {"question_id": q.id, "selected_index": (q.correct_index + 1) % 4 if i == 0 else q.correct_index}
+        for i, q in enumerate(qs)
+    ])
+
+    assert get_today_status(db=db_session, caller_id=TEST_USER_B)["quiz"]["my_rank"] == 1
+    assert get_today_status(db=db_session, caller_id=TEST_USER_A)["quiz"]["my_rank"] == 2
