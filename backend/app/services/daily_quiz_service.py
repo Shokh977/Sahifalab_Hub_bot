@@ -448,6 +448,7 @@ async def _generate_full_day(
     db: Session, category: dict, sub_topic: str,
     blocked_tags: Optional[set[str]] = None, recent_tags: Optional[list[str]] = None,
     seed_pool: Optional[list[dict]] = None,
+    pool_sink: Optional[list[dict]] = None,
 ) -> tuple[list[dict], list[str], int, int]:
     """
     Generate (or top up) one day's worth of verified candidates. The old
@@ -471,10 +472,18 @@ async def _generate_full_day(
     the last CONCEPT_BLOCK_DAYS) or already in the pool are dropped before
     verification, so they cost no verifier calls and don't count as
     generated.
+
+    pool_sink, when given, receives the whole candidate pool at the end — the
+    caller keeps the verified-but-unselected ones in daily_quiz_question_pool
+    instead of throwing them away.
     """
     pool: list[dict] = list(seed_pool or [])
+    if pool_sink is not None:
+        pool_sink.clear()
     selected, warnings = select_five(pool)
     if len(selected) >= QUESTIONS_PER_QUIZ:
+        if pool_sink is not None:
+            pool_sink.extend(pool)
         return selected, [], len(pool), sum(1 for c in pool if c.get("verified"))
 
     blocked = set(blocked_tags or ())
@@ -498,13 +507,79 @@ async def _generate_full_day(
 
         selected, warnings = select_five(pool)
         if len(selected) >= QUESTIONS_PER_QUIZ:
+            if pool_sink is not None:
+                pool_sink.extend(pool)
             return selected, [], len(pool), sum(1 for c in pool if c.get("verified"))
         if round_num < MAX_GENERATION_ROUNDS:
             logger.warning(
                 "daily_quiz category=%s generation round %d/%d short: %d/%d verified so far — retrying",
                 category["key"], round_num, MAX_GENERATION_ROUNDS, len(selected), QUESTIONS_PER_QUIZ,
             )
+    if pool_sink is not None:
+        pool_sink.extend(pool)
     return selected, warnings, len(pool), sum(1 for c in pool if c.get("verified"))
+
+
+POOL_SEEDS_PER_DAY = 10
+
+
+def _pool_seeds(db: Session, theme: str, blocked_tags: set[str]) -> list[dict]:
+    """Verified AI questions waiting in daily_quiz_question_pool (displaced
+    by a user question's swap, or a previous day's unselected leftovers) for
+    this category — reused before any new generation call, never with a
+    concept used in the block window."""
+    rows = db.execute(
+        text("""
+            SELECT id, question_text, options, correct_index, explanation, source, difficulty,
+                   verify_model_answer, curated_fact_id, concept_tag
+            FROM daily_quiz_question_pool
+            WHERE status = 'available' AND theme = :theme
+            ORDER BY created_at
+            LIMIT :n
+        """),
+        {"theme": theme, "n": POOL_SEEDS_PER_DAY * 3},
+    ).fetchall()
+    seeds, tags = [], set()
+    for r in rows:
+        if r.concept_tag and (r.concept_tag in blocked_tags or r.concept_tag in tags):
+            continue
+        tags.add(r.concept_tag)
+        seeds.append({
+            "question_text": r.question_text, "options": list(r.options), "correct_index": r.correct_index,
+            "explanation": r.explanation, "source": r.source, "difficulty": r.difficulty,
+            "verified": True, "verify_model_answer": r.verify_model_answer,
+            "curated_fact_id": r.curated_fact_id, "concept_tag": r.concept_tag, "pool_id": int(r.id),
+        })
+        if len(seeds) >= POOL_SEEDS_PER_DAY:
+            break
+    return seeds
+
+
+def _save_leftovers(db: Session, theme: str, quiz_id: int, pool: list[dict], selected: list[dict]) -> int:
+    """Verified candidates that weren't picked go to the pool (not ones that
+    came from it, not user questions) — material for a later day, for an
+    unswap, and for the admin's one-tap rebalance."""
+    chosen = {id(c) for c in selected}
+    saved = 0
+    for c in pool:
+        if id(c) in chosen or not c.get("verified") or c.get("pool_id") or c.get("submission_id"):
+            continue
+        db.execute(
+            text("""
+                INSERT INTO daily_quiz_question_pool
+                    (theme, question_text, options, correct_index, explanation, source, difficulty,
+                     verify_model_answer, curated_fact_id, concept_tag, reason, origin_quiz_id)
+                VALUES (:theme, :q, CAST(:opts AS jsonb), :ci, :expl, :src, :diff, :vma, :fact, :tag, 'leftover', :qid)
+            """),
+            {
+                "theme": theme, "q": c["question_text"], "opts": json.dumps(c["options"]), "ci": c["correct_index"],
+                "expl": c["explanation"], "src": c["source"], "diff": c["difficulty"],
+                "vma": c.get("verify_model_answer"), "fact": c.get("curated_fact_id"), "tag": c.get("concept_tag"),
+                "qid": quiz_id,
+            },
+        )
+        saved += 1
+    return saved
 
 
 async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> dict:
@@ -559,35 +634,44 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
             db, publish_date, category, int(existing.id) if existing else None,
         )
 
+        full_pool: list[dict] = []
         if existing:
             quiz_id = int(existing.id)
             quiz_number = int(existing.quiz_number)
             prior_rows = db.execute(
                 text("""
                     SELECT question_text, options, correct_index, explanation, source,
-                           difficulty, verify_model_answer, curated_fact_id, concept_tag
+                           difficulty, verify_model_answer, curated_fact_id, concept_tag,
+                           origin, submission_id
                     FROM daily_quiz_questions WHERE quiz_id = :qid
                 """),
                 {"qid": quiz_id},
             ).fetchall()
+            # A user question an admin swapped into this (later short) day
+            # rides along as a seed with its origin/submission link intact;
+            # reconcile_quiz below re-links or releases it.
             seed_pool = [
                 {
                     "question_text": r.question_text, "options": list(r.options), "correct_index": r.correct_index,
                     "explanation": r.explanation, "source": r.source, "difficulty": r.difficulty,
                     "verified": True, "verify_model_answer": r.verify_model_answer,
                     "curated_fact_id": r.curated_fact_id, "concept_tag": r.concept_tag,
+                    "origin": r.origin, "submission_id": r.submission_id,
                 }
                 for r in prior_rows
             ]
             seed_fact_ids = {r.curated_fact_id for r in prior_rows if r.curated_fact_id}
+            seed_tags = {s["concept_tag"] for s in seed_pool if s["concept_tag"]}
+            seed_pool += _pool_seeds(db, category["key"], blocked_tags | seed_tags)
             selected, warnings, gen_count, ver_count = await _generate_full_day(
-                db, category, sub_topic, blocked_tags, recent_tags, seed_pool=seed_pool,
+                db, category, sub_topic, blocked_tags, recent_tags, seed_pool=seed_pool, pool_sink=full_pool,
             )
             db.execute(text("DELETE FROM daily_quiz_questions WHERE quiz_id = :qid"), {"qid": quiz_id})
         else:
             seed_fact_ids = set()
             selected, warnings, gen_count, ver_count = await _generate_full_day(
                 db, category, sub_topic, blocked_tags, recent_tags,
+                seed_pool=_pool_seeds(db, category["key"], blocked_tags), pool_sink=full_pool,
             )
             quiz_number = _next_quiz_number(db)
             quiz_row = db.execute(
@@ -621,10 +705,10 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                     INSERT INTO daily_quiz_questions
                         (quiz_id, position, question_text, options, correct_index,
                          explanation, source, difficulty, verified, verify_model_answer,
-                         curated_fact_id, concept_tag)
+                         curated_fact_id, concept_tag, origin, submission_id)
                     VALUES
                         (:qid, :pos, :qtext, CAST(:opts AS jsonb), :cidx,
-                         :expl, :src, :diff, :verified, :vma, :fact_id, :tag)
+                         :expl, :src, :diff, :verified, :vma, :fact_id, :tag, :origin, :sid)
                 """),
                 {
                     "qid": quiz_id, "pos": position, "qtext": q["question_text"],
@@ -632,8 +716,19 @@ async def generate_week(db: Session, start_date: date, days_ahead: int = 7) -> d
                     "expl": q["explanation"], "src": q["source"], "diff": q["difficulty"],
                     "verified": True, "vma": q.get("verify_model_answer"),
                     "fact_id": q.get("curated_fact_id"), "tag": q.get("concept_tag"),
+                    "origin": q.get("origin") or "ai", "sid": q.get("submission_id"),
                 },
             )
+
+        used_pool_ids = [q["pool_id"] for q in selected if q.get("pool_id")]
+        if used_pool_ids:
+            db.execute(
+                text("UPDATE daily_quiz_question_pool SET status = 'used', used_quiz_id = :qid, used_at = NOW() WHERE id = ANY(:ids)"),
+                {"qid": quiz_id, "ids": used_pool_ids},
+            )
+        _save_leftovers(db, theme_key, quiz_id, full_pool, selected)
+        from app.services.question_submission_service import reconcile_quiz
+        reconcile_quiz(db, quiz_id)
 
         # Only bump usage on facts NEWLY consumed this run — a fact already
         # in the seed pool (from a prior top-up run) was already marked used
@@ -1405,7 +1500,19 @@ async def _publish_quiz(db: Session, quiz_id: int, quiz_number: int) -> dict:
     } for r in rows if r.user_settings and r.user_settings.get("expo_push_token")]
 
     sent, failed = await _push_batch(messages)
-    return {"sent": sent, "failed": failed}
+
+    # User-sourced questions in this quiz ("Siz ham savol yuboring"): mark
+    # them published, pay the submitters, push them. After the quiz itself
+    # is committed live — a failure here can never un-publish the quiz; the
+    # cron sweep (question-submissions-sweep) finishes whatever didn't run.
+    try:
+        from app.services import question_submission_service
+        contributors = await question_submission_service.on_quiz_published(db, quiz_id)
+    except Exception:
+        db.rollback()
+        logger.error("daily_quiz %s: user-question publication step failed — the sweep will retry", quiz_id, exc_info=True)
+        contributors = {"error": True}
+    return {"sent": sent, "failed": failed, "contributors": contributors}
 
 
 async def publish_if_ready_today(db: Session, quiz_id: int) -> bool:
@@ -1502,7 +1609,8 @@ async def rollover(db: Session, today: date) -> dict:
     push_result = await _publish_quiz(db, quiz.id, quiz.quiz_number)
     sent, failed = push_result["sent"], push_result["failed"]
     logger.info("daily_quiz rollover: published quiz_number=%s sent=%d failed=%d", quiz.quiz_number, sent, failed)
-    return {"published": True, "quiz_number": quiz.quiz_number, "sent": sent, "failed": failed}
+    return {"published": True, "quiz_number": quiz.quiz_number, "sent": sent, "failed": failed,
+            "contributors": push_result.get("contributors")}
 
 
 async def send_reminder_push(db: Session, today: date) -> dict:

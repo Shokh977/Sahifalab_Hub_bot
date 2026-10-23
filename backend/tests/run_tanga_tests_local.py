@@ -51,7 +51,11 @@ def main() -> int:
             MIGRATIONS_DIR / "093_server_derived_day_bucket.sql",
             MIGRATIONS_DIR / "094_daily_quiz_auto_publish.sql",
             MIGRATIONS_DIR / "095_donation_payment_methods.sql",
+            MIGRATIONS_DIR / "096_daily_quiz_verification_upgrade.sql",
+            MIGRATIONS_DIR / "101_daily_quiz_variety.sql",
+            MIGRATIONS_DIR / "098_weekly_progress_cache.sql",
             MIGRATIONS_DIR / "103_daily_quiz_active_ms.sql",
+            MIGRATIONS_DIR / "105_question_submissions.sql",
         ]:
             print(f"[run_tanga_tests_local] applying {sql_file.name}")
             sql = sql_file.read_text(encoding="utf-8")
@@ -68,6 +72,7 @@ def main() -> int:
             "tests/test_price_config_guard.py",
             "tests/test_freeze_endpoint_idempotency.py",
             "tests/test_daily_quiz_service.py",
+            "tests/test_question_submissions.py",
             "tests/test_tanga_economy_rework.py",
             "tests/test_day_bucket_resolution.py",
             "tests/test_focus_endpoints.py",

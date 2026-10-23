@@ -42,6 +42,11 @@ MINI_APP_URL = os.getenv("MINI_APP_URL", "https://sahifalab-hub-bot.vercel.app")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://sahifalab-hub-bot-hsgt.vercel.app")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
+# "Siz ham savol yuboring" admin commands call the backend's admin API with
+# the shared service key (backend: PAYMENT_BOT_SECRET, "Authorization: Bot ...")
+# and name the acting admin in X-Acting-Admin for the swap audit log.
+BACKEND_API_URL = os.getenv("BACKEND_API_URL", API_BASE_URL).rstrip("/")
+BACKEND_BOT_SECRET = os.getenv("BACKEND_BOT_SECRET", "")
 SUPABASE_SERVICE_ROLE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
 
 AUTO_MOTIVATE_ENABLED = os.getenv("AUTO_MOTIVATE_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -1131,6 +1136,11 @@ class TelegramBotHandler:
             "/questions [pending|answered|all] — Savollar ro'yxati\n"
             "/answer <id> <matn> — Savolga javob berish\n"
             "(Yoki savol xabariga to'g'ridan-to'g'ri reply qiling)\n\n"
+            "🧩 5 SAVOL — foydalanuvchi savollari:\n"
+            "/listsubmissions [approved] — Navbat (diqqat talab qilganlari birinchi)\n"
+            "/approvesubmission <id> — Tasdiqlash\n"
+            "/rejectsubmission <id> [sabab] — Rad etish (foydalanuvchiga xabar borilmaydi)\n"
+            "/swapquestion <sana YYYY-MM-DD> <o'rin 1-5> <id> — Kelgusi kunga qo'yish\n\n"
             "Maslahat: /stats buyrug'ini muntazam tekshirib turing."
         )
 
@@ -1332,6 +1342,130 @@ class TelegramBotHandler:
             lines.append(f"{icon} #{q['id']} [{q.get('user_name') or '?'}]\n{q_text}")
         await update.message.reply_text("\n\n".join(lines))
 
+    # ── 5 SAVOL: user-submitted questions (admin only) ─────────────────
+    async def _admin_api(self, method: str, path: str, acting_admin: int, payload: dict | None = None) -> tuple[int, Any]:
+        """Calls the backend admin API as the bot. Returns (status, json)."""
+        if not BACKEND_BOT_SECRET:
+            return 0, {"message": "BACKEND_BOT_SECRET sozlanmagan"}
+        headers = {"Authorization": f"Bot {BACKEND_BOT_SECRET}", "X-Acting-Admin": str(acting_admin)}
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                res = await client.request(method, f"{BACKEND_API_URL}/api{path}", headers=headers, json=payload)
+            try:
+                data = res.json()
+            except ValueError:
+                data = {"message": res.text[:300]}
+            return res.status_code, data
+        except Exception as e:
+            logger.error(f"Admin API {method} {path} failed: {e}")
+            return 0, {"message": str(e)}
+
+    @staticmethod
+    def _api_error(data: Any) -> str:
+        detail = data.get("detail", data) if isinstance(data, dict) else data
+        if isinstance(detail, dict):
+            return detail.get("message") or str(detail)
+        return str(detail)
+
+    _FLAG_LABELS = {
+        "cold_disagree": "❗ AI boshqa javobni tanladi",
+        "review_error": "⚠️ AI tekshira olmadi",
+        "marked_wrong": "❗ AI fikricha belgilangan javob noto'g'ri",
+        "options_overlap": "variantlar ustma-ust",
+        "also_correct": "boshqa variant ham to'g'ri bo'lishi mumkin",
+        "absurd_options": "bema'ni variant",
+        "term_question": "atama savoli",
+        "date_or_statistic": "sana/statistika",
+        "myth": "afsona",
+        "orthography": "imlo",
+        "duplicate": "takror",
+    }
+
+    async def listsubmissions_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+        status = "approved" if context.args and context.args[0].lower().startswith("appr") else "pending_review"
+        code, data = await self._admin_api("GET", f"/admin/question-submissions?status={status}&limit=10", user_id)
+        if code != 200:
+            await update.message.reply_text(f"❌ {self._api_error(data)}")
+            return
+        items = data.get("items") or []
+        if not items:
+            await update.message.reply_text("ℹ️ Navbat bo'sh.")
+            return
+        conf = {"high": "🟢 yuqori", "medium": "🟡 o'rta", "low": "🟠 past", "unverifiable": "⚪ tekshirib bo'lmaydi"}
+        lines = [f"🧩 {'Tasdiqlangan' if status == 'approved' else 'Navbatdagi'} savollar ({len(items)}):"]
+        for it in items:
+            opts = it["options"]
+            answer = opts[it["correct_index"]] if 0 <= it["correct_index"] < len(opts) else "?"
+            flags = [self._FLAG_LABELS.get(f, f) for f in ((it.get("ai_verdict") or {}).get("flags") or [])]
+            who = "anonim" if it.get("is_anonymous") else (it.get("submitter_name") or "?")
+            lines.append(
+                f"#{it['id']} · {who} · {conf.get(it.get('ai_confidence'), 'tekshirilmoqda')}\n"
+                f"{it['question_text']}\n✅ {answer}"
+                + (f"\n🚩 {', '.join(flags)}" if flags else "")
+            )
+        await update.message.reply_text("\n\n".join(lines))
+
+    async def approvesubmission_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+        if not context.args or not context.args[0].isdigit():
+            await update.message.reply_text("Foydalanish: /approvesubmission <id>")
+            return
+        code, data = await self._admin_api("POST", f"/admin/question-submissions/{context.args[0]}/approve", user_id, {})
+        if code != 200:
+            await update.message.reply_text(f"❌ {self._api_error(data)}")
+            return
+        await update.message.reply_text(f"✅ #{data['id']} tasdiqlandi. Endi: /swapquestion <sana> <o'rin> {data['id']}")
+
+    async def rejectsubmission_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+        if not context.args or not context.args[0].isdigit():
+            await update.message.reply_text("Foydalanish: /rejectsubmission <id> [sabab]")
+            return
+        reason = " ".join(context.args[1:]) or "bot"
+        code, data = await self._admin_api("POST", f"/admin/question-submissions/{context.args[0]}/reject", user_id, {"reason": reason})
+        if code != 200:
+            await update.message.reply_text(f"❌ {self._api_error(data)}")
+            return
+        await update.message.reply_text(f"🗑 #{data['id']} rad etildi (foydalanuvchiga xabar yuborilmaydi).")
+
+    async def swapquestion_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        user_id = update.effective_user.id if update.effective_user else None
+        if not self._is_admin(user_id):
+            await update.message.reply_text("⛔ Bu buyruq faqat adminlar uchun.")
+            return
+        args = context.args or []
+        if len(args) != 3 or not args[1].isdigit() or not args[2].isdigit() or not 1 <= int(args[1]) <= 5:
+            await update.message.reply_text("Foydalanish: /swapquestion <sana YYYY-MM-DD> <o'rin 1-5> <id>")
+            return
+        code, quiz = await self._admin_api("GET", f"/admin/quiz/by-date/{args[0]}", user_id)
+        if code != 200:
+            await update.message.reply_text(f"❌ {self._api_error(quiz)}")
+            return
+        code, data = await self._admin_api(
+            "POST", f"/admin/quiz/{quiz['id']}/swap", user_id,
+            {"position": int(args[1]) - 1, "submission_id": int(args[2])},
+        )
+        if code != 200:
+            await update.message.reply_text(f"❌ {self._api_error(data)}")
+            return
+        msg = (
+            f"🔁 5 SAVOL #{data['quiz_number']} ({data['publish_date']}), {args[1]}-o'rin: #{args[2]} qo'yildi.\n"
+            f"Foydalanuvchi savollari: {data['user_count']}/5"
+        )
+        if data.get("mix_warning"):
+            msg += f"\n⚠️ {data['mix_warning']} — admin panelida Muvozanatlash tugmasi bor."
+        await update.message.reply_text(msg)
+
     # ── Fallback ─────────────────────────────────────────────────────────
     async def handle_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         user = update.effective_user
@@ -1388,6 +1522,10 @@ class TelegramBotHandler:
         self.app.add_handler(CommandHandler("ask", self.ask_command))
         self.app.add_handler(CommandHandler("answer", self.answer_command))
         self.app.add_handler(CommandHandler("questions", self.questions_command))
+        self.app.add_handler(CommandHandler("listsubmissions", self.listsubmissions_command))
+        self.app.add_handler(CommandHandler("approvesubmission", self.approvesubmission_command))
+        self.app.add_handler(CommandHandler("rejectsubmission", self.rejectsubmission_command))
+        self.app.add_handler(CommandHandler("swapquestion", self.swapquestion_command))
         # Text fallback
         self.app.add_handler(
             MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message)

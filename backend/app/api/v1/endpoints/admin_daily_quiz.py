@@ -51,6 +51,7 @@ from app.db.session import get_db
 from app.api.v1.endpoints.admin import verify_admin
 from app.models.admin_models import AdminUser
 from app.services import daily_quiz_service as svc
+from app.services import question_submission_service as qsvc
 from app.services import category_config
 from app.services.config_service import invalidate_config_cache
 
@@ -168,7 +169,14 @@ def _question_dict(q) -> dict:
         # No verify_model_answer means this question never went through the
         # AI cold-check — the natural signal that it was manually authored
         # via POST /{quiz_id}/questions rather than generated.
-        "manually_authored": q.verify_model_answer is None,
+        "manually_authored": q.verify_model_answer is None and q.origin != "user",
+        # "Siz ham savol yuboring": a user-sourced question and who sent it.
+        "origin": q.origin,
+        "submission_id": q.submission_id,
+        "submitter_name": (
+            qsvc.attribution_for(q.submitter_name, q.submitter_anonymous) if q.origin == "user" else None
+        ),
+        "concept_tag": q.concept_tag,
     }
 
 
@@ -203,16 +211,19 @@ def week_overview(
             days.append({
                 "exists": False, "publish_date": d.isoformat(), "status": "missing",
                 "id": None, "quiz_number": None, "theme": None, "notes": None,
-                "question_count": 0, "questions": [],
+                "question_count": 0, "questions": [], "user_count": 0, "editable": False,
                 "candidates_generated": None, "candidates_verified": None, "rejection_rate": None,
             })
             continue
         questions = db.execute(
             text("""
-                SELECT id, position, question_text, options, correct_index,
-                       explanation, source, difficulty, verified, verify_model_answer, voided,
-                       curated_fact_id
-                FROM daily_quiz_questions WHERE quiz_id = :qid ORDER BY position
+                SELECT q.id, q.position, q.question_text, q.options, q.correct_index,
+                       q.explanation, q.source, q.difficulty, q.verified, q.verify_model_answer, q.voided,
+                       q.curated_fact_id, q.concept_tag, q.origin, q.submission_id,
+                       s.attribution_name AS submitter_name, COALESCE(s.is_anonymous, FALSE) AS submitter_anonymous
+                FROM daily_quiz_questions q
+                LEFT JOIN question_submissions s ON s.id = q.submission_id
+                WHERE q.quiz_id = :qid ORDER BY q.position
             """),
             {"qid": row.id},
         ).fetchall()
@@ -223,6 +234,9 @@ def week_overview(
             "publish_date": d.isoformat(), "theme": row.theme, "status": row.status,
             "notes": row.notes, "question_count": sum(1 for q in questions if not q.voided),
             "questions": [_question_dict(q) for q in questions],
+            "user_count": sum(1 for q in questions if q.origin == "user" and not q.voided),
+            # Swap / unswap only on a day whose window hasn't opened yet.
+            "editable": d > today and row.status in qsvc.EDITABLE_QUIZ_STATUSES,
             "candidates_generated": gen_count, "candidates_verified": ver_count,
             "rejection_rate": rejection_rate,
         })
@@ -289,8 +303,9 @@ def reject_quiz(
         raise HTTPException(400, "Cannot reject a quiz that's already live — void individual questions instead")
 
     db.execute(text("UPDATE daily_quizzes SET status = 'voided' WHERE id = :id"), {"id": quiz_id})
+    released = qsvc.release_for_quiz(db, quiz_id)  # its user questions go back to 'approved'
     db.commit()
-    return {"ok": True, "status": "voided"}
+    return {"ok": True, "status": "voided", "released_submissions": released}
 
 
 @router.post("/{quiz_id}/regenerate")
@@ -309,6 +324,7 @@ async def regenerate_quiz(
     if quiz.status in ("approved", "published", "closed"):
         raise HTTPException(400, f"Refusing to regenerate a '{quiz.status}' quiz")
 
+    qsvc.release_for_quiz(db, quiz_id)  # user questions go back to 'approved', not lost
     db.execute(text("DELETE FROM daily_quizzes WHERE id = :id"), {"id": quiz_id})
     db.commit()
     result = await svc.generate_week(db, quiz.publish_date, days_ahead=1)
@@ -390,7 +406,7 @@ def delete_question(
     drops the parent quiz back to 'draft' if that leaves it under 5."""
     q = db.execute(
         text("""
-            SELECT q.id, q.quiz_id, dq.status FROM daily_quiz_questions q
+            SELECT q.id, q.quiz_id, q.submission_id, dq.status FROM daily_quiz_questions q
             JOIN daily_quizzes dq ON dq.id = q.quiz_id
             WHERE q.id = :id
         """),
@@ -402,6 +418,8 @@ def delete_question(
         raise HTTPException(400, "Cannot delete a question from a live quiz — void it instead")
 
     db.execute(text("DELETE FROM daily_quiz_questions WHERE id = :id"), {"id": question_id})
+    if q.submission_id:
+        qsvc.reconcile_quiz(db, q.quiz_id)  # the user question goes back to 'approved'
     remaining = db.execute(
         text("SELECT COUNT(*) FROM daily_quiz_questions WHERE quiz_id = :qid"), {"qid": q.quiz_id},
     ).scalar()

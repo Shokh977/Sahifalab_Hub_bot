@@ -175,6 +175,31 @@ ACHIEVEMENTS = [
         "requirement_text": "Birorta to'plamingiz 100 marta nusxalanishi",
         "required_progress": 100, "metric": "max_deck_clones",
     },
+    # ── 5 Savol contributors (105_question_submissions) ──────────────────────
+    {
+        "id": 32, "key": "question_author_1",
+        "name": "Savol muallifi",
+        "description": "Sizning savolingiz 5 SAVOLDA chiqdi!",
+        "tier": "bronze", "sort_order": 32,
+        "requirement_text": "1 ta savolingiz 5 SAVOLDA chiqishi",
+        "required_progress": 1, "metric": "questions_published",
+    },
+    {
+        "id": 33, "key": "question_author_5",
+        "name": "Savolchi",
+        "description": "5 ta savolingiz 5 SAVOLDA chiqdi!",
+        "tier": "silver", "sort_order": 33,
+        "requirement_text": "5 ta savolingiz 5 SAVOLDA chiqishi",
+        "required_progress": 5, "metric": "questions_published",
+    },
+    {
+        "id": 34, "key": "question_author_20",
+        "name": "Savollar ustasi",
+        "description": "20 ta savolingiz 5 SAVOLDA chiqdi!",
+        "tier": "gold", "sort_order": 34,
+        "requirement_text": "20 ta savolingiz 5 SAVOLDA chiqishi",
+        "required_progress": 20, "metric": "questions_published",
+    },
     # ── Stage milestones (aligned 1:1 with the 10 tree stages) ────────────────
     # Granted in real time by stage_service.py:check_and_award_stages() at the same
     # moment the stage's XP bonus is awarded — the lazy earned>=required check
@@ -320,7 +345,21 @@ def _compute_metrics(db: Session, user_id: int) -> dict:
         ).fetchone()
         max_deck_clones = int(row[0]) if row else 0
 
+    # Own SAVEPOINT: the column comes from migration 105, and badges must keep
+    # working on a database that doesn't have it yet.
+    questions_published = 0
+    try:
+        with db.begin_nested():
+            row = db.execute(
+                text("SELECT COALESCE(questions_published_count, 0) FROM profiles WHERE telegram_id = :uid"),
+                {"uid": user_id},
+            ).fetchone()
+            questions_published = int(row[0]) if row else 0
+    except Exception:
+        questions_published = 0
+
     return {
+        "questions_published": questions_published,
         "total_xp":          total_xp,
         "streak_days":       streak_days,
         "focus_minutes":     focus_minutes,

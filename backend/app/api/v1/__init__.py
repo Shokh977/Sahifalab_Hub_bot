@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1 import auth
-from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, admin_feature_analytics, admin_storage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges, daily_quiz, admin_daily_quiz, admin_curated_facts, rewards, payment_methods, admin_payment_methods
+from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, admin_feature_analytics, admin_storage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges, daily_quiz, admin_daily_quiz, admin_curated_facts, questions, admin_question_submissions, rewards, payment_methods, admin_payment_methods
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
@@ -91,6 +91,9 @@ api_router.include_router(challenges.router, prefix="/challenges", tags=["challe
 api_router.include_router(daily_quiz.router, prefix="/quiz", tags=["daily-quiz"])
 api_router.include_router(admin_daily_quiz.router, prefix="/admin/daily-quiz", tags=["admin"])
 api_router.include_router(admin_curated_facts.router, prefix="/admin/curated-facts", tags=["admin"])
+# "Siz ham savol yuboring" — user-submitted questions (105_question_submissions)
+api_router.include_router(questions.router, prefix="/questions", tags=["questions"])
+api_router.include_router(admin_question_submissions.router, prefix="/admin", tags=["admin"])
 
 # Reward modal queue (tanga-economy-rework Part 5)
 api_router.include_router(rewards.router, prefix="/rewards", tags=["rewards"])
