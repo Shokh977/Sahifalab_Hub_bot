@@ -596,6 +596,7 @@ const AdminPage: React.FC = () => {
   const [chSaving,      setChSaving]      = useState(false)
   const [chError,       setChError]       = useState('')
   const [chImgUploading, setChImgUploading] = useState(false)
+  const [chImgWarn, setChImgWarn] = useState('')
   const [chImgPercent,   setChImgPercent]   = useState(0)
   const [chDetailId,    setChDetailId]    = useState<string | null>(null)
   const [chDetail,      setChDetail]      = useState<AdminChallengeDetail | null>(null)
@@ -1181,6 +1182,26 @@ const AdminPage: React.FC = () => {
       return
     }
     setChError('')
+    // The app shows the cover in a SQUARE frame — say so before a 16:9 image
+    // gets its sides cut off (a warning, not a block).
+    setChImgWarn('')
+    try {
+      const objectUrl = URL.createObjectURL(file)
+      const dims = await new Promise<{ w: number; h: number }>((resolve, reject) => {
+        const img = new window.Image()
+        img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+        img.onerror = reject
+        img.src = objectUrl
+      })
+      URL.revokeObjectURL(objectUrl)
+      if (Math.abs(dims.w / dims.h - 1) > 0.05) {
+        setChImgWarn(`Rasm kvadrat emas (${dims.w}×${dims.h}) — ilovada chetlari kesiladi. 1:1 rasm yuklash tavsiya etiladi.`)
+      } else if (dims.w < 600) {
+        setChImgWarn(`Rasm kichik (${dims.w}×${dims.h}) — kamida 600×600 boʻlsin, aks holda xira koʻrinadi.`)
+      }
+    } catch {
+      // Dimensions unreadable — upload anyway, the server validates the file.
+    }
     setChImgUploading(true)
     setChImgPercent(0)
     const apiBase = API_BASE.replace(/\/api\/?$/, '')
@@ -4220,15 +4241,19 @@ const AdminPage: React.FC = () => {
                 <div className="space-y-2">
                   <label className="text-xs text-gray-500 dark:text-gray-400">Muqova rasmi (ixtiyoriy)</label>
                   <p className="text-[11px] text-gray-400 dark:text-gray-500 leading-relaxed">
-                    Nisbati 16:9 (tavsiya: 1200×675) · Maks. 2 MB · JPG, PNG yoki WebP.{' '}
-                    Rasm baland sifatli va motivatsion bo'lsin. Matn rasmda ko'rinadi — juda band rasm tanlamang.
+                    <span className="font-semibold text-gray-600 dark:text-gray-300">Kvadrat, 1:1</span> (tavsiya: 1080×1080, kamida 600×600) · Maks. 2 MB · JPG, PNG yoki WebP.{' '}
+                    Ilovada rasm kvadrat ramkada ko'rsatiladi — 16:9 rasmning chap va o'ng chetlari kesilib qoladi.
+                    Asosiy narsani markazga joylang; rasmga matn yozmang.
                   </p>
+                  {chImgWarn && (
+                    <p className="text-[11px] text-amber-600 dark:text-amber-400">{chImgWarn}</p>
+                  )}
                   {chForm.cover_image_url && (
-                    <div className="relative rounded-xl overflow-hidden aspect-video">
+                    <div className="relative rounded-xl overflow-hidden aspect-square w-40">
                       <img src={chForm.cover_image_url} alt="" className="w-full h-full object-cover" />
                       <button
                         type="button"
-                        onClick={() => setChForm(f => ({ ...f, cover_image_url: '' }))}
+                        onClick={() => { setChForm(f => ({ ...f, cover_image_url: '' })); setChImgWarn('') }}
                         className="absolute top-1.5 right-1.5 bg-black/60 text-white text-xs px-2 py-0.5 rounded-lg"
                       >
                         ✕ O'chirish
