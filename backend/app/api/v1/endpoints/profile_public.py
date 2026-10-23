@@ -499,7 +499,36 @@ def update_my_profile(
 # ── Upload helper ─────────────────────────────────────────────────────────────
 
 _ALLOWED_IMAGE_MIME = {"image/jpeg", "image/png", "image/webp"}
-_MAX_PROFILE_IMG_BYTES = 5 * 1024 * 1024  # 5 MB
+# What phones actually send: "image/jpg" (some Android galleries), and
+# "application/octet-stream" or nothing when a multipart part carries no
+# type. The bytes are decoded below, so the label is only a hint.
+_ACCEPTED_UPLOAD_MIME = _ALLOWED_IMAGE_MIME | {"image/jpg", "image/pjpeg", "application/octet-stream", ""}
+_MAX_PROFILE_IMG_BYTES = 15 * 1024 * 1024  # raw upload; stored images are re-encoded much smaller
+_MAX_SIDE = {"avatar": 1024, "cover": 2048}
+
+
+def _normalize_profile_image(file_bytes: bytes, kind: str) -> tuple[bytes, str, str]:
+    """Decodes the upload (so a mislabelled or odd file is judged by its
+    content, not its header), applies EXIF rotation (phone photos come in
+    sideways otherwise), shrinks it to _MAX_SIDE and re-encodes: JPEG, or
+    PNG when it has transparency. Returns (bytes, mime, ext). A full-size
+    phone photo is several MB; an avatar never needs more than 1024 px.
+    Raises ValueError if the bytes aren't an image Pillow can read."""
+    from PIL import Image, ImageOps
+
+    try:
+        img = Image.open(io.BytesIO(file_bytes))
+        img.load()
+    except Exception as e:
+        raise ValueError("not an image") from e
+    img = ImageOps.exif_transpose(img)
+    img.thumbnail((_MAX_SIDE[kind], _MAX_SIDE[kind]))
+    out = io.BytesIO()
+    if img.mode in ("RGBA", "LA") or (img.mode == "P" and "transparency" in img.info):
+        img.save(out, format="PNG", optimize=True)
+        return out.getvalue(), "image/png", ".png"
+    img.convert("RGB").save(out, format="JPEG", quality=85, optimize=True)
+    return out.getvalue(), "image/jpeg", ".jpg"
 
 
 @profile_router.post("/me/upload")
@@ -518,20 +547,22 @@ async def upload_profile_image(
 
     if type not in ("avatar", "cover"):
         raise HTTPException(status_code=400, detail="type must be 'avatar' or 'cover'")
-    if file.content_type not in _ALLOWED_IMAGE_MIME:
+    if (file.content_type or "") not in _ACCEPTED_UPLOAD_MIME:
         raise HTTPException(status_code=415, detail="Faqat JPG, PNG yoki WebP formatdagi rasmlar")
 
     file_bytes = await file.read()
     if len(file_bytes) > _MAX_PROFILE_IMG_BYTES:
-        raise HTTPException(status_code=413, detail="Rasm hajmi 5MB dan oshmasligi kerak")
+        raise HTTPException(status_code=413, detail="Rasm hajmi 15MB dan oshmasligi kerak")
+    try:
+        file_bytes, mime, ext = _normalize_profile_image(file_bytes, type)
+    except ValueError:
+        raise HTTPException(status_code=415, detail="Faqat JPG, PNG yoki WebP formatdagi rasmlar")
 
-    ext_map = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
-    ext = ext_map.get(file.content_type or "", ".jpg")
     unique_name = f"{uuid.uuid4().hex}{ext}"
     folder = "avatars" if type == "avatar" else "covers"
     remote_path = f"profiles/{folder}/{viewer_id}/{unique_name}"
 
-    cdn_url = await _upload_to_bunny(file_bytes, remote_path, file.content_type or "image/jpeg")
+    cdn_url = await _upload_to_bunny(file_bytes, remote_path, mime)
 
     # Persist immediately so the profile reflects the new image
     profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
