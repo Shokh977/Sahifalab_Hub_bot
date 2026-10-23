@@ -10,14 +10,21 @@
  *   • A 'verified' day needs NO admin action at all — it auto-publishes on
  *     its scheduled day. Approve/publish-now are optional early/manual
  *     overrides, not a required gate.
+ *   • "Siz ham savol yuboring" (105): the "Foydalanuvchi savollari" tab is
+ *     the review queue (View A); in the schedule (View B) every question
+ *     shows its source (AI or the user's name), a future day can take an
+ *     approved user question by Swap (max 2 of 5), a user question can be
+ *     taken back (Qaytarish), and a broken difficulty mix fixed in one tap.
  */
 import React, { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ArrowLeft, RefreshCw, Sparkles, Check, X, Pencil, Save, RotateCcw, Send, Plus, Trash2, ChevronDown, ChevronUp,
+  ArrowLeftRight, Undo2, Scale, UserRound,
 } from 'lucide-react'
 import apiService from '../services/apiService'
 import { useAuth } from '../context/AuthContext'
+import QuestionSubmissionsQueue, { apiError, type Submission } from '../components/admin/QuestionSubmissionsQueue'
 
 interface DayQuestion {
   id: number
@@ -32,6 +39,9 @@ interface DayQuestion {
   verify_model_answer: number | null
   voided: boolean
   manually_authored: boolean
+  origin?: 'ai' | 'user'
+  submission_id?: number | null
+  submitter_name?: string | null
 }
 
 interface DayEntry {
@@ -47,6 +57,16 @@ interface DayEntry {
   candidates_generated: number | null
   candidates_verified: number | null
   rejection_rate: number | null
+  user_count?: number
+  editable?: boolean
+}
+
+const DIFFICULTY_TARGET: Record<string, number> = { easy: 2, medium: 2, hard: 1 }
+
+function mixBroken(questions: DayQuestion[]): boolean {
+  const live = questions.filter(q => !q.voided)
+  if (live.length < 5) return false
+  return Object.entries(DIFFICULTY_TARGET).some(([d, n]) => live.filter(q => q.difficulty === d).length !== n)
 }
 
 // The 16 categories of the A/B weekly rotation (category_config.py). Older
@@ -94,6 +114,12 @@ export default function AdminDailyQuizPage() {
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
+  const [tab, setTab] = useState<'schedule' | 'submissions'>('schedule')
+  // An approved user question the admin is placing ("Rejaga qo'yish").
+  const [held, setHeld] = useState<Submission | null>(null)
+  const [approved, setApproved] = useState<Submission[] | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [pendingCount, setPendingCount] = useState<number>(0)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -109,6 +135,18 @@ export default function AdminDailyQuizPage() {
   }, [])
 
   useEffect(() => { if (user?.role === 'admin') load() }, [user, load])
+
+  const loadApproved = useCallback(async () => {
+    try {
+      const res = await apiService.client.get('/api/admin/question-submissions', { params: { status: 'approved' } })
+      setApproved(res.data?.items ?? [])
+      setPendingCount(res.data?.counts?.pending_review ?? 0)
+    } catch {
+      setApproved([])
+    }
+  }, [])
+
+  useEffect(() => { if (user?.role === 'admin') loadApproved() }, [user, loadApproved, tab])
 
   if (!authLoading && (!user || user.role !== 'admin')) {
     navigate('/', { replace: true })
@@ -135,7 +173,7 @@ export default function AdminDailyQuizPage() {
       await fn()
       await load()
     } catch (e: any) {
-      setError(e?.response?.data?.detail ?? "Amalni bajarib bo'lmadi")
+      setError(apiError(e, "Amalni bajarib bo'lmadi"))
     } finally {
       setBusyId(null)
     }
@@ -150,6 +188,32 @@ export default function AdminDailyQuizPage() {
     if (!confirm("Bu kunni rad etasizmi? U hech qachon nashr etilmaydi.")) return Promise.resolve()
     return withBusy(id, () => apiService.client.post(`/api/admin/daily-quiz/${id}/reject`))
   }
+  async function swapAt(day: DayEntry, position: number, submissionId: number) {
+    if (!day.id) return
+    setNotice(null)
+    await withBusy(day.id, async () => {
+      const res = await apiService.client.post(`/api/admin/quiz/${day.id}/swap`, { position, submission_id: submissionId })
+      setHeld(null)
+      setNotice(res.data?.mix_warning
+        ? `${res.data.mix_warning}. Kerak bo'lsa kun kartasidagi "Muvozanatlash" tugmasini bosing.`
+        : `Savol #${submissionId} — #${res.data?.quiz_number}, ${position + 1}-o'ringa qo'yildi.`)
+      await loadApproved()
+    })
+  }
+  const unswapAt = (day: DayEntry, position: number) => {
+    if (!day.id || !confirm("Foydalanuvchi savolini qaytarib olasizmi? O'rniga AI savoli qaytadi.")) return Promise.resolve()
+    return withBusy(day.id, async () => {
+      await apiService.client.post(`/api/admin/quiz/${day.id}/unswap`, { position })
+      await loadApproved()
+    })
+  }
+  const rebalanceDay = (day: DayEntry) => day.id
+    ? withBusy(day.id, async () => {
+      const res = await apiService.client.post(`/api/admin/quiz/${day.id}/rebalance`)
+      setNotice(res.data?.changed ? 'Qiyinlik muvozanati tiklandi.' : "O'zgartirish kerak emas edi.")
+    })
+    : Promise.resolve()
+
   const regenerate = (id: number) => {
     if (!confirm("Bu kun uchun savollarni qayta yaratasizmi? Eski savollar o'chiriladi.")) return Promise.resolve()
     return withBusy(id, () => apiService.client.post(`/api/admin/daily-quiz/${id}/regenerate`))
@@ -161,7 +225,16 @@ export default function AdminDailyQuizPage() {
         <button onClick={() => navigate('/admin')} className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900">
           <ArrowLeft size={16} /> Admin
         </button>
-        <span className="text-sm font-bold text-sahifa-700 dark:text-sahifa-300">5 Savol — haftalik jadval</span>
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+          <button onClick={() => setTab('schedule')}
+            className={`text-xs font-semibold px-2.5 py-1 rounded-md ${tab === 'schedule' ? 'bg-white dark:bg-gray-800 text-sahifa-700 dark:text-sahifa-300 shadow-sm' : 'text-gray-500'}`}>
+            Jadval
+          </button>
+          <button onClick={() => setTab('submissions')}
+            className={`text-xs font-semibold px-2.5 py-1 rounded-md ${tab === 'submissions' ? 'bg-white dark:bg-gray-800 text-sahifa-700 dark:text-sahifa-300 shadow-sm' : 'text-gray-500'}`}>
+            Foydalanuvchi savollari{pendingCount ? ` · ${pendingCount}` : ''}
+          </button>
+        </div>
         <button
           onClick={generateNow}
           disabled={generating}
@@ -172,7 +245,29 @@ export default function AdminDailyQuizPage() {
         </button>
       </div>
 
+      {tab === 'submissions' ? (
+        <div className="max-w-2xl mx-auto p-4">
+          <QuestionSubmissionsQueue onSchedule={sub => { setHeld(sub); setTab('schedule'); setNotice(null) }} />
+        </div>
+      ) : (
       <div className="max-w-2xl mx-auto p-4 space-y-4">
+        {held && (
+          <div className="sticky top-14 z-10 text-sm bg-sahifa-50 dark:bg-sahifa-900/30 border border-sahifa-200 dark:border-sahifa-700 rounded-xl px-3 py-2.5 space-y-1 shadow-sm">
+            <div className="flex items-center gap-2">
+              <UserRound size={15} className="text-sahifa-600" />
+              <span className="font-semibold text-sahifa-700 dark:text-sahifa-300 flex-1">Qo'yilayotgan savol #{held.id}</span>
+              <button onClick={() => setHeld(null)} className="text-xs text-gray-500">Bekor qilish</button>
+            </div>
+            <p className="text-xs text-gray-700 dark:text-gray-200">{held.question_text}</p>
+            <p className="text-[11px] text-gray-500">Kelgusi kunlardan birida almashtiriladigan savol yonidagi "Shu o'ringa" tugmasini bosing.</p>
+          </div>
+        )}
+        {notice && (
+          <div className="text-xs text-sahifa-700 dark:text-sahifa-300 bg-white dark:bg-gray-800 border border-sahifa-200 dark:border-sahifa-800 rounded-xl px-3 py-2 flex gap-2">
+            <span className="flex-1">{notice}</span>
+            <button onClick={() => setNotice(null)} className="text-gray-400"><X size={12} /></button>
+          </div>
+        )}
         <div className="text-xs text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl px-3 py-2.5 leading-relaxed">
           Har kuni avtomatik 5 tadan savol yaratiladi va o'z sanasida avtomatik e'lon qilinadi.
           Faqat <span className="font-semibold text-amber-600 dark:text-amber-400">"e'tibor talab qiladi"</span> deb
@@ -197,20 +292,31 @@ export default function AdminDailyQuizPage() {
               onPublishNow={() => day.id && publishNow(day.id)}
               onGenerateMissing={generateNow}
               onChanged={load}
+              held={held}
+              approved={approved ?? []}
+              onSwap={(position, submissionId) => swapAt(day, position, submissionId)}
+              onUnswap={position => unswapAt(day, position)}
+              onRebalance={() => rebalanceDay(day)}
             />
           ))
         )}
       </div>
+      )}
     </div>
   )
 }
 
 function DayCard({
   day, busy, onApprove, onReject, onRegenerate, onPublishNow, onGenerateMissing, onChanged,
+  held, approved, onSwap, onUnswap, onRebalance,
 }: {
   day: DayEntry; busy: boolean
   onApprove: () => void; onReject: () => void; onRegenerate: () => void
   onPublishNow: () => void; onGenerateMissing: () => void; onChanged: () => void
+  held: Submission | null; approved: Submission[]
+  onSwap: (position: number, submissionId: number) => void
+  onUnswap: (position: number) => void
+  onRebalance: () => void
 }) {
   const [expanded, setExpanded] = useState(day.status === 'draft')
   const [addingQuestion, setAddingQuestion] = useState(false)
@@ -256,9 +362,23 @@ function DayCard({
           }`}>
             {day.question_count}/5 savol
           </span>
+          {(day.user_count ?? 0) > 0 && (
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-violet-50 text-violet-600 dark:bg-violet-900/20 dark:text-violet-300">
+              👤 {day.user_count}/2
+            </span>
+          )}
           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${meta.className}`}>{meta.label}</span>
         </div>
       </div>
+
+      {day.editable && mixBroken(day.questions) && (
+        <div className="flex items-center gap-2 text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 rounded-lg px-2.5 py-1.5">
+          <span className="flex-1">Qiyinlik muvozanati 2 oson / 2 o'rta / 1 qiyin emas (maslahat, majburiy emas).</span>
+          <button onClick={onRebalance} disabled={busy} className="flex items-center gap-1 font-semibold disabled:opacity-50">
+            <Scale size={12} /> Muvozanatlash
+          </button>
+        </div>
+      )}
 
       {day.notes && (
         <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/10 rounded-lg px-2.5 py-1.5">
@@ -277,8 +397,28 @@ function DayCard({
       {expanded && (
         <div className="space-y-2">
           {day.questions.map((q, i) => (
-            <QuestionRow key={q.id} question={q} index={i} readOnly={isLive} onSaved={onChanged} />
+            <QuestionRow
+              key={q.id} question={q} index={i} readOnly={isLive} onSaved={onChanged}
+              swap={day.editable ? {
+                held, approved, busy,
+                onSwap: submissionId => onSwap(q.position, submissionId),
+                onUnswap: () => onUnswap(q.position),
+              } : undefined}
+            />
           ))}
+          {day.editable && held && day.question_count < 5 && (
+            <button
+              onClick={() => {
+                const taken = new Set(day.questions.map(q => q.position))
+                const free = [0, 1, 2, 3, 4].find(p => !taken.has(p))
+                if (free !== undefined && confirm(`#${held.id} savolini bo'sh ${free + 1}-o'ringa qo'yasizmi?`)) onSwap(free, held.id)
+              }}
+              disabled={busy}
+              className="w-full flex items-center justify-center gap-1.5 py-2 text-xs font-semibold rounded-xl bg-sahifa-600 text-white disabled:opacity-50"
+            >
+              <ArrowLeftRight size={13} /> Bo'sh o'ringa qo'yish
+            </button>
+          )}
 
           {!isLive && day.question_count < 5 && (
             addingQuestion ? (
@@ -423,7 +563,18 @@ function AddQuestionForm({ quizId, onDone, onCancel }: { quizId: number; onDone:
   )
 }
 
-function QuestionRow({ question, index, readOnly, onSaved }: { question: DayQuestion; index: number; readOnly: boolean; onSaved: () => void }) {
+interface SwapControls {
+  held: Submission | null
+  approved: Submission[]
+  busy: boolean
+  onSwap: (submissionId: number) => void
+  onUnswap: () => void
+}
+
+function QuestionRow({ question, index, readOnly, onSaved, swap }: {
+  question: DayQuestion; index: number; readOnly: boolean; onSaved: () => void; swap?: SwapControls
+}) {
+  const [picking, setPicking] = useState(false)
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -470,6 +621,9 @@ function QuestionRow({ question, index, readOnly, onSaved }: { question: DayQues
           <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
             {DIFFICULTY_LABELS[question.difficulty] ?? question.difficulty}
           </span>
+          {question.origin === 'user'
+            ? <span className="text-xs px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-300">👤 {question.submitter_name ?? 'foydalanuvchi'}</span>
+            : <span className="text-xs px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">AI</span>}
           {question.manually_authored
             ? <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">✍️ qo'lda kiritilgan</span>
             : question.verified
@@ -479,6 +633,26 @@ function QuestionRow({ question, index, readOnly, onSaved }: { question: DayQues
         </div>
         {!readOnly && (
           <div className="flex items-center gap-2">
+            {swap && question.origin === 'user' && (
+              <button onClick={swap.onUnswap} disabled={swap.busy} title="Qaytarib olish — o'rniga AI savoli"
+                className="flex items-center gap-1 text-xs text-violet-600 hover:text-violet-800 disabled:opacity-50">
+                <Undo2 size={13} /> Qaytarish
+              </button>
+            )}
+            {swap && (swap.held ? (
+              <button
+                onClick={() => confirm(`#${swap.held!.id} savolini ${index + 1}-o'ringa qo'yasizmi? Joriy savol zaxiraga o'tadi (o'chirilmaydi).`) && swap.onSwap(swap.held!.id)}
+                disabled={swap.busy}
+                className="flex items-center gap-1 text-xs font-semibold text-white bg-sahifa-600 hover:bg-sahifa-700 px-2 py-0.5 rounded-md disabled:opacity-50"
+              >
+                <ArrowLeftRight size={12} /> Shu o'ringa
+              </button>
+            ) : (
+              <button onClick={() => setPicking(p => !p)} disabled={swap.busy} title="Foydalanuvchi savoli bilan almashtirish"
+                className="text-gray-400 hover:text-sahifa-600 disabled:opacity-50">
+                <ArrowLeftRight size={13} />
+              </button>
+            ))}
             <button onClick={() => setEditing(e => !e)} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               <Pencil size={13} />
             </button>
@@ -488,6 +662,19 @@ function QuestionRow({ question, index, readOnly, onSaved }: { question: DayQues
           </div>
         )}
       </div>
+
+      {picking && swap && (
+        <div className="mb-2 border border-sahifa-200 dark:border-sahifa-800 rounded-lg p-2 space-y-1 bg-white dark:bg-gray-800">
+          <p className="text-[11px] text-gray-500">Tasdiqlangan foydalanuvchi savollari ({swap.approved.length}):</p>
+          {swap.approved.length === 0 && <p className="text-xs text-gray-400">Hozircha yo'q — "Foydalanuvchi savollari" bo'limida tasdiqlang.</p>}
+          {swap.approved.map(s => (
+            <button key={s.id} onClick={() => { setPicking(false); swap.onSwap(s.id) }} disabled={swap.busy}
+              className="w-full text-left text-xs p-1.5 rounded hover:bg-sahifa-50 dark:hover:bg-sahifa-900/20 disabled:opacity-50">
+              <span className="font-semibold">#{s.id}</span> · {DIFFICULTY_LABELS[s.difficulty ?? 'medium']} · {s.is_anonymous ? 'anonim' : s.submitter_name} — {s.question_text}
+            </button>
+          ))}
+        </div>
+      )}
 
       {editing ? (
         <div className="space-y-2">

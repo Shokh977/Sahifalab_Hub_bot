@@ -95,6 +95,10 @@ TangaReason = Literal[
     # actual studying for level/leaderboard integrity). Distinct from
     # "quiz_complete" above, which is the pre-existing lesson-quiz reason.
     "daily_quiz", "daily_quiz_void_refund",
+    # "Siz ham savol yuboring" (105_question_submissions) — flat, one-off per
+    # submission, paid only when the question is published in a 5 Savol.
+    # Not daily-capped and never XP (contributing a question isn't studying).
+    "question_published",
 ]
 
 # Reasons subject to the shared daily_cap (tanga-economy-rework Part 1) —

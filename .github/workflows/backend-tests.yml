@@ -66,6 +66,13 @@ jobs:
           psql "$DATABASE_URL" -f migrations/088_tanga_currency.sql
           psql "$DATABASE_URL" -f migrations/089_ai_infrastructure.sql
           psql "$DATABASE_URL" -f migrations/090_daily_quiz.sql
+          psql "$DATABASE_URL" -f migrations/092_tanga_economy_rework.sql
+          psql "$DATABASE_URL" -f migrations/093_server_derived_day_bucket.sql
+          psql "$DATABASE_URL" -f migrations/094_daily_quiz_auto_publish.sql
+          psql "$DATABASE_URL" -f migrations/096_daily_quiz_verification_upgrade.sql
+          psql "$DATABASE_URL" -f migrations/101_daily_quiz_variety.sql
+          psql "$DATABASE_URL" -f migrations/103_daily_quiz_active_ms.sql
+          psql "$DATABASE_URL" -f migrations/105_question_submissions.sql
 
       - name: Run Tanga / AI / freeze / daily-quiz test suite
         run: |
@@ -75,7 +82,7 @@ jobs:
             tests/test_tanga_reconciliation.py \
             tests/test_price_config_guard.py \
             tests/test_freeze_endpoint_idempotency.py \
-            tests/test_daily_quiz_service.py \
+            tests/test_daily_quiz_service.py             tests/test_question_submissions.py \
             tests/test_freeze_service.py \
             tests/test_streak_state.py \
             tests/test_user_time.py

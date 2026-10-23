@@ -54,6 +54,7 @@ what actually drives these today; running both means double-sends):
     POST /api/cron/daily-quiz-generate-week      — schedule: 0 5 * * *   (05:00 UTC daily — was Monday-only)
     POST /api/cron/daily-quiz-rollover           — schedule: 0 0 * * *   (00:00 UTC daily)
     POST /api/cron/daily-quiz-reminder           — schedule: 0 12 * * *  (12:00 UTC daily)
+    POST /api/cron/question-submissions-sweep    — schedule: */10 * * * * (every 10 min)
 """
 
 import os
@@ -1202,6 +1203,20 @@ async def daily_quiz_rollover(
     from app.services.daily_quiz_service import rollover
     today = datetime.now(UTC).date()
     result = await rollover(db, today)
+    return {"ok": True, **result}
+
+
+@router.post("/question-submissions-sweep")
+async def question_submissions_sweep(
+    db: Session = Depends(get_db),
+    _: None = Depends(_require_cron_secret),
+):
+    """105_question_submissions — every 10 min: retries AI reviews a
+    background task missed, finishes publication (status, reward, push) for
+    any live quiz whose publish hook didn't complete, and releases scheduled
+    submissions whose day was removed. See question_submission_service.sweep()."""
+    from app.services.question_submission_service import sweep
+    result = await sweep(db)
     return {"ok": True, **result}
 
 

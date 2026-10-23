@@ -760,6 +760,7 @@ def _start_cron_scheduler():
         streak_freeze_auto_apply, streak_at_risk_push,
         weekly_review_batch, focus_sessions_volume_check,
         daily_quiz_generate_week, daily_quiz_rollover, daily_quiz_reminder,
+        question_submissions_sweep,
     )
     from app.db.session             import get_db
 
@@ -882,6 +883,16 @@ def _start_cron_scheduler():
         finally:
             db.close()
 
+    async def _run_question_submissions_sweep():
+        db = _db()
+        try:
+            result = await question_submissions_sweep(db=db, _=None)
+            logger.info("[SCHEDULER] question-submissions-sweep: %s", result)
+        except Exception as exc:
+            logger.error("[SCHEDULER] question-submissions-sweep failed: %s", exc)
+        finally:
+            db.close()
+
     scheduler = AsyncIOScheduler(timezone="UTC")
     # RE-ENABLED: the 2026-08-12 focus_sessions outage (3 days, every user,
     # every source) was root-caused to a `%` modulo operator in raw SQL text
@@ -933,6 +944,9 @@ def _start_cron_scheduler():
     # Daily 12:00 UTC (17:00 Tashkent / 21:00 Seoul) — "where most of the
     # retention comes from" (spec).
     scheduler.add_job(_run_daily_quiz_reminder, CronTrigger(hour=12, minute=0))
+    # Every 10 min, offset from the :00 jobs — "Siz ham savol yuboring":
+    # missed AI reviews, unfinished publications (reward/push), orphans.
+    scheduler.add_job(_run_question_submissions_sweep, CronTrigger(minute="5,15,25,35,45,55"))
     scheduler.start()
     logger.info(
         "[SCHEDULER] APScheduler started — streak-reminder hourly (local 20:00), "

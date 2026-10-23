@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services import daily_quiz_service as svc
+from app.services import question_submission_service as qsvc
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -258,6 +259,15 @@ def get_results(
     streak_row = db.execute(
         text("SELECT quiz_streak_days FROM profiles WHERE telegram_id = :uid"), {"uid": caller_id},
     ).fetchone()
+    # "Bu savol [Ism] tomonidan yuborilgan" — only here, after the caller's
+    # own submission, never during play. Best-effort: attribution must not
+    # break the results screen.
+    try:
+        with db.begin_nested():
+            submitted_by = qsvc.attributions(db, quiz_id)
+    except Exception:
+        logger.warning("daily_quiz attribution failed for quiz_id=%s", quiz_id, exc_info=True)
+        submitted_by = {}
 
     return {
         "quiz_streak_days": int(streak_row.quiz_streak_days or 0) if streak_row else 0,
@@ -268,9 +278,13 @@ def get_results(
                 "question_id": q.id, "position": q.position, "question_text": q.question_text,
                 "options": q.options, "correct_index": q.correct_index,
                 "explanation": q.explanation, "source": q.source, "voided": q.voided,
+                "submitted_by": submitted_by.get(int(q.id)),
             }
             for q in questions
         ],
+        # Names behind today's user-sourced questions (the results CTA gets
+        # louder when someone else was credited).
+        "contributors": list(submitted_by.values()),
         "leaderboard": [
             {"rank": r.rank, "user_id": r.user_id, "first_name": r.first_name,
              "username": r.username, "photo_url": r.photo_url,
