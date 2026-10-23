@@ -522,18 +522,25 @@ async def google_sign_in(
     username    = email.split("@")[0] if isinstance(email, str) and "@" in email else None
     photo_url   = idinfo.get("picture")
 
-    is_new = db.query(Profile).filter(Profile.telegram_id == telegram_id).first() is None
+    existing = db.query(Profile).filter(Profile.telegram_id == telegram_id).first()
+    is_new = existing is None
+    # Same rule as the Telegram login: Google's name/username/picture only
+    # fill fields the user hasn't set. Previously every Google sign-in wrote
+    # them over, so an avatar uploaded in the app (or on the site) reverted
+    # to the Google picture at the next login.
     profile = _upsert_profile(
-        db, telegram_id, first_name=first_name, username=username,
-        photo_url=photo_url, email=email, app_last_login=datetime.now(UTC),
+        db, telegram_id, email=email, app_last_login=datetime.now(UTC),
         registered_via=_normalize_platform(x_client_platform),
+        **({"first_name": first_name} if not (existing and existing.first_name) else {}),
+        **({"username":   username}   if not (existing and existing.username)   else {}),
+        **({"photo_url":  photo_url}  if not (existing and existing.photo_url)  else {}),
     )
     if is_new:
         _send_welcome(telegram_id, first_name or "", db)
     token_data = create_access_token(telegram_id, profile.role or "student")
     return {
         "status": "ok", "telegram_id": telegram_id,
-        "first_name": first_name, "username": username, "photo_url": photo_url,
+        "first_name": profile.first_name, "username": profile.username, "photo_url": profile.photo_url,
         "email": profile.email,
         "role": profile.role or "student", "status_account": profile.status or "active",
         **token_data,
