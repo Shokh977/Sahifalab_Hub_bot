@@ -1,7 +1,7 @@
 -- 106_profile_looks.sql — profile cosmetics (Claude Design "6-qadam").
 --
 -- profiles.profile_look — the user's chosen look, e.g.
---                         {"banner": "tong", "ring": "olov"}. The server
+--                         {"banner": "tong", "ring": "olov", "tree": "kumush"}. The server
 --                         validates every write against the unlock rules in
 --                         app/services/cosmetics_service.py, and renders a
 --                         locked choice as its free fallback without deleting

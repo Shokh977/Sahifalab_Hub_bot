@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session
 from app.services.config_service import get_config
 
 TASHKENT = timezone(timedelta(hours=5))
-SLOTS = ("banner", "ring")
-FALLBACK = {"banner": "plain", "ring": "oddiy"}
+SLOTS = ("banner", "ring", "tree")
+FALLBACK = {"banner": "plain", "ring": "oddiy", "tree": "tabiiy"}
 
 # slot -> id -> unlock rule
 CATALOG: dict[str, dict[str, dict[str, Any]]] = {
@@ -43,6 +43,13 @@ CATALOG: dict[str, dict[str, dict[str, Any]]] = {
         "kometa": {"kind": "pro"},
         "oltin": {"kind": "pro"},
         "lola": {"kind": "seasonal", "season": "navroz"},
+    },
+    # Streak tree colour looks (MagicTree palettes; the shape never changes).
+    "tree": {
+        "tabiiy": {"kind": "free"},
+        "sakura": {"kind": "pro"},
+        "kumush": {"kind": "achievement", "streak_days": 100},
+        "oltin": {"kind": "pro"},
     },
 }
 
