@@ -145,6 +145,43 @@ def looks_enabled(db: Session) -> bool:
     return _looks_enabled
 
 
+def list_item_shown(slot: str, item_id: Optional[str], is_pro: bool, seasons: set[str]) -> Optional[str]:
+    """
+    The saved item to show in lists (leaderboards…), or None for the free
+    default. A cheap check that needs no streak history: an achievement
+    item was validated when it was saved and never expires, so it shows;
+    Pro items need active Pro, seasonal ones an open season.
+    """
+    rule = CATALOG.get(slot, {}).get(item_id or "")
+    if rule is None or rule["kind"] == "free":
+        return None
+    if rule["kind"] == "pro" and not is_pro:
+        return None
+    if rule["kind"] == "seasonal" and rule["season"] not in seasons:
+        return None
+    return item_id
+
+
+def rings_for(db: Session, user_ids: list[int]) -> dict[int, str]:
+    """{telegram_id: ring} for users in `user_ids` whose avatar shows a ring
+    other than the plain one. Empty before migration 106."""
+    ids = list({int(u) for u in user_ids if u is not None})
+    if not ids or not looks_enabled(db):
+        return {}
+    rows = db.execute(text("""
+        SELECT telegram_id, profile_look->>'ring' AS ring, pro_until
+        FROM profiles
+        WHERE telegram_id = ANY(:ids) AND profile_look ? 'ring'
+    """), {"ids": ids}).fetchall()
+    seasons = open_seasons(db)
+    out = {}
+    for r in rows:
+        ring = list_item_shown("ring", r.ring, pro_active(r.pro_until), seasons)
+        if ring:
+            out[int(r.telegram_id)] = ring
+    return out
+
+
 def user_is_pro(db: Session, user_id: int) -> bool:
     """An active Sahifalab Pro (false before migration 106)."""
     if not looks_enabled(db):
