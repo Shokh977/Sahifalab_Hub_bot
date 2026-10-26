@@ -7,7 +7,8 @@ user pays and sends the receipt to the pay bot, an admin grants it. Granting
 extends profiles.pro_until by the pass length — from now, or from the
 current end if Pro is still active, so buying early never loses days.
 
-Prices come from app_config 'pro_plans' ({"1": so'm, "3": …, "12": …}).
+Prices come from app_config 'pro_plans' ({"1": so'm, "3": …, "12": …});
+'pro_list_prices' holds the regular prices shown crossed out beside them.
 """
 import calendar
 from datetime import datetime, timedelta, timezone
@@ -19,13 +20,15 @@ from sqlalchemy.orm import Session
 from app.services.config_service import get_config
 
 PLAN_MONTHS = (1, 3, 12)
-DEFAULT_PRICES = {1: 29000, 3: 69000, 12: 199000}
+DEFAULT_PRICES = {1: 6900, 3: 17000, 12: 70000}
+# Regular prices (9 900 so'm a month), shown crossed out next to the discount.
+DEFAULT_LIST_PRICES = {1: 9900, 3: 29700, 12: 118800}
 CODE_TTL = timedelta(hours=24)
 
 
-def plan_prices(db: Session) -> dict[int, int]:
-    raw: Any = get_config(db, "pro_plans", None)
-    prices = dict(DEFAULT_PRICES)
+def plan_prices(db: Session, key: str = "pro_plans", defaults: dict[int, int] = DEFAULT_PRICES) -> dict[int, int]:
+    raw: Any = get_config(db, key, None)
+    prices = dict(defaults)
     if isinstance(raw, dict):
         for months in PLAN_MONTHS:
             value = raw.get(str(months))
@@ -36,16 +39,16 @@ def plan_prices(db: Session) -> dict[int, int]:
 
 def plans_payload(db: Session) -> list[dict]:
     prices = plan_prices(db)
-    monthly = prices[1]
+    list_prices = plan_prices(db, "pro_list_prices", DEFAULT_LIST_PRICES)
     out = []
     for months in PLAN_MONTHS:
-        price = prices[months]
-        full = monthly * months
+        price, regular = prices[months], list_prices[months]
         out.append({
             "months": months,
             "price": price,
+            "list_price": regular if regular > price else None,
             "per_month": round(price / months),
-            "saving_percent": max(0, round((1 - price / full) * 100)) if full else 0,
+            "saving_percent": max(0, round((1 - price / regular) * 100)) if regular > price else 0,
         })
     return out
 

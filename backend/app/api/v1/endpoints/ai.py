@@ -13,6 +13,8 @@ from app.db.session import get_db
 from app.schemas.schemas import BookSummarizerRequest, BookSummarizerResponse
 from app.services import ai_service
 from app.services.cosmetics_service import user_is_pro
+from app.services.client_version import is_pro_client
+from app.services.ai.limiter import effective_free_tier
 from app.services.auth_service import decode_token
 from app.services.ai import limiter as ai_limiter
 from app.services.ai.gemini_provider import get_provider
@@ -109,7 +111,11 @@ _DEFAULT_GATE = {"free_daily_allowance": 3, "hard_daily_cap": 20, "free_paid_dai
 
 
 @router.get("/limits")
-def get_ai_limits(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def get_ai_limits(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
+):
     """
     Spec Part 7: "Show cost before confirming any Tanga spend, and show
     remaining free allowance." The mobile client calls this before offering
@@ -126,9 +132,7 @@ def get_ai_limits(db: Session = Depends(get_db), caller_id: int = Depends(_requi
     free_used = int(usage_row.free_used) if usage_row else 0
     paid_used = int(usage_row.paid_used) if usage_row else 0
     is_pro = user_is_pro(db, caller_id)
-    # Pro: the whole daily cap is free (limiter.check_and_charge).
-    allowance = gate["hard_daily_cap"] if is_pro else gate["free_daily_allowance"]
-    paid_limit = None if is_pro else gate.get("free_paid_daily_limit")
+    allowance, paid_limit = effective_free_tier(gate, is_pro, is_pro_client(db, x_client_version))
     return {
         "is_pro": is_pro,
         "free_daily_allowance": allowance,
@@ -176,6 +180,7 @@ async def generate_flashcards(
     body: FlashcardGenerateRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
 ):
     """
     Spec Part 6, feature 1. Input: pasted text OR a photographed page.
@@ -211,7 +216,8 @@ async def generate_flashcards(
                      {"source": source, "outcome": outcome, "cache_hit": cache_hit})
 
     gate_result = ai_limiter.check_and_charge(
-        db, caller_id, feature="flashcard_gen", action_id=body.action_id, is_pro=user_is_pro(db, caller_id),
+        db, caller_id, feature="flashcard_gen", action_id=body.action_id,
+        is_pro=user_is_pro(db, caller_id), pro_client=is_pro_client(db, x_client_version),
     )
     if not gate_result.allowed:
         _log_generation(f"rejected:{gate_result.reason}")
@@ -339,7 +345,11 @@ def confirm_generated_flashcards(
 
 
 @router.get("/weekly-review")
-async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+async def get_latest_weekly_review(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
+):
     """Spec Part 6, feature 2 — always free. Returns the caller's most
     recent cron-generated weekly review — a review of the most recently
     COMPLETED Mon-Sun week (never "this week so far": the batch only runs
@@ -402,20 +412,21 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
     if not row or row.week_start < target_week_start:
         live_stats = gather_user_stats(db, caller_id, target_week_start, today)
 
-    # Sahifalab Pro: the AI advice and the advanced stats. Free users get the
-    # basics (focus minutes, the 7-day activity) and `pro_locked`; the AI
-    # narrative is not generated for them at all, and the advanced numbers
-    # are zeroed so the blurred cards can't be read from the response.
-    is_pro = user_is_pro(db, caller_id)
-    current_week_progress = await get_or_refresh_current_week_progress(db, caller_id, today, with_ai=is_pro)
-    if not is_pro:
+    # Sahifalab Pro: the AI advice and the advanced stats. On a Pro-aware
+    # client, free users get the basics (focus minutes, the 7-day activity)
+    # and `pro_locked`; the AI narrative is not generated for them at all,
+    # and the advanced numbers are zeroed so the blurred cards can't be read
+    # from the response. Older clients (no Pro screen) are unchanged.
+    locked = is_pro_client(db, x_client_version) and not user_is_pro(db, caller_id)
+    current_week_progress = await get_or_refresh_current_week_progress(db, caller_id, today, with_ai=not locked)
+    if locked:
         current_week_progress = _free_week_progress(current_week_progress)
         if review is not None:
             review = {k: review[k] for k in ("week_start", "created_at", "stats") if k in review}
 
     return {
         "review": review, "live_stats": live_stats,
-        "current_week_progress": current_week_progress, "pro_locked": not is_pro,
+        "current_week_progress": current_week_progress, "pro_locked": locked,
     }
 
 

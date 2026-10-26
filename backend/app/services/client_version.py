@@ -37,11 +37,24 @@ def is_tanga_client(db: Session, x_client_version: Optional[str]) -> bool:
     the Tanga-aware build at/above app_config's tanga_min_client_version.
     Anything else (no header, unparseable header, below the minimum) is the
     legacy client — the safe default."""
+    return _at_least(db, x_client_version, "tanga_min_client_version", "1.2.0")
+
+
+def is_pro_client(db: Session, x_client_version: Optional[str]) -> bool:
+    """The Sahifalab Pro build (107/108): at/above app_config's
+    pro_min_client_version (default 1.7.0). Only these clients get the Pro
+    rules — the free AI deck limit and the locked weekly review — because
+    only they can show the Pro screen. Older builds keep today's behaviour,
+    so the backend can ship before the app does."""
+    return _at_least(db, x_client_version, "pro_min_client_version", "1.7.0")
+
+
+def _at_least(db: Session, x_client_version: Optional[str], config_key: str, default: str) -> bool:
     if not x_client_version:
         return False
     try:
         current = _parse_version(x_client_version)
-        minimum = _parse_version(str(get_config(db, "tanga_min_client_version", default="1.2.0")))
+        minimum = _parse_version(str(get_config(db, config_key, default=default)))
     except ValueError:
         return False
     # Compare element-wise, padding the shorter tuple with zeros (so "1.2" >= "1.2.0").

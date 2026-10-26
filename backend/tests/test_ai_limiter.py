@@ -170,9 +170,9 @@ def test_free_user_past_paid_limit_needs_pro(db_session):
     _seed_profile(db_session, tanga_balance=1000)
     _set_gate_config(db_session, free_daily_allowance=1, hard_daily_cap=20, prices={"flashcard_gen": 100}, free_paid_daily_limit=1)
 
-    free = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p1")
-    paid = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p2")
-    blocked = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p3")
+    free = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p1", pro_client=True)
+    paid = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p2", pro_client=True)
+    blocked = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p3", pro_client=True)
 
     assert free.allowed and not free.charged_tanga
     assert paid.allowed and paid.tanga_spent == 100

@@ -43,9 +43,15 @@ def test_plan_prices_default_when_missing(monkeypatch):
     assert pro.plan_prices(None) == DEFAULT_PRICES
 
 
-def test_plans_payload_savings(monkeypatch):
-    monkeypatch.setattr(pro, "get_config", lambda db, key, default=None: {"1": 30000, "3": 75000, "12": 240000})
+def test_plans_payload_discount_against_list_price(monkeypatch):
+    monkeypatch.setattr(pro, "get_config", lambda db, key, default=None: None)
     plans = {p["months"]: p for p in pro.plans_payload(None)}
-    assert plans[1]["saving_percent"] == 0
-    assert plans[3]["per_month"] == 25000 and plans[3]["saving_percent"] == 17
-    assert plans[12]["per_month"] == 20000 and plans[12]["saving_percent"] == 33
+    assert plans[1] == {"months": 1, "price": 6900, "list_price": 9900, "per_month": 6900, "saving_percent": 30}
+    assert plans[3]["list_price"] == 29700 and plans[3]["saving_percent"] == 43
+    assert plans[12]["per_month"] == 5833 and plans[12]["saving_percent"] == 41
+
+
+def test_no_crossed_price_without_a_discount(monkeypatch):
+    monkeypatch.setattr(pro, "get_config", lambda db, key, default=None: {"1": 9900, "3": 29700, "12": 118800})
+    plans = pro.plans_payload(None)
+    assert all(p["list_price"] is None and p["saving_percent"] == 0 for p in plans)
