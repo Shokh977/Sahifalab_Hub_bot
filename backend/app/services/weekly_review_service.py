@@ -530,7 +530,7 @@ async def generate_weekly_review(db: Session, user_id: int, today: date) -> tupl
     return True, "generated"
 
 
-async def get_or_refresh_current_week_progress(db: Session, user_id: int, today: date) -> dict:
+async def get_or_refresh_current_week_progress(db: Session, user_id: int, today: date, with_ai: bool = True) -> dict:
     """The TRUE in-progress week's stats + AI comparison narrative, cached
     once per local day per user (weekly_progress_cache) — GET /weekly-review
     is hit on every screen load, and recomputing gather_user_stats's ~9
@@ -541,14 +541,18 @@ async def get_or_refresh_current_week_progress(db: Session, user_id: int, today:
 
     Unlike generate_weekly_review (which is idempotent via a UNIQUE DB
     constraint and never overwrites), this ALWAYS overwrites on a cache
-    miss — there is exactly one current week per user, not a history."""
+    miss — there is exactly one current week per user, not a history.
+
+    with_ai=False (a free user: the AI advice is Sahifalab Pro) skips the
+    model call. The cache marks whether its content had AI (`ai`), so a user
+    who gets Pro mid-day gets their narrative on the next load."""
     this_week_start = today - timedelta(days=today.weekday())
 
     cached = db.execute(
         text("SELECT computed_date, content FROM weekly_progress_cache WHERE user_id = :uid"),
         {"uid": user_id},
     ).fetchone()
-    if cached and cached.computed_date == today:
+    if cached and cached.computed_date == today and (not with_ai or (cached.content or {}).get("ai", True)):
         return cached.content
 
     stats = gather_user_stats(db, user_id, this_week_start, today)
@@ -559,7 +563,7 @@ async def get_or_refresh_current_week_progress(db: Session, user_id: int, today:
         or stats["prev_week_minutes"] > 0
         or stats["flashcard_reviews_this_week"] > 0
     )
-    if has_activity:
+    if has_activity and with_ai:
         spotlight_hint = _pick_feature_spotlight(stats)
         personalization = _gather_personalization(db, user_id)
         # Keyed off this_week_start's ISO week (stable all week), not
@@ -605,7 +609,7 @@ async def get_or_refresh_current_week_progress(db: Session, user_id: int, today:
             # fail-open-on-stats-only behavior as an AiProviderError above.
 
     import json
-    content = {"week_start": this_week_start.isoformat(), "stats": stats, **narrative}
+    content = {"week_start": this_week_start.isoformat(), "stats": stats, **narrative, "ai": with_ai}
     db.execute(
         text("""
             INSERT INTO weekly_progress_cache (user_id, week_start, computed_date, content, updated_at)

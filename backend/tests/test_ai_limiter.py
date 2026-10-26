@@ -44,12 +44,13 @@ def _seed_profile(db, tanga_balance: int):
     db.commit()
 
 
-def _set_gate_config(db, free_daily_allowance=2, hard_daily_cap=3, prices=None):
+def _set_gate_config(db, free_daily_allowance=2, hard_daily_cap=3, prices=None, free_paid_daily_limit=None):
     import json
     value = json.dumps({
         "free_daily_allowance": free_daily_allowance,
         "hard_daily_cap": hard_daily_cap,
         "global_daily_ceiling_tanga": 1_000_000,
+        "free_paid_daily_limit": free_paid_daily_limit,
         "prices": prices or {"explanation": 25},
     })
     db.execute(text("""
@@ -160,3 +161,35 @@ def test_insufficient_balance_past_free_allowance_is_clean_failure(db_session):
         text("SELECT tanga_balance FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
     ).fetchone()
     assert row.tanga_balance == 5, "a rejected charge must never touch the balance"
+
+
+def test_free_user_past_paid_limit_needs_pro(db_session):
+    """1 free, 1 Tanga-paid, then 'pro_required' — the Sahifalab Pro offer."""
+    from app.services.ai import limiter
+
+    _seed_profile(db_session, tanga_balance=1000)
+    _set_gate_config(db_session, free_daily_allowance=1, hard_daily_cap=20, prices={"flashcard_gen": 100}, free_paid_daily_limit=1)
+
+    free = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p1")
+    paid = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p2")
+    blocked = limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", "p3")
+
+    assert free.allowed and not free.charged_tanga
+    assert paid.allowed and paid.tanga_spent == 100
+    assert not blocked.allowed and blocked.reason == "pro_required"
+    row = db_session.execute(
+        text("SELECT tanga_balance FROM profiles WHERE telegram_id = :uid"), {"uid": TEST_TELEGRAM_ID}
+    ).fetchone()
+    assert row.tanga_balance == 900, "the Pro offer never charges"
+
+
+def test_pro_user_is_free_up_to_the_daily_cap(db_session):
+    from app.services.ai import limiter
+
+    _seed_profile(db_session, tanga_balance=0)
+    _set_gate_config(db_session, free_daily_allowance=1, hard_daily_cap=3, prices={"flashcard_gen": 100}, free_paid_daily_limit=1)
+
+    results = [limiter.check_and_charge(db_session, TEST_TELEGRAM_ID, "flashcard_gen", f"q{i}", is_pro=True) for i in range(4)]
+
+    assert all(r.allowed and not r.charged_tanga for r in results[:3])
+    assert not results[3].allowed and results[3].reason == "daily_cap_reached"

@@ -129,12 +129,28 @@ def item_states(ctx: UnlockContext) -> dict[str, dict[str, bool]]:
 
 # ── DB access (raw SQL: the columns aren't on the Profile model) ─────────────
 
+_looks_enabled = False
+
+
 def looks_enabled(db: Session) -> bool:
+    """Migration 106 applied? Once true it stays true for the process."""
+    global _looks_enabled
+    if _looks_enabled:
+        return True
     row = db.execute(text("""
         SELECT COUNT(*) FROM information_schema.columns
         WHERE table_name = 'profiles' AND column_name IN ('profile_look', 'pro_until')
     """)).scalar()
-    return (row or 0) == 2
+    _looks_enabled = (row or 0) == 2
+    return _looks_enabled
+
+
+def user_is_pro(db: Session, user_id: int) -> bool:
+    """An active Sahifalab Pro (false before migration 106)."""
+    if not looks_enabled(db):
+        return False
+    _, pro_until = read_look_row(db, user_id)
+    return pro_active(pro_until)
 
 
 def read_look_row(db: Session, user_id: int) -> tuple[Optional[dict], Optional[datetime]]:

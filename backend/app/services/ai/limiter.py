@@ -11,6 +11,12 @@ large balances). Three layers, all server-side, all driven by the
      not the price, is the actual cost control.
 Plus a global_daily_ceiling_tanga circuit breaker across all users.
 
+Sahifalab Pro (107_pro_orders): a Pro user never pays Tanga — every action
+up to hard_daily_cap is free. A free user gets free_daily_allowance free
+actions, then at most free_paid_daily_limit Tanga-paid ones a day (absent
+or null = no limit, the pre-Pro behaviour); past that the answer is
+'pro_required' and the app offers Pro.
+
 check_and_charge() is deduct-first: it reserves the daily-usage slot and (if
 past the free allowance) spends Tanga BEFORE the caller makes the AI call —
 this is what prevents concurrent-request abuse (spec Part 5). If the AI call
@@ -41,6 +47,7 @@ _DEFAULT_GATE = {
     "free_daily_allowance": 3,
     "hard_daily_cap": 20,
     "global_daily_ceiling_tanga": 200000,
+    "free_paid_daily_limit": None,
     "prices": {},
 }
 
@@ -59,7 +66,7 @@ class GateResult:
     charged_tanga: bool
     tanga_spent: int
     idempotency_key: str
-    reason: Optional[str] = None  # set when allowed=False: 'daily_cap_reached' | 'insufficient_balance' | 'global_ceiling_reached'
+    reason: Optional[str] = None  # set when allowed=False: 'daily_cap_reached' | 'insufficient_balance' | 'global_ceiling_reached' | 'pro_required'
     free_remaining: int = 0
 
 
@@ -116,13 +123,16 @@ def _today() -> date:
     return datetime.now(UTC).date()
 
 
-def check_and_charge(db: Session, user_id: int, feature: str, action_id: str) -> GateResult:
+def check_and_charge(db: Session, user_id: int, feature: str, action_id: str, is_pro: bool = False) -> GateResult:
     """action_id: a caller-supplied string unique to this one AI action
     attempt (e.g. a client-generated request id) — folded into the
     idempotency_key so a retried request never double-charges or
-    double-counts the daily cap."""
+    double-counts the daily cap. is_pro: an active Sahifalab Pro — every
+    action up to hard_daily_cap is free."""
     gate = _gate_config(db)
-    free_allowance = int(gate["free_daily_allowance"])
+    # Pro: the whole daily cap is free allowance.
+    free_allowance = int(gate["hard_daily_cap"]) if is_pro else int(gate["free_daily_allowance"])
+    paid_limit = gate.get("free_paid_daily_limit")
     hard_cap = int(gate["hard_daily_cap"])
     global_ceiling = int(gate["global_daily_ceiling_tanga"])
     price = int(gate["prices"].get(feature, 0))
@@ -167,6 +177,11 @@ def check_and_charge(db: Session, user_id: int, feature: str, action_id: str) ->
                            idempotency_key=idempotency_key, reason="daily_cap_reached")
 
     use_free = (int(usage_row.free_used) if usage_row else 0) < free_allowance
+
+    # Free user past the free allowance and past today's paid limit: Pro.
+    if not use_free and paid_limit is not None and (int(usage_row.paid_used) if usage_row else 0) >= int(paid_limit):
+        return GateResult(allowed=False, charged_tanga=False, tanga_spent=0,
+                           idempotency_key=idempotency_key, reason="pro_required")
 
     if use_free:
         result = db.execute(
