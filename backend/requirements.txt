@@ -2,6 +2,10 @@ fastapi==0.115.12
 uvicorn==0.24.0
 sqlalchemy==2.0.23
 pg8000==1.30.3
+# pg8000's SCRAM helper. Unpinned, a fresh build pulled scramp 1.5.0, which
+# drops make_channel_binding that pg8000 1.30.3 calls: every DB connection
+# failed (2026-10-26). Keep it pinned with pg8000.
+scramp==1.4.17
 pydantic==2.5.0
 pydantic-settings==2.1.0
 email-validator==2.1.0
