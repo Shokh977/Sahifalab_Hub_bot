@@ -935,6 +935,20 @@ def _pending_supabase_headers() -> dict:
     }
 
 
+def _pro_title(row: dict) -> str:
+    return f"Sahifalab Pro \u00b7 {row.get('pro_months') or '?'} oy"
+
+
+def _with_item(row: dict, course: Optional[dict]) -> dict:
+    """A pending row for the admin UIs and the payment bot. A Pro pass
+    (107_pro_orders) has no course: it gets a stand-in course {"title": …}
+    so the bot's course-title lookups keep working, plus item_title for all."""
+    if row.get("product") == "pro":
+        title = _pro_title(row)
+        return {**row, "course": {"title": title}, "item_title": title}
+    return {**row, "course": course, "item_title": (course or {}).get("title") or f"Kurs #{row.get('course_id')}"}
+
+
 class _GrantBody(BaseModel):
     actual_amount:     Optional[int] = None
     payment_method:    Optional[str] = None
@@ -1027,11 +1041,7 @@ async def list_pending_enrollments(
         }
 
     enriched = [
-        {
-            **r,
-            "user":   profiles_by_id.get(r["user_id"]),
-            "course": courses_by_id.get(r["course_id"]),
-        }
+        {**_with_item(r, courses_by_id.get(r.get("course_id"))), "user": profiles_by_id.get(r["user_id"])}
         for r in rows
     ]
 
@@ -1084,9 +1094,8 @@ async def admin_get_pending_enrollment(
     profiles = p_res.json() if p_res.status_code == 200 else []
     courses  = c_res.json() if c_res is not None and c_res.status_code == 200 else []
     return {
-        **row,
-        "user":   profiles[0] if profiles else None,
-        "course": courses[0]  if courses  else None,
+        **_with_item(row, courses[0] if courses else None),
+        "user": profiles[0] if profiles else None,
     }
 
 
@@ -1965,7 +1974,7 @@ async def admin_user_payments(
             )
         by_course = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
 
-    return [{**r, "course": by_course.get(r.get("course_id"))} for r in rows]
+    return [_with_item(r, by_course.get(r.get("course_id"))) for r in rows]
 
 
 # ── Teacher management ─────────────────────────────────────────────────────────
@@ -2178,23 +2187,26 @@ async def admin_pending_by_code(
             raise HTTPException(status_code=410, detail="Code expired")
 
     async with httpx.AsyncClient(timeout=10) as client:
-        p_res, c_res = await asyncio.gather(
-            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
-                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username", "limit": "1"},
-                       headers=_pending_supabase_headers()),
-            client.get(f"{SUPABASE_URL}/rest/v1/courses",
-                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
-                       headers=_pending_supabase_headers()),
-        )
+        p_res = await client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                                 params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username", "limit": "1"},
+                                 headers=_pending_supabase_headers())
+        c_res = None
+        if row.get("course_id") is not None:  # a Pro pass has no course
+            c_res = await client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                                     params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                                     headers=_pending_supabase_headers())
     profile = (p_res.json() or [{}])[0] if p_res.status_code == 200 else {}
-    course  = (c_res.json() or [{}])[0] if c_res.status_code == 200 else {}
+    course  = (c_res.json() or [{}])[0] if c_res is not None and c_res.status_code == 200 else {}
+    is_pro  = row.get("product") == "pro"
 
     return {
         **row,
         "user_name":        profile.get("first_name", f"#{row['user_id']}"),
         "user_username":    profile.get("username"),
-        "course_title":     course.get("title",         f"#{row['course_id']}"),
-        "course_thumbnail": course.get("thumbnail_url"),
+        # The bot shows course_title; for a Pro pass it is the pass name.
+        "course_title":     _pro_title(row) if is_pro else course.get("title", f"#{row['course_id']}"),
+        "course_thumbnail": None if is_pro else course.get("thumbnail_url"),
+        "item_title":       _pro_title(row) if is_pro else course.get("title", f"#{row['course_id']}"),
     }
 
 
