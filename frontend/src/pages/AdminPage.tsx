@@ -516,6 +516,17 @@ const AdminPage: React.FC = () => {
   const [grantOpen, setGrantOpen] = useState(false)
   const [grantCourseId, setGrantCourseId] = useState('')
   const [grantNotes, setGrantNotes] = useState('')
+  // Sahifalab Pro (107_pro_orders): the user's Pro and the "Pro berish" form.
+  const [userPro, setUserPro] = useState<{
+    is_pro: boolean; pro_until: string | null
+    pending: { reference_code: string; status: string; months: number; amount: number } | null
+    plans: { months: number; price: number }[]
+  } | null>(null)
+  const [proMonths, setProMonths] = useState(1)
+  const [proMethod, setProMethod] = useState('click_card')
+  const [proNotes, setProNotes] = useState('')
+  const [proLoading, setProLoading] = useState(false)
+  const [proMsg, setProMsg] = useState('')
   const [grantLoading, setGrantLoading] = useState(false)
   const [grantMsg, setGrantMsg] = useState('')
   const [drawerSuspendText, setDrawerSuspendText] = useState('')
@@ -1481,14 +1492,21 @@ const AdminPage: React.FC = () => {
     setUserDetailTab('profil')
     setUserDetailData(null)
     setUserDetailPayments([])
+    setUserPro(null)
+    setProMsg('')
     setUserDetailLoading(true)
     try {
-      const [detailRes, paymentsRes] = await Promise.allSettled([
+      const [detailRes, paymentsRes, proRes] = await Promise.allSettled([
         apiService.client.get(`/api/admin/users/${u.telegram_id}`),
         apiService.client.get(`/api/admin/users/${u.telegram_id}/payments`),
+        apiService.client.get(`/api/admin/users/${u.telegram_id}/pro`),
       ])
       if (detailRes.status === 'fulfilled') setUserDetailData(detailRes.value.data)
       if (paymentsRes.status === 'fulfilled') setUserDetailPayments(paymentsRes.value.data ?? [])
+      if (proRes.status === 'fulfilled') {
+        setUserPro(proRes.value.data)
+        if (proRes.value.data?.pending?.months) setProMonths(proRes.value.data.pending.months)
+      }
     } catch { /* ignore */ }
     finally { setUserDetailLoading(false) }
   }
@@ -1507,6 +1525,26 @@ const AdminPage: React.FC = () => {
     } catch (err: any) {
       setGrantMsg('❌ ' + (err?.response?.data?.detail || err?.message))
     } finally { setGrantLoading(false) }
+  }
+
+  const handleGrantPro = async () => {
+    if (!openUserDetail) return
+    setProLoading(true); setProMsg('')
+    try {
+      const res = await apiService.client.post(`/api/admin/users/${openUserDetail.telegram_id}/grant-pro`, {
+        months: proMonths,
+        payment_method: proMethod,
+        amount: userPro?.plans.find(p => p.months === proMonths)?.price ?? null,
+        notes: proNotes || null,
+      })
+      const until = res.data?.pro_until ? new Date(res.data.pro_until).toLocaleDateString('uz-UZ') : ''
+      setProMsg(`✅ Pro ochildi — ${until} gacha`)
+      setProNotes('')
+      const fresh = await apiService.client.get(`/api/admin/users/${openUserDetail.telegram_id}/pro`)
+      setUserPro(fresh.data)
+    } catch (err: any) {
+      setProMsg('❌ ' + (err?.response?.data?.detail || err?.message))
+    } finally { setProLoading(false) }
   }
 
   const handleDrawerSuspend = async () => {
@@ -5340,7 +5378,9 @@ const AdminPage: React.FC = () => {
                                     'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
                                   }`}>{p.status}</span>
                                 </div>
-                                <p className="text-gray-900 dark:text-white text-sm truncate">{p.course?.title ?? `Kurs #${p.course_id}`}</p>
+                                <p className="text-gray-900 dark:text-white text-sm truncate">
+                                  {p.product === 'pro' ? `✨ Sahifalab Pro · ${p.pro_months} oy` : (p.course?.title ?? `Kurs #${p.course_id}`)}
+                                </p>
                                 <div className="flex items-center justify-between mt-1">
                                   <span className="text-gray-400 dark:text-gray-500 text-xs">
                                     {((p.actual_amount || p.expected_amount || 0) / 100).toLocaleString()} so'm
@@ -5377,6 +5417,48 @@ const AdminPage: React.FC = () => {
                       {/* ── ADMIN ── */}
                       {userDetailTab === 'admin' && (
                         <div className="space-y-3">
+                          {/* ── Sahifalab Pro ── */}
+                          <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900/40 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between">
+                              <h4 className="text-amber-700 dark:text-amber-400 font-semibold text-sm">✨ Sahifalab Pro</h4>
+                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                {userPro == null ? 'Yoqilmagan (migration 106)'
+                                  : userPro.is_pro && userPro.pro_until ? `Faol · ${new Date(userPro.pro_until).toLocaleDateString('uz-UZ')} gacha`
+                                  : 'Pro yoʻq'}
+                              </span>
+                            </div>
+                            {userPro?.pending && (
+                              <p className="text-xs text-gray-600 dark:text-gray-300">
+                                Ochiq soʻrov: <span className="font-mono">{userPro.pending.reference_code}</span> · {userPro.pending.months} oy · {userPro.pending.amount.toLocaleString()} soʻm · {userPro.pending.status}
+                              </p>
+                            )}
+                            {userPro && (
+                              <>
+                                <div className="flex gap-2">
+                                  {userPro.plans.map(plan => (
+                                    <button key={plan.months} onClick={() => setProMonths(plan.months)}
+                                      className={`flex-1 py-2 rounded-xl border text-sm ${proMonths === plan.months
+                                        ? 'border-amber-500 bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-semibold'
+                                        : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300'}`}>
+                                      {plan.months} oy<br /><span className="text-xs">{plan.price.toLocaleString()} soʻm</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                <select value={proMethod} onChange={e => setProMethod(e.target.value)}
+                                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white">
+                                  {Object.entries(PM_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                                </select>
+                                <input value={proNotes} onChange={e => setProNotes(e.target.value)} placeholder="Izoh (ixtiyoriy)"
+                                  className="w-full px-3 py-2 text-sm rounded-xl border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:border-amber-500" />
+                                {proMsg && <p className={`text-xs ${proMsg.startsWith('✅') ? 'text-green-600' : 'text-red-500'}`}>{proMsg}</p>}
+                                <button onClick={handleGrantPro} disabled={proLoading}
+                                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-semibold">
+                                  {proLoading ? 'Saqlanmoqda…' : `✓ Pro berish · ${proMonths} oy`}
+                                </button>
+                                <p className="text-xs text-gray-400">Toʻlovni tekshirgandan keyin bosing. Faol Pro boʻlsa, muddat ustiga qoʻshiladi.</p>
+                              </>
+                            )}
+                          </div>
                           <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/40 rounded-2xl p-4">
                             <h4 className="text-red-600 dark:text-red-400 font-semibold text-sm mb-3">Xavfli amallar</h4>
                             {u.status === 'suspended' ? (

@@ -9,6 +9,8 @@ Profile endpoints:
   GET  /profile/{username}    — full public profile (all sections)
   PUT  /profile/me            — update own headline / bio / location
   GET  /profile/me/views      — profile view analytics (own views only)
+  GET  /profile/me/look       — saved + effective cosmetics look, unlock states
+  PUT  /profile/me/look       — save banner / ring / tree look / theme (server checks unlocks)
 
 Skills endpoints:
   GET    /skills/{username}          — list user's skills
@@ -41,6 +43,7 @@ from app.models.social_models import (
 from app.services.auth_service import decode_token
 from app.services.integration_service import calculate_profile_completeness
 from app.services.badge_service import get_badge_groups
+from app.services import cosmetics_service as cosmetics
 
 logger = logging.getLogger(__name__)
 
@@ -412,6 +415,100 @@ def get_my_profile(
         raise HTTPException(status_code=404, detail="Profil topilmadi")
     identifier = profile.site_username or str(profile.telegram_id)
     return get_public_profile(username=identifier, authorization=authorization, db=db)
+
+
+def _look_context(db: Session, user_id: int, best_streak: int) -> tuple[Optional[dict], "cosmetics.UnlockContext", Optional[datetime]]:
+    saved, pro_until = cosmetics.read_look_row(db, user_id)
+    ctx = cosmetics.UnlockContext(
+        is_pro=cosmetics.pro_active(pro_until),
+        best_streak=best_streak,
+        open_seasons=cosmetics.open_seasons(db),
+    )
+    return saved, ctx, pro_until
+
+
+def _effective_look_for(db: Session, user_id: int, longest: int, current: int) -> dict:
+    if not cosmetics.looks_enabled(db):
+        return dict(cosmetics.FALLBACK)
+    saved, ctx, _ = _look_context(db, user_id, max(longest, current))
+    return cosmetics.effective_look(saved, ctx)
+
+
+def _own_look_payload(db: Session, profile: Profile) -> dict:
+    tid = profile.telegram_id
+    best = max(
+        cosmetics.longest_streak(db, tid, int(profile.daily_goal_minutes or 20)),
+        int(profile.streak_days or 0),
+    )
+    saved, ctx, pro_until = _look_context(db, tid, best)
+    return {
+        "saved": {slot: (saved or {}).get(slot, cosmetics.FALLBACK[slot]) for slot in cosmetics.SLOTS},
+        "effective": cosmetics.effective_look(saved, ctx),
+        "unlocked": cosmetics.item_states(ctx),
+        "is_pro": ctx.is_pro,
+        "pro_until": pro_until.isoformat() if pro_until else None,
+        "best_streak": best,
+        "open_seasons": sorted(ctx.open_seasons),
+    }
+
+
+@profile_router.get("/me/look")
+def get_my_look(
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """Your saved and effective look, and which items are unlocked for you."""
+    viewer_id = _require_viewer(authorization)
+    profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profil topilmadi")
+    if not cosmetics.looks_enabled(db):
+        raise HTTPException(status_code=503, detail="Bezaklar hali yoqilmagan")
+    return _own_look_payload(db, profile)
+
+
+class LookUpdate(BaseModel):
+    banner: Optional[str] = None
+    ring: Optional[str] = None
+    tree: Optional[str] = None
+    theme: Optional[str] = None
+
+
+@profile_router.put("/me/look")
+def update_my_look(
+    body: LookUpdate,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Save banner / ring / tree look / theme. Every item must be unlocked for you right now
+    (free, earned by streak, Pro, or in season) — otherwise 403 and nothing
+    is saved. Slots left out keep their saved value.
+    """
+    viewer_id = _require_viewer(authorization)
+    profile = db.query(Profile).filter(Profile.telegram_id == viewer_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profil topilmadi")
+    if not cosmetics.looks_enabled(db):
+        raise HTTPException(status_code=503, detail="Bezaklar hali yoqilmagan")
+
+    best = max(
+        cosmetics.longest_streak(db, viewer_id, int(profile.daily_goal_minutes or 20)),
+        int(profile.streak_days or 0),
+    )
+    saved, ctx, _ = _look_context(db, viewer_id, best)
+    look = dict(saved) if isinstance(saved, dict) else {}
+    for slot in cosmetics.SLOTS:
+        choice = getattr(body, slot)
+        if choice is None:
+            continue
+        if choice not in cosmetics.CATALOG[slot]:
+            raise HTTPException(status_code=400, detail=f"Noma'lum bezak: {slot}={choice}")
+        if not cosmetics.is_unlocked(slot, choice, ctx):
+            raise HTTPException(status_code=403, detail=f"Bu bezak hali ochilmagan: {choice}")
+        look[slot] = choice
+    cosmetics.write_look(db, viewer_id, look)
+    return _own_look_payload(db, profile)
 
 
 @profile_router.get("/me/badges")
@@ -977,25 +1074,15 @@ def get_public_profile(
         db,
         "longest_streak",
         0,
-        lambda: int(db.execute(text("""
-            WITH daily AS (
-                SELECT session_date
-                FROM focus_sessions
-                WHERE user_id = :uid
-                GROUP BY session_date
-                HAVING SUM(minutes) >= :goal
-            ),
-            gaps AS (
-                SELECT session_date,
-                       session_date - (ROW_NUMBER() OVER (ORDER BY session_date)
-                                       * INTERVAL '1 day')::interval AS grp
-                FROM daily
-            ),
-            streaks AS (
-                SELECT COUNT(*) AS streak_len FROM gaps GROUP BY grp
-            )
-            SELECT COALESCE(MAX(streak_len), 0) AS longest FROM streaks
-        """), {"uid": tid, "goal": daily_goal}).scalar() or 0),
+        lambda: cosmetics.longest_streak(db, tid, daily_goal),
+    )
+
+    # ── Cosmetics look (106_profile_looks) — always the effective look ───────
+    look = _db_fallback(
+        db,
+        "profile_look",
+        dict(cosmetics.FALLBACK),
+        lambda: _effective_look_for(db, tid, longest_streak, int(profile.streak_days or 0)),
     )
 
     # ── XP percent to next level ──────────────────────────────────────────────
@@ -1058,6 +1145,8 @@ def get_public_profile(
         "certificates":        certificates,
         "experiences":         experiences,
         "education":           education,
+        # Cosmetics (106_profile_looks)
+        "look":                look,
         # Meta
         "profile_completeness": completeness,
     }

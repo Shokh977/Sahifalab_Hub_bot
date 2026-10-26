@@ -935,6 +935,20 @@ def _pending_supabase_headers() -> dict:
     }
 
 
+def _pro_title(row: dict) -> str:
+    return f"Sahifalab Pro \u00b7 {row.get('pro_months') or '?'} oy"
+
+
+def _with_item(row: dict, course: Optional[dict]) -> dict:
+    """A pending row for the admin UIs and the payment bot. A Pro pass
+    (107_pro_orders) has no course: it gets a stand-in course {"title": …}
+    so the bot's course-title lookups keep working, plus item_title for all."""
+    if row.get("product") == "pro":
+        title = _pro_title(row)
+        return {**row, "course": {"title": title}, "item_title": title}
+    return {**row, "course": course, "item_title": (course or {}).get("title") or f"Kurs #{row.get('course_id')}"}
+
+
 class _GrantBody(BaseModel):
     actual_amount:     Optional[int] = None
     payment_method:    Optional[str] = None
@@ -972,7 +986,7 @@ async def list_pending_enrollments(
 
     params: dict = {
         "status": f"eq.{status}",
-        "select": "id,user_id,course_id,reference_code,expected_amount,status,created_at,expires_at,admin_notes,actual_amount,payment_method",
+        "select": "id,user_id,course_id,product,pro_months,reference_code,expected_amount,status,created_at,expires_at,admin_notes,actual_amount,payment_method",
         "order":  "created_at.desc",
     }
     if not fetch_all:
@@ -993,7 +1007,8 @@ async def list_pending_enrollments(
 
     # Enrich: fetch profiles and course titles
     user_ids   = list({r["user_id"]   for r in rows})
-    course_ids = list({r["course_id"] for r in rows})
+    # Pro passes (107_pro_orders) have no course.
+    course_ids = list({r["course_id"] for r in rows if r.get("course_id") is not None})
 
     async with httpx.AsyncClient(timeout=10) as client:
         profiles_res = await client.get(
@@ -1009,26 +1024,24 @@ async def list_pending_enrollments(
         for p in (profiles_res.json() if profiles_res.status_code == 200 else [])
     }
 
-    async with httpx.AsyncClient(timeout=10) as client:
-        courses_res = await client.get(
-            f"{SUPABASE_URL}/rest/v1/courses",
-            params={
-                "id":     f"in.({','.join(str(c) for c in course_ids)})",
-                "select": "id,title,thumbnail_url,price",
-            },
-            headers=_pending_supabase_headers(),
-        )
-    courses_by_id = {
-        c["id"]: c
-        for c in (courses_res.json() if courses_res.status_code == 200 else [])
-    }
+    courses_by_id: dict = {}
+    if course_ids:
+        async with httpx.AsyncClient(timeout=10) as client:
+            courses_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/courses",
+                params={
+                    "id":     f"in.({','.join(str(c) for c in course_ids)})",
+                    "select": "id,title,thumbnail_url,price",
+                },
+                headers=_pending_supabase_headers(),
+            )
+        courses_by_id = {
+            c["id"]: c
+            for c in (courses_res.json() if courses_res.status_code == 200 else [])
+        }
 
     enriched = [
-        {
-            **r,
-            "user":   profiles_by_id.get(r["user_id"]),
-            "course": courses_by_id.get(r["course_id"]),
-        }
+        {**_with_item(r, courses_by_id.get(r.get("course_id"))), "user": profiles_by_id.get(r["user_id"])}
         for r in rows
     ]
 
@@ -1039,6 +1052,7 @@ async def list_pending_enrollments(
             if q in r["reference_code"].lower()
             or (r["user"] and q in (r["user"].get("first_name", "") + r["user"].get("username", "")).lower())
             or (r["course"] and q in r["course"].get("title", "").lower())
+            or (r.get("product") == "pro" and q in "sahifalab pro")
         ]
         total = len(enriched)
         start = (page - 1) * page_size
@@ -1069,20 +1083,19 @@ async def admin_get_pending_enrollment(
 
     row = rows[0]
     async with httpx.AsyncClient(timeout=10) as client:
-        p_res, c_res = await asyncio.gather(
-            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
-                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username,photo_url", "limit": "1"},
-                       headers=_pending_supabase_headers()),
-            client.get(f"{SUPABASE_URL}/rest/v1/courses",
-                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
-                       headers=_pending_supabase_headers()),
-        )
+        p_res = await client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                                 params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username,photo_url", "limit": "1"},
+                                 headers=_pending_supabase_headers())
+        c_res = None
+        if row.get("course_id") is not None:  # Pro passes have no course
+            c_res = await client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                                     params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                                     headers=_pending_supabase_headers())
     profiles = p_res.json() if p_res.status_code == 200 else []
-    courses  = c_res.json() if c_res.status_code == 200 else []
+    courses  = c_res.json() if c_res is not None and c_res.status_code == 200 else []
     return {
-        **row,
-        "user":   profiles[0] if profiles else None,
-        "course": courses[0]  if courses  else None,
+        **_with_item(row, courses[0] if courses else None),
+        "user": profiles[0] if profiles else None,
     }
 
 
@@ -1112,6 +1125,9 @@ async def grant_pending_enrollment(
 
     if pending["status"] not in ("awaiting_payment", "paid"):
         raise HTTPException(status_code=400, detail=f"Cannot grant: status is {pending['status']}")
+
+    if pending.get("product") == "pro":
+        return await _grant_pro_pass(pending, body, admin, db)
 
     user_id   = pending["user_id"]
     course_id = pending["course_id"]
@@ -1230,6 +1246,93 @@ async def grant_pending_enrollment(
     db.commit()
 
     return {"ok": True}
+
+
+async def _pro_grant(
+    user_id: int, months: int, admin, db: Session, *,
+    pending_id: Optional[int] = None,
+    actual_amount: Optional[int] = None,
+    payment_method: Optional[str] = None,
+    notes: Optional[str] = None,
+    notify: bool = True,
+) -> dict:
+    """
+    Extend a user's Pro by `months` (107_pro_orders): pro_until stacks on an
+    active pass. Marks the pending request granted when there is one, then
+    notifies the user (in-app + Telegram) and writes the audit log.
+    """
+    from fastapi.concurrency import run_in_threadpool
+    from app.services import pro_service
+
+    if months not in pro_service.PLAN_MONTHS:
+        raise HTTPException(status_code=400, detail="Pro muddati 1, 3 yoki 12 oy boʻlishi kerak")
+    until = await run_in_threadpool(pro_service.grant_pro, db, user_id, months)
+
+    if pending_id is not None:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.patch(
+                f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+                params={"id": f"eq.{pending_id}"},
+                json={
+                    "status":         "granted",
+                    "actual_amount":  actual_amount,
+                    "payment_method": payment_method,
+                    "admin_notes":    notes,
+                    "processed_by":   admin.telegram_id,
+                    "processed_at":   datetime.now(timezone.utc).isoformat(),
+                },
+                headers=_pending_supabase_headers(),
+            )
+
+    if notify:
+        try:
+            from app.api.v1.endpoints.notifications import send_notification
+            await send_notification(user_id, "pro_granted", "GROWTH", {"months": months, "pro_until": until.isoformat()})
+        except Exception:
+            pass  # notification failure must not block the grant
+        if TELEGRAM_BOT_TOKEN:
+            try:
+                tg_text = (
+                    "\u2728 <b>Sahifalab Pro faol!</b>\n\n"
+                    f"{months} oylik Pro ochildi \u2014 {until.strftime('%d.%m.%Y')} gacha.\n\n"
+                    "Ilovada Sozlamalar \u2192 Mavzu va Profilni bezash bo\u02bblimlarini oching."
+                )
+                async with httpx.AsyncClient(timeout=10) as client:
+                    await client.post(
+                        f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
+                        json={"chat_id": user_id, "text": tg_text, "parse_mode": "HTML"},
+                    )
+            except Exception:
+                pass  # Telegram DM failure must not block the grant
+
+    def _audit() -> None:
+        db.add(EnrollmentAuditLog(
+            action="pro_granted",
+            target_id=pending_id,
+            admin_telegram_id=admin.telegram_id,
+            user_telegram_id=user_id,
+            course_id=None,
+            details={
+                "months":         months,
+                "pro_until":      until.isoformat(),
+                "actual_amount":  actual_amount,
+                "payment_method": payment_method,
+                "notes":          notes,
+            },
+        ))
+        db.commit()
+
+    await run_in_threadpool(_audit)
+    return {"ok": True, "pro_until": until.isoformat()}
+
+
+async def _grant_pro_pass(pending: dict, body: _GrantBody, admin, db: Session):
+    """A paid Pro request from the queue: the months it was bought for."""
+    return await _pro_grant(
+        pending["user_id"], int(pending.get("pro_months") or 0), admin, db,
+        pending_id=pending["id"], actual_amount=body.actual_amount,
+        payment_method=body.payment_method, notes=body.notes, notify=body.send_notification,
+    )
 
 
 @router.post("/pending-enrollments/{pending_id}/cancel")
@@ -1782,6 +1885,59 @@ async def admin_reject_course(
 
 # ── User payment history ────────────────────────────────────────────────────────
 
+class _ProGrantBody(BaseModel):
+    months:         int
+    payment_method: Optional[str] = None
+    amount:         Optional[int] = None
+    notes:          Optional[str] = None
+
+
+@router.get("/users/{telegram_id}/pro")
+async def admin_user_pro(
+    telegram_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """The user's Pro (pro_until) and open Pro payment request — Admin only."""
+    from fastapi.concurrency import run_in_threadpool
+    from app.services import cosmetics_service, pro_service
+    await verify_admin(authorization=authorization, db=db)
+
+    def _read() -> dict:
+        if not cosmetics_service.looks_enabled(db):
+            raise HTTPException(status_code=503, detail="Migration 106 is not applied")
+        _, pro_until = cosmetics_service.read_look_row(db, telegram_id)
+        return {
+            "is_pro":    cosmetics_service.pro_active(pro_until),
+            "pro_until": pro_until.isoformat() if pro_until else None,
+            "pending":   pro_service.open_pro_request(db, telegram_id),
+            "plans":     pro_service.plans_payload(db),
+        }
+
+    return await run_in_threadpool(_read)
+
+
+@router.post("/users/{telegram_id}/grant-pro")
+async def admin_grant_pro(
+    telegram_id: int,
+    body: _ProGrantBody,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """
+    Give a user Pro for 1 / 3 / 12 months after checking their payment —
+    Admin only. Marks their open Pro request for the same months granted.
+    """
+    from fastapi.concurrency import run_in_threadpool
+    from app.services import pro_service
+    admin = await verify_admin(authorization=authorization, db=db)
+    pending = await run_in_threadpool(pro_service.open_pro_request_row, db, telegram_id, body.months)
+    return await _pro_grant(
+        telegram_id, body.months, admin, db,
+        pending_id=pending, actual_amount=body.amount, payment_method=body.payment_method, notes=body.notes,
+    )
+
+
 @router.get("/users/{telegram_id}/payments")
 async def admin_user_payments(
     telegram_id: int,
@@ -1797,7 +1953,7 @@ async def admin_user_payments(
             f"{SUPABASE_URL}/rest/v1/pending_enrollments",
             params={
                 "user_id": f"eq.{telegram_id}",
-                "select": "id,course_id,reference_code,expected_amount,actual_amount,status,payment_method,admin_notes,created_at,processed_at,expires_at",
+                "select": "id,course_id,product,pro_months,reference_code,expected_amount,actual_amount,status,payment_method,admin_notes,created_at,processed_at,expires_at",
                 "order": "created_at.desc",
                 "limit": "50",
             },
@@ -1807,16 +1963,18 @@ async def admin_user_payments(
     if not rows:
         return rows
 
-    course_ids = list({r["course_id"] for r in rows})
-    async with httpx.AsyncClient(timeout=10) as client:
-        c_res = await client.get(
-            f"{SUPABASE_URL}/rest/v1/courses",
-            params={"id": f"in.({','.join(str(c) for c in course_ids)})", "select": "id,title"},
-            headers=_pending_supabase_headers(),
-        )
-    by_course = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
+    course_ids = list({r["course_id"] for r in rows if r.get("course_id") is not None})
+    by_course: dict = {}
+    if course_ids:
+        async with httpx.AsyncClient(timeout=10) as client:
+            c_res = await client.get(
+                f"{SUPABASE_URL}/rest/v1/courses",
+                params={"id": f"in.({','.join(str(c) for c in course_ids)})", "select": "id,title"},
+                headers=_pending_supabase_headers(),
+            )
+        by_course = {c["id"]: c for c in (c_res.json() if c_res.status_code == 200 else [])}
 
-    return [{**r, "course": by_course.get(r["course_id"])} for r in rows]
+    return [_with_item(r, by_course.get(r.get("course_id"))) for r in rows]
 
 
 # ── Teacher management ─────────────────────────────────────────────────────────
@@ -2029,23 +2187,26 @@ async def admin_pending_by_code(
             raise HTTPException(status_code=410, detail="Code expired")
 
     async with httpx.AsyncClient(timeout=10) as client:
-        p_res, c_res = await asyncio.gather(
-            client.get(f"{SUPABASE_URL}/rest/v1/profiles",
-                       params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username", "limit": "1"},
-                       headers=_pending_supabase_headers()),
-            client.get(f"{SUPABASE_URL}/rest/v1/courses",
-                       params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
-                       headers=_pending_supabase_headers()),
-        )
+        p_res = await client.get(f"{SUPABASE_URL}/rest/v1/profiles",
+                                 params={"telegram_id": f"eq.{row['user_id']}", "select": "telegram_id,first_name,username", "limit": "1"},
+                                 headers=_pending_supabase_headers())
+        c_res = None
+        if row.get("course_id") is not None:  # a Pro pass has no course
+            c_res = await client.get(f"{SUPABASE_URL}/rest/v1/courses",
+                                     params={"id": f"eq.{row['course_id']}", "select": "id,title,thumbnail_url,price", "limit": "1"},
+                                     headers=_pending_supabase_headers())
     profile = (p_res.json() or [{}])[0] if p_res.status_code == 200 else {}
-    course  = (c_res.json() or [{}])[0] if c_res.status_code == 200 else {}
+    course  = (c_res.json() or [{}])[0] if c_res is not None and c_res.status_code == 200 else {}
+    is_pro  = row.get("product") == "pro"
 
     return {
         **row,
         "user_name":        profile.get("first_name", f"#{row['user_id']}"),
         "user_username":    profile.get("username"),
-        "course_title":     course.get("title",         f"#{row['course_id']}"),
-        "course_thumbnail": course.get("thumbnail_url"),
+        # The bot shows course_title; for a Pro pass it is the pass name.
+        "course_title":     _pro_title(row) if is_pro else course.get("title", f"#{row['course_id']}"),
+        "course_thumbnail": None if is_pro else course.get("thumbnail_url"),
+        "item_title":       _pro_title(row) if is_pro else course.get("title", f"#{row['course_id']}"),
     }
 
 

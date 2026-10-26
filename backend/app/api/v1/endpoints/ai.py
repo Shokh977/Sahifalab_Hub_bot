@@ -12,6 +12,9 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.schemas.schemas import BookSummarizerRequest, BookSummarizerResponse
 from app.services import ai_service
+from app.services.cosmetics_service import user_is_pro
+from app.services.client_version import is_pro_client
+from app.services.ai.limiter import effective_free_tier
 from app.services.auth_service import decode_token
 from app.services.ai import limiter as ai_limiter
 from app.services.ai.gemini_provider import get_provider
@@ -104,11 +107,15 @@ async def book_summarizer(payload: BookSummarizerRequest, caller_id: int = Depen
 # (spec Part 6) means don't extend that surface, not that it must be removed.
 # ═══════════════════════════════════════════════════════════════════════════
 
-_DEFAULT_GATE = {"free_daily_allowance": 3, "hard_daily_cap": 20, "prices": {}}
+_DEFAULT_GATE = {"free_daily_allowance": 3, "hard_daily_cap": 20, "free_paid_daily_limit": None, "prices": {}}
 
 
 @router.get("/limits")
-def get_ai_limits(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+def get_ai_limits(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
+):
     """
     Spec Part 7: "Show cost before confirming any Tanga spend, and show
     remaining free allowance." The mobile client calls this before offering
@@ -124,12 +131,18 @@ def get_ai_limits(db: Session = Depends(get_db), caller_id: int = Depends(_requi
     ).fetchone()
     free_used = int(usage_row.free_used) if usage_row else 0
     paid_used = int(usage_row.paid_used) if usage_row else 0
+    is_pro = user_is_pro(db, caller_id)
+    allowance, paid_limit = effective_free_tier(gate, is_pro, is_pro_client(db, x_client_version))
     return {
-        "free_daily_allowance": gate["free_daily_allowance"],
-        "free_remaining_today": max(0, gate["free_daily_allowance"] - free_used),
+        "is_pro": is_pro,
+        "free_daily_allowance": allowance,
+        "free_remaining_today": max(0, allowance - free_used),
         "hard_daily_cap": gate["hard_daily_cap"],
         "actions_used_today": free_used + paid_used,
         "actions_remaining_today": max(0, gate["hard_daily_cap"] - free_used - paid_used),
+        # Free users: Tanga-paid actions left today (null = no limit).
+        "paid_daily_limit": paid_limit,
+        "paid_remaining_today": None if paid_limit is None else max(0, int(paid_limit) - paid_used),
         "prices": gate["prices"],
     }
 
@@ -167,6 +180,7 @@ async def generate_flashcards(
     body: FlashcardGenerateRequest,
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
 ):
     """
     Spec Part 6, feature 1. Input: pasted text OR a photographed page.
@@ -201,11 +215,16 @@ async def generate_flashcards(
         record_event(db, "ai_flashcard_generate", caller_id,
                      {"source": source, "outcome": outcome, "cache_hit": cache_hit})
 
-    gate_result = ai_limiter.check_and_charge(db, caller_id, feature="flashcard_gen", action_id=body.action_id)
+    gate_result = ai_limiter.check_and_charge(
+        db, caller_id, feature="flashcard_gen", action_id=body.action_id,
+        is_pro=user_is_pro(db, caller_id), pro_client=is_pro_client(db, x_client_version),
+    )
     if not gate_result.allowed:
         _log_generation(f"rejected:{gate_result.reason}")
         status_map = {
             "insufficient_balance": (402, "Tanga yetarli emas."),
+            # Free user past today's free and Tanga-paid decks: the app offers Pro.
+            "pro_required":         (402, "Bugungi bepul AI toʻplamlar tugadi. Pro bilan cheksiz yarating."),
             "daily_cap_reached":    (429, "Bugungi AI limitiga yetdingiz. Ertaga qayta urinib ko'ring."),
             "global_ceiling_reached": (503, "AI xizmati hozircha band. Birozdan so'ng urinib ko'ring."),
         }
@@ -326,7 +345,11 @@ def confirm_generated_flashcards(
 
 
 @router.get("/weekly-review")
-async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int = Depends(_require_token)):
+async def get_latest_weekly_review(
+    db: Session = Depends(get_db),
+    caller_id: int = Depends(_require_token),
+    x_client_version: Optional[str] = Header(None, alias="X-Client-Version"),
+):
     """Spec Part 6, feature 2 — always free. Returns the caller's most
     recent cron-generated weekly review — a review of the most recently
     COMPLETED Mon-Sun week (never "this week so far": the batch only runs
@@ -389,6 +412,33 @@ async def get_latest_weekly_review(db: Session = Depends(get_db), caller_id: int
     if not row or row.week_start < target_week_start:
         live_stats = gather_user_stats(db, caller_id, target_week_start, today)
 
-    current_week_progress = await get_or_refresh_current_week_progress(db, caller_id, today)
+    # Sahifalab Pro: the AI advice and the advanced stats. On a Pro-aware
+    # client, free users get the basics (focus minutes, the 7-day activity)
+    # and `pro_locked`; the AI narrative is not generated for them at all,
+    # and the advanced numbers are zeroed so the blurred cards can't be read
+    # from the response. Older clients (no Pro screen) are unchanged.
+    locked = is_pro_client(db, x_client_version) and not user_is_pro(db, caller_id)
+    current_week_progress = await get_or_refresh_current_week_progress(db, caller_id, today, with_ai=not locked)
+    if locked:
+        current_week_progress = _free_week_progress(current_week_progress)
+        if review is not None:
+            review = {k: review[k] for k in ("week_start", "created_at", "stats") if k in review}
 
-    return {"review": review, "live_stats": live_stats, "current_week_progress": current_week_progress}
+    return {
+        "review": review, "live_stats": live_stats,
+        "current_week_progress": current_week_progress, "pro_locked": locked,
+    }
+
+
+# Stats shown to free users; everything else in `stats` is Pro.
+_FREE_STAT_KEYS = {
+    "week_start", "first_name", "this_week_minutes", "prev_week_minutes", "prev_week_minutes_same_point",
+    "projected_week_minutes", "days_active", "days", "streak_days", "daily_goal_minutes",
+}
+
+
+def _free_week_progress(progress: dict) -> dict:
+    stats = progress.get("stats") or {}
+    free_stats = {k: (v if k in _FREE_STAT_KEYS else (None if v is None else 0 if isinstance(v, (int, float)) else v))
+                  for k, v in stats.items()}
+    return {"week_start": progress.get("week_start"), "stats": free_stats}
