@@ -41,6 +41,16 @@ def test_tree_looks():
     assert is_unlocked("tree", "sakura", ctx(is_pro=True))
 
 
+def test_themes():
+    assert is_unlocked("theme", "standart", ctx())
+    for t in ("tun", "zumrad", "sakura"):
+        assert not is_unlocked("theme", t, ctx(best=500))
+        assert is_unlocked("theme", t, ctx(is_pro=True))
+    assert is_unlocked("theme", "navroz", ctx(seasons=["navroz"]))
+    assert is_unlocked("theme", "ramazon", ctx(seasons=["ramazon"]))
+    assert not is_unlocked("theme", "ramazon", ctx(is_pro=True))
+
+
 def test_seasonal_items_free_in_season_only():
     assert is_unlocked("banner", "bahor", ctx(seasons=["navroz"]))
     assert is_unlocked("ring", "lola", ctx(seasons=["navroz"]))
@@ -56,10 +66,10 @@ def test_unknown_items_are_locked():
 
 
 def test_locked_choice_renders_fallback_but_is_kept():
-    saved = {"banner": "oltin", "ring": "olov", "tree": "oltin"}
-    assert effective_look(saved, ctx(best=60)) == {"banner": "plain", "ring": "olov", "tree": "tabiiy"}
+    saved = {"banner": "oltin", "ring": "olov", "tree": "oltin", "theme": "tun"}
+    assert effective_look(saved, ctx(best=60)) == {"banner": "plain", "ring": "olov", "tree": "tabiiy", "theme": "standart"}
     assert effective_look(saved, ctx(is_pro=True, best=60)) == saved
-    assert saved == {"banner": "oltin", "ring": "olov", "tree": "oltin"}
+    assert saved == {"banner": "oltin", "ring": "olov", "tree": "oltin", "theme": "tun"}
 
 
 def test_empty_or_bad_saved_look_falls_back():

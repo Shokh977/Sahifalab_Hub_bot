@@ -23,8 +23,8 @@ from sqlalchemy.orm import Session
 from app.services.config_service import get_config
 
 TASHKENT = timezone(timedelta(hours=5))
-SLOTS = ("banner", "ring", "tree")
-FALLBACK = {"banner": "plain", "ring": "oddiy", "tree": "tabiiy"}
+SLOTS = ("banner", "ring", "tree", "theme")
+FALLBACK = {"banner": "plain", "ring": "oddiy", "tree": "tabiiy", "theme": "standart"}
 
 # slot -> id -> unlock rule
 CATALOG: dict[str, dict[str, dict[str, Any]]] = {
@@ -50,6 +50,15 @@ CATALOG: dict[str, dict[str, dict[str, Any]]] = {
         "sakura": {"kind": "pro"},
         "kumush": {"kind": "achievement", "streak_days": 100},
         "oltin": {"kind": "pro"},
+    },
+    # App themes (Mavzu): the whole app, and the public profile in its owner's theme.
+    "theme": {
+        "standart": {"kind": "free"},
+        "tun": {"kind": "pro"},
+        "zumrad": {"kind": "pro"},
+        "sakura": {"kind": "pro"},
+        "ramazon": {"kind": "seasonal", "season": "ramazon"},
+        "navroz": {"kind": "seasonal", "season": "navroz"},
     },
 }
 

@@ -10,7 +10,7 @@ Profile endpoints:
   PUT  /profile/me            — update own headline / bio / location
   GET  /profile/me/views      — profile view analytics (own views only)
   GET  /profile/me/look       — saved + effective cosmetics look, unlock states
-  PUT  /profile/me/look       — save banner / ring / tree look (server checks unlocks)
+  PUT  /profile/me/look       — save banner / ring / tree look / theme (server checks unlocks)
 
 Skills endpoints:
   GET    /skills/{username}          — list user's skills
@@ -471,6 +471,7 @@ class LookUpdate(BaseModel):
     banner: Optional[str] = None
     ring: Optional[str] = None
     tree: Optional[str] = None
+    theme: Optional[str] = None
 
 
 @profile_router.put("/me/look")
@@ -480,7 +481,7 @@ def update_my_look(
     db: Session = Depends(get_db),
 ):
     """
-    Save banner / ring / tree look. Every item must be unlocked for you right now
+    Save banner / ring / tree look / theme. Every item must be unlocked for you right now
     (free, earned by streak, Pro, or in season) — otherwise 403 and nothing
     is saved. Slots left out keep their saved value.
     """
