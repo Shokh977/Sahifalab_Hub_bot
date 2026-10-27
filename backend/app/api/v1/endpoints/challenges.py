@@ -285,7 +285,10 @@ def get_challenge(
     db: Session = Depends(get_db),
     caller_id: int = Depends(_require_token),
 ):
-    row = db.execute(text("SELECT * FROM challenges WHERE slug = :slug"), {"slug": slug}).fetchone()
+    # Notifications carry the challenge id; links carry the slug. Accept both.
+    row = db.execute(
+        text("SELECT * FROM challenges WHERE slug = :slug OR CAST(id AS TEXT) = :slug LIMIT 1"), {"slug": slug},
+    ).fetchone()
     if not row:
         raise HTTPException(status_code=404, detail="Bellashuv topilmadi")
 

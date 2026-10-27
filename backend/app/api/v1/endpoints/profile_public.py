@@ -1160,6 +1160,8 @@ def get_public_profile(
         "education":           education,
         # Cosmetics (106_profile_looks)
         "look":                look,
+        # Sahifalab Pro is active (106/107) — the PRO mark beside the name
+        "is_pro":              _db_fallback(db, "is_pro", False, lambda: cosmetics.user_is_pro(db, tid)),
         # O'rmon — past streak trees (the current one is streak_days)
         "forest":              forest,
         "forest_stats":        forest_service.forest_stats(forest, current_streak),
