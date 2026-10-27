@@ -97,3 +97,14 @@ def test_pro_active():
     assert pro_active(now + timedelta(days=1), now)
     assert not pro_active(now - timedelta(seconds=1), now)
     assert pro_active((now + timedelta(days=1)).replace(tzinfo=None), now)
+
+
+def test_list_rings_need_no_streak_history():
+    from app.services.cosmetics_service import list_item_shown
+    assert list_item_shown("ring", "oddiy", False, set()) is None
+    assert list_item_shown("ring", "olov", False, set()) == "olov"          # earned: never expires
+    assert list_item_shown("ring", "oltin", False, set()) is None           # Pro ended
+    assert list_item_shown("ring", "oltin", True, set()) == "oltin"
+    assert list_item_shown("ring", "lola", True, set()) is None             # out of season
+    assert list_item_shown("ring", "lola", False, {"navroz"}) == "lola"
+    assert list_item_shown("ring", "nope", True, set()) is None

@@ -44,6 +44,8 @@ from app.services.auth_service import decode_token
 from app.services.integration_service import calculate_profile_completeness
 from app.services.badge_service import get_badge_groups
 from app.services import cosmetics_service as cosmetics
+from app.services import forest_service
+from app.services.user_time import user_local_date
 
 logger = logging.getLogger(__name__)
 
@@ -1077,6 +1079,17 @@ def get_public_profile(
         lambda: cosmetics.longest_streak(db, tid, daily_goal),
     )
 
+    # ── O'rmon: finished streaks of 3+ days, newest first ────────────────────
+    current_streak = int(profile.streak_days or 0)
+    forest = _db_fallback(
+        db,
+        "forest",
+        [],
+        lambda: forest_service.forest_for(
+            db, tid, daily_goal, current_streak, user_local_date(getattr(profile, "timezone", None)),
+        ),
+    )
+
     # ── Cosmetics look (106_profile_looks) — always the effective look ───────
     look = _db_fallback(
         db,
@@ -1147,6 +1160,9 @@ def get_public_profile(
         "education":           education,
         # Cosmetics (106_profile_looks)
         "look":                look,
+        # O'rmon — past streak trees (the current one is streak_days)
+        "forest":              forest,
+        "forest_stats":        forest_service.forest_stats(forest, current_streak),
         # Meta
         "profile_completeness": completeness,
     }
