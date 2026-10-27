@@ -295,8 +295,19 @@ _PUSH_TITLES: dict[str, str] = {
     "connection_request":  "Ulanish so'rovi",
     "connection_accepted": "So'rov qabul qilindi",
     "level_up":            "Yangi daraja",
-    "achievement":         "Yutuq ochildi",
+    "achievement":         "🌳 Daraxtingiz yangi bosqichda",
     "xp_reward":           "XP mukofot",
+    "challenge_started":       "Bellashuv boshlandi",
+    "challenge_midpoint":      "Bellashuv yarmiga yetdi",
+    "challenge_final_stretch": "Bellashuv tugashiga oz qoldi",
+    "challenge_sprint_rank":   "Bellashuvdagi oʻrningiz",
+    "challenge_team_standing": "Jamoangiz holati",
+    "challenge_team_result":   "Bellashuv natijasi",
+    "challenge_ended":         "Bellashuv tugadi",
+    "challenge_completed":     "Bellashuv bajarildi! 🏆",
+    "challenge_cancelled":     "Bellashuv bekor qilindi",
+    "consistency_reminder":    "Bugungi minimumni bajaring",
+    "consistency_failed":      "Bellashuvdan chiqdingiz",
     "course_complete":     "Kurs yakunlandi",
     "certificate":         "Sertifikat tayyor",
     "quiz_pass":           "Test natijasi",
@@ -329,7 +340,7 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "connection_request":  "{actor} sizga ulanish so'rovi yubordi.",
     "connection_accepted": "{actor} ulanish so'rovingizni qabul qildi.",
     "level_up":            "Tabriklaymiz! Yangi darajaga ko'tarildingiz.",
-    "achievement":         "Yangi yutuq ochildi — davom eting!",
+    "achievement":         "Daraxtingiz {stage_number}-bosqichga yetdi! +{bonus_xp} XP.",
     "xp_reward":           "Postingiz ko'p ko'rindi — XP mukofot oldiniz.",
     "course_complete":     "Kurs muvaffaqiyatli yakunlandi.",
     "certificate":         "Sertifikatingiz tayyor — yuklab oling.",
@@ -341,6 +352,17 @@ _PUSH_BODY_TPL: dict[str, str] = {
     "teacher_approved":    "Tabriklaymiz! Siz endi o'qituvchi sifatida tasdiqlangansiz. Kurs yaratishni boshlashingiz mumkin.",
     "course_granted":      "{course_title} kursi sizga ochildi. Hozir o'rganishni boshlang!",
     "pro_granted":         "{months} oylik Pro ochildi. Mavzu va bezaklarni sinab ko'ring!",
+    "challenge_started":       "«{title}» boshlandi — birinchi daqiqalaringizni hozir yozing!",
+    "challenge_midpoint":      "«{title}»: {progress_value}/{target_value}. {days_left} kun qoldi.",
+    "challenge_final_stretch": "«{title}»: {days_left} kun qoldi — {progress_value}/{target_value}. Oxirgi kuch!",
+    "challenge_sprint_rank":   "«{title}»: siz {rank}-oʻrindasiz.",
+    "challenge_team_standing": "«{title}»: jamoangiz {my_total}, raqib {other_total}. {days_left} kun qoldi.",
+    "challenge_team_result":   "«{title}» tugadi — natijani koʻring.",
+    "challenge_ended":         "«{title}» tugadi. Natijangiz: {progress_value}.",
+    "challenge_completed":     "Bellashuvni bajardingiz! +{reward_xp} XP.",
+    "challenge_cancelled":     "«{title}» bekor qilindi.",
+    "consistency_reminder":    "«{title}»: bugun yana {remaining} daqiqa kerak.",
+    "consistency_failed":      "«{title}»: kunlik minimum bajarilmadi.",
     "deck_clone_milestone": "🎉 Sizning \"{deck}\" to'plamingiz {n} marta nusxa olindi!",
     "connection_achievement":      "{actor} yangi yutuqqa erishdi — profilini ko'ring!",
     "connection_course_published": "{actor} yangi kurs e'lon qildi: «{course_title}»",
@@ -355,16 +377,22 @@ _PUSH_BODY_TPL: dict[str, str] = {
 _PUSH_BODIES = _PUSH_BODY_TPL
 
 
+class _SafeFormat(dict):
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
 async def _dispatch_push(user_id: int, notif_type: str, meta: dict, notif_id: object):
     """Send push to all user devices: Web Push (VAPID) + Expo Push (mobile)."""
     actor = meta.get("actor_name") or meta.get("first_name") or "Kimdir"
     title = _PUSH_TITLES.get(notif_type, "SAHIFALAB")
     tpl   = _PUSH_BODY_TPL.get(notif_type, "Yangi bildirishnoma")
-    body  = tpl.format(
-        actor=actor, course_title=meta.get("course_title", "Kurs"),
-        deck=meta.get("deck_title", ""), n=meta.get("clone_count", ""),
-        streak_days=meta.get("streak_days", ""), freeze_count=meta.get("freeze_count", ""),
-    )
+    # Any {field} the template names comes from meta; a missing one renders
+    # empty instead of raising (a KeyError here used to drop the whole push —
+    # pro_granted's {months} was never filled in).
+    values = _SafeFormat({**meta, "actor": actor, "course_title": meta.get("course_title", "Kurs"),
+                          "deck": meta.get("deck_title", ""), "n": meta.get("clone_count", "")})
+    body  = tpl.format_map(values)
 
     await asyncio.gather(
         _dispatch_web_push(user_id, notif_type, meta, title, body),
@@ -464,6 +492,11 @@ def _expo_screen_data(notif_type: str, meta: dict) -> dict:
         return {"screen": "profile", "actor_id": meta["actor_id"]}
     if notif_type == "connection_course_published" and meta.get("course_id"):
         return {"screen": "course", "course_id": meta["course_id"]}
+    if notif_type.startswith("challenge_") or notif_type.startswith("consistency_"):
+        ref = meta.get("slug") or meta.get("challenge_id")
+        return {"screen": "challenge", "slug": ref} if ref else {"screen": "competitions"}
+    if notif_type == "pro_granted":
+        return {"screen": "pro"}
     mapping: dict[str, dict] = {
         "follow":              {"screen": "profile"},
         "connection_request":  {"screen": "profile"},
@@ -477,7 +510,7 @@ def _expo_screen_data(notif_type: str, meta: dict) -> dict:
         "save":                {"screen": "home"},
         "mention":             {"screen": "home"},
         "level_up":            {"screen": "profile"},
-        "achievement":         {"screen": "profile"},
+        "achievement":         {"screen": "streak"},
         "xp_reward":           {"screen": "profile"},
         "welcome":             {"screen": "profile"},
         "new_student":         {"screen": "teacher_dashboard"},

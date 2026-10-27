@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from app.api.v1 import auth
 from app.api.v1.endpoints import hero, quizzes, books, resources, admin, admin_decks, admin_challenges, admin_reports, admin_ai_usage, admin_feature_analytics, admin_storage, audio, ai, teacher, courses, lessons, enrollments, upload, pay, profiles, analytics, notifications, xp, planner, wallet, stream, cron, jobs, certificates, settings, og, focus, leaderboard, achievements, activity, streaks, flashcards, announcements, tests, challenges, daily_quiz, admin_daily_quiz, admin_curated_facts, questions, admin_question_submissions, rewards, payment_methods, admin_payment_methods
 from app.api.v1.endpoints.profile_public import profile_router, skills_router
-from app.api.v1.endpoints import pro
+from app.api.v1.endpoints import pro, cosmetics, admin_badges
 from app.api.v1.endpoints.connections import router as connections_router
 from app.api.v1.endpoints.search import router as search_router
 from app.api.v1 import social_routes, messenger_routes, group_routes
@@ -42,6 +42,8 @@ api_router.include_router(analytics.router, tags=["analytics"])
 api_router.include_router(notifications.router, tags=["notifications"])
 api_router.include_router(profile_router,     prefix="/profile",     tags=["profile"])
 api_router.include_router(pro.router,         prefix="/pro",         tags=["pro"])
+api_router.include_router(cosmetics.router,   prefix="/cosmetics",   tags=["cosmetics"])
+api_router.include_router(admin_badges.router, prefix="/admin/badges", tags=["admin"])
 api_router.include_router(skills_router,      prefix="/skills",      tags=["skills"])
 api_router.include_router(connections_router, prefix="/connections", tags=["connections"])
 api_router.include_router(search_router,      prefix="/search",      tags=["search"])

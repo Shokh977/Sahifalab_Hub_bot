@@ -28,7 +28,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.auth_service import decode_token
 from app.services.badge_service import get_top_badges_map
-from app.services.cosmetics_service import rings_for
+from app.services.cosmetics_service import list_looks_for
 
 router = APIRouter()
 
@@ -200,8 +200,9 @@ def weekly_leaderboard(
     rows = db.execute(sql, {"uid": caller_id}).fetchall()
 
     top_badge_map = get_top_badges_map(db, [r.telegram_id for r in rows])
-    # Avatar rings (106_profile_looks): Pro / earned / seasonal, shown on the board.
-    ring_map = _rings(db, [r.telegram_id for r in rows] + [caller_id])
+    # Looks (106/110): avatar ring, name colour and name badge — Pro / earned /
+    # seasonal, shown on the board. Only short ids; the app owns the visuals.
+    look_map = _looks(db, [r.telegram_id for r in rows] + [caller_id])
 
     my_rank: Optional[int] = None
     entries = []
@@ -221,7 +222,7 @@ def weekly_leaderboard(
             "account_type": r.account_type or "student",
             "is_me":        is_me,
             "top_badge":    top_badge_map.get(r.telegram_id),
-            "ring":         ring_map.get(r.telegram_id),
+            **_look_fields(look_map.get(r.telegram_id)),
         })
 
     total = _total(db, scope, period, caller_id)
@@ -264,24 +265,31 @@ def weekly_leaderboard(
             around_me = _around_me(db, period, caller_id)
 
     if around_me:
-        around_rings = _rings(db, [e["telegram_id"] for e in around_me])
+        around_looks = _looks(db, [e["telegram_id"] for e in around_me])
         for e in around_me:
-            e["ring"] = around_rings.get(e["telegram_id"])
+            e.update(_look_fields(around_looks.get(e["telegram_id"])))
 
     return {
         "entries": entries, "my_rank": my_rank, "total": total, "around_me": around_me,
-        # The caller's own ring, for the "Siz" bar when they're not on the board.
-        "my_ring": ring_map.get(caller_id),
+        # The caller's own look, for the "Siz" bar when they're not on the board.
+        "my_ring":       (look_map.get(caller_id) or {}).get("ring"),
+        "my_name_style": (look_map.get(caller_id) or {}).get("name_style"),
+        "my_badge":      (look_map.get(caller_id) or {}).get("badge"),
     }
 
 
-def _rings(db: Session, ids: list[int]) -> dict[int, str]:
+def _looks(db: Session, ids: list[int]) -> dict[int, dict[str, str]]:
     """Best-effort: a failure here never breaks the leaderboard."""
     try:
         with db.begin_nested():
-            return rings_for(db, ids)
+            return list_looks_for(db, ids)
     except Exception:
         return {}
+
+
+def _look_fields(look: Optional[dict]) -> dict:
+    look = look or {}
+    return {"ring": look.get("ring"), "name_style": look.get("name_style"), "badge": look.get("badge")}
 
 
 def _total(db: Session, scope: str, period: str, caller_id: int) -> Optional[int]:

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 from app.models.social_models import Post, PostLike, PostComment, CommentLike, Follow, Repost, PostSave, PollVote, UserBlock, ContentReport
 from app.models.models import Profile
+from app.services.cosmetics_service import with_name_looks
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -738,12 +739,16 @@ def get_comments(db: Session, post_id: int, page: int = 1, page_size: int = 50,
         ).all()
         liked_ids = {r.comment_id for r in rows}
 
+    # Name colour and badge (106/110) for each author, one query.
+    authors = {aid: _profile_to_author(p) for aid, p in authors_map.items()}
+    with_name_looks(db, list(authors.values()))
+
     return [
         {
             "id":          c.id,
             "post_id":     c.post_id,
             "parent_id":   c.parent_id,
-            "author":      _profile_to_author(authors_map.get(c.author_id)),
+            "author":      authors.get(c.author_id) or {"telegram_id": 0, "full_name": "Deleted"},
             "content":     c.content,
             "likes_count": c.likes_count,
             "is_liked":    c.id in liked_ids,
@@ -766,7 +771,7 @@ def create_comment(db: Session, post_id: int, author_id: int, content: str,
         "id":          comment.id,
         "post_id":     comment.post_id,
         "parent_id":   comment.parent_id,
-        "author":      _profile_to_author(author),
+        "author":      with_name_looks(db, [_profile_to_author(author)])[0],
         "content":     comment.content,
         "likes_count": 0,
         "is_liked":    False,

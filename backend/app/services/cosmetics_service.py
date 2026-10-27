@@ -11,8 +11,13 @@ Unlock rules (product decisions, 2026-10-26):
 
 A saved choice that is locked now is never deleted: effective_look() renders
 it as the slot's free fallback, and it comes back when it unlocks again.
+
+Name styles (colour) are fixed ids — the colours live in the app. Name
+badges come from the name_badges table (110), so a new badge needs no app
+update; sync_badges() reloads them into CATALOG["badge"] (60 s cache).
 """
 import json
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Optional
@@ -23,8 +28,11 @@ from sqlalchemy.orm import Session
 from app.services.config_service import get_config
 
 TASHKENT = timezone(timedelta(hours=5))
-SLOTS = ("banner", "ring", "tree", "theme")
-FALLBACK = {"banner": "plain", "ring": "oddiy", "tree": "tabiiy", "theme": "standart"}
+SLOTS = ("banner", "ring", "tree", "theme", "name_style", "badge")
+FALLBACK = {
+    "banner": "plain", "ring": "oddiy", "tree": "tabiiy", "theme": "standart",
+    "name_style": "oddiy", "badge": "none",
+}
 
 # slot -> id -> unlock rule
 CATALOG: dict[str, dict[str, dict[str, Any]]] = {
@@ -60,6 +68,20 @@ CATALOG: dict[str, dict[str, dict[str, Any]]] = {
         "ramazon": {"kind": "seasonal", "season": "ramazon"},
         "navroz": {"kind": "seasonal", "season": "navroz"},
     },
+    # Name colours (the light/dark values are app tokens).
+    "name_style": {
+        "oddiy": {"kind": "free"},
+        "oltin": {"kind": "pro"},
+        "zumrad": {"kind": "pro"},
+        "lazurit": {"kind": "pro"},
+        "yoqut": {"kind": "pro"},
+        "shafaq": {"kind": "pro"},
+        "tun": {"kind": "pro"},
+        "bahor": {"kind": "pro"},
+        "yaltiroq": {"kind": "pro"},
+    },
+    # Name badges: "none" here; the rest from name_badges via sync_badges().
+    "badge": {"none": {"kind": "free"}},
 }
 
 
@@ -89,6 +111,9 @@ def _parse_window(raw: Any, today: date) -> Optional[tuple[date, date]]:
 
 
 def open_seasons(db: Session, today: Optional[date] = None) -> set[str]:
+    # Every look decision reads the seasons first, so the badge catalog is
+    # refreshed here too (cheap: cached).
+    sync_badges(db)
     today = today or datetime.now(TASHKENT).date()
     out = set()
     for season in ("navroz", "ramazon"):
@@ -127,6 +152,52 @@ def item_states(ctx: UnlockContext) -> dict[str, dict[str, bool]]:
     return {slot: {i: is_unlocked(slot, i, ctx) for i in items} for slot, items in CATALOG.items()}
 
 
+# ── Name badges (110_name_badges) ────────────────────────────────────────────
+
+_BADGE_TTL = 60.0
+_badges_at = 0.0
+_badge_rows: list[dict] = []
+
+
+def sync_badges(db: Session, force: bool = False) -> list[dict]:
+    """
+    Reload the active badges into CATALOG["badge"] at most once a minute and
+    return them (catalog order). Before migration 110, or on a DB error,
+    keeps what it had (at first: no badges besides "none").
+    """
+    global _badges_at, _badge_rows
+    if not force and time.monotonic() - _badges_at < _BADGE_TTL:
+        return _badge_rows
+    _badges_at = time.monotonic()
+    try:
+        with db.begin_nested():
+            rows = db.execute(text("""
+                SELECT id, title, unlock, season, streak_days, dark_url, light_url, static_url
+                FROM name_badges
+                WHERE is_active
+                ORDER BY sort_order, created_at
+            """)).fetchall()
+    except Exception:
+        return _badge_rows
+    rules: dict[str, dict[str, Any]] = {"none": {"kind": "free"}}
+    out = []
+    for r in rows:
+        rule: dict[str, Any] = {"kind": r.unlock}
+        if r.unlock == "seasonal":
+            rule["season"] = r.season
+        if r.unlock == "achievement":
+            rule["streak_days"] = int(r.streak_days or 0)
+        rules[r.id] = rule
+        out.append({
+            "id": r.id, "title": r.title, "unlock": r.unlock, "season": r.season,
+            "streak_days": r.streak_days,
+            "dark": r.dark_url, "light": r.light_url, "static": r.static_url,
+        })
+    CATALOG["badge"] = rules
+    _badge_rows = out
+    return out
+
+
 # ── DB access (raw SQL: the columns aren't on the Profile model) ─────────────
 
 _looks_enabled = False
@@ -162,24 +233,59 @@ def list_item_shown(slot: str, item_id: Optional[str], is_pro: bool, seasons: se
     return item_id
 
 
-def rings_for(db: Session, user_ids: list[int]) -> dict[int, str]:
-    """{telegram_id: ring} for users in `user_ids` whose avatar shows a ring
-    other than the plain one. Empty before migration 106."""
+LIST_SLOTS = ("ring", "name_style", "badge")
+
+
+def list_looks_for(db: Session, user_ids: list[int]) -> dict[int, dict[str, str]]:
+    """
+    {telegram_id: {ring?, name_style?, badge?}} for users in `user_ids` —
+    only the slots that differ from the free default, so lists stay small
+    (short ids only; the app owns the colours and caches the badge files).
+    Empty before migration 106.
+    """
     ids = list({int(u) for u in user_ids if u is not None})
     if not ids or not looks_enabled(db):
         return {}
     rows = db.execute(text("""
-        SELECT telegram_id, profile_look->>'ring' AS ring, pro_until
+        SELECT telegram_id, profile_look, pro_until
         FROM profiles
-        WHERE telegram_id = ANY(:ids) AND profile_look ? 'ring'
+        WHERE telegram_id = ANY(:ids) AND profile_look IS NOT NULL
     """), {"ids": ids}).fetchall()
     seasons = open_seasons(db)
     out = {}
     for r in rows:
-        ring = list_item_shown("ring", r.ring, pro_active(r.pro_until), seasons)
-        if ring:
-            out[int(r.telegram_id)] = ring
+        saved = r.profile_look if isinstance(r.profile_look, dict) else {}
+        is_pro = pro_active(r.pro_until)
+        look = {}
+        for slot in LIST_SLOTS:
+            item = list_item_shown(slot, saved.get(slot), is_pro, seasons)
+            if item:
+                look[slot] = item
+        if look:
+            out[int(r.telegram_id)] = look
     return out
+
+
+def rings_for(db: Session, user_ids: list[int]) -> dict[int, str]:
+    """{telegram_id: ring} for users whose avatar shows a non-plain ring."""
+    return {uid: look["ring"] for uid, look in list_looks_for(db, user_ids).items() if "ring" in look}
+
+
+def with_name_looks(db: Session, people: list[dict], id_key: str = "telegram_id") -> list[dict]:
+    """Add name_style / badge (and ring) to user dicts in place. Best-effort:
+    on any error the dicts are returned unchanged."""
+    try:
+        with db.begin_nested():
+            looks = list_looks_for(db, [p.get(id_key) for p in people if p])
+    except Exception:
+        return people
+    for p in people:
+        if p:
+            look = looks.get(p.get(id_key)) or {}
+            p["name_style"] = look.get("name_style")
+            p["badge"] = look.get("badge")
+            p.setdefault("ring", look.get("ring"))
+    return people
 
 
 def user_is_pro(db: Session, user_id: int) -> bool:
