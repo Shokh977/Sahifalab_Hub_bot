@@ -17,6 +17,7 @@ import { getProfileSkin } from '../utils/profileSkins'
 import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
 import AdminDonationsTab from '../components/donation/AdminDonationsTab'
+import AdminBadgesTab from '../components/admin/AdminBadgesTab'
 import AdminFeatureAnalyticsTab from '../components/featureAnalytics/AdminFeatureAnalyticsTab'
 import StorageMigrationCard from '../components/admin/StorageMigrationCard'
 
@@ -89,7 +90,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports' | 'donations'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports' | 'donations' | 'badges'
 
 type AdminChallengeType = 'cumulative' | 'consistency' | 'sprint' | 'team'
 type AdminChallengeMetric = 'focus_minutes' | 'flashcard_reviews' | 'lessons_completed' | 'courses_completed' | 'tests_passed'
@@ -2018,6 +2019,7 @@ const AdminPage: React.FC = () => {
             { id: 'reports', label: '🚨 Shikoyatlar' },
             { id: 'challenges', label: '🏆 Bellashuv' },
             { id: 'donations', label: "💳 Xayriya" },
+            { id: 'badges', label: '✨ Ism belgilari' },
             { id: 'feature_usage', label: '📊 Xususiyatlar' },
           ] as { id: Tab; label: string }[]).map((tab) => (
             <button
@@ -4844,6 +4846,7 @@ const AdminPage: React.FC = () => {
 
         {/* ── Xayriya (donation payment methods, 095) Tab ──────────────────── */}
         {activeTab === 'donations' && <AdminDonationsTab />}
+        {activeTab === 'badges' && <AdminBadgesTab />}
 
         {/* ── Decks Tab ──────────────────────────────────────────────────── */}
         {activeTab === 'decks' && (() => {
