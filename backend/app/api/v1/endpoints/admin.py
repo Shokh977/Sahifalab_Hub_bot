@@ -946,6 +946,9 @@ def _with_item(row: dict, course: Optional[dict]) -> dict:
     if row.get("product") == "pro":
         title = _pro_title(row)
         return {**row, "course": {"title": title}, "item_title": title}
+    if row.get("product") == "channel":  # 111_sponsor_channel
+        from app.services.sponsor_service import TITLE
+        return {**row, "course": {"title": TITLE}, "item_title": TITLE}
     return {**row, "course": course, "item_title": (course or {}).get("title") or f"Kurs #{row.get('course_id')}"}
 
 
@@ -1128,6 +1131,8 @@ async def grant_pending_enrollment(
 
     if pending.get("product") == "pro":
         return await _grant_pro_pass(pending, body, admin, db)
+    if pending.get("product") == "channel":
+        return await _grant_channel_access(pending, body, admin, db)
 
     user_id   = pending["user_id"]
     course_id = pending["course_id"]
@@ -1333,6 +1338,49 @@ async def _grant_pro_pass(pending: dict, body: _GrantBody, admin, db: Session):
         pending_id=pending["id"], actual_amount=body.actual_amount,
         payment_method=body.payment_method, notes=body.notes, notify=body.send_notification,
     )
+
+
+async def _grant_channel_access(pending: dict, body: _GrantBody, admin, db: Session):
+    """
+    A paid channel request (111_sponsor_channel). The granted row is the
+    access record; the pay bot sends the invite link itself, so nothing is
+    sent from here.
+    """
+    from fastapi.concurrency import run_in_threadpool
+
+    async with httpx.AsyncClient(timeout=10) as client:
+        await client.patch(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending['id']}"},
+            json={
+                "status":         "granted",
+                "actual_amount":  body.actual_amount,
+                "payment_method": body.payment_method,
+                # Keeps the buyer's Telegram name written when the request opened.
+                "admin_notes":    " · ".join(n for n in (pending.get("admin_notes"), body.notes) if n) or None,
+                "processed_by":   admin.telegram_id,
+                "processed_at":   datetime.now(timezone.utc).isoformat(),
+            },
+            headers=_pending_supabase_headers(),
+        )
+
+    def _audit() -> None:
+        db.add(EnrollmentAuditLog(
+            action="channel_granted",
+            target_id=pending["id"],
+            admin_telegram_id=admin.telegram_id,
+            user_telegram_id=pending["user_id"],
+            course_id=None,
+            details={
+                "actual_amount":  body.actual_amount,
+                "payment_method": body.payment_method,
+                "notes":          body.notes,
+            },
+        ))
+        db.commit()
+
+    await run_in_threadpool(_audit)
+    return {"ok": True, "product": "channel", "user_id": pending["user_id"]}
 
 
 @router.post("/pending-enrollments/{pending_id}/cancel")
@@ -2197,16 +2245,17 @@ async def admin_pending_by_code(
                                      headers=_pending_supabase_headers())
     profile = (p_res.json() or [{}])[0] if p_res.status_code == 200 else {}
     course  = (c_res.json() or [{}])[0] if c_res is not None and c_res.status_code == 200 else {}
-    is_pro  = row.get("product") == "pro"
+    # The bot shows course_title; for a Pro pass or the channel it is the item name.
+    title = _with_item(row, course)["item_title"] if row.get("product") in ("pro", "channel") \
+        else course.get("title", f"#{row['course_id']}")
 
     return {
         **row,
         "user_name":        profile.get("first_name", f"#{row['user_id']}"),
         "user_username":    profile.get("username"),
-        # The bot shows course_title; for a Pro pass it is the pass name.
-        "course_title":     _pro_title(row) if is_pro else course.get("title", f"#{row['course_id']}"),
-        "course_thumbnail": None if is_pro else course.get("thumbnail_url"),
-        "item_title":       _pro_title(row) if is_pro else course.get("title", f"#{row['course_id']}"),
+        "course_title":     title,
+        "course_thumbnail": None if row.get("course_id") is None else course.get("thumbnail_url"),
+        "item_title":       title,
     }
 
 
