@@ -974,12 +974,14 @@ class _DirectGrantBody(BaseModel):
 async def list_pending_enrollments(
     status:    str = Query("awaiting_payment"),
     search:    Optional[str] = Query(None),
+    product:   Optional[str] = Query(None, pattern="^(course|pro|channel)$"),
     page:      int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     authorization: Optional[str] = Header(None),
     db: Session = Depends(get_db),
 ):
-    """List pending enrollment requests with user + course info (Admin only)."""
+    """List pending enrollment requests with user + course info (Admin only).
+    Receipts waiting for review (status=paid) come oldest first."""
     admin = await verify_admin(authorization=authorization, db=db)
     _ensure_supabase()
 
@@ -989,9 +991,11 @@ async def list_pending_enrollments(
 
     params: dict = {
         "status": f"eq.{status}",
-        "select": "id,user_id,course_id,product,pro_months,reference_code,expected_amount,status,created_at,expires_at,admin_notes,actual_amount,payment_method",
-        "order":  "created_at.desc",
+        "select": "id,user_id,course_id,product,pro_months,reference_code,expected_amount,status,created_at,expires_at,admin_notes,actual_amount,payment_method,payment_proof_url,processed_at",
+        "order":  "created_at.asc" if status == "paid" else "created_at.desc",
     }
+    if product:
+        params["product"] = f"eq.{product}"
     if not fetch_all:
         params["limit"]  = str(page_size)
         params["offset"] = str((page - 1) * page_size)
@@ -1056,12 +1060,60 @@ async def list_pending_enrollments(
             or (r["user"] and q in (r["user"].get("first_name", "") + r["user"].get("username", "")).lower())
             or (r["course"] and q in r["course"].get("title", "").lower())
             or (r.get("product") == "pro" and q in "sahifalab pro")
+            or (r.get("product") == "channel" and q in "kanal homiy homiylar")
+            or q in (r.get("admin_notes") or "").lower()
+            or q == str(r["user_id"])
         ]
         total = len(enriched)
         start = (page - 1) * page_size
         enriched = enriched[start: start + page_size]
 
     return {"items": enriched, "total": total, "page": page, "page_size": page_size}
+
+
+@router.get("/pending-enrollments/counts")
+def pending_enrollment_counts(db: Session = Depends(get_db), admin: AdminUser = Depends(verify_admin)):
+    """Requests per status, and per product for each status (the web
+    dashboard's tab badges). Declared before /{pending_id}."""
+    rows = db.execute(text("""
+        SELECT status, product, COUNT(*) AS n FROM pending_enrollments GROUP BY status, product
+    """)).fetchall()
+    out: dict = {}
+    for r in rows:
+        entry = out.setdefault(r.status, {"total": 0})
+        entry["total"] += int(r.n)
+        entry[r.product or "course"] = entry.get(r.product or "course", 0) + int(r.n)
+    return out
+
+
+@router.get("/pending-enrollments/{pending_id}/proof")
+async def pending_enrollment_proof(
+    pending_id: int,
+    authorization: Optional[str] = Header(None),
+    db: Session = Depends(get_db),
+):
+    """The receipt image when it was kept as tg://file/<id> (the pay bot
+    couldn't upload it to the CDN): fetched through the pay bot (Admin only)."""
+    from fastapi.responses import Response
+    from app.services import payment_bot
+
+    await verify_admin(authorization=authorization, db=db)
+    _ensure_supabase()
+    async with httpx.AsyncClient(timeout=10) as client:
+        res = await client.get(
+            f"{SUPABASE_URL}/rest/v1/pending_enrollments",
+            params={"id": f"eq.{pending_id}", "select": "payment_proof_url", "limit": "1"},
+            headers=_pending_supabase_headers(),
+        )
+    rows = res.json() if res.status_code == 200 else []
+    url = (rows[0].get("payment_proof_url") or "") if rows else ""
+    if not url.startswith("tg://file/"):
+        raise HTTPException(status_code=404, detail="Telegram screenshot yoʻq")
+    try:
+        content, media = await payment_bot.download_file(url.removeprefix("tg://file/"))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Screenshotni olib boʻlmadi: {exc}")
+    return Response(content=content, media_type=media, headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.get("/pending-enrollments/{pending_id}")
@@ -1126,7 +1178,9 @@ async def grant_pending_enrollment(
         raise HTTPException(status_code=404, detail="Pending enrollment not found")
     pending = rows[0]
 
-    if pending["status"] not in ("awaiting_payment", "paid"):
+    # An expired request that has a receipt was paid; the admin was just late.
+    late_but_paid = pending["status"] == "expired" and pending.get("payment_proof_url")
+    if pending["status"] not in ("awaiting_payment", "paid") and not late_but_paid:
         raise HTTPException(status_code=400, detail=f"Cannot grant: status is {pending['status']}")
 
     if pending.get("product") == "pro":
@@ -1343,10 +1397,12 @@ async def _grant_pro_pass(pending: dict, body: _GrantBody, admin, db: Session):
 async def _grant_channel_access(pending: dict, body: _GrantBody, admin, db: Session):
     """
     A paid channel request (111_sponsor_channel). The granted row is the
-    access record; the pay bot sends the invite link itself, so nothing is
-    sent from here.
+    access record. Granted from the pay bot, the bot sends the invite link
+    itself; granted from the web dashboard, it is sent from here through
+    the pay bot (invite_error says why when it couldn't be).
     """
     from fastapi.concurrency import run_in_threadpool
+    from app.services import payment_bot
 
     async with httpx.AsyncClient(timeout=10) as client:
         await client.patch(
@@ -1380,7 +1436,15 @@ async def _grant_channel_access(pending: dict, body: _GrantBody, admin, db: Sess
         db.commit()
 
     await run_in_threadpool(_audit)
-    return {"ok": True, "product": "channel", "user_id": pending["user_id"]}
+
+    invite_error = None
+    if admin.role != "bot":
+        try:
+            await payment_bot.send_channel_invite(pending["user_id"])
+        except Exception as exc:
+            logger.warning("channel invite for %s failed: %s", pending["user_id"], exc)
+            invite_error = str(exc)
+    return {"ok": True, "product": "channel", "user_id": pending["user_id"], "invite_error": invite_error}
 
 
 @router.post("/pending-enrollments/{pending_id}/cancel")
@@ -1398,12 +1462,14 @@ async def cancel_pending_enrollment(
     async with httpx.AsyncClient(timeout=10) as client:
         cancel_fetch = await client.get(
             f"{SUPABASE_URL}/rest/v1/pending_enrollments",
-            params={"id": f"eq.{pending_id}", "select": "user_id,course_id", "limit": "1"},
+            params={"id": f"eq.{pending_id}", "select": "user_id,course_id,product,status", "limit": "1"},
             headers=_pending_supabase_headers(),
         )
     cancel_rows = cancel_fetch.json() if cancel_fetch.status_code == 200 else []
     cancel_user_id   = cancel_rows[0]["user_id"]   if cancel_rows else None
     cancel_course_id = cancel_rows[0]["course_id"] if cancel_rows else None
+    if cancel_rows and cancel_rows[0]["status"] in ("granted", "cancelled"):
+        raise HTTPException(status_code=400, detail=f"Cannot cancel: status is {cancel_rows[0]['status']}")
 
     async with httpx.AsyncClient(timeout=10) as client:
         await client.patch(
@@ -1427,6 +1493,11 @@ async def cancel_pending_enrollment(
         details={"reason": body.reason},
     ))
     db.commit()
+
+    # From the web dashboard the pay bot tells the buyer; the bot does it itself.
+    if admin.role != "bot" and cancel_user_id:
+        from app.services import payment_bot
+        await payment_bot.send_rejection(cancel_user_id, body.reason, cancel_rows[0].get("product"))
 
     return {"ok": True}
 
@@ -2222,7 +2293,7 @@ async def admin_pending_by_code(
         raise HTTPException(status_code=410, detail=f"Code is no longer active (status: {row['status']})")
 
     expires_at = row.get("expires_at")
-    if expires_at:
+    if expires_at and row["status"] == "awaiting_payment":  # a sent receipt never expires
         exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
         if exp_dt < datetime.now(timezone.utc):
             async with httpx.AsyncClient(timeout=5) as cl:
