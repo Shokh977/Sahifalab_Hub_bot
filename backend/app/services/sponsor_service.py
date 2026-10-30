@@ -89,7 +89,7 @@ def open_request(db: Session, telegram_id: int, code: str, buyer: str) -> dict:
         SELECT id, user_id, reference_code, expected_amount, status, expires_at
         FROM pending_enrollments
         WHERE user_id = :uid AND product = 'channel'
-          AND status IN ('awaiting_payment', 'paid') AND expires_at > NOW()
+          AND (status = 'paid' OR (status = 'awaiting_payment' AND expires_at > NOW()))
         ORDER BY created_at DESC
         LIMIT 1
     """), {"uid": telegram_id}).fetchone()

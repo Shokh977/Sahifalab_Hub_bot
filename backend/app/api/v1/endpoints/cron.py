@@ -585,7 +585,8 @@ async def expire_pending_enrollments(
 ):
     """
     Mark pending_enrollments rows as 'expired' when their expires_at has passed
-    and they are still in awaiting_payment or paid status.
+    and they are still awaiting payment. A 'paid' row (receipt sent) stays in
+    the admin queue however long the review takes.
 
     The expires_at filter in request-code / pending-status already hides these rows
     from users, but this job cleans them up in the database so the table stays tidy
@@ -608,7 +609,7 @@ async def expire_pending_enrollments(
         resp = await client.patch(
             f"{SUPABASE_URL}/rest/v1/pending_enrollments",
             params={
-                "status":     "in.(awaiting_payment,paid)",
+                "status":     "eq.awaiting_payment",
                 "expires_at": f"lt.{now_iso}",
             },
             json={"status": "expired"},

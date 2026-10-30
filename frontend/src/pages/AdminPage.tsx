@@ -18,6 +18,7 @@ import { getLevelTitle } from '../utils/levelTitles'
 import { isUserOnline } from '../utils/onlineStatus'
 import AdminDonationsTab from '../components/donation/AdminDonationsTab'
 import AdminBadgesTab from '../components/admin/AdminBadgesTab'
+import AdminPaymentsTab from '../components/admin/AdminPaymentsTab'
 import AdminFeatureAnalyticsTab from '../components/featureAnalytics/AdminFeatureAnalyticsTab'
 import StorageMigrationCard from '../components/admin/StorageMigrationCard'
 
@@ -90,7 +91,7 @@ interface AdminQuiz {
   created_at: string
 }
 
-type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports' | 'donations' | 'badges'
+type Tab = 'stats' | 'hero' | 'quiz' | 'books' | 'sounds' | 'teachers' | 'analytics' | 'users' | 'courses' | 'announcements' | 'decks' | 'feature_usage' | 'challenges' | 'reports' | 'donations' | 'badges' | 'payments'
 
 type AdminChallengeType = 'cumulative' | 'consistency' | 'sprint' | 'team'
 type AdminChallengeMetric = 'focus_minutes' | 'flashcard_reviews' | 'lessons_completed' | 'courses_completed' | 'tests_passed'
@@ -2006,6 +2007,7 @@ const AdminPage: React.FC = () => {
         <div className="flex gap-0 overflow-x-auto">
           {([
             { id: 'stats', label: '📊 Stats' },
+            { id: 'payments', label: "💰 To'lovlar" },
             { id: 'hero', label: '🖼 Hero' },
             { id: 'quiz', label: '📝 Quiz' },
             { id: 'books', label: '📚 Kitoblar' },
@@ -4847,6 +4849,7 @@ const AdminPage: React.FC = () => {
         {/* ── Xayriya (donation payment methods, 095) Tab ──────────────────── */}
         {activeTab === 'donations' && <AdminDonationsTab />}
         {activeTab === 'badges' && <AdminBadgesTab />}
+        {activeTab === 'payments' && <AdminPaymentsTab />}
 
         {/* ── Decks Tab ──────────────────────────────────────────────────── */}
         {activeTab === 'decks' && (() => {
